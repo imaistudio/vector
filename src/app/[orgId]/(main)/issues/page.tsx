@@ -27,6 +27,7 @@ import {
   ProjectSelector,
 } from "@/components/issues/issue-selectors";
 import { authClient } from "@/lib/auth-client";
+import { motion, AnimatePresence } from "motion/react";
 
 type StateType = (typeof issueStateTypeEnum.enumValues)[number];
 type FilterType = "all" | StateType;
@@ -267,176 +268,179 @@ export default function IssuesPage() {
       <div className="flex-1">
         {filteredIssues.length > 0 ? (
           <div className="divide-y">
-            {filteredIssues.map((issue) => {
-              // Get priority icon component and styling
-              const PriorityIcon = issue.priorityIcon
-                ? getDynamicIcon(issue.priorityIcon) || Circle
-                : Circle;
-              const priorityColor = issue.priorityColor || "#94a3b8";
+            <AnimatePresence initial={false}>
+              {filteredIssues.map((issue) => {
+                // Get priority icon component and styling
+                const PriorityIcon = issue.priorityIcon
+                  ? getDynamicIcon(issue.priorityIcon) || Circle
+                  : Circle;
+                const priorityColor = issue.priorityColor || "#94a3b8";
 
-              // Get state icon component and styling
-              const StateIcon = issue.stateIcon
-                ? getDynamicIcon(issue.stateIcon) || Circle
-                : Circle;
-              const stateColor = issue.stateColor || "#94a3b8";
+                // Get state icon component and styling
+                const StateIcon = issue.stateIcon
+                  ? getDynamicIcon(issue.stateIcon) || Circle
+                  : Circle;
+                const stateColor = issue.stateColor || "#94a3b8";
 
-              return (
-                <div
-                  key={issue.id}
-                  className="hover:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors"
-                >
-                  {/* Priority Selector */}
-                  <PrioritySelector
-                    priorities={priorities}
-                    selectedPriority={issue.priorityId || ""}
-                    onPrioritySelect={(pid) =>
-                      handlePriorityChange(issue.id, pid)
-                    }
-                    displayMode="iconOnly"
-                    trigger={
-                      <div className="flex-shrink-0 cursor-pointer">
-                        <PriorityIcon
-                          className="size-4"
-                          style={{ color: priorityColor }}
-                        />
-                      </div>
-                    }
-                    className="border-none bg-transparent p-0 shadow-none"
-                  />
-
-                  {/* Issue Key */}
-                  <span className="text-muted-foreground flex-shrink-0 font-mono text-xs">
-                    {issue.key}
-                  </span>
-
-                  {/* State Selector */}
-                  <StateSelector
-                    states={states}
-                    selectedState={issue.stateId || ""}
-                    onStateSelect={(sid) => handleStateChange(issue.id, sid)}
-                    displayMode="iconOnly"
-                    trigger={
-                      <div className="flex-shrink-0 cursor-pointer">
-                        <StateIcon
-                          className="size-4"
-                          style={{ color: stateColor }}
-                        />
-                      </div>
-                    }
-                    className="border-none bg-transparent p-0 shadow-none"
-                  />
-
-                  {/* Title */}
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/${orgSlug}/issues/${issue.key}`}
-                      className="hover:text-primary block truncate text-sm font-medium transition-colors"
-                    >
-                      {issue.title}
-                    </Link>
-                  </div>
-
-                  {/* Team / Project selectors (if related) */}
-                  {issue.teamKey && (
-                    <TeamSelector
-                      teams={teams}
-                      selectedTeam={
-                        teams.find((t) => t.key === issue.teamKey)?.id || ""
+                return (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    transition={{ duration: 0.2 }}
+                    key={issue.id}
+                    className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors"
+                  >
+                    {/* Priority Selector */}
+                    <PrioritySelector
+                      priorities={priorities}
+                      selectedPriority={issue.priorityId || ""}
+                      onPrioritySelect={(pid) =>
+                        handlePriorityChange(issue.id, pid)
                       }
-                      onTeamSelect={(tid) => handleTeamChange(issue.id, tid)}
-                      displayMode="iconOnly"
+                      displayMode="labelOnly"
+                      trigger={
+                        <div className="flex-shrink-0 cursor-pointer">
+                          <PriorityIcon
+                            className="size-4"
+                            style={{ color: priorityColor }}
+                          />
+                        </div>
+                      }
                       className="border-none bg-transparent p-0 shadow-none"
                     />
-                  )}
-                  {issue.projectKey && (
-                    <ProjectSelector
-                      projects={projects}
-                      selectedProject={
-                        projects.find((p) => p.key === issue.projectKey)?.id ||
-                        ""
-                      }
-                      onProjectSelect={(pid) =>
-                        handleProjectChange(issue.id, pid)
-                      }
-                      displayMode="iconOnly"
-                      className="border-none bg-transparent p-0 shadow-none"
-                    />
-                  )}
 
-                  {/* Last Updated */}
-                  <div className="flex-shrink-0">
-                    <span className="text-muted-foreground text-xs">
-                      {formatDateHuman(issue.updatedAt)}
+                    {/* Issue Key */}
+                    <span className="text-muted-foreground flex-shrink-0 font-mono text-xs">
+                      {issue.key}
                     </span>
-                  </div>
 
-                  {/* Assignee Selector */}
-                  <AssigneeSelector
-                    members={members}
-                    selectedAssignee={issue.assigneeId || ""}
-                    onAssigneeSelect={(aid) =>
-                      handleAssigneeChange(issue.id, aid)
-                    }
-                    displayMode="iconOnly"
-                    trigger={
-                      issue.assigneeId ? (
-                        <div className="flex cursor-pointer items-center gap-2">
-                          <Avatar className="size-6">
-                            <AvatarFallback className="text-xs">
-                              {getAssigneeInitials(
-                                issue.assigneeName,
-                                issue.assigneeEmail,
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
+                    {/* State Selector */}
+                    <StateSelector
+                      states={states}
+                      selectedState={issue.stateId || ""}
+                      onStateSelect={(sid) => handleStateChange(issue.id, sid)}
+                      displayMode="labelOnly"
+                      trigger={
+                        <div className="flex-shrink-0 cursor-pointer">
+                          <StateIcon
+                            className="size-4"
+                            style={{ color: stateColor }}
+                          />
                         </div>
-                      ) : (
-                        <div className="flex size-6 cursor-pointer items-center justify-center">
-                          <span className="text-muted-foreground text-xs">
-                            —
-                          </span>
-                        </div>
-                      )
-                    }
-                    className="border-none bg-transparent p-0 shadow-none"
-                  />
+                      }
+                      className="border-none bg-transparent p-0 shadow-none"
+                    />
 
-                  {/* Actions */}
-                  <div className="flex-shrink-0">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0"
-                          aria-label="Open issue actions"
-                        >
-                          <MoreHorizontal className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          variant="destructive"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            if (
-                              !confirm(
-                                "Delete this issue? This action cannot be undone.",
+                    {/* Title */}
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/${orgSlug}/issues/${issue.key}`}
+                        className="hover:text-primary block truncate text-sm font-medium transition-colors"
+                      >
+                        {issue.title}
+                      </Link>
+                    </div>
+
+                    {/* Team / Project selectors (if related) */}
+                    {issue.teamKey && (
+                      <TeamSelector
+                        teams={teams}
+                        selectedTeam={
+                          teams.find((t) => t.key === issue.teamKey)?.id || ""
+                        }
+                        onTeamSelect={(tid) => handleTeamChange(issue.id, tid)}
+                      />
+                    )}
+                    {issue.projectKey && (
+                      <ProjectSelector
+                        projects={projects}
+                        selectedProject={
+                          projects.find((p) => p.key === issue.projectKey)
+                            ?.id || ""
+                        }
+                        onProjectSelect={(pid) =>
+                          handleProjectChange(issue.id, pid)
+                        }
+                      />
+                    )}
+
+                    {/* Last Updated */}
+                    <div className="flex-shrink-0">
+                      <span className="text-muted-foreground text-xs">
+                        {formatDateHuman(issue.updatedAt)}
+                      </span>
+                    </div>
+
+                    {/* Assignee Selector */}
+                    <AssigneeSelector
+                      members={members}
+                      selectedAssignee={issue.assigneeId || ""}
+                      onAssigneeSelect={(aid) =>
+                        handleAssigneeChange(issue.id, aid)
+                      }
+                      displayMode="labelOnly"
+                      trigger={
+                        issue.assigneeId ? (
+                          <div className="flex cursor-pointer items-center gap-2">
+                            <Avatar className="size-6">
+                              <AvatarFallback className="text-xs">
+                                {getAssigneeInitials(
+                                  issue.assigneeName,
+                                  issue.assigneeEmail,
+                                )}
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                        ) : (
+                          <div className="flex size-6 cursor-pointer items-center justify-center">
+                            <span className="text-muted-foreground text-xs">
+                              —
+                            </span>
+                          </div>
+                        )
+                      }
+                      className="border-none bg-transparent p-0 shadow-none"
+                    />
+
+                    {/* Actions */}
+                    <div className="flex-shrink-0">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            aria-label="Open issue actions"
+                          >
+                            <MoreHorizontal className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={deleteMutation.isPending}
+                            onClick={() => {
+                              if (
+                                !confirm(
+                                  "Delete this issue? This action cannot be undone.",
+                                )
                               )
-                            )
-                              return;
-                            deleteMutation.mutate({ issueId: issue.id });
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              );
-            })}
+                                return;
+                              deleteMutation.mutate({ issueId: issue.id });
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           </div>
         ) : (
           <div className="flex items-center justify-center py-12">
