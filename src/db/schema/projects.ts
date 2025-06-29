@@ -8,9 +8,19 @@ import {
   boolean,
   index,
   primaryKey,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { user, organization } from "./users-and-auth";
 import { team } from "./teams";
+
+// ----- Project Status Types (following Linear's approach) -----
+export const projectStatusTypeEnum = pgEnum("project_status_type", [
+  "backlog",
+  "planned",
+  "in_progress",
+  "completed",
+  "canceled",
+]);
 
 // -----------------------------------------------------------------------------
 // Project workflow statuses (organisation-scoped)
@@ -24,7 +34,7 @@ export const projectStatus = pgTable("project_status", {
   name: text("name").notNull(),
   position: integer("position").default(0).notNull(), // ordering in UI
   color: text("color"),
-  isClosed: boolean("is_closed").default(false).notNull(),
+  type: projectStatusTypeEnum("type").default("planned").notNull(), // semantic type following Linear
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -32,6 +42,8 @@ export const project = pgTable(
   "project",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /** Short, URL-friendly key for the project (e.g., "mobile-app", "web-redesign") */
+    key: text("key").notNull(),
     name: text("name").notNull(),
     description: text("description"),
     /** Owning team (optional – projects can span teams) */
@@ -53,6 +65,8 @@ export const project = pgTable(
       table.organizationId,
       table.name,
     ),
+    // Ensure unique key within organization
+    orgKeyIdx: index("project_org_key_idx").on(table.organizationId, table.key),
   }),
 );
 

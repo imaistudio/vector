@@ -1,5 +1,5 @@
 {
-  "id": "35f25891-48e0-49cc-a596-e90ecb8d8543",
+  "id": "78d8bf2f-95c8-49ef-aa2c-012cdc5de09e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "5",
   "dialect": "pg",
@@ -692,6 +692,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -759,6 +765,11 @@
         "project_org_name_idx": {
           "name": "project_org_name_idx",
           "columns": ["organization_id", "name"],
+          "isUnique": false
+        },
+        "project_org_key_idx": {
+          "name": "project_org_key_idx",
+          "columns": ["organization_id", "key"],
           "isUnique": false
         }
       },
@@ -899,12 +910,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_closed": {
-          "name": "is_closed",
-          "type": "boolean",
+        "type": {
+          "name": "type",
+          "type": "project_status_type",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": "'planned'"
         },
         "created_at": {
           "name": "created_at",
@@ -1049,7 +1060,7 @@
           "name": "team_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "project_id": {
           "name": "project_id",
@@ -1128,7 +1139,7 @@
           "tableTo": "team",
           "columnsFrom": ["team_id"],
           "columnsTo": ["id"],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "issue_project_id_project_id_fk": {
@@ -1403,12 +1414,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "is_closed": {
-          "name": "is_closed",
-          "type": "boolean",
+        "type": {
+          "name": "type",
+          "type": "issue_state_type",
           "primaryKey": false,
           "notNull": true,
-          "default": false
+          "default": "'todo'"
         },
         "created_at": {
           "name": "created_at",
@@ -1452,6 +1463,16 @@
         "member": "member"
       }
     },
+    "project_status_type": {
+      "name": "project_status_type",
+      "values": {
+        "backlog": "backlog",
+        "planned": "planned",
+        "in_progress": "in_progress",
+        "completed": "completed",
+        "canceled": "canceled"
+      }
+    },
     "issue_activity_type": {
       "name": "issue_activity_type",
       "values": {
@@ -1462,6 +1483,16 @@
         "title_changed": "title_changed",
         "description_changed": "description_changed",
         "created": "created"
+      }
+    },
+    "issue_state_type": {
+      "name": "issue_state_type",
+      "values": {
+        "backlog": "backlog",
+        "todo": "todo",
+        "in_progress": "in_progress",
+        "done": "done",
+        "canceled": "canceled"
       }
     }
   },

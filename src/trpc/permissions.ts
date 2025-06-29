@@ -5,10 +5,11 @@ import {
   issue as issueTable,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
-import type { Context } from "@/trpc/init";
+import type { Context, ProtectedContext } from "@/trpc/init";
 
 /**
  * Throws UNAUTHORIZED if the requester is not logged in.
+ * @deprecated Use protectedProcedure instead which automatically ensures authentication
  */
 export function assertAuthenticated(ctx: Context): asserts ctx is Context & {
   session: { user: { id: string; role: string } };
@@ -16,18 +17,16 @@ export function assertAuthenticated(ctx: Context): asserts ctx is Context & {
   if (!ctx.session) throw new TRPCError({ code: "UNAUTHORIZED" });
 }
 
-export function assertAdmin(ctx: Context) {
-  assertAuthenticated(ctx);
+export function assertAdmin(ctx: ProtectedContext) {
   if (ctx.session.user.role !== "admin") {
     throw new TRPCError({ code: "FORBIDDEN", message: "Admin role required" });
   }
 }
 
 export async function assertProjectLeadOrAdmin(
-  ctx: Context,
+  ctx: ProtectedContext,
   projectId: string,
 ) {
-  assertAuthenticated(ctx);
   if (ctx.session.user.role === "admin") return;
 
   const rows = await db
@@ -47,10 +46,9 @@ export async function assertProjectLeadOrAdmin(
 }
 
 export async function assertAssigneeOrLeadOrAdmin(
-  ctx: Context,
+  ctx: ProtectedContext,
   issueId: string,
 ) {
-  assertAuthenticated(ctx);
   if (ctx.session.user.role === "admin") return;
 
   const rows = await db

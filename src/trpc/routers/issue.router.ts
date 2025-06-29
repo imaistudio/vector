@@ -1,4 +1,4 @@
-import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
+import { createTRPCRouter, protectedProcedure, getUserId } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { eq, and } from "drizzle-orm";
 import { projectMember as projectMemberTable } from "@/db/schema";
@@ -9,6 +9,8 @@ import {
   assign,
   updateTitle,
   updateDescription,
+  findIssueByKey,
+  deleteIssue,
 } from "@/entities/issues/issue.service";
 import {
   createComment,
@@ -19,21 +21,43 @@ import { z } from "zod";
 import { assertAssigneeOrLeadOrAdmin } from "@/trpc/permissions";
 
 export const issueRouter = createTRPCRouter({
+  getByKey: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        issueKey: z.string(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const issue = await findIssueByKey(input.orgSlug, input.issueKey);
+      if (!issue) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Issue not found",
+        });
+      }
+      return issue;
+    }),
+
   create: protectedProcedure
     .input(
       z.object({
-        teamId: z.string().uuid(),
-        reporterId: z.string(),
+        orgSlug: z.string(),
+        teamId: z.string().uuid().optional(),
         title: z.string().min(1),
         description: z.string().optional(),
         projectId: z.string().uuid().optional(),
         priorityId: z.string().uuid().optional(),
+        stateId: z.string().uuid().optional(),
+        assigneeId: z.string().optional(),
+        issueKeyFormat: z.enum(["user", "project", "team"]).default("user"),
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const userId = getUserId(ctx);
+
       // Enforce: if user is only a member (not admin/lead) and provides projectId, they must be part of that project.
       if (input.projectId) {
-        const userId = (ctx.session as any).user.id; // Better-Auth typing TBD
         const rows = await ctx.db
           .select({ projectId: projectMemberTable.projectId })
           .from(projectMemberTable)
@@ -52,7 +76,13 @@ export const issueRouter = createTRPCRouter({
         }
       }
 
-      const { id } = await createIssue(input);
+      // Override reporterId with current user ID
+      const createParams = {
+        ...input,
+        reporterId: userId,
+      };
+
+      const { id } = await createIssue(createParams);
       return { id } as const;
     }),
 
@@ -158,5 +188,14 @@ export const issueRouter = createTRPCRouter({
     .input(z.object({ commentId: z.string().uuid(), actorId: z.string() }))
     .mutation(async ({ input }) => {
       await deleteComment(input.commentId, input.actorId);
+    }),
+
+  delete: protectedProcedure
+    .input(z.object({ issueId: z.string().uuid() }))
+    .use(({ ctx, next, input }) => {
+      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+    })
+    .mutation(async ({ input }) => {
+      await deleteIssue(input.issueId);
     }),
 });

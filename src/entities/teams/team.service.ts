@@ -3,8 +3,16 @@ import {
   team as teamTable,
   teamMember as teamMemberTable,
   issue as issueTable,
+  organization as organizationTable,
 } from "@/db/schema";
-import { eq, desc, InferInsertModel, InferSelectModel, and } from "drizzle-orm";
+import {
+  eq,
+  desc,
+  InferInsertModel,
+  InferSelectModel,
+  and,
+  like,
+} from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // -----------------------------------------------------------------------------
@@ -131,7 +139,8 @@ export async function removeMember(
 // -----------------------------------------------------------------------------
 
 /**
- * Generates the next **sequence number** for issues within a given team.
+ * Generates the next **sequence number** for team-based issues within a given team.
+ * Only counts issues that were created with team-based keys.
  *
  * This uses the highest `sequenceNumber` currently present and returns +1.
  * We run the query in a transaction allowing callers to re-use the same
@@ -139,13 +148,59 @@ export async function removeMember(
  * issues are created in parallel.
  */
 export async function getNextIssueSequence(teamId: string): Promise<number> {
+  // Get the team key first to filter by issues that start with this key
+  const teamResult = await db
+    .select({ key: teamTable.key })
+    .from(teamTable)
+    .where(eq(teamTable.id, teamId))
+    .limit(1);
+
+  if (teamResult.length === 0) {
+    throw new Error(`Team not found: ${teamId}`);
+  }
+
+  const teamKey = teamResult[0].key;
+
+  // Count issues that have keys starting with this team's key
   const res = await db
     .select({ seq: issueTable.sequenceNumber })
     .from(issueTable)
-    .where(eq(issueTable.teamId, teamId))
+    .where(
+      and(
+        eq(issueTable.teamId, teamId),
+        // Only count issues with team-based keys (start with team key)
+        like(issueTable.key, `${teamKey}-%`),
+      ),
+    )
     .orderBy(desc(issueTable.sequenceNumber))
     .limit(1);
 
   const current = res[0]?.seq ?? 0;
   return current + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Query operations
+// -----------------------------------------------------------------------------
+
+/**
+ * Finds a team by its key within an organization.
+ */
+export async function findTeamByKey(
+  orgSlug: string,
+  teamKey: string,
+): Promise<Team | null> {
+  const result = await db
+    .select({
+      team: teamTable,
+    })
+    .from(teamTable)
+    .innerJoin(
+      organizationTable,
+      eq(teamTable.organizationId, organizationTable.id),
+    )
+    .where(and(eq(organizationTable.slug, orgSlug), eq(teamTable.key, teamKey)))
+    .limit(1);
+
+  return result[0]?.team || null;
 }

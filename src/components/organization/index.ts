@@ -6,3 +6,5 @@ export * from "./org-settings-sidebar";
 export * from "./org-sidebar";
 export * from "./org-setup-form";
 export * from "./role-badge";
+export * from "./states-management-dialog";
+export * from "./priorities-management-dialog";

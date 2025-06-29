@@ -54,10 +54,10 @@ export default async function SettingsLayout({
   return (
     <div className="bg-background flex h-screen">
       {/* Settings Sidebar */}
-      <aside className="border-border bg-card hidden w-64 border-r lg:block">
+      <aside className="bg-card hidden w-56 lg:block">
         <div className="flex h-full flex-col">
           {/* Organization Options Dropdown */}
-          <div className="border-border border-b px-3 py-2">
+          <div className="p-2">
             <OrgOptionsDropdown
               currentOrgId={orgSlug}
               currentOrgName={currentOrg.organizationName}
@@ -73,7 +73,9 @@ export default async function SettingsLayout({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main className="bg-secondary m-2 ml-0 flex-1 overflow-y-auto rounded border">
+        {children}
+      </main>
     </div>
   );
 }

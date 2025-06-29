@@ -1,9 +1,14 @@
-import { createTRPCRouter, protectedProcedure } from "@/trpc/init";
+import { createTRPCRouter, protectedProcedure, getUserId } from "@/trpc/init";
 import { z } from "zod";
 import { OrganizationService } from "@/entities/organizations/organization.service";
-import { assertAuthenticated } from "@/trpc/permissions";
+
 import { memberRoleEnum } from "@/db/schema/users-and-auth";
 import { NonOwnerMemberRole } from "@/db/schema/users-and-auth";
+
+// Workflow (states & statuses)
+import { WorkflowService } from "@/entities/workflow/state.service";
+import { issueStateTypeEnum } from "@/db/schema/issue-config";
+import { projectStatusTypeEnum } from "@/db/schema/projects";
 
 // Derive type-safe Zod enum based on DB enum values (excluding "owner" for invite/update)
 const roleEnum = ((): ReturnType<typeof import("zod").z.enum> => {
@@ -30,8 +35,7 @@ export const organizationRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
-      const userId = ctx.session!.user.id;
+      const userId = getUserId(ctx);
 
       // Verify user is admin or owner of org
       const membership = await OrganizationService.verifyUserOrganizationAccess(
@@ -55,9 +59,8 @@ export const organizationRouter = createTRPCRouter({
   listMembers: protectedProcedure
     .input(z.object({ orgSlug: z.string() }))
     .query(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
       const membership = await OrganizationService.verifyUserOrganizationAccess(
-        ctx.session!.user.id,
+        getUserId(ctx),
         input.orgSlug,
       );
       if (!membership) throw new Error("FORBIDDEN");
@@ -73,9 +76,9 @@ export const organizationRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
+      const userId = getUserId(ctx);
       const membership = await OrganizationService.verifyUserOrganizationAccess(
-        ctx.session!.user.id,
+        userId,
         input.orgSlug,
       );
       if (
@@ -87,23 +90,21 @@ export const organizationRouter = createTRPCRouter({
         membership.organizationId,
         input.email,
         input.role as NonOwnerMemberRole,
-        ctx.session!.user.id,
+        userId,
       );
     }),
 
   revokeInvite: protectedProcedure
     .input(z.object({ token: z.string() }))
     .mutation(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
       return OrganizationService.revokeInvitation(input.token);
     }),
 
   listInvites: protectedProcedure
     .input(z.object({ orgSlug: z.string() }))
     .query(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
       const membership = await OrganizationService.verifyUserOrganizationAccess(
-        ctx.session!.user.id,
+        getUserId(ctx),
         input.orgSlug,
       );
       if (!membership) throw new Error("FORBIDDEN");
@@ -115,9 +116,8 @@ export const organizationRouter = createTRPCRouter({
       z.object({ orgSlug: z.string(), userId: z.string(), role: roleEnum }),
     )
     .mutation(async ({ input, ctx }) => {
-      assertAuthenticated(ctx);
       const membership = await OrganizationService.verifyUserOrganizationAccess(
-        ctx.session!.user.id,
+        getUserId(ctx),
         input.orgSlug,
       );
       if (!membership || membership.role === "member")
@@ -127,5 +127,421 @@ export const organizationRouter = createTRPCRouter({
         input.userId,
         input.role as NonOwnerMemberRole,
       );
+    }),
+
+  listTeams: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.getOrganizationTeams(input.orgSlug);
+    }),
+
+  listProjects: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.getRecentProjects(input.orgSlug, 100); // Get all projects
+    }),
+
+  listIssues: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.getRecentIssues(input.orgSlug, 100); // Get all issues
+    }),
+
+  listIssuesPaged: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.getIssuesPaged(
+        input.orgSlug,
+        input.page,
+        input.pageSize,
+      );
+    }),
+
+  // -------------------------------------------------------------------------
+  //  Issue States & Project Statuses
+  // -------------------------------------------------------------------------
+
+  listIssueStates: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return WorkflowService.listIssueStates(input.orgSlug);
+    }),
+
+  listProjectStatuses: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return WorkflowService.listProjectStatuses(input.orgSlug);
+    }),
+
+  createIssueState: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        name: z.string().min(1),
+        position: z.number().int(),
+        color: z.string().min(1),
+        type: z.enum(
+          issueStateTypeEnum.enumValues as [
+            (typeof issueStateTypeEnum.enumValues)[number],
+            ...string[],
+          ],
+        ),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      const { id } = await WorkflowService.createIssueState(input.orgSlug, {
+        name: input.name,
+        position: input.position,
+        color: input.color,
+        type: input.type,
+      });
+      return { id } as const;
+    }),
+
+  updateIssueState: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        stateId: z.string().uuid(),
+        name: z.string().min(1),
+        position: z.number().int().optional(),
+        color: z.string().min(1),
+        type: z.enum(
+          issueStateTypeEnum.enumValues as [
+            (typeof issueStateTypeEnum.enumValues)[number],
+            ...string[],
+          ],
+        ),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      await WorkflowService.updateIssueState(
+        input.stateId,
+        membership.organizationId,
+        {
+          name: input.name,
+          position: input.position,
+          color: input.color,
+          type: input.type,
+        },
+      );
+    }),
+
+  createProjectStatus: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        name: z.string().min(1),
+        position: z.number().int(),
+        color: z.string().min(1),
+        type: z.enum(
+          projectStatusTypeEnum.enumValues as [
+            (typeof projectStatusTypeEnum.enumValues)[number],
+            ...string[],
+          ],
+        ),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      const { id } = await WorkflowService.createProjectStatus(input.orgSlug, {
+        name: input.name,
+        position: input.position,
+        color: input.color,
+        type: input.type,
+      });
+      return { id } as const;
+    }),
+
+  updateProjectStatus: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        statusId: z.string().uuid(),
+        name: z.string().min(1),
+        position: z.number().int().optional(),
+        color: z.string().min(1),
+        type: z.enum(
+          projectStatusTypeEnum.enumValues as [
+            (typeof projectStatusTypeEnum.enumValues)[number],
+            ...string[],
+          ],
+        ),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      await WorkflowService.updateProjectStatus(
+        input.statusId,
+        membership.organizationId,
+        {
+          name: input.name,
+          position: input.position,
+          color: input.color,
+          type: input.type,
+        },
+      );
+    }),
+
+  // ------------------- Delete ------------------
+  deleteIssueState: protectedProcedure
+    .input(z.object({ orgSlug: z.string(), stateId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.deleteIssueState(
+        input.stateId,
+        membership.organizationId,
+      );
+    }),
+
+  deleteProjectStatus: protectedProcedure
+    .input(z.object({ orgSlug: z.string(), statusId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.deleteProjectStatus(
+        input.statusId,
+        membership.organizationId,
+      );
+    }),
+
+  // ------------------- Reset defaults ------------------
+  resetIssueStates: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.resetIssueStates(input.orgSlug);
+    }),
+
+  resetProjectStatuses: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.resetProjectStatuses(input.orgSlug);
+    }),
+
+  // -------------------------------------------------------------------------
+  //  Issue Priorities
+  // -------------------------------------------------------------------------
+
+  listIssuePriorities: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return WorkflowService.listIssuePriorities(input.orgSlug);
+    }),
+
+  createIssuePriority: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        name: z.string().min(1),
+        weight: z.number().int(),
+        color: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      const { id } = await WorkflowService.createIssuePriority(input.orgSlug, {
+        name: input.name,
+        weight: input.weight,
+        color: input.color,
+      });
+      return { id } as const;
+    }),
+
+  updateIssuePriority: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        priorityId: z.string().uuid(),
+        name: z.string().min(1),
+        weight: z.number().int().optional(),
+        color: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      ) {
+        throw new Error("FORBIDDEN");
+      }
+
+      await WorkflowService.updateIssuePriority(
+        input.priorityId,
+        membership.organizationId,
+        {
+          name: input.name,
+          weight: input.weight,
+          color: input.color,
+        },
+      );
+    }),
+
+  deleteIssuePriority: protectedProcedure
+    .input(z.object({ orgSlug: z.string(), priorityId: z.string().uuid() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.deleteIssuePriority(
+        input.priorityId,
+        membership.organizationId,
+      );
+    }),
+
+  resetIssuePriorities: protectedProcedure
+    .input(z.object({ orgSlug: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (
+        !membership ||
+        (membership.role !== "admin" && membership.role !== "owner")
+      )
+        throw new Error("FORBIDDEN");
+
+      await WorkflowService.resetIssuePriorities(input.orgSlug);
     }),
 });

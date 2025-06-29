@@ -5,6 +5,7 @@ import {
   team as teamTable,
   teamMember as teamMemberTable,
   projectStatus,
+  organization as organizationTable,
 } from "@/db/schema";
 import { eq, and, InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { formatDateForDb } from "@/lib/date";
@@ -22,7 +23,7 @@ export type CreateProjectParams =
   // everything except internal audit columns …
   Omit<ProjectInsertModel, "id" | "createdAt" | "updatedAt"> &
     // … but make these core fields mandatory
-    Required<Pick<ProjectInsertModel, "organizationId" | "teamId" | "name">>;
+    Required<Pick<ProjectInsertModel, "organizationId" | "name" | "key">>;
 
 export interface UpdateProjectParams {
   id: string;
@@ -59,19 +60,21 @@ export async function createProject(
     statusId,
   } = params;
 
-  // 1) Validate team–organization relationship
-  const teamRow = await db
-    .select({ organizationId: teamTable.organizationId })
-    .from(teamTable)
-    .where(eq(teamTable.id, teamId!))
-    .limit(1);
+  // 1) Validate team–organization relationship (if teamId provided)
+  if (teamId) {
+    const teamRow = await db
+      .select({ organizationId: teamTable.organizationId })
+      .from(teamTable)
+      .where(eq(teamTable.id, teamId))
+      .limit(1);
 
-  if (teamRow.length === 0) {
-    throw new Error("Team does not exist");
-  }
+    if (teamRow.length === 0) {
+      throw new Error("Team does not exist");
+    }
 
-  if (teamRow[0].organizationId !== organizationId) {
-    throw new Error("Team belongs to a different organization");
+    if (teamRow[0].organizationId !== organizationId) {
+      throw new Error("Team belongs to a different organization");
+    }
   }
 
   // 2) If `statusId` provided – ensure status belongs to organization
@@ -94,14 +97,14 @@ export async function createProject(
     }
   }
 
-  // 3) If lead provided – ensure member of the team
-  if (leadId) {
+  // 3) If lead provided and team exists – ensure member of the team
+  if (leadId && teamId) {
     const membership = await db
       .select({ userId: teamMemberTable.userId })
       .from(teamMemberTable)
       .where(
         and(
-          eq(teamMemberTable.teamId, teamId!),
+          eq(teamMemberTable.teamId, teamId),
           eq(teamMemberTable.userId, leadId),
         ),
       )
@@ -124,6 +127,7 @@ export async function createProject(
       organizationId,
       teamId,
       name,
+      key: params.key,
       description,
       leadId,
       startDate: formatDateForDb(startDate),
@@ -231,4 +235,31 @@ export async function removeMember(
         eq(projectMemberTable.userId, userId),
       ),
     );
+}
+
+/**
+ * Finds a project by its key within an organization.
+ */
+export async function findProjectByKey(
+  orgSlug: string,
+  projectKey: string,
+): Promise<Project | null> {
+  const result = await db
+    .select({
+      project: projectTable,
+    })
+    .from(projectTable)
+    .innerJoin(
+      organizationTable,
+      eq(projectTable.organizationId, organizationTable.id),
+    )
+    .where(
+      and(
+        eq(organizationTable.slug, orgSlug),
+        eq(projectTable.key, projectKey),
+      ),
+    )
+    .limit(1);
+
+  return result[0]?.project || null;
 }

@@ -20,6 +20,8 @@ export const issue = pgTable(
   "issue",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    /** The full issue key, e.g. "JOH-123" (derived from user's name + sequence) */
+    key: text("key").notNull().unique(),
     /** Monotonically increasing number per team, e.g. 123 in ENG-123 */
     sequenceNumber: integer("sequence_number").notNull(),
     title: text("title").notNull(),
@@ -30,9 +32,9 @@ export const issue = pgTable(
     priorityId: uuid("priority_id").references(() => issuePriority.id, {
       onDelete: "set null",
     }),
-    teamId: uuid("team_id")
-      .notNull()
-      .references(() => team.id, { onDelete: "cascade" }),
+    teamId: uuid("team_id").references(() => team.id, {
+      onDelete: "set null",
+    }),
     projectId: uuid("project_id").references(() => project.id, {
       onDelete: "set null",
     }),

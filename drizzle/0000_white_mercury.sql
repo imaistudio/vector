@@ -11,7 +11,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "project_status_type" AS ENUM('backlog', 'planned', 'in_progress', 'completed', 'canceled');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "issue_activity_type" AS ENUM('status_changed', 'priority_changed', 'assignee_changed', 'comment_added', 'title_changed', 'description_changed', 'created');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "issue_state_type" AS ENUM('backlog', 'todo', 'in_progress', 'done', 'canceled');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -126,6 +138,7 @@ CREATE TABLE IF NOT EXISTS "team_member" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "project" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL,
 	"name" text NOT NULL,
 	"description" text,
 	"team_id" uuid,
@@ -152,7 +165,7 @@ CREATE TABLE IF NOT EXISTS "project_status" (
 	"name" text NOT NULL,
 	"position" integer DEFAULT 0 NOT NULL,
 	"color" text,
-	"is_closed" boolean DEFAULT false NOT NULL,
+	"type" "project_status_type" DEFAULT 'planned' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -173,7 +186,7 @@ CREATE TABLE IF NOT EXISTS "issue" (
 	"description" text,
 	"state_id" uuid,
 	"priority_id" uuid,
-	"team_id" uuid NOT NULL,
+	"team_id" uuid,
 	"project_id" uuid,
 	"assignee_id" text,
 	"reporter_id" text,
@@ -221,11 +234,12 @@ CREATE TABLE IF NOT EXISTS "issue_state" (
 	"name" text NOT NULL,
 	"position" integer DEFAULT 0 NOT NULL,
 	"color" text,
-	"is_closed" boolean DEFAULT false NOT NULL,
+	"type" "issue_state_type" DEFAULT 'todo' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_org_name_idx" ON "project" ("organization_id","name");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "project_org_key_idx" ON "project" ("organization_id","key");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "issue_team_seq_idx" ON "issue" ("team_id","sequence_number");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE cascade ON UPDATE no action;
@@ -354,7 +368,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "issue" ADD CONSTRAINT "issue_team_id_team_id_fk" FOREIGN KEY ("team_id") REFERENCES "team"("id") ON DELETE cascade ON UPDATE no action;
+ ALTER TABLE "issue" ADD CONSTRAINT "issue_team_id_team_id_fk" FOREIGN KEY ("team_id") REFERENCES "team"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

@@ -2,16 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Building,
-  Users,
-  Shield,
-  Webhook,
-  Bell,
-  CreditCard,
-  Trash2,
-  type LucideIcon,
-} from "lucide-react";
+import { Building, Users, Settings2, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SettingsNavItem {
@@ -52,38 +43,18 @@ export function OrgSettingsSidebar({
       requiresAdmin: true,
     },
     {
-      label: "Security",
-      href: `/${orgId}/settings/security`,
-      icon: Shield,
-      description: "Authentication and access control",
+      label: "States",
+      href: `/${orgId}/settings/states`,
+      icon: Settings2,
+      description: "Configure issue and project states",
       requiresAdmin: true,
     },
     {
-      label: "Integrations",
-      href: `/${orgId}/settings/integrations`,
-      icon: Webhook,
-      description: "Third-party apps and webhooks",
+      label: "Priorities",
+      href: `/${orgId}/settings/priorities`,
+      icon: Settings2,
+      description: "Configure issue priority levels",
       requiresAdmin: true,
-    },
-    {
-      label: "Notifications",
-      href: `/${orgId}/settings/notifications`,
-      icon: Bell,
-      description: "Email and notification preferences",
-    },
-    {
-      label: "Billing",
-      href: `/${orgId}/settings/billing`,
-      icon: CreditCard,
-      description: "Subscription and usage",
-      requiresAdmin: true,
-    },
-    {
-      label: "Advanced",
-      href: `/${orgId}/settings/advanced`,
-      icon: Trash2,
-      description: "Danger zone and data export",
-      requiresOwner: true,
     },
   ];
 
@@ -113,20 +84,17 @@ export function OrgSettingsSidebar({
             key={item.href}
             href={item.href}
             className={cn(
-              "group block rounded-md px-3 py-2 transition-colors",
+              "group block rounded-md px-3 py-1.5 text-sm transition-colors",
               "hover:bg-accent hover:text-accent-foreground",
               isActive
-                ? "bg-accent text-accent-foreground"
+                ? "bg-accent text-accent-foreground font-medium"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <item.icon className="size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium">{item.label}</div>
-                <div className="text-muted-foreground group-hover:text-muted-foreground/80 text-xs">
-                  {item.description}
-                </div>
+                <div className="font-medium">{item.label}</div>
               </div>
             </div>
           </Link>

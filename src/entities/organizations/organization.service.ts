@@ -7,10 +7,12 @@ import {
   team,
   invitation,
   user,
-  type MemberRole,
   type NonOwnerMemberRole,
+  issueState,
+  issuePriority,
 } from "@/db/schema";
-import { eq, and, count, desc } from "drizzle-orm";
+import { eq, and, count, desc, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { randomUUID } from "crypto";
 import { env } from "@/env";
 import { notify } from "@/notifications/core";
@@ -136,9 +138,11 @@ export class OrganizationService {
     return await db
       .select({
         id: project.id,
+        key: project.key,
         name: project.name,
         description: project.description,
         updatedAt: project.updatedAt,
+        createdAt: project.createdAt,
       })
       .from(project)
       .where(eq(project.organizationId, orgId))
@@ -159,18 +163,53 @@ export class OrganizationService {
     const orgId = orgRow[0]?.id;
     if (!orgId) return [];
 
+    const assigneeUser = alias(user, "assigneeUser");
+    const reporterUser = alias(user, "reporterUser");
+
     return await db
       .select({
         id: issue.id,
+        key: issue.key,
         title: issue.title,
         stateId: issue.stateId,
         priorityId: issue.priorityId,
         projectName: project.name,
+        projectKey: project.key,
+        teamName: team.name,
+        teamKey: team.key,
         updatedAt: issue.updatedAt,
+        sequenceNumber: issue.sequenceNumber,
+        assigneeId: issue.assigneeId,
+        assigneeName: assigneeUser.name,
+        assigneeEmail: assigneeUser.email,
+        reporterName: reporterUser.name,
+        // State details
+        stateName: issueState.name,
+        stateColor: issueState.color,
+        stateType: issueState.type,
+        // Priority details
+        priorityName: issuePriority.name,
+        priorityWeight: issuePriority.weight,
+        priorityColor: issuePriority.color,
       })
       .from(issue)
-      .innerJoin(project, eq(issue.projectId, project.id))
-      .where(eq(project.organizationId, orgId))
+      // Optional relations so issues without a project or team are still returned
+      .leftJoin(project, eq(issue.projectId, project.id))
+      .leftJoin(team, eq(issue.teamId, team.id))
+      .leftJoin(issueState, eq(issue.stateId, issueState.id))
+      .leftJoin(issuePriority, eq(issue.priorityId, issuePriority.id))
+      .leftJoin(assigneeUser, eq(issue.assigneeId, assigneeUser.id))
+      .leftJoin(reporterUser, eq(issue.reporterId, reporterUser.id))
+      // Also join the reporter's membership to capture standalone issues (no team/project)
+      .leftJoin(member, eq(member.userId, issue.reporterId))
+      // Include issues that belong to the organisation via project, team **or** reporter membership
+      .where(
+        or(
+          eq(project.organizationId, orgId),
+          eq(team.organizationId, orgId),
+          eq(member.organizationId, orgId),
+        ),
+      )
       .orderBy(desc(issue.updatedAt))
       .limit(limit);
   }
@@ -193,9 +232,12 @@ export class OrganizationService {
         id: team.id,
         name: team.name,
         description: team.description,
+        key: team.key,
+        createdAt: team.createdAt,
       })
       .from(team)
-      .where(eq(team.organizationId, orgId));
+      .where(eq(team.organizationId, orgId))
+      .orderBy(desc(team.createdAt));
   }
 
   /**
@@ -381,5 +423,105 @@ export class OrganizationService {
       .update(member)
       .set({ role })
       .where(and(eq(member.organizationId, orgId), eq(member.userId, userId)));
+  }
+
+  static async getIssuesPaged(orgSlug: string, page = 1, pageSize = 25) {
+    const orgRow = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, orgSlug))
+      .limit(1);
+    const orgId = orgRow[0]?.id;
+    if (!orgId) return { issues: [], total: 0, counts: {} } as const;
+
+    // Base query assembling issue rows similar to getRecentIssues
+    const assigneeUser = alias(user, "assigneeUser");
+    const reporterUser = alias(user, "reporterUser");
+
+    const issues = await db
+      .select({
+        id: issue.id,
+        key: issue.key,
+        title: issue.title,
+        stateId: issue.stateId,
+        priorityId: issue.priorityId,
+        projectName: project.name,
+        projectKey: project.key,
+        teamName: team.name,
+        teamKey: team.key,
+        updatedAt: issue.updatedAt,
+        sequenceNumber: issue.sequenceNumber,
+        assigneeId: issue.assigneeId,
+        assigneeName: assigneeUser.name,
+        assigneeEmail: assigneeUser.email,
+        reporterName: reporterUser.name,
+        // State details
+        stateName: issueState.name,
+        stateColor: issueState.color,
+        stateType: issueState.type,
+        // Priority details
+        priorityName: issuePriority.name,
+        priorityWeight: issuePriority.weight,
+        priorityColor: issuePriority.color,
+      })
+      .from(issue)
+      .leftJoin(project, eq(issue.projectId, project.id))
+      .leftJoin(team, eq(issue.teamId, team.id))
+      .leftJoin(issueState, eq(issue.stateId, issueState.id))
+      .leftJoin(issuePriority, eq(issue.priorityId, issuePriority.id))
+      .leftJoin(assigneeUser, eq(issue.assigneeId, assigneeUser.id))
+      .leftJoin(reporterUser, eq(issue.reporterId, reporterUser.id))
+      .leftJoin(member, eq(member.userId, issue.reporterId))
+      .where(
+        or(
+          eq(project.organizationId, orgId),
+          eq(team.organizationId, orgId),
+          eq(member.organizationId, orgId),
+        ),
+      )
+      .orderBy(desc(issue.updatedAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    // total count
+    const totalRows = await db
+      .select({ cnt: count() })
+      .from(issue)
+      .leftJoin(project, eq(issue.projectId, project.id))
+      .leftJoin(team, eq(issue.teamId, team.id))
+      .leftJoin(member, eq(member.userId, issue.reporterId))
+      .where(
+        or(
+          eq(project.organizationId, orgId),
+          eq(team.organizationId, orgId),
+          eq(member.organizationId, orgId),
+        ),
+      );
+
+    const total = totalRows[0]?.cnt ?? 0;
+
+    // counts by state type
+    const countsRows = await db
+      .select({ type: issueState.type, cnt: count() })
+      .from(issue)
+      .leftJoin(issueState, eq(issue.stateId, issueState.id))
+      .leftJoin(project, eq(issue.projectId, project.id))
+      .leftJoin(team, eq(issue.teamId, team.id))
+      .leftJoin(member, eq(member.userId, issue.reporterId))
+      .where(
+        or(
+          eq(project.organizationId, orgId),
+          eq(team.organizationId, orgId),
+          eq(member.organizationId, orgId),
+        ),
+      )
+      .groupBy(issueState.type);
+
+    const counts: Record<string, number> = {};
+    countsRows.forEach((r) => {
+      counts[r.type as unknown as string] = Number(r.cnt);
+    });
+
+    return { issues, total, counts } as const;
   }
 }

@@ -6,8 +6,18 @@ import {
   timestamp,
   boolean,
   primaryKey,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { organization } from "./users-and-auth";
+
+// ----- Issue State Types (following Linear's approach) -----
+export const issueStateTypeEnum = pgEnum("issue_state_type", [
+  "backlog",
+  "todo",
+  "in_progress",
+  "done",
+  "canceled",
+]);
 
 // ----- Issue Priorities (workspace-level) -----
 export const issuePriority = pgTable("issue_priority", {
@@ -30,7 +40,7 @@ export const issueState = pgTable("issue_state", {
   name: text("name").notNull(),
   position: integer("position").default(0).notNull(), // ordering left→right in board
   color: text("color"),
-  isClosed: boolean("is_closed").default(false).notNull(), // whether state counts as done
+  type: issueStateTypeEnum("type").default("todo").notNull(), // semantic type following Linear
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

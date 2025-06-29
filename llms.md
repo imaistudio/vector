@@ -88,7 +88,7 @@ pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
    • Use `@/` alias for paths inside `src`.
 
 5. **Components**
-   • Assume Server Components; add `'use client'` at top for client components.
+   • Use `'use client'` at top for client components.
 
 6. **Testing / Linting**
    • Ensure `pnpm run lint` passes. Follow existing ESLint + Prettier rules.
@@ -122,7 +122,20 @@ pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
     • Update import paths accordingly (`import { projectRouter } from "./project.router";`).  
     • Avoid `await import("./module")` inside routers—use static ES imports so types are checked and bundlers can tree-shake.
 
-11. **Dynamic route params**  
+11. **Type safety & avoiding `any`**  
+    • **NEVER use `as any`** — it hides real type issues instead of solving them. Always find the proper type or create a minimal interface.  
+    • **AVOID non-null assertion `!`** — it's almost as dangerous as `as any`. Instead, handle undefined cases properly or improve type inference through middleware.  
+    • Use proper type guards, middleware type narrowing, or conditional checks instead of assertions.  
+    • For tRPC: use `ProtectedContext` type and `getUserId()` helper in protected procedures instead of `ctx.session!.user.id`.  
+    • If types are missing, create proper interfaces rather than using type assertions.  
+    • PRs with `as any` or excessive `!` will be rejected unless there's compelling justification with extensive documentation.
+
+12. **Package management & scripts**  
+    • **DO NOT run pnpm scripts** (like `pnpm dev`, `pnpm build`, etc.) unless explicitly requested by the user.  
+    • Users will run their own development servers and build processes.  
+    • Only suggest script commands in documentation, don't execute them automatically.
+
+13. **Dynamic route params**  
     • In **App Router** server components, `params` is an **async Dynamic API** _and should therefore be typed as a Promise_. Example type signature:
 
     ```ts
@@ -139,15 +152,23 @@ pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
 
     • Destructuring synchronously (`const { projectId } = params`) will throw at runtime.
 
-12. **Date & Time handling**  
+14. **Date & Time handling**  
     • All timestamps are stored in **UTC** in the database.  
     • Use **date-fns** (and [`date-fns-tz`](https://github.com/date-fns/date-fns-tz) if you need conversions) for ALL parsing/formatting—never rely on the built-in `Date` utilities alone.  
     • A shared helper lives in `src/lib/date.ts` (`formatDateForDb`, `toDate`, `DATE_PATTERN`). Import from there instead of rolling your own.  
     • Client code should detect the viewer's IANA timezone via `Intl.DateTimeFormat().resolvedOptions().timeZone` (or a persisted user/org preference) and format dates with date-fns accordingly.  
     • Never store timezone-specific values in the DB—store UTC, convert at the edges.
 
-13. **Moving / Renaming files**  
+15. **Moving / Renaming files**  
     • When reorganising, _move_ (`git mv` or via the built-in terminal) instead of copy-pasting + deleting. This keeps git history intact and avoids noisy diffs.
+
+16. **Issue Key Format System & UX Patterns**  
+    • **Progressive Disclosure**: Disable action buttons until required prerequisites are met. For issue key formats, disable "Team-based" until a team is selected, and "Project-based" until a project is selected.  
+    • **Smart Defaults**: User-based format can be default since the creator is always associated with the issue.  
+    • **Reset Logic**: When switching between mutually exclusive options (team ↔ project formats), clear the incompatible selections and provide "None" options in dropdowns.  
+    • **Database Query Optimization**: For entities that always have a required relationship (e.g., project-format issues always have `projectId`), filter directly by the foreign key instead of using LIKE pattern matching on composite keys. This is more performant and leverages database indexes.  
+    • **Validation in UI + Backend**: Validate required selections both in the UI (for UX) and backend (for security). Example: `disabled={!selectedTeam}` + backend validation that throws error if teamId missing for team format.  
+    • **Tooltips for Disabled States**: Use `title` prop to explain why buttons are disabled: `title={!selectedProject ? "Select a project first" : ""}`.
 
 ---
 

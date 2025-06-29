@@ -22,6 +22,12 @@ export const createTRPCContext = async (opts: { req: Request }) => {
 // tRPC bootstrap — wire the Context to the router/procedure helpers
 // ---------------------------------------------------------------------------
 export type Context = Awaited<ReturnType<typeof createTRPCContext>>;
+
+// Type for context with guaranteed session (used in protected procedures)
+export type ProtectedContext = Context & {
+  session: NonNullable<Context["session"]>;
+};
+
 const t = initTRPC.context<Context>().create();
 
 /**
@@ -29,14 +35,26 @@ const t = initTRPC.context<Context>().create();
  */
 export const createTRPCRouter = t.router;
 export const publicProcedure = t.procedure;
+
+/**
+ * Protected procedure that ensures session exists and properly types the context.
+ * After this middleware, ctx.session is guaranteed to be non-null.
+ */
 export const protectedProcedure = t.procedure.use(async ({ next, ctx }) => {
-  if (!ctx.session) {
+  if (!ctx.session || !ctx.session.user) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  return next({ ctx });
+
+  // Type assertion here is safe because we just checked above
+  return next({
+    ctx: ctx as ProtectedContext,
+  });
 });
 
-export function getUserId(ctx: Context): string {
-  // Better Auth returns session.user.id
-  return (ctx.session as any).user.id;
+/**
+ * Helper to get user ID from protected context.
+ * Only use this in protected procedures where session is guaranteed.
+ */
+export function getUserId(ctx: ProtectedContext): string {
+  return ctx.session.user.id;
 }

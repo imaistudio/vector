@@ -1,133 +1,366 @@
-import { headers } from "next/headers";
-import { notFound } from "next/navigation";
+"use client";
+
 import Link from "next/link";
-import { auth } from "@/auth/auth";
-import { OrganizationService } from "@/entities/organizations/organization.service";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Bug, Clock, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { MoreHorizontal, Trash2 } from "lucide-react";
+import { CreateIssueButton } from "@/components/issues/create-issue-button";
+import { useParams } from "next/navigation";
+import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { issueStateTypeEnum } from "@/db/schema/issue-config";
 
-interface IssuesPageProps {
-  params: Promise<{ orgId: string }>;
-}
+type StateType = (typeof issueStateTypeEnum.enumValues)[number];
+type FilterType = "all" | StateType;
 
-export default async function IssuesPage({ params }: IssuesPageProps) {
-  const { orgId: orgSlug } = await params;
+const TAB_LABELS: Record<FilterType, string> = {
+  all: "All",
+  backlog: "Backlog",
+  todo: "To Do",
+  in_progress: "In Progress",
+  done: "Done",
+  canceled: "Canceled",
+} as const;
 
-  // Verify user access
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+const BASE_TABS: { key: FilterType; label: string; count: number }[] = [
+  { key: "all", label: TAB_LABELS.all, count: 0 },
+  // dynamic generated below
+];
+const filterTabs = [
+  ...BASE_TABS,
+  ...issueStateTypeEnum.enumValues.map((value) => ({
+    key: value as FilterType,
+    label: TAB_LABELS[value as StateType],
+    count: 0,
+  })),
+];
 
-  if (!session?.user) {
-    notFound();
+function PriorityIcon({
+  priority,
+}: {
+  priority?: { name: string; weight: number; color?: string } | null;
+}) {
+  if (!priority) {
+    return (
+      <div
+        className="bg-muted-foreground/30 h-2 w-2 rounded-full"
+        title="No priority"
+      />
+    );
   }
-
-  // Get organization details and verify membership
-  const org = await OrganizationService.verifyUserOrganizationAccess(
-    session.user.id,
-    orgSlug,
-  );
-
-  if (!org) {
-    notFound();
-  }
-
-  // Get all issues - using a larger limit for the issues page
-  const issues = await OrganizationService.getRecentIssues(orgSlug, 50);
 
   return (
-    <div className="space-y-8 p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Issues</h1>
-          <p className="text-muted-foreground">
-            Organization-wide issue tracking for {org.organizationName}
-          </p>
-        </div>
+    <div
+      className="h-2 w-2 rounded-full"
+      style={{ backgroundColor: priority.color || "#94a3b8" }}
+      title={priority.name}
+    />
+  );
+}
 
-        <Button asChild>
-          <Link href={`/${orgSlug}/projects`}>
-            <ExternalLink className="mr-2 size-4" />
-            Go to Projects
-          </Link>
-        </Button>
+function StatusBadge({
+  state,
+}: {
+  state?: { name: string; color?: string; type: string } | null;
+}) {
+  if (!state) return <div className="h-2 w-2 rounded-full bg-gray-400" />;
+
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className="h-2 w-2 rounded-full"
+        style={{ backgroundColor: state.color || "#94a3b8" }}
+      />
+      <span className="text-muted-foreground text-xs">{state.name}</span>
+    </div>
+  );
+}
+
+function TeamBadge({ team }: { team?: { name: string; key: string } | null }) {
+  if (!team) return null;
+
+  return (
+    <Badge variant="secondary" className="text-xs">
+      {team.name}
+    </Badge>
+  );
+}
+
+function AssigneeAvatar({
+  assignee,
+}: {
+  assignee?: { name?: string; email: string } | null;
+}) {
+  if (!assignee) return null;
+
+  const initials = (assignee.name || assignee.email)
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
+  return (
+    <div
+      className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white"
+      title={assignee.name || assignee.email}
+    >
+      {initials}
+    </div>
+  );
+}
+
+export default function IssuesPage() {
+  const params = useParams();
+  const orgSlug = params.orgId as string;
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 25;
+
+  const utils = trpc.useUtils();
+  const deleteMutation = trpc.issue.delete.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssues.invalidate({ orgSlug }).catch(() => {});
+    },
+  });
+
+  const { data: paged, isLoading } = trpc.organization.listIssuesPaged.useQuery(
+    {
+      orgSlug,
+      page,
+      pageSize: PAGE_SIZE,
+    },
+  );
+
+  const issues = paged?.issues ?? [];
+  const counts = paged?.counts ?? {};
+  const total = paged?.total ?? 0;
+
+  // Filter issues based on active filter
+  const filteredIssues = issues.filter((issue) => {
+    if (activeFilter === "all") return true;
+    return issue.stateType === activeFilter;
+  });
+
+  // Update counts for tabs
+  const updatedTabs = filterTabs.map((tab) => ({
+    ...tab,
+    count:
+      tab.key === "all"
+        ? total
+        : ((counts as Record<string, number>)[tab.key as string] ?? 0),
+  }));
+
+  const visibleTabs = updatedTabs.filter((t) => t.key === "all" || t.count > 0);
+
+  if (isLoading && issues.length === 0) {
+    return (
+      <div className="p-4">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-muted-foreground text-sm">Loading issues...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-background h-full">
+      {/* Header with tabs */}
+      <div className="border-b">
+        <div className="flex items-center justify-between p-1">
+          <div className="flex items-center gap-1">
+            {visibleTabs.map((tab) => (
+              <Button
+                key={tab.key}
+                variant={activeFilter === tab.key ? "secondary" : "ghost"}
+                size="sm"
+                className={cn(
+                  "h-6 gap-2 rounded-xs px-3 text-xs font-normal",
+                  activeFilter === tab.key && "bg-secondary",
+                )}
+                onClick={() => setActiveFilter(tab.key)}
+              >
+                <span>{tab.label}</span>
+                <span className="text-muted-foreground text-xs">
+                  {tab.count}
+                </span>
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Issues List */}
-      {issues.length > 0 ? (
-        <div className="space-y-4">
-          {issues.map((issue) => (
-            <Card key={issue.id} className="transition-shadow hover:shadow-md">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex items-center gap-3">
-                      <Bug className="text-muted-foreground size-5" />
-                      <Link
-                        href={`/${orgSlug}/issues/${issue.id}`}
-                        className="hover:text-primary truncate text-lg font-semibold transition-colors"
-                      >
-                        {issue.title}
-                      </Link>
-                    </div>
-
-                    <div className="text-muted-foreground flex items-center gap-4 text-sm">
-                      <span>Project: {issue.projectName}</span>
-                      <div className="flex items-center gap-2">
-                        <Clock className="size-3" />
-                        <span>
-                          Updated{" "}
-                          {new Date(issue.updatedAt).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {issue.stateId && (
-                      <span
-                        className={`rounded-full px-3 py-1 text-sm font-medium ${
-                          issue.stateId === "open"
-                            ? "bg-green-100 text-green-800"
-                            : issue.stateId === "in-progress"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {issue.stateId}
-                      </span>
-                    )}
-
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href={`/${orgSlug}/issues/${issue.id}`}>
-                        View Details
-                      </Link>
-                    </Button>
-                  </div>
+      {/* Issues table */}
+      <div className="flex-1">
+        {filteredIssues.length > 0 ? (
+          <div className="divide-y">
+            {filteredIssues.map((issue) => (
+              <div
+                key={issue.id}
+                className="hover:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors"
+              >
+                {/* Priority */}
+                <div className="flex w-4 justify-center">
+                  <PriorityIcon
+                    priority={
+                      issue.priorityName
+                        ? {
+                            name: issue.priorityName,
+                            weight: issue.priorityWeight || 0,
+                            color: issue.priorityColor || undefined,
+                          }
+                        : null
+                    }
+                  />
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+
+                {/* Issue key and title */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {issue.key}
+                    </span>
+                    <StatusBadge
+                      state={
+                        issue.stateName
+                          ? {
+                              name: issue.stateName,
+                              color: issue.stateColor || undefined,
+                              type: issue.stateType || "todo",
+                            }
+                          : null
+                      }
+                    />
+                  </div>
+                  <Link
+                    href={`/${orgSlug}/issues/${issue.key}`}
+                    className="block truncate text-sm font-medium transition-colors hover:text-blue-600"
+                  >
+                    {issue.title}
+                  </Link>
+                </div>
+
+                {/* Team */}
+                <div className="flex w-24 justify-center">
+                  <TeamBadge
+                    team={
+                      issue.teamName
+                        ? {
+                            name: issue.teamName,
+                            key: issue.teamKey || "",
+                          }
+                        : null
+                    }
+                  />
+                </div>
+
+                {/* Assignee */}
+                <div className="flex w-16 justify-center">
+                  <AssigneeAvatar
+                    assignee={
+                      issue.assigneeName || issue.assigneeEmail
+                        ? {
+                            name: issue.assigneeName || undefined,
+                            email: issue.assigneeEmail || "",
+                          }
+                        : null
+                    }
+                  />
+                </div>
+
+                {/* Updated date */}
+                <div className="text-muted-foreground w-20 text-right text-xs">
+                  {new Date(issue.updatedAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </div>
+
+                {/* Actions */}
+                <div className="flex w-8 justify-end">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        aria-label="Open issue actions"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        variant="destructive"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              "Delete this issue? This action cannot be undone.",
+                            )
+                          )
+                            return;
+                          deleteMutation.mutate({ issueId: issue.id });
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="mb-4 text-4xl">📋</div>
+              <h3 className="mb-2 text-lg font-semibold">No issues found</h3>
+              <p className="text-muted-foreground mb-6">
+                Get started by creating your first issue.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Floating create button */}
+      <div className="fixed right-6 bottom-6">
+        <CreateIssueButton orgSlug={orgSlug} variant="floating" />
+      </div>
+
+      {/* Pagination controls */}
+      <div className="text-muted-foreground flex justify-between border-t p-2 text-xs">
+        <span>
+          Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+        </span>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page === 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+          >
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page * PAGE_SIZE >= total}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next
+          </Button>
         </div>
-      ) : (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Bug className="text-muted-foreground mx-auto mb-4 size-16" />
-            <h3 className="mb-2 text-lg font-semibold">No issues yet</h3>
-            <p className="text-muted-foreground mb-6">
-              Issues will appear here when they are created in your projects.
-            </p>
-            <Button asChild>
-              <Link href={`/${orgSlug}/projects`}>
-                <ExternalLink className="mr-2 size-4" />
-                Go to Projects
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      </div>
     </div>
   );
 }
