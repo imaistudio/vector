@@ -323,6 +323,30 @@ export async function changePriority(
   });
 }
 
+export async function changeProject(
+  issueId: string,
+  actorId: string,
+  projectId: string | null,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .update(issueTable)
+    .set({ projectId, updatedAt: now })
+    .where(eq(issueTable.id, issueId));
+}
+
+export async function changeTeam(
+  issueId: string,
+  actorId: string,
+  teamId: string | null,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .update(issueTable)
+    .set({ teamId, updatedAt: now })
+    .where(eq(issueTable.id, issueId));
+}
+
 export async function assign(
   issueId: string,
   actorId: string,

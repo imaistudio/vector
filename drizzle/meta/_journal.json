@@ -15,6 +15,20 @@
       "when": 1751099887920,
       "tag": "0001_mushy_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1751198522538,
+      "tag": "0002_complete_betty_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1751198991959,
+      "tag": "0003_great_blindfold",
+      "breakpoints": true
     }
   ]
 }

@@ -12,12 +12,14 @@ import {
 } from "@/components/ui/dialog";
 import { Hash } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { IconPicker } from "@/components/ui/icon-picker";
 
 interface PriorityData {
   id?: string;
   name: string;
   weight: number;
   color: string | null;
+  icon: string | null;
 }
 
 interface PrioritiesManagementDialogProps {
@@ -55,6 +57,7 @@ export function PrioritiesManagementDialog({
 
   const [name, setName] = useState(priority?.name || "");
   const [color, setColor] = useState(priority?.color || DEFAULT_COLORS[0]);
+  const [icon, setIcon] = useState(priority?.icon || null);
   const [weight, setWeight] = useState(priority?.weight ?? 0);
 
   const isEditing = !!priority;
@@ -72,6 +75,7 @@ export function PrioritiesManagementDialog({
       name: name.trim(),
       weight: finalWeight,
       color,
+      icon,
     });
   };
 
@@ -122,6 +126,16 @@ export function PrioritiesManagementDialog({
             <p className="text-muted-foreground text-xs">
               Higher weight indicates higher priority. Values must be integers.
             </p>
+          </div>
+
+          {/* Icon Selection */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Icon</label>
+            <IconPicker
+              value={icon}
+              onValueChange={setIcon}
+              placeholder="Select an icon..."
+            />
           </div>
 
           {/* Color Selection */}

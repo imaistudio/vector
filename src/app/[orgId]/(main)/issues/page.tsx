@@ -4,6 +4,7 @@ import Link from "next/link";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -16,6 +17,9 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { issueStateTypeEnum } from "@/db/schema/issue-config";
+import { formatDateHuman } from "@/lib/date";
+import { getDynamicIcon } from "@/lib/dynamic-icons";
+import { Circle } from "lucide-react";
 
 type StateType = (typeof issueStateTypeEnum.enumValues)[number];
 type FilterType = "all" | StateType;
@@ -42,79 +46,18 @@ const filterTabs = [
   })),
 ];
 
-function PriorityIcon({
-  priority,
-}: {
-  priority?: { name: string; weight: number; color?: string } | null;
-}) {
-  if (!priority) {
-    return (
-      <div
-        className="bg-muted-foreground/30 h-2 w-2 rounded-full"
-        title="No priority"
-      />
-    );
-  }
-
-  return (
-    <div
-      className="h-2 w-2 rounded-full"
-      style={{ backgroundColor: priority.color || "#94a3b8" }}
-      title={priority.name}
-    />
-  );
-}
-
-function StatusBadge({
-  state,
-}: {
-  state?: { name: string; color?: string; type: string } | null;
-}) {
-  if (!state) return <div className="h-2 w-2 rounded-full bg-gray-400" />;
-
-  return (
-    <div className="flex items-center gap-2">
-      <div
-        className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: state.color || "#94a3b8" }}
-      />
-      <span className="text-muted-foreground text-xs">{state.name}</span>
-    </div>
-  );
-}
-
-function TeamBadge({ team }: { team?: { name: string; key: string } | null }) {
-  if (!team) return null;
-
-  return (
-    <Badge variant="secondary" className="text-xs">
-      {team.name}
-    </Badge>
-  );
-}
-
-function AssigneeAvatar({
-  assignee,
-}: {
-  assignee?: { name?: string; email: string } | null;
-}) {
-  if (!assignee) return null;
-
-  const initials = (assignee.name || assignee.email)
+function getAssigneeInitials(
+  name?: string | null,
+  email?: string | null,
+): string {
+  const displayName = name || email;
+  if (!displayName) return "?";
+  return displayName
     .split(" ")
-    .map((n) => n[0])
+    .map((part) => part.charAt(0))
     .join("")
     .toUpperCase()
     .slice(0, 2);
-
-  return (
-    <div
-      className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-500 text-xs font-medium text-white"
-      title={assignee.name || assignee.email}
-    >
-      {initials}
-    </div>
-  );
 }
 
 export default function IssuesPage() {
@@ -197,127 +140,122 @@ export default function IssuesPage() {
         </div>
       </div>
 
-      {/* Issues table */}
+      {/* Issues list */}
       <div className="flex-1">
         {filteredIssues.length > 0 ? (
           <div className="divide-y">
-            {filteredIssues.map((issue) => (
-              <div
-                key={issue.id}
-                className="hover:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors"
-              >
-                {/* Priority */}
-                <div className="flex w-4 justify-center">
-                  <PriorityIcon
-                    priority={
-                      issue.priorityName
-                        ? {
-                            name: issue.priorityName,
-                            weight: issue.priorityWeight || 0,
-                            color: issue.priorityColor || undefined,
-                          }
-                        : null
-                    }
-                  />
-                </div>
+            {filteredIssues.map((issue) => {
+              // Get priority icon component and styling
+              const PriorityIcon = issue.priorityIcon
+                ? getDynamicIcon(issue.priorityIcon) || Circle
+                : Circle;
+              const priorityColor = issue.priorityColor || "#94a3b8";
 
-                {/* Issue key and title */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground font-mono text-xs">
-                      {issue.key}
-                    </span>
-                    <StatusBadge
-                      state={
-                        issue.stateName
-                          ? {
-                              name: issue.stateName,
-                              color: issue.stateColor || undefined,
-                              type: issue.stateType || "todo",
-                            }
-                          : null
-                      }
+              // Get state icon component and styling
+              const StateIcon = issue.stateIcon
+                ? getDynamicIcon(issue.stateIcon) || Circle
+                : Circle;
+              const stateColor = issue.stateColor || "#94a3b8";
+
+              return (
+                <div
+                  key={issue.id}
+                  className="hover:bg-muted/50 flex items-center gap-3 px-4 py-3 transition-colors"
+                >
+                  {/* Priority Icon */}
+                  <div className="flex-shrink-0">
+                    <PriorityIcon
+                      className="size-4"
+                      style={{ color: priorityColor }}
                     />
                   </div>
-                  <Link
-                    href={`/${orgSlug}/issues/${issue.key}`}
-                    className="block truncate text-sm font-medium transition-colors hover:text-blue-600"
-                  >
-                    {issue.title}
-                  </Link>
-                </div>
 
-                {/* Team */}
-                <div className="flex w-24 justify-center">
-                  <TeamBadge
-                    team={
-                      issue.teamName
-                        ? {
-                            name: issue.teamName,
-                            key: issue.teamKey || "",
-                          }
-                        : null
-                    }
-                  />
-                </div>
+                  {/* Issue Key */}
+                  <span className="text-muted-foreground flex-shrink-0 font-mono text-xs">
+                    {issue.key}
+                  </span>
 
-                {/* Assignee */}
-                <div className="flex w-16 justify-center">
-                  <AssigneeAvatar
-                    assignee={
-                      issue.assigneeName || issue.assigneeEmail
-                        ? {
-                            name: issue.assigneeName || undefined,
-                            email: issue.assigneeEmail || "",
-                          }
-                        : null
-                    }
-                  />
-                </div>
+                  {/* State Icon */}
+                  <div className="flex-shrink-0">
+                    <StateIcon
+                      className="size-4"
+                      style={{ color: stateColor }}
+                    />
+                  </div>
 
-                {/* Updated date */}
-                <div className="text-muted-foreground w-20 text-right text-xs">
-                  {new Date(issue.updatedAt).toLocaleDateString("en-US", {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </div>
+                  {/* Title */}
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/${orgSlug}/issues/${issue.key}`}
+                      className="hover:text-primary block truncate text-sm font-medium transition-colors"
+                    >
+                      {issue.title}
+                    </Link>
+                  </div>
 
-                {/* Actions */}
-                <div className="flex w-8 justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        aria-label="Open issue actions"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        variant="destructive"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          if (
-                            !confirm(
-                              "Delete this issue? This action cannot be undone.",
+                  {/* Creation Date */}
+                  <div className="flex-shrink-0">
+                    <span className="text-muted-foreground text-xs">
+                      {formatDateHuman(issue.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Assignee */}
+                  <div className="flex-shrink-0">
+                    {issue.assigneeId ? (
+                      <div className="flex items-center gap-2">
+                        <Avatar className="size-6">
+                          <AvatarFallback className="text-xs">
+                            {getAssigneeInitials(
+                              issue.assigneeName,
+                              issue.assigneeEmail,
+                            )}
+                          </AvatarFallback>
+                        </Avatar>
+                      </div>
+                    ) : (
+                      <div className="flex size-6 items-center justify-center">
+                        <span className="text-muted-foreground text-xs">—</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex-shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          aria-label="Open issue actions"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          variant="destructive"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                "Delete this issue? This action cannot be undone.",
+                              )
                             )
-                          )
-                            return;
-                          deleteMutation.mutate({ issueId: issue.id });
-                        }}
-                      >
-                        <Trash2 className="size-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                              return;
+                            deleteMutation.mutate({ issueId: issue.id });
+                          }}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="flex items-center justify-center py-12">

@@ -14,6 +14,7 @@ export interface StatePayload {
   name: string;
   position: number;
   color: string;
+  icon?: string | null;
   type: string;
 }
 
@@ -21,6 +22,7 @@ export interface PriorityPayload {
   name: string;
   weight: number;
   color: string;
+  icon?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,6 +129,7 @@ export class WorkflowService {
         name: issueState.name,
         position: issueState.position,
         color: issueState.color,
+        icon: issueState.icon,
         type: issueState.type,
       })
       .from(issueState)
@@ -150,6 +153,7 @@ export class WorkflowService {
       name: data.name,
       position: data.position,
       color: data.color,
+      icon: data.icon,
       type: data.type as any,
     });
     return { id } as const;
@@ -176,6 +180,7 @@ export class WorkflowService {
       .set({
         ...(data.name ? { name: data.name } : {}),
         ...(data.color ? { color: data.color } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
         ...(data.type ? { type: data.type as any } : {}),
         ...(data.position !== undefined ? { position: data.position } : {}),
       })
@@ -203,6 +208,7 @@ export class WorkflowService {
         name: projectStatus.name,
         position: projectStatus.position,
         color: projectStatus.color,
+        icon: projectStatus.icon,
         type: projectStatus.type,
       })
       .from(projectStatus)
@@ -225,6 +231,7 @@ export class WorkflowService {
       name: data.name,
       position: data.position,
       color: data.color,
+      icon: data.icon,
       type: data.type as any,
     });
 
@@ -253,6 +260,7 @@ export class WorkflowService {
       .set({
         ...(data.name ? { name: data.name } : {}),
         ...(data.color ? { color: data.color } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
         ...(data.type ? { type: data.type as any } : {}),
         ...(data.position !== undefined ? { position: data.position } : {}),
       })
@@ -281,6 +289,7 @@ export class WorkflowService {
         name: issuePriority.name,
         weight: issuePriority.weight,
         color: issuePriority.color,
+        icon: issuePriority.icon,
       })
       .from(issuePriority)
       .where(eq(issuePriority.organizationId, orgRow[0].id))
@@ -302,6 +311,7 @@ export class WorkflowService {
       name: data.name,
       weight: data.weight,
       color: data.color,
+      icon: data.icon,
     });
     return { id } as const;
   }
@@ -330,6 +340,7 @@ export class WorkflowService {
         ...(data.name ? { name: data.name } : {}),
         ...(data.weight !== undefined ? { weight: data.weight } : {}),
         ...(data.color ? { color: data.color } : {}),
+        ...(data.icon !== undefined ? { icon: data.icon } : {}),
       })
       .where(eq(issuePriority.id, priorityId));
   }

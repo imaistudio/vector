@@ -11,6 +11,8 @@ import {
   updateDescription,
   findIssueByKey,
   deleteIssue,
+  changeProject,
+  changeTeam,
 } from "@/entities/issues/issue.service";
 import {
   createComment,
@@ -114,6 +116,36 @@ export const issueRouter = createTRPCRouter({
     })
     .mutation(async ({ input }) => {
       await changePriority(input.issueId, input.actorId, input.priorityId);
+    }),
+
+  changeProject: protectedProcedure
+    .input(
+      z.object({
+        issueId: z.string().uuid(),
+        actorId: z.string(),
+        projectId: z.string().uuid().nullable(),
+      }),
+    )
+    .use(({ ctx, next, input }) => {
+      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+    })
+    .mutation(async ({ input }) => {
+      await changeProject(input.issueId, input.actorId, input.projectId);
+    }),
+
+  changeTeam: protectedProcedure
+    .input(
+      z.object({
+        issueId: z.string().uuid(),
+        actorId: z.string(),
+        teamId: z.string().uuid().nullable(),
+      }),
+    )
+    .use(({ ctx, next, input }) => {
+      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+    })
+    .mutation(async ({ input }) => {
+      await changeTeam(input.issueId, input.actorId, input.teamId);
     }),
 
   assign: protectedProcedure

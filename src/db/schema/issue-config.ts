@@ -28,6 +28,7 @@ export const issuePriority = pgTable("issue_priority", {
   name: text("name").notNull(),
   weight: integer("weight").default(0).notNull(), // smaller -> lower, larger -> higher
   color: text("color"), // tailwind color ref (#RRGGBB etc.)
+  icon: text("icon"), // lucide icon name (e.g., "ArrowUp", "Circle", etc.)
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -40,6 +41,7 @@ export const issueState = pgTable("issue_state", {
   name: text("name").notNull(),
   position: integer("position").default(0).notNull(), // ordering left→right in board
   color: text("color"),
+  icon: text("icon"), // lucide icon name (e.g., "Circle", "Play", "CheckCircle", etc.)
   type: issueStateTypeEnum("type").default("todo").notNull(), // semantic type following Linear
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

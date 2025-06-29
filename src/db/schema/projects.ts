@@ -34,6 +34,7 @@ export const projectStatus = pgTable("project_status", {
   name: text("name").notNull(),
   position: integer("position").default(0).notNull(), // ordering in UI
   color: text("color"),
+  icon: text("icon"), // lucide icon name (e.g., "Circle", "Play", "CheckCircle", etc.)
   type: projectStatusTypeEnum("type").default("planned").notNull(), // semantic type following Linear
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

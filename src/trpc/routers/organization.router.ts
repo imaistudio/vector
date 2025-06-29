@@ -216,6 +216,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         position: z.number().int(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
         type: z.enum(
           issueStateTypeEnum.enumValues as [
             (typeof issueStateTypeEnum.enumValues)[number],
@@ -240,6 +241,7 @@ export const organizationRouter = createTRPCRouter({
         name: input.name,
         position: input.position,
         color: input.color,
+        icon: input.icon,
         type: input.type,
       });
       return { id } as const;
@@ -253,6 +255,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         position: z.number().int().optional(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
         type: z.enum(
           issueStateTypeEnum.enumValues as [
             (typeof issueStateTypeEnum.enumValues)[number],
@@ -280,6 +283,7 @@ export const organizationRouter = createTRPCRouter({
           name: input.name,
           position: input.position,
           color: input.color,
+          icon: input.icon,
           type: input.type,
         },
       );
@@ -292,6 +296,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         position: z.number().int(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
         type: z.enum(
           projectStatusTypeEnum.enumValues as [
             (typeof projectStatusTypeEnum.enumValues)[number],
@@ -316,6 +321,7 @@ export const organizationRouter = createTRPCRouter({
         name: input.name,
         position: input.position,
         color: input.color,
+        icon: input.icon,
         type: input.type,
       });
       return { id } as const;
@@ -329,6 +335,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         position: z.number().int().optional(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
         type: z.enum(
           projectStatusTypeEnum.enumValues as [
             (typeof projectStatusTypeEnum.enumValues)[number],
@@ -356,6 +363,7 @@ export const organizationRouter = createTRPCRouter({
           name: input.name,
           position: input.position,
           color: input.color,
+          icon: input.icon,
           type: input.type,
         },
       );
@@ -455,6 +463,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         weight: z.number().int(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -473,6 +482,7 @@ export const organizationRouter = createTRPCRouter({
         name: input.name,
         weight: input.weight,
         color: input.color,
+        icon: input.icon,
       });
       return { id } as const;
     }),
@@ -485,6 +495,7 @@ export const organizationRouter = createTRPCRouter({
         name: z.string().min(1),
         weight: z.number().int().optional(),
         color: z.string().min(1),
+        icon: z.string().nullable().optional(),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -506,6 +517,7 @@ export const organizationRouter = createTRPCRouter({
           name: input.name,
           weight: input.weight,
           color: input.color,
+          icon: input.icon,
         },
       );
     }),

@@ -6,12 +6,14 @@ import { Plus } from "lucide-react";
 import { PrioritiesManagementDialog } from "@/components/organization/priorities-management-dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { getDynamicIcon } from "@/lib/dynamic-icons";
 
 interface Priority {
   id: string;
   name: string;
   weight: number;
   color: string | null;
+  icon: string | null;
 }
 
 interface PrioritiesPageContentProps {
@@ -72,6 +74,7 @@ export function PrioritiesPageContent({ orgSlug }: PrioritiesPageContentProps) {
         name: data.name,
         weight: data.weight,
         color: data.color ?? "#94a3b8",
+        icon: data.icon,
       });
     } else {
       createMutation.mutate({
@@ -79,6 +82,7 @@ export function PrioritiesPageContent({ orgSlug }: PrioritiesPageContentProps) {
         name: data.name,
         weight: data.weight,
         color: data.color ?? "#94a3b8",
+        icon: data.icon,
       });
     }
 
@@ -121,10 +125,27 @@ export function PrioritiesPageContent({ orgSlug }: PrioritiesPageContentProps) {
             className="bg-background hover:bg-muted/30 group flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left transition-colors"
             onClick={() => handleEdit(priority as Priority)}
           >
-            <span
-              className="size-3 shrink-0 rounded-full"
-              style={{ backgroundColor: priority.color || "#94a3b8" }}
-            />
+            {priority.icon ? (
+              (() => {
+                const IconComponent = getDynamicIcon(priority.icon) ?? null;
+                return IconComponent ? (
+                  <IconComponent
+                    className="size-3 flex-shrink-0"
+                    style={{ color: priority.color || "#94a3b8" }}
+                  />
+                ) : (
+                  <span
+                    className="size-2.5 flex-shrink-0 rounded-full"
+                    style={{ backgroundColor: priority.color || "#94a3b8" }}
+                  />
+                );
+              })()
+            ) : (
+              <span
+                className="size-2.5 flex-shrink-0 rounded-full"
+                style={{ backgroundColor: priority.color || "#94a3b8" }}
+              />
+            )}
             <span className="truncate text-sm font-medium">
               {priority.name}
             </span>

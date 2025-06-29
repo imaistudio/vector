@@ -186,11 +186,13 @@ export class OrganizationService {
         // State details
         stateName: issueState.name,
         stateColor: issueState.color,
+        stateIcon: issueState.icon,
         stateType: issueState.type,
         // Priority details
         priorityName: issuePriority.name,
         priorityWeight: issuePriority.weight,
         priorityColor: issuePriority.color,
+        priorityIcon: issuePriority.icon,
       })
       .from(issue)
       // Optional relations so issues without a project or team are still returned
@@ -449,6 +451,7 @@ export class OrganizationService {
         projectKey: project.key,
         teamName: team.name,
         teamKey: team.key,
+        createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
         sequenceNumber: issue.sequenceNumber,
         assigneeId: issue.assigneeId,
@@ -458,11 +461,13 @@ export class OrganizationService {
         // State details
         stateName: issueState.name,
         stateColor: issueState.color,
+        stateIcon: issueState.icon,
         stateType: issueState.type,
         // Priority details
         priorityName: issuePriority.name,
         priorityWeight: issuePriority.weight,
         priorityColor: issuePriority.color,
+        priorityIcon: issuePriority.icon,
       })
       .from(issue)
       .leftJoin(project, eq(issue.projectId, project.id))

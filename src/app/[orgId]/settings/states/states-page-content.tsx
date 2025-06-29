@@ -8,12 +8,14 @@ import { issueStateTypeEnum } from "@/db/schema/issue-config";
 import { projectStatusTypeEnum } from "@/db/schema/projects";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { getDynamicIcon } from "@/lib/dynamic-icons";
 
 interface WorkflowState {
   id: string;
   name: string;
   position: number;
   color: string | null;
+  icon: string | null;
   type: string;
 }
 
@@ -148,6 +150,7 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
           name: newStateData.name,
           position: newStateData.position,
           color: newStateData.color ?? "#94a3b8",
+          icon: newStateData.icon,
           type: newStateData.type,
         });
       } else {
@@ -157,6 +160,7 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
           name: newStateData.name,
           position: newStateData.position,
           color: newStateData.color ?? "#94a3b8",
+          icon: newStateData.icon,
           type: newStateData.type,
         });
       }
@@ -168,6 +172,7 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
           name: newStateData.name,
           position: newStateData.position,
           color: newStateData.color ?? "#94a3b8",
+          icon: newStateData.icon,
           type: newStateData.type,
         });
       } else {
@@ -176,6 +181,7 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
           name: newStateData.name,
           position: newStateData.position,
           color: newStateData.color ?? "#94a3b8",
+          icon: newStateData.icon,
           type: newStateData.type,
         });
       }
@@ -247,10 +253,30 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
                     className="bg-background hover:bg-muted/30 group flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left transition-colors"
                     onClick={() => handleEditState("issue", state)}
                   >
-                    <div
-                      className="size-2.5 flex-shrink-0 rounded-full"
-                      style={{ backgroundColor: state.color || "#94a3b8" }}
-                    />
+                    {state.icon ? (
+                      (() => {
+                        const IconComponent =
+                          getDynamicIcon(state.icon) ?? null;
+                        return IconComponent ? (
+                          <IconComponent
+                            className="size-3 flex-shrink-0"
+                            style={{ color: state.color || "#94a3b8" }}
+                          />
+                        ) : (
+                          <div
+                            className="size-2.5 flex-shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: state.color || "#94a3b8",
+                            }}
+                          />
+                        );
+                      })()
+                    ) : (
+                      <div
+                        className="size-2.5 flex-shrink-0 rounded-full"
+                        style={{ backgroundColor: state.color || "#94a3b8" }}
+                      />
+                    )}
                     <span className="flex-1 truncate text-xs font-medium">
                       {state.name}
                     </span>
@@ -311,10 +337,30 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
                     className="bg-background hover:bg-muted/30 group flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left transition-colors"
                     onClick={() => handleEditState("project", status)}
                   >
-                    <div
-                      className="size-2.5 flex-shrink-0 rounded-full"
-                      style={{ backgroundColor: status.color || "#94a3b8" }}
-                    />
+                    {status.icon ? (
+                      (() => {
+                        const IconComponent =
+                          getDynamicIcon(status.icon) ?? null;
+                        return IconComponent ? (
+                          <IconComponent
+                            className="size-3 flex-shrink-0"
+                            style={{ color: status.color || "#94a3b8" }}
+                          />
+                        ) : (
+                          <div
+                            className="size-2.5 flex-shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: status.color || "#94a3b8",
+                            }}
+                          />
+                        );
+                      })()
+                    ) : (
+                      <div
+                        className="size-2.5 flex-shrink-0 rounded-full"
+                        style={{ backgroundColor: status.color || "#94a3b8" }}
+                      />
+                    )}
                     <span className="flex-1 truncate text-xs font-medium">
                       {status.name}
                     </span>

@@ -27,12 +27,14 @@ import {
 import { Settings2, Clock, Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { IconPicker } from "@/components/ui/icon-picker";
 
 interface StateData {
   id?: string;
   name: string;
   position: number;
   color: string | null;
+  icon: string | null;
   type: string;
 }
 
@@ -117,6 +119,7 @@ export function StatesManagementDialog({
     });
   const [name, setName] = useState(state?.name || "");
   const [color, setColor] = useState(state?.color || DEFAULT_COLORS[0]);
+  const [icon, setIcon] = useState(state?.icon || null);
   const [stateType, setStateType] = useState(
     state?.type || (type === "issue" ? "todo" : "planned"),
   );
@@ -142,6 +145,7 @@ export function StatesManagementDialog({
       name: name.trim(),
       position,
       color,
+      icon,
       type: stateType,
     });
   };
@@ -234,6 +238,16 @@ export function StatesManagementDialog({
                 {selectedTypeInfo.description}
               </p>
             )}
+          </div>
+
+          {/* Icon Selection */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Icon</label>
+            <IconPicker
+              value={icon}
+              onValueChange={setIcon}
+              placeholder="Select an icon..."
+            />
           </div>
 
           {/* Color Selection */}
