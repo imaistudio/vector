@@ -4,6 +4,7 @@ import {
   teamMember as teamMemberTable,
   issue as issueTable,
   organization as organizationTable,
+  user,
 } from "@/db/schema";
 import {
   eq,
@@ -30,12 +31,21 @@ export interface CreateTeamParams {
   description?: string;
   /** Optional lead (must belong to the organization) */
   leadId?: string;
+  /** Optional icon name (Lucide) */
+  icon?: string | null;
+  /** Optional hex color */
+  color?: string | null;
 }
 
 export interface UpdateTeamParams {
   id: string;
   /** Patch fields – only provided keys will be updated */
-  data: Partial<Pick<TeamInsertModel, "name" | "description" | "leadId">>;
+  data: Partial<
+    Pick<
+      TeamInsertModel,
+      "name" | "description" | "leadId" | "key" | "icon" | "color"
+    >
+  >;
 }
 
 // -----------------------------------------------------------------------------
@@ -45,7 +55,8 @@ export interface UpdateTeamParams {
 export async function createTeam(
   params: CreateTeamParams,
 ): Promise<{ id: string }> {
-  const { organizationId, key, name, description, leadId } = params;
+  const { organizationId, key, name, description, leadId, icon, color } =
+    params;
 
   // 1) Ensure the key is unique **within** the organization
   const existing = await db
@@ -57,7 +68,7 @@ export async function createTeam(
     .limit(1);
 
   if (existing.length > 0) {
-    throw new Error(`Team key “${key}” already exists in this organization`);
+    throw new Error(`Team key "${key}" already exists in this organization`);
   }
 
   const id = randomUUID();
@@ -72,6 +83,8 @@ export async function createTeam(
       name,
       description,
       leadId,
+      icon,
+      color,
       createdAt: now,
       updatedAt: now,
     });
@@ -132,6 +145,24 @@ export async function removeMember(
         eq(teamMemberTable.userId, userId),
       ),
     );
+}
+
+/**
+ * List all members of a team with their user details
+ */
+export async function listTeamMembers(teamId: string) {
+  return await db
+    .select({
+      userId: teamMemberTable.userId,
+      role: teamMemberTable.role,
+      joinedAt: teamMemberTable.joinedAt,
+      name: user.name,
+      email: user.email,
+    })
+    .from(teamMemberTable)
+    .innerJoin(user, eq(teamMemberTable.userId, user.id))
+    .where(eq(teamMemberTable.teamId, teamId))
+    .orderBy(desc(teamMemberTable.joinedAt));
 }
 
 // -----------------------------------------------------------------------------

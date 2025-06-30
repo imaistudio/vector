@@ -19,6 +19,10 @@ export const team = pgTable("team", {
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   description: text("description"),
+  /** Optional icon name (Lucide) */
+  icon: text("icon"),
+  /** Optional hex color like #ff0000 */
+  color: text("color"),
   /** Optional leader of the team */
   leadId: text("lead_id").references(() => user.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),

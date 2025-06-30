@@ -15,6 +15,7 @@ import { team } from "./teams";
 import { project } from "./projects";
 import { issuePriority } from "./issue-config";
 import { issueState } from "./issue-config";
+import { organization } from "./users-and-auth";
 
 export const issue = pgTable(
   "issue",
@@ -44,6 +45,9 @@ export const issue = pgTable(
     reporterId: text("reporter_id").references(() => user.id, {
       onDelete: "set null",
     }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
     dueDate: date("due_date"),
     closedAt: timestamp("closed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

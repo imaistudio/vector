@@ -1,43 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Folder, Check, ChevronsUpDown } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface CreateProjectDialogProps {
+// Simplified selector components for teams, leads, and status
+import {
+  TeamSelector,
+  AssigneeSelector,
+} from "@/components/issues/issue-selectors";
+import { StatusSelector } from "@/components/projects/project-selectors";
+
+interface CreateProjectDialogContentProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess?: (projectId: string) => void;
 }
 
-export function CreateProjectDialog({
+function CreateProjectDialogContent({
   orgSlug,
   onClose,
   onSuccess,
-}: CreateProjectDialogProps) {
+}: CreateProjectDialogContentProps) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
@@ -45,33 +39,37 @@ export function CreateProjectDialog({
   const [selectedLead, setSelectedLead] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<string>("");
 
-  const [teamComboboxOpen, setTeamComboboxOpen] = useState(false);
-  const [leadComboboxOpen, setLeadComboboxOpen] = useState(false);
-  const [statusComboboxOpen, setStatusComboboxOpen] = useState(false);
-
   const utils = trpc.useUtils();
 
   // Get teams and organization members
   const { data: teams = [] } = trpc.organization.listTeams.useQuery({
     orgSlug,
   });
-  const { data: orgMembers = [] } = trpc.organization.listMembers.useQuery({
+  const { data: members = [] } = trpc.organization.listMembers.useQuery({
     orgSlug,
   });
 
-  // ---------------------------------------------
-  //   Fetch project statuses from organization
-  // ---------------------------------------------
-
+  // Get project statuses from organization
   const { data: statuses = [] } =
-    trpc.organization.listProjectStatuses.useQuery({ orgSlug });
+    trpc.organization.listProjectStatuses.useQuery({
+      orgSlug,
+    });
 
-  // Transform statuses into combobox-friendly shape
-  const statusOptions = statuses.map((s) => ({ value: s.id, label: s.name }));
+  // Auto-select default status (type "planned" or first)
+  useEffect(() => {
+    if (statuses.length > 0 && !selectedStatus) {
+      const defaultStatus =
+        statuses.find((s) => s.type === "planned") || statuses[0];
+      setSelectedStatus(defaultStatus.id);
+    }
+  }, [statuses, selectedStatus]);
 
   const createMutation = trpc.project.create.useMutation({
     onSuccess: (result) => {
-      utils.organization.listProjects.invalidate({ orgSlug }).catch(() => {});
+      Promise.all([
+        utils.organization.listProjects.invalidate({ orgSlug }),
+        utils.organization.listProjectsPaged.invalidate({ orgSlug }),
+      ]).catch(() => {});
       onSuccess?.(result.id);
       onClose();
     },
@@ -108,279 +106,70 @@ export function CreateProjectDialog({
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Folder className="size-4" />
-            New project
+          <DialogTitle className="flex items-center">
+            <div className="text-muted-foreground flex w-full items-center gap-2 text-sm">
+              {/* Properties Row */}
+              <div className="flex flex-wrap gap-2">
+                <TeamSelector
+                  teams={teams}
+                  selectedTeam={selectedTeam}
+                  onTeamSelect={setSelectedTeam}
+                  displayMode="iconWhenUnselected"
+                />
+
+                <AssigneeSelector
+                  members={members}
+                  selectedAssignee={selectedLead}
+                  onAssigneeSelect={setSelectedLead}
+                  displayMode="iconWhenUnselected"
+                />
+
+                <StatusSelector
+                  statuses={statuses}
+                  selectedStatus={selectedStatus}
+                  onStatusSelect={setSelectedStatus}
+                  displayMode="iconWhenUnselected"
+                />
+              </div>
+              <div className="ml-auto">
+                <code className="bg-muted flex h-8 items-center rounded-md px-2.5 font-mono text-sm">
+                  {key || "project-key"}
+                </code>
+              </div>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-2">
           {/* Project Name */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Name</label>
-            <Input
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className="h-9"
-              autoFocus
-            />
-          </div>
+          <Input
+            placeholder="Project name"
+            value={name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            className="text-base"
+            autoFocus
+          />
 
           {/* Project Key */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Key</label>
-            <Input
-              placeholder="project-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value.toLowerCase())}
-              className="h-9"
-            />
-            <p className="text-muted-foreground text-xs">
-              Used for URLs and identification (e.g., /projects/{key})
-            </p>
-          </div>
+          <Input
+            placeholder="project-key"
+            value={key}
+            onChange={(e) => setKey(e.target.value.toLowerCase())}
+            className="h-9"
+          />
 
           {/* Description */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">
-              Description (optional)
-            </label>
-            <textarea
-              placeholder="Project description..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-            />
-          </div>
-
-          {/* Team Selection */}
-          {teams.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Team (optional)</label>
-              <Popover
-                open={teamComboboxOpen}
-                onOpenChange={setTeamComboboxOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={teamComboboxOpen}
-                    className="h-9 w-full justify-between"
-                  >
-                    {selectedTeam
-                      ? teams.find((team) => team.id === selectedTeam)?.name
-                      : "Select team..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="max-h-[200px] w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command>
-                    <CommandInput
-                      placeholder="Search team..."
-                      className="h-9"
-                    />
-                    <CommandList>
-                      <CommandEmpty>No team found.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandItem
-                          value=""
-                          onSelect={() => {
-                            setSelectedTeam("");
-                            setTeamComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedTeam === "" ? "opacity-100" : "opacity-0",
-                            )}
-                          />
-                          No team
-                        </CommandItem>
-                        {teams.map((team) => (
-                          <CommandItem
-                            key={team.id}
-                            value={team.name}
-                            onSelect={() => {
-                              setSelectedTeam(team.id);
-                              setTeamComboboxOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedTeam === team.id
-                                  ? "opacity-100"
-                                  : "opacity-0",
-                              )}
-                            />
-                            {team.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
-
-          {/* Lead Selection */}
-          {orgMembers.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">
-                Project lead (optional)
-              </label>
-              <Popover
-                open={leadComboboxOpen}
-                onOpenChange={setLeadComboboxOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={leadComboboxOpen}
-                    className="h-9 w-full justify-between"
-                  >
-                    {selectedLead
-                      ? orgMembers.find(
-                          (member) => member.userId === selectedLead,
-                        )?.name
-                      : "Select project lead..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="max-h-[200px] w-[var(--radix-popover-trigger-width)] p-0">
-                  <Command>
-                    <CommandInput
-                      placeholder="Search member..."
-                      className="h-9"
-                    />
-                    <CommandList>
-                      <CommandEmpty>No member found.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandItem
-                          value=""
-                          onSelect={() => {
-                            setSelectedLead("");
-                            setLeadComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedLead === "" ? "opacity-100" : "opacity-0",
-                            )}
-                          />
-                          No lead
-                        </CommandItem>
-                        {orgMembers.map((member) => (
-                          <CommandItem
-                            key={member.userId}
-                            value={member.name}
-                            onSelect={() => {
-                              setSelectedLead(member.userId);
-                              setLeadComboboxOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedLead === member.userId
-                                  ? "opacity-100"
-                                  : "opacity-0",
-                              )}
-                            />
-                            {member.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-            </div>
-          )}
-
-          {/* Status Selection */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Status (optional)</label>
-            <Popover
-              open={statusComboboxOpen}
-              onOpenChange={setStatusComboboxOpen}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={statusComboboxOpen}
-                  className="h-9 w-full justify-between"
-                >
-                  {selectedStatus
-                    ? statusOptions.find(
-                        (status) => status.value === selectedStatus,
-                      )?.label
-                    : "Select status..."}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="max-h-[200px] w-[var(--radix-popover-trigger-width)] p-0">
-                <Command>
-                  <CommandInput
-                    placeholder="Search status..."
-                    className="h-9"
-                  />
-                  <CommandList>
-                    <CommandEmpty>No status found.</CommandEmpty>
-                    <CommandGroup>
-                      <CommandItem
-                        value=""
-                        onSelect={() => {
-                          setSelectedStatus("");
-                          setStatusComboboxOpen(false);
-                        }}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedStatus === "" ? "opacity-100" : "opacity-0",
-                          )}
-                        />
-                        No status
-                      </CommandItem>
-                      {statusOptions.map((status) => (
-                        <CommandItem
-                          key={status.value}
-                          value={status.label}
-                          onSelect={() => {
-                            setSelectedStatus(status.value);
-                            setStatusComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedStatus === status.value
-                                ? "opacity-100"
-                                : "opacity-0",
-                            )}
-                          />
-                          {status.label}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <Textarea
+            placeholder="Add description..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          />
         </form>
 
-        <DialogFooter>
+        <div className="flex w-full flex-row items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -391,8 +180,70 @@ export function CreateProjectDialog({
           >
             {createMutation.isPending ? "Creating…" : "Create project"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Public wrapper component
+export interface CreateProjectDialogProps {
+  /** Organization slug the project belongs to */
+  orgSlug: string;
+  /** Optional callback fired after the project is successfully created */
+  onProjectCreated?: () => void;
+  /** Visual style of trigger button */
+  variant?: "default" | "floating";
+  /** Additional classes for the trigger button */
+  className?: string;
+}
+
+export function CreateProjectDialog({
+  orgSlug,
+  onProjectCreated,
+  variant = "default",
+  className,
+}: CreateProjectDialogProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleSuccess = () => {
+    onProjectCreated?.();
+    setIsDialogOpen(false);
+  };
+
+  const trigger =
+    variant === "floating" ? (
+      <Button
+        onClick={() => setIsDialogOpen(true)}
+        className={cn(
+          "h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl",
+          className,
+        )}
+        size="icon"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
+    ) : (
+      <Button
+        size="sm"
+        onClick={() => setIsDialogOpen(true)}
+        className={cn("gap-1 text-sm", className)}
+        variant="outline"
+      >
+        <Plus className="size-4" />
+      </Button>
+    );
+
+  return (
+    <>
+      {trigger}
+      {isDialogOpen && (
+        <CreateProjectDialogContent
+          orgSlug={orgSlug}
+          onClose={() => setIsDialogOpen(false)}
+          onSuccess={handleSuccess}
+        />
+      )}
+    </>
   );
 }

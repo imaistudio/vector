@@ -98,6 +98,8 @@ interface IconPickerProps {
   onValueChange: (iconName: string | null) => void;
   placeholder?: string;
   className?: string;
+  /** Optional custom trigger element (e.g. an icon button). */
+  trigger?: React.ReactElement;
 }
 
 export function IconPicker({
@@ -105,6 +107,7 @@ export function IconPicker({
   onValueChange,
   placeholder = "Select icon...",
   className,
+  trigger,
 }: IconPickerProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -135,22 +138,24 @@ export function IconPicker({
   return (
     <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("h-9 w-full justify-between", className)}
-        >
-          <div className="flex items-center gap-2">
-            {SelectedIconComponent && (
-              <SelectedIconComponent className="size-4" />
-            )}
-            <span className="truncate">
-              {selectedIcon ? selectedIcon.label : placeholder}
-            </span>
-          </div>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
+        {trigger ?? (
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={cn("h-9 w-full justify-between", className)}
+          >
+            <div className="flex items-center gap-2">
+              {SelectedIconComponent && (
+                <SelectedIconComponent className="size-4" />
+              )}
+              <span className="truncate">
+                {selectedIcon ? selectedIcon.label : placeholder}
+              </span>
+            </div>
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent
         side="bottom"

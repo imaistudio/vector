@@ -6,7 +6,6 @@ import {
   project as projectTable,
   organization as organizationTable,
   team as teamTable,
-  member,
 } from "@/db/schema";
 import { getNextIssueSequence } from "@/entities/teams/team.service";
 import {
@@ -15,7 +14,6 @@ import {
   InferInsertModel,
   InferSelectModel,
   desc,
-  or,
   like,
 } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -27,7 +25,7 @@ import { randomUUID } from "crypto";
 type IssueInsertModel = InferInsertModel<typeof issueTable>;
 export type Issue = InferSelectModel<typeof issueTable>;
 
-export type CreateIssueParams = Pick<
+type BaseCreateIssueParams = Pick<
   IssueInsertModel,
   | "teamId"
   | "reporterId"
@@ -37,7 +35,9 @@ export type CreateIssueParams = Pick<
   | "priorityId"
   | "stateId"
   | "assigneeId"
-> & {
+>;
+
+export type CreateIssueParams = BaseCreateIssueParams & {
   orgSlug: string;
   issueKeyFormat: "org" | "project" | "team";
 };
@@ -172,6 +172,21 @@ export async function createIssue(
 
   const now = new Date();
 
+  // ---------------------------------------------------------------
+  // Resolve organization ID from slug
+  // ---------------------------------------------------------------
+  const orgRow = await db
+    .select({ id: organizationTable.id })
+    .from(organizationTable)
+    .where(eq(organizationTable.slug, orgSlug))
+    .limit(1);
+
+  if (orgRow.length === 0) {
+    throw new Error(`Organization not found for slug: ${orgSlug}`);
+  }
+
+  const organizationId = orgRow[0].id;
+
   // -----------------------------------------------------------------------
   // Concurrency-safe insert with retry on unique-violation (race condition)
   // -----------------------------------------------------------------------
@@ -195,6 +210,7 @@ export async function createIssue(
           priorityId,
           stateId,
           assigneeId,
+          organizationId,
           createdAt: now,
           updatedAt: now,
         });
@@ -410,25 +426,14 @@ export async function findIssueByKey(
 
   const organizationId = orgResult[0].id;
 
-  // Find issue by stored key, ensuring it belongs to the organization
-  // This handles all key formats (user, project, team) since we store the full key
+  // Find issue by stored key ensuring it belongs to the organization directly
   const issueResult = await db
-    .select({
-      issue: issueTable,
-    })
+    .select({ issue: issueTable })
     .from(issueTable)
-    .leftJoin(projectTable, eq(issueTable.projectId, projectTable.id))
-    .leftJoin(teamTable, eq(issueTable.teamId, teamTable.id))
-    .leftJoin(member, eq(member.userId, issueTable.reporterId))
     .where(
       and(
         eq(issueTable.key, issueKey),
-        // Issue belongs to org via project, team, or reporter membership
-        or(
-          eq(projectTable.organizationId, organizationId),
-          eq(teamTable.organizationId, organizationId),
-          eq(member.organizationId, organizationId),
-        ),
+        eq(issueTable.organizationId, organizationId),
       ),
     )
     .limit(1);

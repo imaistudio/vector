@@ -6,8 +6,10 @@ import {
   teamMember as teamMemberTable,
   projectStatus,
   organization as organizationTable,
+  user as userTable,
 } from "@/db/schema";
 import { eq, and, InferInsertModel, InferSelectModel } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { formatDateForDb } from "@/lib/date";
 
 // -----------------------------------------------------------------------------
@@ -30,7 +32,13 @@ export interface UpdateProjectParams {
   data: Partial<
     Pick<
       ProjectInsertModel,
-      "name" | "description" | "leadId" | "startDate" | "dueDate" | "statusId"
+      | "name"
+      | "description"
+      | "leadId"
+      | "startDate"
+      | "dueDate"
+      | "statusId"
+      | "teamId"
     >
   >;
 }
@@ -244,15 +252,42 @@ export async function findProjectByKey(
   orgSlug: string,
   projectKey: string,
 ): Promise<Project | null> {
+  const leadUser = alias(userTable, "leadUser");
+
   const result = await db
     .select({
-      project: projectTable,
+      id: projectTable.id,
+      key: projectTable.key,
+      name: projectTable.name,
+      description: projectTable.description,
+      organizationId: projectTable.organizationId,
+      createdAt: projectTable.createdAt,
+      updatedAt: projectTable.updatedAt,
+      startDate: projectTable.startDate,
+      dueDate: projectTable.dueDate,
+      // Status details
+      statusId: projectTable.statusId,
+      statusName: projectStatus.name,
+      statusColor: projectStatus.color,
+      statusIcon: projectStatus.icon,
+      statusType: projectStatus.type,
+      // Team details
+      teamId: projectTable.teamId,
+      teamName: teamTable.name,
+      teamKey: teamTable.key,
+      // Lead details
+      leadId: projectTable.leadId,
+      leadName: leadUser.name,
+      leadEmail: leadUser.email,
     })
     .from(projectTable)
     .innerJoin(
       organizationTable,
       eq(projectTable.organizationId, organizationTable.id),
     )
+    .leftJoin(projectStatus, eq(projectTable.statusId, projectStatus.id))
+    .leftJoin(teamTable, eq(projectTable.teamId, teamTable.id))
+    .leftJoin(leadUser, eq(projectTable.leadId, leadUser.id))
     .where(
       and(
         eq(organizationTable.slug, orgSlug),
@@ -261,5 +296,5 @@ export async function findProjectByKey(
     )
     .limit(1);
 
-  return result[0]?.project || null;
+  return result[0] || null;
 }

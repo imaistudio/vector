@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS "team" (
 	"key" text NOT NULL,
 	"name" text NOT NULL,
 	"description" text,
+	"icon" text,
+	"color" text,
 	"lead_id" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
@@ -165,6 +167,7 @@ CREATE TABLE IF NOT EXISTS "project_status" (
 	"name" text NOT NULL,
 	"position" integer DEFAULT 0 NOT NULL,
 	"color" text,
+	"icon" text,
 	"type" "project_status_type" DEFAULT 'planned' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -181,6 +184,7 @@ CREATE TABLE IF NOT EXISTS "comment" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "issue" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL,
 	"sequence_number" integer NOT NULL,
 	"title" text NOT NULL,
 	"description" text,
@@ -190,10 +194,12 @@ CREATE TABLE IF NOT EXISTS "issue" (
 	"project_id" uuid,
 	"assignee_id" text,
 	"reporter_id" text,
+	"organization_id" text NOT NULL,
 	"due_date" date,
 	"closed_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "issue_key_unique" UNIQUE("key")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "issue_activity" (
@@ -225,6 +231,7 @@ CREATE TABLE IF NOT EXISTS "issue_priority" (
 	"name" text NOT NULL,
 	"weight" integer DEFAULT 0 NOT NULL,
 	"color" text,
+	"icon" text,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -234,13 +241,17 @@ CREATE TABLE IF NOT EXISTS "issue_state" (
 	"name" text NOT NULL,
 	"position" integer DEFAULT 0 NOT NULL,
 	"color" text,
+	"icon" text,
 	"type" "issue_state_type" DEFAULT 'todo' NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_org_name_idx" ON "project" ("organization_id","name");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "project_org_key_idx" ON "project" ("organization_id","key");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "project_status_org_type_idx" ON "project_status" ("organization_id","type");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "issue_team_seq_idx" ON "issue" ("team_id","sequence_number");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "issue_priority_org_weight_idx" ON "issue_priority" ("organization_id","weight");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "issue_state_org_type_idx" ON "issue_state" ("organization_id","type");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "account" ADD CONSTRAINT "account_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "user"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
@@ -387,6 +398,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "issue" ADD CONSTRAINT "issue_reporter_id_user_id_fk" FOREIGN KEY ("reporter_id") REFERENCES "user"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "issue" ADD CONSTRAINT "issue_organization_id_organization_id_fk" FOREIGN KEY ("organization_id") REFERENCES "organization"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

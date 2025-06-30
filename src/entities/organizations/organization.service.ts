@@ -11,7 +11,7 @@ import {
   issueState,
   issuePriority,
 } from "@/db/schema";
-import { eq, and, count, desc, or } from "drizzle-orm";
+import { eq, and, count, desc } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { randomUUID } from "crypto";
 import { env } from "@/env";
@@ -135,6 +135,9 @@ export class OrganizationService {
     const orgId = orgRow[0]?.id;
     if (!orgId) return [];
 
+    const leadUser = alias(user, "leadUser");
+    const { projectStatus } = await import("@/db/schema/projects");
+
     return await db
       .select({
         id: project.id,
@@ -143,8 +146,27 @@ export class OrganizationService {
         description: project.description,
         updatedAt: project.updatedAt,
         createdAt: project.createdAt,
+        startDate: project.startDate,
+        dueDate: project.dueDate,
+        // Status details
+        statusId: project.statusId,
+        statusName: projectStatus.name,
+        statusColor: projectStatus.color,
+        statusIcon: projectStatus.icon,
+        statusType: projectStatus.type,
+        // Team details
+        teamId: project.teamId,
+        teamName: team.name,
+        teamKey: team.key,
+        // Lead details
+        leadId: project.leadId,
+        leadName: leadUser.name,
+        leadEmail: leadUser.email,
       })
       .from(project)
+      .leftJoin(projectStatus, eq(project.statusId, projectStatus.id))
+      .leftJoin(team, eq(project.teamId, team.id))
+      .leftJoin(leadUser, eq(project.leadId, leadUser.id))
       .where(eq(project.organizationId, orgId))
       .orderBy(desc(project.updatedAt))
       .limit(limit);
@@ -202,16 +224,7 @@ export class OrganizationService {
       .leftJoin(issuePriority, eq(issue.priorityId, issuePriority.id))
       .leftJoin(assigneeUser, eq(issue.assigneeId, assigneeUser.id))
       .leftJoin(reporterUser, eq(issue.reporterId, reporterUser.id))
-      // Also join the reporter's membership to capture standalone issues (no team/project)
-      .leftJoin(member, eq(member.userId, issue.reporterId))
-      // Include issues that belong to the organisation via project, team **or** reporter membership
-      .where(
-        or(
-          eq(project.organizationId, orgId),
-          eq(team.organizationId, orgId),
-          eq(member.organizationId, orgId),
-        ),
-      )
+      .where(eq(issue.organizationId, orgId))
       .orderBy(desc(issue.updatedAt))
       .limit(limit);
   }
@@ -235,6 +248,8 @@ export class OrganizationService {
         name: team.name,
         description: team.description,
         key: team.key,
+        icon: team.icon,
+        color: team.color,
         createdAt: team.createdAt,
       })
       .from(team)
@@ -476,14 +491,7 @@ export class OrganizationService {
       .leftJoin(issuePriority, eq(issue.priorityId, issuePriority.id))
       .leftJoin(assigneeUser, eq(issue.assigneeId, assigneeUser.id))
       .leftJoin(reporterUser, eq(issue.reporterId, reporterUser.id))
-      .leftJoin(member, eq(member.userId, issue.reporterId))
-      .where(
-        or(
-          eq(project.organizationId, orgId),
-          eq(team.organizationId, orgId),
-          eq(member.organizationId, orgId),
-        ),
-      )
+      .where(eq(issue.organizationId, orgId))
       .orderBy(desc(issue.updatedAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
@@ -492,16 +500,7 @@ export class OrganizationService {
     const totalRows = await db
       .select({ cnt: count() })
       .from(issue)
-      .leftJoin(project, eq(issue.projectId, project.id))
-      .leftJoin(team, eq(issue.teamId, team.id))
-      .leftJoin(member, eq(member.userId, issue.reporterId))
-      .where(
-        or(
-          eq(project.organizationId, orgId),
-          eq(team.organizationId, orgId),
-          eq(member.organizationId, orgId),
-        ),
-      );
+      .where(eq(issue.organizationId, orgId));
 
     const total = totalRows[0]?.cnt ?? 0;
 
@@ -510,16 +509,7 @@ export class OrganizationService {
       .select({ type: issueState.type, cnt: count() })
       .from(issue)
       .leftJoin(issueState, eq(issue.stateId, issueState.id))
-      .leftJoin(project, eq(issue.projectId, project.id))
-      .leftJoin(team, eq(issue.teamId, team.id))
-      .leftJoin(member, eq(member.userId, issue.reporterId))
-      .where(
-        or(
-          eq(project.organizationId, orgId),
-          eq(team.organizationId, orgId),
-          eq(member.organizationId, orgId),
-        ),
-      )
+      .where(eq(issue.organizationId, orgId))
       .groupBy(issueState.type);
 
     const counts: Record<string, number> = {};
@@ -528,5 +518,80 @@ export class OrganizationService {
     });
 
     return { issues, total, counts } as const;
+  }
+
+  /**
+   * Paginated projects list with counts grouped by status type (mirrors getIssuesPaged)
+   */
+  static async getProjectsPaged(orgSlug: string, page = 1, pageSize = 25) {
+    const orgRow = await db
+      .select({ id: organization.id })
+      .from(organization)
+      .where(eq(organization.slug, orgSlug))
+      .limit(1);
+
+    const orgId = orgRow[0]?.id;
+    if (!orgId) return { projects: [], total: 0, counts: {} } as const;
+
+    const leadUser = alias(user, "leadUser");
+    const { projectStatus } = await import("@/db/schema/projects");
+
+    // Main paged query
+    const projectsRows = await db
+      .select({
+        id: project.id,
+        key: project.key,
+        name: project.name,
+        description: project.description,
+        updatedAt: project.updatedAt,
+        createdAt: project.createdAt,
+        startDate: project.startDate,
+        dueDate: project.dueDate,
+        // Status details
+        statusId: project.statusId,
+        statusName: projectStatus.name,
+        statusColor: projectStatus.color,
+        statusIcon: projectStatus.icon,
+        statusType: projectStatus.type,
+        // Team details
+        teamId: project.teamId,
+        teamName: team.name,
+        teamKey: team.key,
+        // Lead details
+        leadId: project.leadId,
+        leadName: leadUser.name,
+        leadEmail: leadUser.email,
+      })
+      .from(project)
+      .leftJoin(projectStatus, eq(project.statusId, projectStatus.id))
+      .leftJoin(team, eq(project.teamId, team.id))
+      .leftJoin(leadUser, eq(project.leadId, leadUser.id))
+      .where(eq(project.organizationId, orgId))
+      .orderBy(desc(project.updatedAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    // Total count of projects in org
+    const totalRows = await db
+      .select({ cnt: count() })
+      .from(project)
+      .where(eq(project.organizationId, orgId));
+
+    const total = totalRows[0]?.cnt ?? 0;
+
+    // Counts by statusType
+    const countsRows = await db
+      .select({ type: projectStatus.type, cnt: count() })
+      .from(project)
+      .leftJoin(projectStatus, eq(project.statusId, projectStatus.id))
+      .where(eq(project.organizationId, orgId))
+      .groupBy(projectStatus.type);
+
+    const counts: Record<string, number> = {};
+    countsRows.forEach((r) => {
+      counts[r.type as unknown as string] = Number(r.cnt);
+    });
+
+    return { projects: projectsRows, total, counts } as const;
   }
 }

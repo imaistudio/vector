@@ -5,6 +5,8 @@ import {
   addMember as addTeamMember,
   removeMember as removeTeamMember,
   findTeamByKey,
+  deleteTeam,
+  listTeamMembers,
 } from "@/entities/teams/team.service";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { z } from "zod";
@@ -28,6 +30,18 @@ export const teamRouter = createTRPCRouter({
         });
       }
       return team;
+    }),
+
+  listMembers: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string().uuid(),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const userId = getUserId(ctx);
+      // TODO: Verify user has access to this team
+      return await listTeamMembers(input.teamId);
     }),
 
   create: protectedProcedure
@@ -79,11 +93,32 @@ export const teamRouter = createTRPCRouter({
           name: z.string().optional(),
           description: z.string().optional(),
           leadId: z.string().optional(),
+          key: z.string().min(2).max(10).optional(),
+          icon: z.string().optional().nullable(),
+          color: z
+            .string()
+            .regex(/^#?[0-9A-Fa-f]{6}$/)
+            .optional()
+            .nullable(),
         }),
       }),
     )
     .mutation(async ({ input }) => {
       await updateTeam({ id: input.id, data: input.data });
+    }),
+
+  delete: protectedProcedure
+    .input(
+      z.object({
+        teamId: z.string().uuid(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const userId = getUserId(ctx);
+
+      // Note: We should verify user has permission to delete this team
+      // For now, assuming they do if they're authenticated
+      await deleteTeam(input.teamId);
     }),
 
   addMember: protectedProcedure

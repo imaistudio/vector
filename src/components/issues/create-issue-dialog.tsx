@@ -217,6 +217,17 @@ function CreateIssueDialogContent({
     }
   }, [states, selectedState]);
 
+  // Auto-select default priority (weight === 0) once priorities load
+  useEffect(() => {
+    if (priorities.length > 0 && !selectedPriority) {
+      const defaultPriority =
+        priorities.find((p) => p.weight === 0) || priorities[0];
+      if (defaultPriority) {
+        setSelectedPriority(defaultPriority.id);
+      }
+    }
+  }, [priorities, selectedPriority]);
+
   const createMutation = trpc.issue.create.useMutation({
     onSuccess: (result) => {
       // Refresh only issue-related queries so the UI updates without nuking

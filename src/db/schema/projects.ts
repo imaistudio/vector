@@ -9,6 +9,7 @@ import {
   index,
   primaryKey,
   pgEnum,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user, organization } from "./users-and-auth";
 import { team } from "./teams";
@@ -26,18 +27,27 @@ export const projectStatusTypeEnum = pgEnum("project_status_type", [
 // Project workflow statuses (organisation-scoped)
 // -----------------------------------------------------------------------------
 
-export const projectStatus = pgTable("project_status", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  organizationId: text("organization_id")
-    .notNull()
-    .references(() => organization.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  position: integer("position").default(0).notNull(), // ordering in UI
-  color: text("color"),
-  icon: text("icon"), // lucide icon name (e.g., "Circle", "Play", "CheckCircle", etc.)
-  type: projectStatusTypeEnum("type").default("planned").notNull(), // semantic type following Linear
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const projectStatus = pgTable(
+  "project_status",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    position: integer("position").default(0).notNull(), // ordering in UI
+    color: text("color"),
+    icon: text("icon"), // lucide icon name (e.g., "Circle", "Play", "CheckCircle", etc.)
+    type: projectStatusTypeEnum("type").default("planned").notNull(), // semantic type following Linear
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    orgTypeIdx: uniqueIndex("project_status_org_type_idx").on(
+      table.organizationId,
+      table.type,
+    ),
+  }),
+);
 
 export const project = pgTable(
   "project",

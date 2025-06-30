@@ -1,5 +1,5 @@
 {
-  "id": "78d8bf2f-95c8-49ef-aa2c-012cdc5de09e",
+  "id": "631ea9df-f92c-4931-b679-2094e9075ab4",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "5",
   "dialect": "pg",
@@ -571,6 +571,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "color": {
+          "name": "color",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "lead_id": {
           "name": "lead_id",
           "type": "text",
@@ -910,6 +922,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "project_status_type",
@@ -925,7 +943,13 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "project_status_org_type_idx": {
+          "name": "project_status_org_type_idx",
+          "columns": ["organization_id", "type"],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "project_status_organization_id_organization_id_fk": {
           "name": "project_status_organization_id_organization_id_fk",
@@ -1026,6 +1050,12 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "sequence_number": {
           "name": "sequence_number",
           "type": "integer",
@@ -1079,6 +1109,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "due_date": {
           "name": "due_date",
@@ -1168,10 +1204,25 @@
           "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "issue_organization_id_organization_id_fk": {
+          "name": "issue_organization_id_organization_id_fk",
+          "tableFrom": "issue",
+          "tableTo": "organization",
+          "columnsFrom": ["organization_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {
+        "issue_key_unique": {
+          "name": "issue_key_unique",
+          "nullsNotDistinct": false,
+          "columns": ["key"]
+        }
+      }
     },
     "issue_activity": {
       "name": "issue_activity",
@@ -1355,6 +1406,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -1363,7 +1420,13 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "issue_priority_org_weight_idx": {
+          "name": "issue_priority_org_weight_idx",
+          "columns": ["organization_id", "weight"],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "issue_priority_organization_id_organization_id_fk": {
           "name": "issue_priority_organization_id_organization_id_fk",
@@ -1414,6 +1477,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "icon": {
+          "name": "icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "type": {
           "name": "type",
           "type": "issue_state_type",
@@ -1429,7 +1498,13 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "issue_state_org_type_idx": {
+          "name": "issue_state_org_type_idx",
+          "columns": ["organization_id", "type"],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
         "issue_state_organization_id_organization_id_fk": {
           "name": "issue_state_organization_id_organization_id_fk",

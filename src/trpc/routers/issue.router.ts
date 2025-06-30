@@ -58,6 +58,27 @@ export const issueRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const userId = getUserId(ctx);
 
+      // ------------------------------------------------------------------
+      // 🏷️  Ensure a default priority is assigned (weight === 0)
+      // ------------------------------------------------------------------
+      let effectivePriorityId = input.priorityId;
+
+      if (!effectivePriorityId) {
+        // Lazily import to avoid circular deps at module load time
+        const { WorkflowService } = await import(
+          "@/entities/workflow/state.service"
+        );
+
+        const orgPriorities = await WorkflowService.listIssuePriorities(
+          input.orgSlug,
+        );
+
+        const defaultPriority =
+          orgPriorities.find((p) => p.weight === 0) || orgPriorities[0];
+
+        effectivePriorityId = defaultPriority?.id;
+      }
+
       // Enforce: if user is only a member (not admin/lead) and provides projectId, they must be part of that project.
       if (input.projectId) {
         const rows = await ctx.db
@@ -82,6 +103,7 @@ export const issueRouter = createTRPCRouter({
       const createParams = {
         ...input,
         reporterId: userId,
+        priorityId: effectivePriorityId ?? undefined,
       };
 
       const { id } = await createIssue(createParams);

@@ -49,9 +49,9 @@ export default async function MainLayout({
     }));
 
   return (
-    <div className="bg-background flex h-screen">
+    <div className="bg-secondary flex h-screen">
       {/* Sidebar */}
-      <aside className="bg-card hidden w-56 lg:block">
+      <aside className="hidden w-56 lg:block">
         <div className="flex h-full flex-col">
           {/* Organization Options Dropdown */}
           <div className="p-2">

@@ -151,6 +151,27 @@ export const organizationRouter = createTRPCRouter({
       return OrganizationService.getRecentProjects(input.orgSlug, 100); // Get all projects
     }),
 
+  listProjectsPaged: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        page: z.number().int().min(1).default(1),
+        pageSize: z.number().int().min(1).max(100).default(25),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.getProjectsPaged(
+        input.orgSlug,
+        input.page,
+        input.pageSize,
+      );
+    }),
+
   listIssues: protectedProcedure
     .input(z.object({ orgSlug: z.string() }))
     .query(async ({ input, ctx }) => {

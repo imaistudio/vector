@@ -24,20 +24,23 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Users, Check, ChevronsUpDown } from "lucide-react";
+import { Users, Plus, Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface CreateTeamDialogProps {
+// ---------------------------------------------------------------------------
+// 🧩 Internal content component (dialog body)
+// ---------------------------------------------------------------------------
+interface CreateTeamDialogContentProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess?: (teamId: string) => void;
 }
 
-export function CreateTeamDialog({
+function CreateTeamDialogContent({
   orgSlug,
   onClose,
   onSuccess,
-}: CreateTeamDialogProps) {
+}: CreateTeamDialogContentProps) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
@@ -53,7 +56,7 @@ export function CreateTeamDialog({
 
   const createMutation = trpc.team.create.useMutation({
     onSuccess: (result) => {
-      // Refresh teams list
+      // Refresh teams list so the UI updates
       utils.organization.listTeams.invalidate({ orgSlug }).catch(() => {});
       onSuccess?.(result.id);
       onClose();
@@ -74,7 +77,7 @@ export function CreateTeamDialog({
     });
   };
 
-  // Auto-generate key from name
+  // Auto-generate key from name (alphanumeric, max 10 chars)
   const handleNameChange = (value: string) => {
     setName(value);
     if (
@@ -237,5 +240,69 @@ export function CreateTeamDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 🖱️ Public wrapper — handles trigger button + open state
+// ---------------------------------------------------------------------------
+export interface CreateTeamDialogProps {
+  /** Organization slug the team belongs to */
+  orgSlug: string;
+  /** Optional callback fired after the team is successfully created */
+  onTeamCreated?: () => void;
+  /** Visual style of trigger button */
+  variant?: "default" | "floating";
+  /** Additional classes for the trigger button */
+  className?: string;
+}
+
+export function CreateTeamDialog({
+  orgSlug,
+  onTeamCreated,
+  variant = "default",
+  className,
+}: CreateTeamDialogProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleSuccess = () => {
+    onTeamCreated?.();
+    setIsDialogOpen(false);
+  };
+
+  const trigger =
+    variant === "floating" ? (
+      <Button
+        onClick={() => setIsDialogOpen(true)}
+        className={cn(
+          "h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl",
+          className,
+        )}
+        size="icon"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
+    ) : (
+      <Button
+        size="sm"
+        onClick={() => setIsDialogOpen(true)}
+        className={cn("gap-1 text-sm", className)}
+        variant="outline"
+      >
+        <Plus className="size-4" />
+      </Button>
+    );
+
+  return (
+    <>
+      {trigger}
+      {isDialogOpen && (
+        <CreateTeamDialogContent
+          orgSlug={orgSlug}
+          onClose={() => setIsDialogOpen(false)}
+          onSuccess={handleSuccess}
+        />
+      )}
+    </>
   );
 }

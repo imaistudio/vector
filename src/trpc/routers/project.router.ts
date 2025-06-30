@@ -96,6 +96,52 @@ export const projectRouter = createTRPCRouter({
       await updateProject({ id: input.id, data: input.data });
     }),
 
+  // Individual field update mutations
+  changeStatus: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        statusId: z.string().uuid().nullable(),
+        actorId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await updateProject({
+        id: input.projectId,
+        data: { statusId: input.statusId },
+      });
+    }),
+
+  changeTeam: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        teamId: z.string().uuid().nullable(),
+        actorId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await updateProject({
+        id: input.projectId,
+        data: { teamId: input.teamId },
+      });
+    }),
+
+  changeLead: protectedProcedure
+    .input(
+      z.object({
+        projectId: z.string().uuid(),
+        leadId: z.string().nullable(),
+        actorId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await updateProject({
+        id: input.projectId,
+        data: { leadId: input.leadId },
+      });
+    }),
+
   addMember: protectedProcedure
     .input(
       z.object({

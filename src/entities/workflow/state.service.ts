@@ -6,8 +6,10 @@ import {
   issue,
   project as projectTable,
   issuePriority,
+  issueStateTypeEnum,
 } from "@/db/schema";
-import { eq, and, count } from "drizzle-orm";
+import { projectStatusTypeEnum } from "@/db/schema/projects";
+import { eq, and, count, InferInsertModel } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface StatePayload {
@@ -30,55 +32,148 @@ export interface PriorityPayload {
 // ---------------------------------------------------------------------------
 
 const ISSUE_STATE_DEFAULTS: StatePayload[] = [
-  { name: "Backlog", position: 0, color: "#6b7280", type: "backlog" },
-  { name: "To Do", position: 1, color: "#3b82f6", type: "todo" },
-  { name: "In Progress", position: 2, color: "#f59e0b", type: "in_progress" },
-  { name: "Done", position: 3, color: "#10b981", type: "done" },
-  { name: "Canceled", position: 4, color: "#ef4444", type: "canceled" },
+  {
+    name: "Backlog",
+    position: 0,
+    color: "#6b7280",
+    type: "backlog",
+    icon: "Circle",
+  },
+  {
+    name: "To Do",
+    position: 1,
+    color: "#3b82f6",
+    type: "todo",
+    icon: "CircleDot",
+  },
+  {
+    name: "In Progress",
+    position: 2,
+    color: "#f59e0b",
+    type: "in_progress",
+    icon: "Loader",
+  },
+  {
+    name: "Done",
+    position: 3,
+    color: "#10b981",
+    type: "done",
+    icon: "CheckCircle",
+  },
+  {
+    name: "Canceled",
+    position: 4,
+    color: "#ef4444",
+    type: "canceled",
+    icon: "XCircle",
+  },
 ];
 
 const PROJECT_STATUS_DEFAULTS: StatePayload[] = [
-  { name: "Backlog", position: 0, color: "#6b7280", type: "backlog" },
-  { name: "Planned", position: 1, color: "#3b82f6", type: "planned" },
-  { name: "In Progress", position: 2, color: "#f59e0b", type: "in_progress" },
-  { name: "Completed", position: 3, color: "#10b981", type: "completed" },
-  { name: "Canceled", position: 4, color: "#ef4444", type: "canceled" },
+  {
+    name: "Backlog",
+    position: 0,
+    color: "#6b7280",
+    type: "backlog",
+    icon: "Square",
+  },
+  {
+    name: "Planned",
+    position: 1,
+    color: "#3b82f6",
+    type: "planned",
+    icon: "CircleDot",
+  },
+  {
+    name: "In Progress",
+    position: 2,
+    color: "#f59e0b",
+    type: "in_progress",
+    icon: "Play",
+  },
+  {
+    name: "Completed",
+    position: 3,
+    color: "#10b981",
+    type: "completed",
+    icon: "Check",
+  },
+  {
+    name: "Canceled",
+    position: 4,
+    color: "#ef4444",
+    type: "canceled",
+    icon: "X",
+  },
 ];
 
 const ISSUE_PRIORITY_DEFAULTS: PriorityPayload[] = [
-  { name: "No priority", weight: 0, color: "#94a3b8" },
-  { name: "Low", weight: 1, color: "#10b981" },
-  { name: "Medium", weight: 2, color: "#f59e0b" },
-  { name: "High", weight: 3, color: "#ef4444" },
-  { name: "Urgent", weight: 4, color: "#dc2626" },
+  {
+    name: "No priority",
+    weight: 0,
+    color: "#94a3b8",
+    icon: "Minus",
+  },
+  { name: "Low", weight: 1, color: "#10b981", icon: "ArrowDown" },
+  { name: "Medium", weight: 2, color: "#f59e0b", icon: "ArrowRight" },
+  { name: "High", weight: 3, color: "#ef4444", icon: "ArrowUp" },
+  { name: "Urgent", weight: 4, color: "#dc2626", icon: "ChevronsUp" },
 ];
 
-// Helper: ensure a default exists for org
-async function ensureDefaults<
-  T extends typeof issueState | typeof projectStatus,
->(table: T, orgId: string, defaults: StatePayload[]) {
-  const existingRows = await db
-    .select({ type: table.type })
-    .from(table)
-    .where(eq(table.organizationId, orgId));
+// ---------------------------------------------------------------------------
+// Helpers to seed defaults without using any-casts or generic tricks
+// ---------------------------------------------------------------------------
 
-  const existingTypes = new Set<string>(
-    existingRows.map((r) => r.type as unknown as string),
+type IssueStateInsert = InferInsertModel<typeof issueState>;
+async function ensureIssueStateDefaults(orgId: string) {
+  const existing = await db
+    .select({ type: issueState.type })
+    .from(issueState)
+    .where(eq(issueState.organizationId, orgId));
+
+  const existingSet = new Set<string>(existing.map((r) => r.type));
+  const missing = ISSUE_STATE_DEFAULTS.filter((d) => !existingSet.has(d.type));
+
+  if (missing.length === 0) return;
+
+  const rows: IssueStateInsert[] = missing.map((d) => ({
+    id: randomUUID(),
+    organizationId: orgId,
+    name: d.name,
+    position: d.position,
+    color: d.color,
+    icon: d.icon ?? null,
+    type: d.type as IssueStateInsert["type"],
+  }));
+
+  await db.insert(issueState).values(rows).onConflictDoNothing();
+}
+
+type ProjectStatusInsert = InferInsertModel<typeof projectStatus>;
+async function ensureProjectStatusDefaults(orgId: string) {
+  const existing = await db
+    .select({ type: projectStatus.type })
+    .from(projectStatus)
+    .where(eq(projectStatus.organizationId, orgId));
+
+  const existingSet = new Set<string>(existing.map((r) => r.type));
+  const missing = PROJECT_STATUS_DEFAULTS.filter(
+    (d) => !existingSet.has(d.type),
   );
 
-  const toInsert = defaults.filter((d) => !existingTypes.has(d.type as string));
+  if (missing.length === 0) return;
 
-  if (toInsert.length > 0) {
-    const nowValues = toInsert.map((d) => ({
-      id: randomUUID(),
-      organizationId: orgId,
-      name: d.name,
-      position: d.position,
-      color: d.color,
-      type: d.type as unknown as any,
-    }));
-    await db.insert(table).values(nowValues as any[]);
-  }
+  const rows: ProjectStatusInsert[] = missing.map((d) => ({
+    id: randomUUID(),
+    organizationId: orgId,
+    name: d.name,
+    position: d.position,
+    color: d.color,
+    icon: d.icon ?? null,
+    type: d.type as ProjectStatusInsert["type"],
+  }));
+
+  await db.insert(projectStatus).values(rows).onConflictDoNothing();
 }
 
 // Helper: ensure default priorities exist for org
@@ -96,14 +191,18 @@ async function ensurePriorityDefaults(
   const toInsert = defaults.filter((d) => !existingWeights.has(d.weight));
 
   if (toInsert.length > 0) {
-    const nowValues = toInsert.map((d) => ({
-      id: randomUUID(),
-      organizationId: orgId,
-      name: d.name,
-      weight: d.weight,
-      color: d.color,
-    }));
-    await db.insert(issuePriority).values(nowValues);
+    const rows: InferInsertModel<typeof issuePriority>[] = toInsert.map(
+      (d) => ({
+        id: randomUUID(),
+        organizationId: orgId,
+        name: d.name,
+        weight: d.weight,
+        color: d.color,
+        icon: d.icon ?? null,
+      }),
+    );
+
+    await db.insert(issuePriority).values(rows).onConflictDoNothing();
   }
 }
 
@@ -154,7 +253,7 @@ export class WorkflowService {
       position: data.position,
       color: data.color,
       icon: data.icon,
-      type: data.type as any,
+      type: data.type as (typeof issueStateTypeEnum.enumValues)[number],
     });
     return { id } as const;
   }
@@ -181,7 +280,11 @@ export class WorkflowService {
         ...(data.name ? { name: data.name } : {}),
         ...(data.color ? { color: data.color } : {}),
         ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(data.type ? { type: data.type as any } : {}),
+        ...(data.type
+          ? {
+              type: data.type as (typeof issueStateTypeEnum.enumValues)[number],
+            }
+          : {}),
         ...(data.position !== undefined ? { position: data.position } : {}),
       })
       .where(eq(issueState.id, stateId));
@@ -232,7 +335,7 @@ export class WorkflowService {
       position: data.position,
       color: data.color,
       icon: data.icon,
-      type: data.type as any,
+      type: data.type as (typeof projectStatusTypeEnum.enumValues)[number],
     });
 
     return { id } as const;
@@ -261,7 +364,11 @@ export class WorkflowService {
         ...(data.name ? { name: data.name } : {}),
         ...(data.color ? { color: data.color } : {}),
         ...(data.icon !== undefined ? { icon: data.icon } : {}),
-        ...(data.type ? { type: data.type as any } : {}),
+        ...(data.type
+          ? {
+              type: data.type as (typeof projectStatusTypeEnum.enumValues)[number],
+            }
+          : {}),
         ...(data.position !== undefined ? { position: data.position } : {}),
       })
       .where(eq(projectStatus.id, statusId));
@@ -386,12 +493,8 @@ export class WorkflowService {
   /* -------------------------------------------------------------------- */
 
   static async ensureDefaultsForOrg(orgId: string) {
-    await ensureDefaults(issueState as any, orgId, ISSUE_STATE_DEFAULTS as any);
-    await ensureDefaults(
-      projectStatus as any,
-      orgId,
-      PROJECT_STATUS_DEFAULTS as any,
-    );
+    await ensureIssueStateDefaults(orgId);
+    await ensureProjectStatusDefaults(orgId);
     await ensurePriorityDefaults(orgId, ISSUE_PRIORITY_DEFAULTS);
   }
 
@@ -402,11 +505,7 @@ export class WorkflowService {
       .where(eq(organization.slug, orgSlug))
       .limit(1);
     if (!org[0]) throw new Error("Organization not found");
-    await ensureDefaults(
-      issueState as any,
-      org[0].id,
-      ISSUE_STATE_DEFAULTS as any,
-    );
+    await ensureIssueStateDefaults(org[0].id);
   }
 
   static async resetProjectStatuses(orgSlug: string) {
@@ -416,11 +515,7 @@ export class WorkflowService {
       .where(eq(organization.slug, orgSlug))
       .limit(1);
     if (!org[0]) throw new Error("Organization not found");
-    await ensureDefaults(
-      projectStatus as any,
-      org[0].id,
-      PROJECT_STATUS_DEFAULTS as any,
-    );
+    await ensureProjectStatusDefaults(org[0].id);
   }
 
   /* -------------------------------------------------------------------- */

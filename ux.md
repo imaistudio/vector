@@ -177,3 +177,351 @@ export const navItemVariants = cva(
 The snippet above is canonical for creating new dense, navigation-focused components that match Linear's efficient design language.
 
 _Any proposal diverging from these guidelines requires approval from the **Design Lead**._
+
+---
+
+## 10. Standard Design Patterns — **Issue-Based Design System**
+
+### View Page Layout Pattern
+
+Based on the **Issues Page** (`src/app/[orgId]/(main)/issues/page.tsx`), all entity list view pages should follow this structure:
+
+```tsx
+export default function EntityPage() {
+  // 1. Client component with hooks
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [page, setPage] = useState(1);
+
+  // 2. Data fetching with proper invalidation
+  const { data: paged, isLoading } = trpc.organization.listEntityPaged.useQuery(
+    {
+      orgSlug,
+      page,
+      pageSize: PAGE_SIZE,
+    },
+  );
+
+  // 3. Mutation handlers with targeted invalidation
+  const deleteMutation = trpc.entity.delete.useMutation({
+    onSuccess: () => {
+      Promise.all([
+        utils.organization.listEntity.invalidate({ orgSlug }),
+        utils.organization.listEntityPaged.invalidate({ orgSlug }),
+      ]).catch(() => {});
+    },
+  });
+
+  return (
+    <div className="bg-background h-full">
+      {/* Header with tabs */}
+      <div className="border-b">
+        <div className="flex items-center justify-between p-1">
+          <div className="flex items-center gap-1">
+            {/* Filter tabs with counts */}
+            {visibleTabs.map((tab) => (
+              <Button
+                key={tab.key}
+                variant={activeFilter === tab.key ? "secondary" : "ghost"}
+                size="sm"
+                className={cn(
+                  "h-6 gap-2 rounded-xs px-3 text-xs font-normal",
+                  activeFilter === tab.key && "bg-secondary",
+                )}
+              >
+                <span>{tab.label}</span>
+                <span className="text-muted-foreground text-xs">
+                  {tab.count}
+                </span>
+              </Button>
+            ))}
+          </div>
+          {/* Create button aligned right */}
+          <CreateEntityDialog className="h-6" orgSlug={orgSlug} />
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1">
+        <EntityTable
+          orgSlug={orgSlug}
+          entities={filteredEntities}
+          // ... other props
+        />
+      </div>
+
+      {/* Pagination footer */}
+      <div className="text-muted-foreground flex justify-between border-t p-2 text-xs">
+        <span>
+          Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+        </span>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={page === 1}>
+            Prev
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page * PAGE_SIZE >= total}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+**Key Principles:**
+
+- **Full height layout**: `h-full` container with proper flex layout
+- **Compact header**: `p-1` padding, `h-6` buttons, `text-xs` typography
+- **Filter tabs with counts**: Secondary variant for active, ghost for inactive
+- **Right-aligned create button**: Consistent placement and sizing
+- **Bordered sections**: Top border for header, bottom border for pagination
+- **Dense pagination**: Small buttons with minimal spacing
+
+### Table Design Pattern
+
+Based on **IssuesTable** (`src/components/issues/issues-table.tsx`), entity tables should follow:
+
+```tsx
+export function EntityTable({ entities, ...handlers }: EntityTableProps) {
+  if (entities.length === 0) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="text-center">
+          <div className="mb-4 text-4xl">[ICON]</div>
+          <h3 className="mb-2 text-lg font-semibold">No [entities] found</h3>
+          <p className="text-muted-foreground mb-6">
+            Get started by creating your first [entity].
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y">
+      <AnimatePresence initial={false}>
+        {entities.map((entity) => (
+          <motion.div
+            layout
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.2 }}
+            key={entity.id}
+            className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors"
+          >
+            {/* Entity-specific content with consistent spacing */}
+            <div className="min-w-0 flex-1">
+              <Link
+                href={`/${orgSlug}/[entities]/${entity.key}`}
+                className="hover:text-primary block truncate text-sm font-medium transition-colors"
+              >
+                {entity.title || entity.name}
+              </Link>
+            </div>
+
+            {/* Actions dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              {/* ... menu content */}
+            </DropdownMenu>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+```
+
+**Key Principles:**
+
+- **Divide-y layout**: No table headers, use divider lines between rows
+- **Framer Motion**: Animate presence with subtle y-axis movement
+- **Hover states**: `hover:bg-muted/50` for interactive feedback
+- **Flex layout**: `gap-3 px-3 py-2` for consistent internal spacing
+- **Truncation**: `min-w-0 flex-1` for main content, `truncate` for overflow
+- **Action buttons**: `h-6 w-6 p-0` for compact dropdown triggers
+- **Empty states**: Centered with emoji, title, description, and action prompting
+
+### Dialog Design Pattern
+
+Based on **CreateIssueDialog** (`src/components/issues/create-issue-dialog.tsx`), dialogs should follow:
+
+```tsx
+function CreateEntityDialogContent({ orgSlug, onClose, onSuccess }) {
+  return (
+    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
+      <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center">
+            <div className="text-muted-foreground flex w-full items-center gap-2 text-sm">
+              {/* Properties Row - horizontal selector layout */}
+              <div className="flex flex-wrap gap-2">
+                <EntitySelector1 />
+                <EntitySelector2 />
+                <EntitySelector3 />
+              </div>
+              {/* Right-aligned metadata/preview */}
+              <div className="ml-auto">
+                <PreviewComponent />
+              </div>
+            </div>
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-2">
+          {/* Main content fields */}
+          <Input
+            placeholder="Entity title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-base"
+            autoFocus
+          />
+
+          <Textarea
+            placeholder="Add description..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="min-h-[120px]"
+          />
+        </form>
+
+        {/* Footer actions */}
+        <div className="flex w-full flex-row items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!title.trim() || isPending}
+            onClick={handleSubmit}
+          >
+            {isPending ? "Creating…" : "Create [entity]"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+**Key Principles:**
+
+- **Compact padding**: `gap-2 p-2` for dense dialog layout
+- **Header as properties bar**: Selectors in header, not form body
+- **No close button**: `showCloseButton={false}` for cleaner look
+- **Flex wrap selectors**: Horizontal layout with responsive wrapping
+- **Right-aligned metadata**: Preview or format info in header
+- **Minimal form spacing**: `space-y-2` between form elements
+- **Balanced footer**: Cancel left, primary action right with loading states
+
+### Individual Entity View Page Pattern
+
+Based on entity detail pages, individual view pages should follow:
+
+```tsx
+export default async function EntityViewPage({ params }) {
+  const { orgId, entityKey } = await params;
+
+  const entity = await findEntityByKey(orgId, entityKey);
+
+  if (!entity) {
+    notFound();
+  }
+
+  return (
+    <div className="bg-background h-full">
+      {/* Header */}
+      <div className="border-b p-4">
+        <div className="flex items-center justify-between">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold">{entity.name}</h1>
+            <p className="text-muted-foreground text-sm">{entity.key}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Status badges, action buttons */}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 p-4">{/* Entity-specific content */}</div>
+    </div>
+  );
+}
+```
+
+**Key Principles:**
+
+- **Full height**: `h-full` with proper flex layout
+- **Bordered header**: Clean separation with `border-b`
+- **Truncated titles**: Handle long names gracefully
+- **Consistent padding**: `p-4` for comfortable spacing
+- **Header actions**: Right-aligned status and controls
+
+_These patterns ensure consistency across all entity types while maintaining the dense, efficient design language established by the issues pages._
+
+---
+
+## 11. Dense Interface Typography Scale
+
+```ts
+import { cva } from "class-variance-authority";
+
+export const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input hover:bg-accent hover:text-accent-foreground",
+        ghost: "hover:bg-accent hover:text-accent-foreground", // Added for nav items
+      },
+      size: {
+        default: "h-9 px-4 py-2", // Reduced from h-11
+        sm: "h-8 rounded-md px-3", // Reduced from h-9
+        lg: "h-10 rounded-md px-8", // Reduced from h-11
+        icon: "h-9 w-9", // Reduced from h-10 w-10
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+
+// Navigation-specific variant for dense sidebar
+export const navItemVariants = cva(
+  "flex items-center gap-2 rounded-md text-sm font-medium transition-colors",
+  {
+    variants: {
+      variant: {
+        default:
+          "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+        active: "bg-accent text-accent-foreground",
+      },
+      size: {
+        default: "py-1.5 px-3", // Dense padding
+        compact: "py-1 px-2", // Ultra-dense for secondary nav
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  },
+);
+```

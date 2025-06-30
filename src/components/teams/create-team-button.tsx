@@ -1,38 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
+import type React from "react";
 import { CreateTeamDialog } from "./create-team-dialog";
-import { Plus } from "lucide-react";
 
-interface CreateTeamButtonProps {
-  orgSlug: string;
-  variant?: "default" | "outline" | "ghost";
+/**
+ * Thin wrapper kept for backwards-compatibility. Accepts the previous props
+ * (`size`, etc.) but simply forwards through to the new unified
+ * `CreateTeamDialog` component.
+ */
+interface LegacyCreateTeamButtonProps
+  extends React.ComponentProps<typeof CreateTeamDialog> {
+  /** Optional size prop kept for API parity but not used. */
   size?: "default" | "sm" | "lg" | "icon";
-  children?: React.ReactNode;
 }
 
 export function CreateTeamButton({
-  orgSlug,
-  variant = "default",
-  size = "sm",
-  children,
-}: CreateTeamButtonProps) {
-  const [showDialog, setShowDialog] = useState(false);
-
-  return (
-    <>
-      <Button variant={variant} size={size} onClick={() => setShowDialog(true)}>
-        <Plus className="mr-1 size-3" />
-        {children || "Create team"}
-      </Button>
-
-      {showDialog && (
-        <CreateTeamDialog
-          orgSlug={orgSlug}
-          onClose={() => setShowDialog(false)}
-        />
-      )}
-    </>
-  );
+  size: _size,
+  ...rest
+}: LegacyCreateTeamButtonProps) {
+  // `_size` is intentionally ignored – sizing is handled internally by the
+  // new dialog component. All other props are forwarded through untouched.
+  return <CreateTeamDialog {...rest} />;
 }
