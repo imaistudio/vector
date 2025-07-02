@@ -10,11 +10,19 @@ import {
   CheckSquare,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CreateIssueDialog } from "@/components/issues/create-issue-dialog";
+import { CreateTeamButton } from "@/components/teams/create-team-button";
+import { CreateProjectButton } from "@/components/projects/create-project-button";
+import { PermissionGate } from "@/hooks/use-permissions";
+import { PERMISSIONS } from "@/auth/permission-constants";
+import type { ReactNode } from "react";
 
 interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Optional create button element shown at the end of the row */
+  createElement?: ReactNode;
 }
 
 interface OrgSidebarProps {
@@ -29,16 +37,27 @@ export function OrgSidebar({ orgId }: OrgSidebarProps) {
       label: "Issues",
       href: `/${orgId}/issues`,
       icon: CheckSquare,
+      createElement: (
+        <PermissionGate orgSlug={orgId} permission={PERMISSIONS.ISSUE_CREATE}>
+          <CreateIssueDialog orgSlug={orgId} className="h-6" />
+        </PermissionGate>
+      ),
     },
     {
       label: "Teams",
       href: `/${orgId}/teams`,
       icon: Users,
+      createElement: (
+        <CreateTeamButton orgSlug={orgId} size="sm" className="h-6" />
+      ),
     },
     {
       label: "Projects",
       href: `/${orgId}/projects`,
       icon: FolderKanban,
+      createElement: (
+        <CreateProjectButton orgSlug={orgId} size="sm" className="h-6" />
+      ),
     },
   ];
 
@@ -49,20 +68,39 @@ export function OrgSidebar({ orgId }: OrgSidebarProps) {
           pathname === item.href || pathname.startsWith(item.href + "/");
 
         return (
-          <Link
+          <div
             key={item.href}
-            href={item.href}
             className={cn(
-              "flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+              "group flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
               "hover:bg-foreground/10 hover:text-foreground",
               isActive
                 ? "bg-foreground/10 text-foreground"
                 : "text-muted-foreground",
             )}
           >
-            <item.icon className="size-4" />
-            <span>{item.label}</span>
-          </Link>
+            {/* Clickable area */}
+            <Link
+              href={item.href}
+              className="flex flex-1 items-center gap-2 outline-none"
+              /* Prevent focus ring from being clipped */
+            >
+              <item.icon className="size-4" />
+              <span>{item.label}</span>
+            </Link>
+
+            {/* Create button (if any) */}
+            {item.createElement && (
+              <div
+                className="flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                onClick={(e) => {
+                  // Prevent row hover click-through
+                  e.stopPropagation();
+                }}
+              >
+                {item.createElement}
+              </div>
+            )}
+          </div>
         );
       })}
     </nav>

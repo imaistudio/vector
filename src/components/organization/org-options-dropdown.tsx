@@ -18,17 +18,20 @@ interface Organization {
   id: string;
   name: string;
   slug: string;
+  logo?: string | null;
 }
 
 interface OrgOptionsDropdownProps {
   currentOrgId: string;
   currentOrgName: string;
+  currentOrgLogo?: string | null;
   organizations?: Organization[];
 }
 
 export function OrgOptionsDropdown({
   currentOrgId,
   currentOrgName,
+  currentOrgLogo,
   organizations = [],
 }: OrgOptionsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -67,9 +70,17 @@ export function OrgOptionsDropdown({
           aria-expanded={isOpen}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="bg-primary text-primary-foreground flex size-5 shrink-0 items-center justify-center rounded text-xs font-semibold">
-              {currentOrgName.charAt(0).toUpperCase()}
-            </div>
+            {currentOrgLogo ? (
+              <img
+                src={`/api/files/${currentOrgLogo}`}
+                alt="Logo"
+                className="size-5 shrink-0 rounded object-cover"
+              />
+            ) : (
+              <div className="bg-primary text-primary-foreground flex size-5 shrink-0 items-center justify-center rounded text-xs font-semibold">
+                {currentOrgName.charAt(0).toUpperCase()}
+              </div>
+            )}
             <span className="truncate text-sm font-medium">
               {currentOrgName}
             </span>
@@ -114,9 +125,17 @@ export function OrgOptionsDropdown({
           className="flex cursor-pointer items-center gap-2 px-2 py-1.5"
           onSelect={() => handleOrgSwitch(currentOrgId)}
         >
-          <div className="bg-primary text-primary-foreground flex size-4 items-center justify-center rounded text-xs font-semibold">
-            {currentOrgName.charAt(0).toUpperCase()}
-          </div>
+          {currentOrgLogo ? (
+            <img
+              src={`/api/files/${currentOrgLogo}`}
+              alt="Logo"
+              className="size-4 rounded object-cover"
+            />
+          ) : (
+            <div className="bg-primary text-primary-foreground flex size-4 items-center justify-center rounded text-xs font-semibold">
+              {currentOrgName.charAt(0).toUpperCase()}
+            </div>
+          )}
           <span className="flex-1 truncate text-sm">{currentOrgName}</span>
           <Check className="text-primary size-3" />
         </DropdownMenuItem>
@@ -130,9 +149,17 @@ export function OrgOptionsDropdown({
               className="flex cursor-pointer items-center gap-2 px-2 py-1.5"
               onSelect={() => handleOrgSwitch(org.id)}
             >
-              <div className="bg-muted text-muted-foreground flex size-4 items-center justify-center rounded text-xs font-semibold">
-                {org.name.charAt(0).toUpperCase()}
-              </div>
+              {org.logo ? (
+                <img
+                  src={`/api/files/${org.logo}`}
+                  alt="Logo"
+                  className="size-4 rounded object-cover"
+                />
+              ) : (
+                <div className="bg-muted text-muted-foreground flex size-4 items-center justify-center rounded text-xs font-semibold">
+                  {org.name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <span className="flex-1 truncate text-sm">{org.name}</span>
             </DropdownMenuItem>
           ))}

@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import { auth } from "@/auth/auth";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { Building } from "lucide-react";
-import { OrgNameEditor, OrgSlugEditor } from "@/components/organization";
+import {
+  OrgNameEditor,
+  OrgSlugEditor,
+  OrgLogoEditor,
+} from "@/components/organization";
 
 interface OrgSettingsPageProps {
   params: Promise<{ orgId: string }>;
@@ -80,6 +84,29 @@ export default async function OrgSettingsPage({
             )}
             <p className="text-muted-foreground text-xs">
               Used in your organization's URL (example.com/{orgSlug})
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Organization Logo</label>
+            {isAdmin ? (
+              <OrgLogoEditor
+                orgSlug={orgSlug}
+                initialValue={org.organizationLogo}
+              />
+            ) : org.organizationLogo ? (
+              <img
+                src={`/api/files/${org.organizationLogo}`}
+                alt="Org logo"
+                className="size-16 rounded border object-cover"
+              />
+            ) : (
+              <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded border text-sm">
+                No logo
+              </div>
+            )}
+            <p className="text-muted-foreground text-xs">
+              Upload a square image (PNG, JPG, or SVG). Max 1MB.
             </p>
           </div>
         </div>

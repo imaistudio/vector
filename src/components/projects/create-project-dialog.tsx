@@ -21,6 +21,9 @@ import {
 } from "@/components/issues/issue-selectors";
 import { StatusSelector } from "@/components/projects/project-selectors";
 
+// ---------------------------------------------------------------------------
+// 🧩 Internal content component (dialog body)
+// ---------------------------------------------------------------------------
 interface CreateProjectDialogContentProps {
   orgSlug: string;
   onClose: () => void;
@@ -66,6 +69,7 @@ function CreateProjectDialogContent({
 
   const createMutation = trpc.project.create.useMutation({
     onSuccess: (result) => {
+      // Refresh projects list (both full and paged) so the UI updates
       Promise.all([
         utils.organization.listProjects.invalidate({ orgSlug }),
         utils.organization.listProjectsPaged.invalidate({ orgSlug }),
@@ -100,30 +104,60 @@ function CreateProjectDialogContent({
         .replace(/\s+/g, "-") // replace spaces with hyphens
         .replace(/[^A-Z0-9-]/gi, "") // allow only alphanumeric and hyphens
         .slice(0, 20) // max 20 chars for projects
-        .toLowerCase(), // projects use lowercase
+        .toUpperCase(), // projects use uppercase
     );
   };
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
+      <DialogHeader className="sr-only">
+        <DialogTitle>Create Project</DialogTitle>
+      </DialogHeader>
       <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Create Project</DialogTitle>
-        </DialogHeader>
-
         <form onSubmit={handleSubmit} className="space-y-2">
-          {/* Project Name */}
-          <div className="relative">
-            <Input
-              placeholder="Project name"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              className="pr-20 text-base"
-              autoFocus
+          {/* Project Name with inline selectors */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Input
+                placeholder="Project name"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                className="pr-20 text-base"
+                autoFocus
+              />
+              <span className="text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs">
+                Name
+              </span>
+            </div>
+
+            {/* Inline selectors */}
+            <TeamSelector
+              teams={teams}
+              selectedTeam={selectedTeam}
+              onTeamSelect={setSelectedTeam}
+              displayMode="iconWhenUnselected"
+              // Matches the height of the input box on the left for visual alignment
+              className="h-9"
+              // (applies to all inline selectors below)
             />
-            <span className="text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs">
-              Name
-            </span>
+
+            <AssigneeSelector
+              members={members}
+              selectedAssignee={selectedLead}
+              onAssigneeSelect={setSelectedLead}
+              displayMode="iconWhenUnselected"
+              align="center"
+              className="h-9"
+            />
+
+            <StatusSelector
+              statuses={statuses}
+              selectedStatus={selectedStatus}
+              onStatusSelect={setSelectedStatus}
+              displayMode="iconWhenUnselected"
+              align="end"
+              className="h-9"
+            />
           </div>
 
           {/* Project Key */}
@@ -132,7 +166,7 @@ function CreateProjectDialogContent({
               placeholder="project-key"
               value={key}
               onChange={(e) =>
-                setKey(e.target.value.toLowerCase().slice(0, 20))
+                setKey(e.target.value.toUpperCase().slice(0, 20))
               }
               maxLength={20}
               className="h-9 pr-20 text-base"
@@ -140,30 +174,6 @@ function CreateProjectDialogContent({
             <span className="text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs">
               Key
             </span>
-          </div>
-
-          {/* Properties Row */}
-          <div className="flex flex-wrap gap-2 py-2">
-            <TeamSelector
-              teams={teams}
-              selectedTeam={selectedTeam}
-              onTeamSelect={setSelectedTeam}
-              displayMode="iconWhenUnselected"
-            />
-
-            <AssigneeSelector
-              members={members}
-              selectedAssignee={selectedLead}
-              onAssigneeSelect={setSelectedLead}
-              displayMode="iconWhenUnselected"
-            />
-
-            <StatusSelector
-              statuses={statuses}
-              selectedStatus={selectedStatus}
-              onStatusSelect={setSelectedStatus}
-              displayMode="iconWhenUnselected"
-            />
           </div>
 
           {/* Description */}
@@ -197,7 +207,9 @@ function CreateProjectDialogContent({
   );
 }
 
-// Public wrapper component
+// ---------------------------------------------------------------------------
+// 🖱️ Public wrapper — handles trigger button + open state
+// ---------------------------------------------------------------------------
 export interface CreateProjectDialogProps {
   /** Organization slug the project belongs to */
   orgSlug: string;

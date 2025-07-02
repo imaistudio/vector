@@ -33,6 +33,7 @@ export class OrganizationService {
         role: member.role,
         organizationName: organization.name,
         organizationSlug: organization.slug,
+        organizationLogo: organization.logo,
       })
       .from(member)
       .innerJoin(organization, eq(member.organizationId, organization.id))
@@ -318,9 +319,9 @@ export class OrganizationService {
    */
   static async updateOrganization(
     orgId: string,
-    data: { name?: string; slug?: string },
+    data: { name?: string; slug?: string; logo?: string },
   ) {
-    if (!data.name && !data.slug) return;
+    if (!data.name && !data.slug && !data.logo) return;
 
     // If slug is being changed → ensure uniqueness
     if (data.slug) {
@@ -340,6 +341,7 @@ export class OrganizationService {
       .set({
         ...(data.name ? { name: data.name } : {}),
         ...(data.slug ? { slug: data.slug } : {}),
+        ...(data.logo ? { logo: data.logo } : {}),
       })
       .where(eq(organization.id, orgId));
 
@@ -348,6 +350,7 @@ export class OrganizationService {
         id: organization.id,
         name: organization.name,
         slug: organization.slug,
+        logo: organization.logo,
       })
       .from(organization)
       .where(eq(organization.id, orgId))
@@ -361,6 +364,7 @@ export class OrganizationService {
         id: organization.id,
         name: organization.name,
         slug: organization.slug,
+        logo: organization.logo,
       })
       .from(member)
       .innerJoin(organization, eq(member.organizationId, organization.id))
@@ -592,6 +596,7 @@ export class OrganizationService {
         organizationId: invitation.organizationId,
         organizationName: organization.name,
         organizationSlug: organization.slug,
+        organizationLogo: organization.logo,
         inviterName: user.name,
       })
       .from(invitation)
@@ -722,7 +727,6 @@ export class OrganizationService {
         projectKey: project.key,
         teamName: team.name,
         teamKey: team.key,
-        createdAt: issue.createdAt,
         updatedAt: issue.updatedAt,
         sequenceNumber: issue.sequenceNumber,
         assigneeId: assignment.assigneeId,

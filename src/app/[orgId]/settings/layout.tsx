@@ -44,11 +44,12 @@ export default async function SettingsLayout({
 
   // Map organizations so that 'id' aligns with slug for routing
   const orgOptions = userOrganizations
-    .filter((org) => org.slug) // ensure slug exists
+    .filter((org) => org.slug)
     .map((org) => ({
-      id: org.slug as string, // use slug for routing / filter matching
+      id: org.slug as string,
       name: org.name,
       slug: org.slug as string,
+      logo: org.logo ?? undefined,
     }));
 
   return (
@@ -61,6 +62,7 @@ export default async function SettingsLayout({
             <OrgOptionsDropdown
               currentOrgId={orgSlug}
               currentOrgName={currentOrg.organizationName}
+              currentOrgLogo={currentOrg.organizationLogo ?? undefined}
               organizations={orgOptions}
             />
           </div>

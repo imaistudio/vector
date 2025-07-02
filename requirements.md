@@ -119,3 +119,25 @@ Notes:
    2. Invitation accepted; new `member` row is created in that org.
    3. UI switches active organisation to the newly joined one.
    4. User can toggle between organisations via org-switcher (uses Better-Auth `organization.setActive`).
+
+## Local S3 storage (MinIO)
+
+A MinIO container is included in `docker-compose.dev.yml`. After `pnpm dlx --yes docker compose -f docker-compose.dev.yml up -d` you'll have:
+
+• Endpoint: `http://localhost:9000`  
+• Console: `http://localhost:9001`  
+• Access key / secret: `minioadmin` / `minioadmin`  
+• Pre-created bucket: `aikp-local` (private, access controlled by org membership)
+
+Update your `.env.local`:
+
+```
+AWS_ACCESS_KEY_ID=minioadmin
+AWS_SECRET_ACCESS_KEY=minioadmin
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=aikp-local
+S3_ENDPOINT=http://localhost:9000
+S3_FORCE_PATH_STYLE=true
+```
+
+Now logo uploads work exactly like in production. Files are stored privately and served through `/api/files/*` with org-level access control.

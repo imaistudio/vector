@@ -307,3 +307,118 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
     </div>
   );
 }
+
+// ------------------------------------------------------------------
+//  Organization LOGO editor
+// ------------------------------------------------------------------
+
+interface LogoEditorProps {
+  orgSlug: string;
+  initialValue?: string | null;
+}
+
+export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
+  const [logoKey, setLogoKey] = useState<string | undefined | null>(
+    initialValue ?? undefined,
+  );
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+
+  const updateMutation = trpc.organization.update.useMutation({
+    onSuccess: () => {
+      router.refresh();
+    },
+  });
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+
+      // Step 1: request a presigned URL for this upload
+      const presignRes = await fetch(`/api/orgs/${orgSlug}/logo-presign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileType: file.type }),
+      });
+
+      if (!presignRes.ok) {
+        throw new Error("Failed to generate upload URL");
+      }
+
+      const { uploadUrl, key } = (await presignRes.json()) as {
+        uploadUrl: string;
+        key: string;
+      };
+
+      // Step 2: upload the file directly to S3
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Upload failed");
+      }
+
+      // Step 3: persist the logo key in DB
+      await updateMutation.mutateAsync({
+        orgSlug,
+        data: { logo: key },
+      });
+
+      setLogoKey(key);
+    } catch (err) {
+      console.error(err);
+      // TODO: show toast / error feedback
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-4">
+      {/* Avatar preview */}
+      {logoKey ? (
+        <img
+          src={`/api/files/${logoKey}`}
+          alt="Organization logo"
+          className="size-16 rounded border object-cover"
+        />
+      ) : (
+        <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded border text-sm">
+          No logo
+        </div>
+      )}
+
+      {/* File input & button */}
+      <div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Edit className="size-4" />
+          )}
+          <span className="ml-2">{logoKey ? "Change" : "Upload"}</span>
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
+      </div>
+    </div>
+  );
+}

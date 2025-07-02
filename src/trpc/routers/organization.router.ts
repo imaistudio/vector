@@ -34,6 +34,7 @@ export const organizationRouter = createTRPCRouter({
             .regex(/^[a-z0-9-]+$/)
             .min(1)
             .optional(),
+          logo: z.string().min(1).optional(),
         }),
       }),
     )

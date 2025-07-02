@@ -11,11 +11,22 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string(),
   APP_URL: z.string().url(),
   BETTER_AUTH_URL: z.string().url().optional(),
+  // SMTP credentials (optional)
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
   SMTP_FROM: z.string().optional(),
+  // AWS S3 credentials (required for file uploads)
+  AWS_ACCESS_KEY_ID: z.string(),
+  AWS_SECRET_ACCESS_KEY: z.string(),
+  AWS_REGION: z.string(),
+  AWS_S3_BUCKET: z.string(),
+  // Optional override for non-AWS S3-compatible providers (e.g., MinIO, R2)
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional().default("false"),
+  // Public base URL for accessing objects if not standard `${bucket}.s3.amazonaws.com` pattern (e.g., R2 custom domain)
+  S3_PUBLIC_BASE_URL: z.string().url().optional(),
 });
 
 // Load environment variables from .env files **before** validation.
@@ -61,4 +72,11 @@ if (!_env.success) {
 export const env = {
   ..._env.data,
   BETTER_AUTH_URL: _env.data.BETTER_AUTH_URL ?? _env.data.APP_URL,
+  AWS_ACCESS_KEY_ID: _env.data.AWS_ACCESS_KEY_ID,
+  AWS_SECRET_ACCESS_KEY: _env.data.AWS_SECRET_ACCESS_KEY,
+  AWS_REGION: _env.data.AWS_REGION,
+  AWS_S3_BUCKET: _env.data.AWS_S3_BUCKET,
+  S3_ENDPOINT: _env.data.S3_ENDPOINT,
+  S3_FORCE_PATH_STYLE: _env.data.S3_FORCE_PATH_STYLE,
+  S3_PUBLIC_BASE_URL: _env.data.S3_PUBLIC_BASE_URL,
 };

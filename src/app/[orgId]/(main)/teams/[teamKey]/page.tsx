@@ -344,55 +344,6 @@ function MembersList({
   );
 }
 
-// Replace ColorPalettePicker component with the same colors from states settings
-function ColorPalettePicker({
-  value,
-  colors,
-  onChange,
-}: {
-  value: string | null;
-  colors: string[];
-  onChange: (c: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button variant="outline" className="h-8 w-full justify-between">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-block h-4 w-4 rounded-full border"
-              style={{ backgroundColor: value || "#ffffff" }}
-            />
-            <span>{value || "Select color"}</span>
-          </div>
-          <ChevronsUpDown className="h-4 w-4 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-60">
-        <div className="flex flex-wrap gap-2">
-          {colors.map((colorOption) => (
-            <button
-              key={colorOption}
-              type="button"
-              className={`size-8 rounded-md border-2 transition-all ${
-                value === colorOption
-                  ? "border-foreground scale-110"
-                  : "border-border hover:scale-105"
-              }`}
-              style={{ backgroundColor: colorOption }}
-              onClick={() => {
-                onChange(colorOption);
-                setOpen(false);
-              }}
-            />
-          ))}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 // Add the DEFAULT_COLORS constant from states settings
 const DEFAULT_COLORS = [
   "#94a3b8", // slate-400
@@ -604,12 +555,87 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
 
               {/* Name */}
               {editingName ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  {/* Icon that stays visible during editing */}
+                  {canEdit ? (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-0 transition-opacity hover:opacity-80">
+                          {iconValue ? (
+                            (() => {
+                              const IconComp = getDynamicIcon(iconValue);
+                              if (!IconComp)
+                                return (
+                                  <Users className="text-muted-foreground size-6" />
+                                );
+                              return (
+                                <IconComp
+                                  className="size-6"
+                                  style={{ color: colorValue || undefined }}
+                                />
+                              );
+                            })()
+                          ) : (
+                            <div className="border-muted-foreground/50 flex size-6 items-center justify-center rounded border-2 border-dashed">
+                              <Plus className="text-muted-foreground size-3" />
+                            </div>
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="start">
+                        <div className="space-y-4">
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">
+                              Team Icon
+                            </h4>
+                            <IconPicker
+                              value={iconValue}
+                              onValueChange={handleIconChange}
+                              placeholder="Select team icon"
+                              className="h-8 w-full"
+                            />
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">
+                              Team Color
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {DEFAULT_COLORS.map((colorOption) => (
+                                <button
+                                  key={colorOption}
+                                  type="button"
+                                  className={`size-8 rounded-md border-2 transition-all ${
+                                    colorValue === colorOption
+                                      ? "border-foreground scale-110"
+                                      : "border-border hover:scale-105"
+                                  }`}
+                                  style={{ backgroundColor: colorOption }}
+                                  onClick={() => handleColorChange(colorOption)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    iconValue &&
+                    (() => {
+                      const IconComp = getDynamicIcon(iconValue);
+                      if (!IconComp) return null;
+                      return (
+                        <IconComp
+                          className="size-6"
+                          style={{ color: colorValue || undefined }}
+                        />
+                      );
+                    })()
+                  )}
                   <Input
                     value={nameValue}
                     onChange={(e) => setNameValue(e.target.value)}
-                    className="h-auto border-none p-0 text-3xl font-semibold shadow-none focus-visible:ring-0"
-                    style={{ fontSize: "1.875rem", lineHeight: "2.25rem" }}
+                    className="h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0"
+                    style={{ fontFamily: "var(--font-title)" }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleNameSave();
                       if (e.key === "Escape") {
@@ -640,14 +666,71 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   </div>
                 </div>
               ) : (
-                <h1
-                  className={cn(
-                    "flex items-center gap-2 text-3xl leading-tight font-semibold transition-colors",
-                    canEdit && "hover:text-muted-foreground cursor-pointer",
-                  )}
-                  onClick={() => canEdit && setEditingName(true)}
-                >
-                  {iconValue &&
+                <h1 className="flex items-center gap-2 text-3xl leading-tight font-semibold">
+                  {/* Clickable Icon with Color */}
+                  {canEdit ? (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="flex items-center gap-0 transition-opacity hover:opacity-80">
+                          {iconValue ? (
+                            (() => {
+                              const IconComp = getDynamicIcon(iconValue);
+                              if (!IconComp)
+                                return (
+                                  <Users className="text-muted-foreground size-6" />
+                                );
+                              return (
+                                <IconComp
+                                  className="size-6"
+                                  style={{ color: colorValue || undefined }}
+                                />
+                              );
+                            })()
+                          ) : (
+                            <div className="border-muted-foreground/50 flex size-6 items-center justify-center rounded border-2 border-dashed">
+                              <Plus className="text-muted-foreground size-3" />
+                            </div>
+                          )}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-80" align="start">
+                        <div className="space-y-4">
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">
+                              Team Icon
+                            </h4>
+                            <IconPicker
+                              value={iconValue}
+                              onValueChange={handleIconChange}
+                              placeholder="Select team icon"
+                              className="h-8 w-full"
+                            />
+                          </div>
+                          <div>
+                            <h4 className="mb-2 text-sm font-medium">
+                              Team Color
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {DEFAULT_COLORS.map((colorOption) => (
+                                <button
+                                  key={colorOption}
+                                  type="button"
+                                  className={`size-8 rounded-md border-2 transition-all ${
+                                    colorValue === colorOption
+                                      ? "border-foreground scale-110"
+                                      : "border-border hover:scale-105"
+                                  }`}
+                                  style={{ backgroundColor: colorOption }}
+                                  onClick={() => handleColorChange(colorOption)}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    iconValue &&
                     (() => {
                       const IconComp = getDynamicIcon(iconValue);
                       if (!IconComp) return null;
@@ -657,8 +740,17 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                           style={{ color: colorValue || undefined }}
                         />
                       );
-                    })()}
-                  {team.name}
+                    })()
+                  )}
+                  <span
+                    className={cn(
+                      "transition-colors",
+                      canEdit && "hover:text-muted-foreground cursor-pointer",
+                    )}
+                    onClick={() => canEdit && setEditingName(true)}
+                  >
+                    {team.name}
+                  </span>
                 </h1>
               )}
             </div>
@@ -725,27 +817,6 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   )}
                 </div>
               )}
-            </div>
-
-            {/* Icon & Color */}
-            <div className="mb-8 flex max-w-md items-center gap-4">
-              {/* Icon picker */}
-              <div className="flex-1">
-                <IconPicker
-                  value={iconValue}
-                  onValueChange={handleIconChange}
-                  placeholder="Select team icon"
-                  className="h-8"
-                />
-              </div>
-              {/* Color picker */}
-              <div className="flex-1">
-                <ColorPalettePicker
-                  value={colorValue}
-                  colors={DEFAULT_COLORS}
-                  onChange={handleColorChange}
-                />
-              </div>
             </div>
 
             {/* Team Members */}

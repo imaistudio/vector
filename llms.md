@@ -50,7 +50,7 @@ image:    postgres:17
 Spin it up with:
 
 ```bash
-pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
+pnpm dlx --yes docker compose -f docker-compose.dev.yml up -d
 ```
 
 ---
@@ -203,7 +203,7 @@ pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
 pnpm install
 
 # Start Postgres container (first time)
-pnpm dlx --yes docker compose -f docker-compose.dev-postgres.yml up -d
+pnpm dlx --yes docker compose -f docker-compose.dev.yml up -d
 
 # Generate migrations (after editing schema)
 pnpm run db:generate
@@ -274,3 +274,18 @@ The CLI reads `components.json` to know where to put files—so commit that file
 >
 > - **Card elevation**: `shadow-xl` with `backdrop-blur-sm` for depth
 > - **Background treatments**: `
+
+## File Storage & Access Control
+
+Files (like organization logos) are stored privately in S3-compatible storage (MinIO locally, R2/S3 in prod). Access is controlled at the organization level:
+
+• Files are uploaded with `ACL: "private"`
+• The database stores just the object key (e.g., `org-logos/<orgId>/logo.png`)
+• Reading happens through `/api/files/<key>` which:
+
+1. Authenticates the user
+2. Verifies org membership
+3. Generates a presigned URL (1hr expiry)
+4. Redirects (302) to the signed URL
+
+This ensures only org members can access org files while keeping the implementation provider-agnostic.
