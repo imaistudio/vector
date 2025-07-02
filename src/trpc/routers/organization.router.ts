@@ -87,6 +87,27 @@ export const organizationRouter = createTRPCRouter({
       );
     }),
 
+  searchMembers: protectedProcedure
+    .input(
+      z.object({
+        orgSlug: z.string(),
+        query: z.string().optional(),
+        limit: z.number().int().min(1).max(50).default(10),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const membership = await OrganizationService.verifyUserOrganizationAccess(
+        getUserId(ctx),
+        input.orgSlug,
+      );
+      if (!membership) throw new Error("FORBIDDEN");
+      return OrganizationService.searchMembers(
+        membership.organizationId,
+        input.query,
+        input.limit,
+      );
+    }),
+
   invite: protectedProcedure
     .input(
       z.object({
@@ -282,6 +303,8 @@ export const organizationRouter = createTRPCRouter({
         orgSlug: z.string(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(25),
+        projectId: z.string().uuid().optional(),
+        teamId: z.string().uuid().optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
@@ -295,6 +318,10 @@ export const organizationRouter = createTRPCRouter({
         getUserId(ctx),
         input.page,
         input.pageSize,
+        {
+          projectId: input.projectId,
+          teamId: input.teamId,
+        },
       );
     }),
 

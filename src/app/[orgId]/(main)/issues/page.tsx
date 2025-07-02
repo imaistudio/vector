@@ -10,6 +10,10 @@ import { issueStateTypeEnum } from "@/db/schema/issue-config";
 import { authClient } from "@/lib/auth-client";
 import { IssuesTable } from "@/components/issues/issues-table";
 import { PageSkeleton } from "@/components/ui/table-skeleton";
+import {
+  ProjectSelector,
+  TeamSelector,
+} from "@/components/issues/issue-selectors";
 
 type StateType = (typeof issueStateTypeEnum.enumValues)[number];
 type FilterType = "all" | StateType;
@@ -40,6 +44,8 @@ export default function IssuesPage() {
   const params = useParams();
   const orgSlug = params.orgId as string;
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [selectedTeam, setSelectedTeam] = useState<string>("");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
 
@@ -49,15 +55,6 @@ export default function IssuesPage() {
   const deleteMutation = trpc.issue.delete.useMutation({
     onSuccess: () => {
       // Refresh only issue-related queries instead of invalidating everything
-      Promise.all([
-        utils.organization.listIssues.invalidate({ orgSlug }),
-        utils.organization.listIssuesPaged.invalidate({ orgSlug }),
-      ]).catch(() => {});
-    },
-  });
-
-  const changeStateMutation = trpc.issue.changeState.useMutation({
-    onSuccess: () => {
       Promise.all([
         utils.organization.listIssues.invalidate({ orgSlug }),
         utils.organization.listIssuesPaged.invalidate({ orgSlug }),
@@ -75,6 +72,15 @@ export default function IssuesPage() {
   });
 
   const assignMutation = trpc.issue.assign.useMutation({
+    onSuccess: () => {
+      Promise.all([
+        utils.organization.listIssues.invalidate({ orgSlug }),
+        utils.organization.listIssuesPaged.invalidate({ orgSlug }),
+      ]).catch(() => {});
+    },
+  });
+
+  const updateAssigneesMutation = trpc.issue.updateAssignees.useMutation({
     onSuccess: () => {
       Promise.all([
         utils.organization.listIssues.invalidate({ orgSlug }),
@@ -101,16 +107,22 @@ export default function IssuesPage() {
     },
   });
 
+  const changeAssignmentStateMutation =
+    trpc.issue.changeAssignmentState.useMutation({
+      onSuccess: () => {
+        Promise.all([
+          utils.organization.listIssues.invalidate({ orgSlug }),
+          utils.organization.listIssuesPaged.invalidate({ orgSlug }),
+        ]).catch(() => {});
+      },
+    });
+
   const { data: states = [] } = trpc.organization.listIssueStates.useQuery({
     orgSlug,
   });
 
   const { data: priorities = [] } =
     trpc.organization.listIssuePriorities.useQuery({ orgSlug });
-
-  const { data: members = [] } = trpc.organization.listMembers.useQuery({
-    orgSlug,
-  });
 
   const { data: teams = [] } = trpc.organization.listTeams.useQuery({
     orgSlug,
@@ -120,14 +132,7 @@ export default function IssuesPage() {
     orgSlug,
   });
 
-  const handleStateChange = (issueId: string, stateId: string) => {
-    if (!session?.user?.id || !stateId) return;
-    changeStateMutation.mutate({
-      issueId,
-      actorId: session.user.id,
-      stateId,
-    });
-  };
+  const canChangeAll = session?.user?.role === "admin";
 
   const handlePriorityChange = (issueId: string, priorityId: string) => {
     if (!session?.user?.id || !priorityId) return;
@@ -144,6 +149,15 @@ export default function IssuesPage() {
       issueId,
       actorId: session.user.id,
       assigneeId: assigneeId || null,
+    });
+  };
+
+  const handleAssigneesChange = (issueId: string, assigneeIds: string[]) => {
+    if (!session?.user?.id) return;
+    updateAssigneesMutation.mutate({
+      issueId,
+      assigneeIds,
+      actorId: session.user.id,
     });
   };
 
@@ -165,6 +179,17 @@ export default function IssuesPage() {
     });
   };
 
+  const handleAssignmentStateChange = (
+    assignmentId: string,
+    stateId: string,
+  ) => {
+    if (!session?.user?.id || !assignmentId || !stateId) return;
+    changeAssignmentStateMutation.mutate({
+      assignmentId,
+      stateId,
+    });
+  };
+
   const handleDelete = (issueId: string) => {
     if (!confirm("Delete this issue? This action cannot be undone.")) return;
     deleteMutation.mutate({ issueId });
@@ -175,6 +200,8 @@ export default function IssuesPage() {
       orgSlug,
       page,
       pageSize: PAGE_SIZE,
+      ...(selectedProject && { projectId: selectedProject }),
+      ...(selectedTeam && { teamId: selectedTeam }),
     },
   );
 
@@ -182,13 +209,24 @@ export default function IssuesPage() {
   const counts = paged?.counts ?? {};
   const total = paged?.total ?? 0;
 
-  // Filter issues based on active filter
+  // Improved filtering logic to handle multi-assignee issues
+  const currentUserId = session?.user?.id || "";
+
+  // Filter issues based on active filter and user context
   const filteredIssues = issues.filter((issue) => {
     if (activeFilter === "all") return true;
-    return issue.stateType === activeFilter;
+
+    // For state-specific filters, check if this issue has any assignment matching the filter
+    // For the current user, prioritize their assignments, for others show if they have that state
+    const hasMatchingAssignment = issues.some(
+      (innerIssue) =>
+        innerIssue.id === issue.id && innerIssue.stateType === activeFilter,
+    );
+
+    return hasMatchingAssignment;
   });
 
-  // Update counts for tabs
+  // Update counts for tabs with improved logic
   const updatedTabs = filterTabs.map((tab) => ({
     ...tab,
     count:
@@ -235,7 +273,29 @@ export default function IssuesPage() {
               </Button>
             ))}
           </div>
-          <CreateIssueDialog className="h-6" orgSlug={orgSlug} />
+
+          {/* Global filters and create button */}
+          <div className="flex items-center gap-2">
+            {/* Team filter */}
+            <TeamSelector
+              teams={teams}
+              selectedTeam={selectedTeam}
+              onTeamSelect={setSelectedTeam}
+              displayMode="iconWhenUnselected"
+              className="h-6 text-xs"
+            />
+
+            {/* Project filter */}
+            <ProjectSelector
+              projects={projects}
+              selectedProject={selectedProject}
+              onProjectSelect={setSelectedProject}
+              displayMode="iconWhenUnselected"
+              className="h-6 text-xs"
+            />
+
+            <CreateIssueDialog className="h-6" orgSlug={orgSlug} />
+          </div>
         </div>
       </div>
 
@@ -246,16 +306,21 @@ export default function IssuesPage() {
           issues={filteredIssues}
           states={states}
           priorities={priorities}
-          members={members}
           teams={teams}
           projects={projects}
-          onStateChange={handleStateChange}
           onPriorityChange={handlePriorityChange}
           onAssigneeChange={handleAssigneeChange}
+          onAssigneesChange={handleAssigneesChange}
           onTeamChange={handleTeamChange}
           onProjectChange={handleProjectChange}
           onDelete={handleDelete}
           deletePending={deleteMutation.isPending}
+          isUpdatingAssignees={updateAssigneesMutation.isPending}
+          onAssignmentStateChange={handleAssignmentStateChange}
+          isUpdatingAssignmentStates={changeAssignmentStateMutation.isPending}
+          currentUserId={currentUserId}
+          canChangeAll={canChangeAll}
+          activeFilter={activeFilter}
         />
       </div>
 

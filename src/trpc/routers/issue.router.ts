@@ -6,6 +6,8 @@ import {
   teamMember as teamMemberTable,
   issueAssignee as assignmentTable,
   project as projectTable,
+  organization as organizationTable,
+  issue as issueTable,
 } from "@/db/schema";
 import {
   createIssue,
@@ -248,11 +250,9 @@ export const issueRouter = createTRPCRouter({
         assigneeId: z.string().nullable(),
       }),
     )
-    .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
-    })
-    .mutation(async ({ input }) => {
-      await assign(input.issueId, input.actorId, input.assigneeId);
+    .mutation(async ({ input, ctx }) => {
+      await assertAssigneeOrLeadOrAdmin(ctx, input.issueId);
+      return assign(input.issueId, input.actorId, input.assigneeId);
     }),
 
   updateTitle: protectedProcedure
@@ -377,9 +377,81 @@ export const issueRouter = createTRPCRouter({
       );
     }),
 
-  getAssignments: protectedProcedure
+  getAssignees: protectedProcedure
     .input(z.object({ issueId: z.string().uuid() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       return OrganizationService.getIssueAssignments(input.issueId);
+    }),
+
+  updateAssignees: protectedProcedure
+    .input(
+      z.object({
+        issueId: z.string().uuid(),
+        assigneeIds: z.string().array(),
+        actorId: z.string(),
+      }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      await assertAssigneeOrLeadOrAdmin(ctx, input.issueId);
+
+      // Get current assignments
+      const currentAssignments = await OrganizationService.getIssueAssignments(
+        input.issueId,
+      );
+      const currentAssigneeIds = currentAssignments
+        .map((a) => a.assigneeId)
+        .filter(Boolean) as string[];
+
+      // Determine additions and removals
+      const toAdd = input.assigneeIds.filter(
+        (id) => !currentAssigneeIds.includes(id),
+      );
+      const toRemove = currentAssigneeIds.filter(
+        (id) => !input.assigneeIds.includes(id),
+      );
+
+      // Get a default state ID for new assignments
+      const { WorkflowService } = await import(
+        "@/entities/workflow/state.service"
+      );
+      const states = await WorkflowService.listIssueStates(
+        // Extract orgSlug from the current org context
+        // For now, we'll need to get it from the issue's organization
+        (
+          await ctx.db
+            .select({ orgSlug: organizationTable.slug })
+            .from(issueTable)
+            .innerJoin(
+              organizationTable,
+              eq(issueTable.organizationId, organizationTable.id),
+            )
+            .where(eq(issueTable.id, input.issueId))
+            .limit(1)
+        )[0]?.orgSlug || "",
+      );
+      const defaultState = states.find((s) => s.type === "todo") || states[0];
+
+      // Add new assignees
+      for (const assigneeId of toAdd) {
+        await createAssignment({
+          issueId: input.issueId,
+          assigneeId,
+          stateId: defaultState?.id || "",
+          actorId: input.actorId,
+        });
+      }
+
+      // Remove assignees by deleting their assignments
+      const assignmentsToRemove = currentAssignments.filter(
+        (a) => a.assigneeId && toRemove.includes(a.assigneeId),
+      );
+
+      for (const assignment of assignmentsToRemove) {
+        await ctx.db
+          .delete(assignmentTable)
+          .where(eq(assignmentTable.id, assignment.id));
+      }
+
+      return { success: true };
     }),
 });

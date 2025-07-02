@@ -5,7 +5,7 @@ import {
   issueActivityTypeEnum as activityEnum,
 } from "@/db/schema";
 import { randomUUID } from "crypto";
-import { InferInsertModel, InferSelectModel, eq } from "drizzle-orm";
+import { InferInsertModel, InferSelectModel, eq, and } from "drizzle-orm";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -31,6 +31,27 @@ export async function createAssignment({
   actorId,
 }: CreateAssignmentParams): Promise<{ id: string }> {
   const now = new Date();
+
+  // ------------------------------------------------------------------
+  //  Avoid creating duplicate (issueId, assigneeId) pairs
+  // ------------------------------------------------------------------
+  if (assigneeId) {
+    const existing = await db
+      .select({ id: assignmentTable.id })
+      .from(assignmentTable)
+      .where(
+        and(
+          eq(assignmentTable.issueId, issueId),
+          eq(assignmentTable.assigneeId, assigneeId),
+        ),
+      )
+      .limit(1);
+
+    if (existing[0]) {
+      return { id: existing[0].id } as const;
+    }
+  }
+
   const id = randomUUID();
 
   await db.transaction(async (tx) => {

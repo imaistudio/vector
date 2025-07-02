@@ -37,14 +37,14 @@ export function UserMenu({ user }: UserMenuProps) {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="text-muted-foreground hover:bg-foreground/10 flex w-full items-center gap-3 rounded-md p-2 transition-colors"
+          className="text-muted-foreground hover:bg-foreground/10 flex w-full items-center gap-2 rounded-md p-1.5 transition-colors"
           aria-label="User menu"
         >
-          <Avatar className="size-8">
+          <Avatar className="size-6">
             {user.image ? (
               <AvatarImage src={user.image} alt={user.name ?? "User avatar"} />
             ) : (
-              <AvatarFallback>{initial}</AvatarFallback>
+              <AvatarFallback className="text-xs">{initial}</AvatarFallback>
             )}
           </Avatar>
           <span className="truncate text-left text-sm font-medium">
@@ -54,13 +54,20 @@ export function UserMenu({ user }: UserMenuProps) {
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-56">
         <DropdownMenuItem asChild>
-          <Link href="/settings/profile" className="flex items-center gap-2">
-            <Settings className="size-4" /> Settings
+          <Link
+            href="/settings/profile"
+            className="flex items-center gap-2 px-2 py-1.5"
+          >
+            <Settings className="size-4" />{" "}
+            <span className="text-sm">Settings</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href="/settings/invites" className="flex items-center gap-2">
-            <Mail className="size-4" /> Invites
+          <Link
+            href="/settings/invites"
+            className="flex items-center gap-2 px-2 py-1.5"
+          >
+            <Mail className="size-4" /> <span className="text-sm">Invites</span>
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -70,9 +77,9 @@ export function UserMenu({ user }: UserMenuProps) {
             onLogout();
           }}
           variant="destructive"
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 px-2 py-1.5"
         >
-          <LogOut className="size-4" /> Logout
+          <LogOut className="size-4" /> <span className="text-sm">Logout</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

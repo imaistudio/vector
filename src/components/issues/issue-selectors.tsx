@@ -17,13 +17,22 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Utils & helpers
 import { cn } from "@/lib/utils";
 import { getDynamicIcon } from "@/lib/dynamic-icons";
+import { trpc } from "@/lib/trpc";
 
 // Icons
-import { Users, FolderOpen, User, Check } from "lucide-react";
+import { FolderOpen, User, Check, Circle } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // 🧩 Type inference – derive types directly from tRPC router outputs
@@ -540,6 +549,688 @@ export function AssigneeSelector({
                 </CommandItem>
               ))}
             </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Multi-Assignee Selector for Issue Table Rows --------------------------------
+interface MultiAssigneeSelectorProps {
+  orgSlug: string;
+  selectedAssigneeIds: string[];
+  onAssigneesChange: (assigneeIds: string[]) => void;
+  className?: string;
+  trigger?: React.ReactElement;
+  isLoading?: boolean;
+  highlightAssigneeId?: string | null;
+  assignments?: AssignmentInfo[];
+  activeFilter?: string;
+}
+
+export function MultiAssigneeSelector({
+  orgSlug,
+  selectedAssigneeIds,
+  onAssigneesChange,
+  trigger,
+  isLoading = false,
+  highlightAssigneeId = null,
+  assignments = [],
+  activeFilter = "all",
+}: MultiAssigneeSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Search members with debouncing
+  const { data: searchResults = [] } = trpc.organization.searchMembers.useQuery(
+    {
+      orgSlug,
+      query: searchQuery,
+      limit: 10,
+    },
+    {
+      enabled: open, // Only fetch when dropdown is open
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    },
+  );
+
+  // Get organization members for display purposes (when we have selections but they're not in search)
+  const { data: allMembers = [] } = trpc.organization.listMembers.useQuery(
+    { orgSlug },
+    {
+      enabled: selectedAssigneeIds.length > 0,
+      staleTime: 5 * 60 * 1000,
+    },
+  );
+
+  const handleToggleAssignee = (userId: string) => {
+    if (isLoading) return;
+    const isSelected = selectedAssigneeIds.includes(userId);
+    if (isSelected) {
+      onAssigneesChange(selectedAssigneeIds.filter((id) => id !== userId));
+    } else {
+      onAssigneesChange([...selectedAssigneeIds, userId]);
+    }
+  };
+
+  const handleUnassignAll = () => {
+    if (isLoading) return;
+    onAssigneesChange([]);
+  };
+
+  const matchCount =
+    activeFilter === "all"
+      ? selectedAssigneeIds.length
+      : assignments.filter(
+          (a) =>
+            a.stateType === activeFilter &&
+            a.assigneeId &&
+            selectedAssigneeIds.includes(a.assigneeId),
+        ).length;
+
+  const getDisplayContent = () => {
+    if (selectedAssigneeIds.length === 0) {
+      return (
+        <div
+          className={cn(
+            "flex size-6 cursor-pointer items-center justify-center",
+            isLoading && "pointer-events-none opacity-50",
+          )}
+        >
+          {isLoading ? (
+            <div className="size-3 animate-spin rounded-full border border-gray-300 border-t-transparent" />
+          ) : (
+            <span className="text-muted-foreground text-xs">—</span>
+          )}
+        </div>
+      );
+    }
+
+    if (selectedAssigneeIds.length === 1) {
+      const assignee = allMembers.find(
+        (m) => m.userId === selectedAssigneeIds[0],
+      );
+      return (
+        <Avatar
+          className={cn(
+            "size-6",
+            isLoading && "pointer-events-none opacity-50",
+            highlightAssigneeId === selectedAssigneeIds[0] &&
+              "ring-primary ring-offset-background ring-2",
+          )}
+        >
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="size-3 animate-spin rounded-full border border-gray-300 border-t-transparent" />
+            </div>
+          )}
+          <AvatarFallback className="text-xs">
+            {getAssigneeInitials(assignee?.name, assignee?.email)}
+          </AvatarFallback>
+        </Avatar>
+      );
+    }
+
+    // Multiple assignees - show all avatars with highlighting
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-1",
+          isLoading && "pointer-events-none opacity-50",
+        )}
+      >
+        {selectedAssigneeIds.slice(0, 3).map((assigneeId, idx) => {
+          const assignee = allMembers.find((m) => m.userId === assigneeId);
+          return (
+            <Avatar
+              key={assigneeId}
+              className={cn(
+                "size-6",
+                idx > 0 && "-ml-2", // Overlap subsequent avatars
+                highlightAssigneeId === assigneeId &&
+                  "ring-primary ring-offset-background z-10 ring-2",
+              )}
+            >
+              {isLoading && idx === 0 && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="size-3 animate-spin rounded-full border border-gray-300 border-t-transparent" />
+                </div>
+              )}
+              <AvatarFallback className="text-xs">
+                {getAssigneeInitials(assignee?.name, assignee?.email)}
+              </AvatarFallback>
+            </Avatar>
+          );
+        })}
+        {selectedAssigneeIds.length > 3 && (
+          <span className="text-muted-foreground ml-1 text-xs">
+            +{selectedAssigneeIds.length - 3}
+          </span>
+        )}
+        {/* status match counter */}
+        {activeFilter !== "all" && (
+          <span className="text-muted-foreground ml-2 text-xs">
+            {matchCount}/{selectedAssigneeIds.length}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  // Helper function for initials (moved to top of file)
+  const getAssigneeInitials = (
+    name?: string | null,
+    email?: string | null,
+  ): string => {
+    const displayName = name || email;
+    if (!displayName) return "?";
+    return displayName
+      .split(" ")
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  return (
+    <Popover
+      open={open && !isLoading}
+      onOpenChange={(newOpen) => {
+        if (!isLoading) setOpen(newOpen);
+      }}
+    >
+      <PopoverTrigger asChild>
+        {trigger || (
+          <div
+            className={cn(
+              "flex cursor-pointer items-center gap-1",
+              isLoading && "pointer-events-none",
+            )}
+          >
+            {getDisplayContent()}
+          </div>
+        )}
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-80 p-0"
+        align="end"
+        onOpenAutoFocus={(e) => {
+          if (isLoading) e.preventDefault();
+        }}
+      >
+        <Command>
+          <CommandInput
+            placeholder="Search members…"
+            className="h-9"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            disabled={isLoading}
+          />
+          <CommandList className="p-1">
+            {/* Unassign option */}
+            {selectedAssigneeIds.length > 0 && (
+              <CommandItem
+                value="unassign"
+                onSelect={handleUnassignAll}
+                disabled={isLoading}
+              >
+                <div className="flex w-full items-center gap-2">
+                  <div className="ml-6">
+                    {" "}
+                    {/* Offset to align with other items that have checkboxes */}
+                    <span className="text-muted-foreground">Unassign all</span>
+                  </div>
+                </div>
+              </CommandItem>
+            )}
+
+            {/* Members List */}
+            {searchResults.map((member) => {
+              const isSelected = selectedAssigneeIds.includes(member.userId);
+              const assignment = assignments.find(
+                (a) => a.assigneeId === member.userId,
+              );
+              const StateIcon = assignment?.stateIcon
+                ? getDynamicIcon(assignment.stateIcon) || Circle
+                : Circle;
+              return (
+                <CommandItem
+                  key={member.userId}
+                  value={member.name || member.email}
+                  onSelect={() => handleToggleAssignee(member.userId)}
+                  disabled={isLoading}
+                >
+                  <div className="flex w-full items-center gap-3">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() =>
+                        handleToggleAssignee(member.userId)
+                      }
+                      disabled={isLoading}
+                    />
+                    <Avatar
+                      className={cn(
+                        "size-6",
+                        isLoading && "opacity-50",
+                        highlightAssigneeId === member.userId &&
+                          "ring-primary ring-offset-background ring-2",
+                      )}
+                    >
+                      <AvatarFallback className="text-xs">
+                        {getAssigneeInitials(member.name, member.email)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className={cn("flex-1", isLoading && "opacity-50")}>
+                      <div className="font-medium">{member.name}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {member.email}
+                      </div>
+                    </div>
+                    {assignment && (
+                      <StateIcon
+                        className="size-4"
+                        style={{ color: assignment.stateColor || "#94a3b8" }}
+                      />
+                    )}
+                  </div>
+                </CommandItem>
+              );
+            })}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// Multi-Assignment State Selector -------------------------------------------
+interface AssignmentInfo {
+  assignmentId: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
+  stateId: string | null;
+  stateIcon: string | null;
+  stateColor: string | null;
+  stateName: string | null;
+  stateType: string | null;
+}
+
+interface MultiAssignmentStateSelectorProps {
+  assignments: AssignmentInfo[];
+  states: readonly State[] | State[];
+  onStateChange: (assignmentId: string, stateId: string) => void;
+  isLoading?: boolean;
+  trigger?: React.ReactElement;
+  currentUserId: string;
+  canChangeAll?: boolean;
+  activeFilter?: string;
+}
+
+export function MultiAssignmentStateSelector({
+  assignments,
+  states,
+  onStateChange,
+  isLoading = false,
+  trigger,
+  currentUserId,
+  canChangeAll = false,
+  activeFilter,
+}: MultiAssignmentStateSelectorProps) {
+  const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const activeAssignments = assignments.filter((a) => a.assigneeId);
+
+  // Find current user's assignment
+  const currentUserAssignment = activeAssignments.find(
+    (a) => a.assigneeId === currentUserId,
+  );
+
+  // Other assignments (not current user)
+  const otherAssignments = activeAssignments.filter(
+    (a) => a.assigneeId !== currentUserId,
+  );
+
+  // Helper to render trigger content with improved highlighting for active filter
+  const renderTriggerContent = (): React.ReactNode => {
+    if (assignments.length === 0) {
+      return <Circle className="text-muted-foreground size-4" />;
+    }
+
+    if (activeAssignments.length === 1) {
+      const assignment = activeAssignments[0];
+      const StateIcon = assignment.stateIcon
+        ? getDynamicIcon(assignment.stateIcon) || Circle
+        : Circle;
+      const stateColor = assignment.stateColor || "#94a3b8";
+
+      return <StateIcon className="size-4" style={{ color: stateColor }} />;
+    }
+
+    // Multiple assignments – show highlighted state prominently if filtering
+    const activeFilterAssignments =
+      activeFilter !== "all"
+        ? activeAssignments.filter((a) => a.stateType === activeFilter)
+        : [];
+
+    if (activeFilter !== "all" && activeFilterAssignments.length > 0) {
+      // Show the active filter state prominently, with other states as dots
+      const primaryAssignment = activeFilterAssignments[0];
+      const StateIcon = primaryAssignment.stateIcon
+        ? getDynamicIcon(primaryAssignment.stateIcon) || Circle
+        : Circle;
+
+      const otherAssignments = activeAssignments.filter(
+        (a) => a.stateType !== activeFilter,
+      );
+
+      return (
+        <div className="flex items-center gap-0.5">
+          <StateIcon
+            className="size-4"
+            style={{ color: primaryAssignment.stateColor || "#94a3b8" }}
+          />
+          {activeFilterAssignments.length > 1 && (
+            <span className="text-primary text-xs font-medium">
+              {activeFilterAssignments.length}
+            </span>
+          )}
+          {otherAssignments.slice(0, 2).map((assignment, idx) => (
+            <Circle
+              key={idx}
+              className="size-2 opacity-60"
+              style={{ color: assignment.stateColor || "#94a3b8" }}
+            />
+          ))}
+          {otherAssignments.length > 2 && (
+            <span className="text-muted-foreground text-xs">
+              +{otherAssignments.length - 2}
+            </span>
+          )}
+        </div>
+      );
+    }
+
+    // Default view for "all" filter or no matching assignments
+    const distribution: Record<
+      string,
+      { color: string; count: number; icon: string | null }
+    > = {};
+    activeAssignments.forEach((a) => {
+      const key = a.stateId || "unknown";
+      if (!distribution[key]) {
+        distribution[key] = {
+          color: a.stateColor || "#94a3b8",
+          count: 0,
+          icon: a.stateIcon,
+        };
+      }
+      distribution[key].count += 1;
+    });
+
+    const entries = Object.values(distribution);
+
+    return (
+      <div className="flex items-center gap-0.5">
+        {entries.slice(0, 3).map((entry, idx) => {
+          const StateIcon = entry.icon
+            ? getDynamicIcon(entry.icon) || Circle
+            : Circle;
+          return (
+            <div key={idx} className="flex items-center">
+              <StateIcon className="size-3" style={{ color: entry.color }} />
+              {entry.count > 1 && (
+                <span className="text-muted-foreground ml-0.5 text-xs">
+                  {entry.count}
+                </span>
+              )}
+            </div>
+          );
+        })}
+        {entries.length > 3 && (
+          <span className="text-muted-foreground text-xs">
+            +{entries.length - 3}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const getAssigneeInitials = (
+    name?: string | null,
+    email?: string | null,
+  ): string => {
+    const displayName = name || email;
+    if (!displayName) return "?";
+    return displayName
+      .split(" ")
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  const handleStateSelect = (assignmentId: string, stateId: string) => {
+    onStateChange(assignmentId, stateId);
+    setOpen(false);
+  };
+
+  return (
+    <Popover
+      open={open && !isLoading}
+      onOpenChange={(o) => !isLoading && setOpen(o)}
+    >
+      <PopoverTrigger asChild>
+        {trigger || (
+          <div
+            className={cn(
+              "flex-shrink-0 cursor-pointer",
+              isLoading && "pointer-events-none opacity-50",
+            )}
+          >
+            {renderTriggerContent()}
+          </div>
+        )}
+      </PopoverTrigger>
+      <PopoverContent className="w-72 overflow-visible p-0" align="start">
+        <Command>
+          <CommandInput
+            placeholder="Search assignees…"
+            className="h-9"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
+            disabled={isLoading}
+          />
+          <CommandList>
+            {/* Current User Section - Show states directly if they have an assignment */}
+            {currentUserAssignment && (
+              <CommandGroup heading="Your status">
+                {states.map((state) => {
+                  const isSelected = state.id === currentUserAssignment.stateId;
+                  const StateIcon = state.icon
+                    ? getDynamicIcon(state.icon) || Circle
+                    : Circle;
+
+                  return (
+                    <CommandItem
+                      key={state.id}
+                      onSelect={() =>
+                        handleStateSelect(
+                          currentUserAssignment.assignmentId,
+                          state.id,
+                        )
+                      }
+                      disabled={isLoading}
+                      className="py-2"
+                    >
+                      <Check
+                        className={cn(
+                          "mr-2 h-4 w-4",
+                          isSelected ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <StateIcon
+                        className="mr-2 size-4"
+                        style={{ color: state.color || "#94a3b8" }}
+                      />
+                      <span>{state.name}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            )}
+
+            {/* Other Assignments Section - Show with hover submenu */}
+            {otherAssignments.length > 0 && (
+              <CommandGroup heading="Other assignments">
+                {otherAssignments
+                  .slice()
+                  .sort((a, b) => {
+                    // Then active filter matches
+                    if (activeFilter !== "all") {
+                      const aMatches = a.stateType === activeFilter;
+                      const bMatches = b.stateType === activeFilter;
+                      if (aMatches && !bMatches) return -1;
+                      if (bMatches && !aMatches) return 1;
+                    }
+
+                    // Then alphabetical
+                    const aName = a.assigneeName || a.assigneeEmail || "";
+                    const bName = b.assigneeName || b.assigneeEmail || "";
+                    return aName.localeCompare(bName);
+                  })
+                  .map((assignment) => {
+                    const displayName =
+                      assignment.assigneeName ||
+                      assignment.assigneeEmail ||
+                      "User";
+
+                    const StateIcon = assignment.stateIcon
+                      ? getDynamicIcon(assignment.stateIcon) || Circle
+                      : Circle;
+
+                    const canChange = canChangeAll;
+
+                    return (
+                      <div key={assignment.assignmentId} className="relative">
+                        {canChange ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <CommandItem
+                                value={displayName}
+                                className="cursor-pointer py-2"
+                              >
+                                {/* User Avatar */}
+                                <div className="bg-muted mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium">
+                                  {getAssigneeInitials(
+                                    assignment.assigneeName,
+                                    assignment.assigneeEmail,
+                                  )}
+                                </div>
+
+                                {/* User Name */}
+                                <span className="flex-1 truncate text-sm font-medium">
+                                  {displayName}
+                                </span>
+
+                                {/* Current Status */}
+                                <div className="ml-2 flex items-center gap-1.5">
+                                  <StateIcon
+                                    className="size-4"
+                                    style={{
+                                      color: assignment.stateColor || "#94a3b8",
+                                    }}
+                                  />
+                                  <span className="text-muted-foreground text-sm">
+                                    {assignment.stateName}
+                                  </span>
+                                </div>
+                              </CommandItem>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              side="right"
+                              align="start"
+                              className="w-56"
+                            >
+                              {states.map((state) => {
+                                const isSelected =
+                                  state.id === assignment.stateId;
+                                const StateIconDM = state.icon
+                                  ? getDynamicIcon(state.icon) || Circle
+                                  : Circle;
+
+                                return (
+                                  <DropdownMenuItem
+                                    key={state.id}
+                                    disabled={isLoading}
+                                    onSelect={() =>
+                                      handleStateSelect(
+                                        assignment.assignmentId,
+                                        state.id,
+                                      )
+                                    }
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-3 w-3",
+                                        isSelected
+                                          ? "opacity-100"
+                                          : "opacity-0",
+                                      )}
+                                    />
+                                    <StateIconDM
+                                      className="mr-2 size-4"
+                                      style={{
+                                        color: state.color || "#94a3b8",
+                                      }}
+                                    />
+                                    {state.name}
+                                  </DropdownMenuItem>
+                                );
+                              })}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <CommandItem
+                            value={displayName}
+                            disabled
+                            className="cursor-default py-2 opacity-60"
+                          >
+                            {/* User Avatar */}
+                            <div className="bg-muted mr-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-xs font-medium">
+                              {getAssigneeInitials(
+                                assignment.assigneeName,
+                                assignment.assigneeEmail,
+                              )}
+                            </div>
+
+                            <span className="flex-1 truncate text-sm font-medium">
+                              {displayName}
+                            </span>
+
+                            <div className="ml-2 flex items-center gap-1.5">
+                              <StateIcon
+                                className="size-4"
+                                style={{
+                                  color: assignment.stateColor || "#94a3b8",
+                                }}
+                              />
+                              <span className="text-muted-foreground text-sm">
+                                {assignment.stateName}
+                              </span>
+                              <span className="text-muted-foreground ml-1 text-xs">
+                                (view only)
+                              </span>
+                            </div>
+                          </CommandItem>
+                        )}
+                      </div>
+                    );
+                  })}
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

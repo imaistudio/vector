@@ -71,7 +71,7 @@ export function OrgSidebar({ orgId }: OrgSidebarProps) {
           <div
             key={item.href}
             className={cn(
-              "group flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors",
+              "group flex h-8 items-center justify-between gap-2 rounded-md px-2 py-1 pr-1 text-sm font-medium transition-colors",
               "hover:bg-foreground/10 hover:text-foreground",
               isActive
                 ? "bg-foreground/10 text-foreground"
@@ -82,7 +82,6 @@ export function OrgSidebar({ orgId }: OrgSidebarProps) {
             <Link
               href={item.href}
               className="flex flex-1 items-center gap-2 outline-none"
-              /* Prevent focus ring from being clipped */
             >
               <item.icon className="size-4" />
               <span>{item.label}</span>
