@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { projectStatusTypeEnum } from "@/db/schema/projects";
 import { PageSkeleton } from "@/components/ui/table-skeleton";
+import { authClient } from "@/lib/auth-client";
 
 type StatusType = (typeof projectStatusTypeEnum.enumValues)[number];
 type FilterType = "all" | StatusType;
@@ -48,6 +49,10 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   // Pagination constants
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
+
+  // Current user session – needed for actorId in mutations
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id;
 
   // Queries
   const pagedQuery = trpc.organization.listProjectsPaged.useQuery({
@@ -105,26 +110,29 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
 
   // Event handlers
   const handleStatusChange = (projectId: string, statusId: string) => {
+    if (!currentUserId) return;
     changeStatusMutation.mutate({
       projectId,
       statusId: statusId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 
   const handleTeamChange = (projectId: string, teamId: string) => {
+    if (!currentUserId) return;
     changeTeamMutation.mutate({
       projectId,
       teamId: teamId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 
   const handleLeadChange = (projectId: string, leadId: string) => {
+    if (!currentUserId) return;
     changeLeadMutation.mutate({
       projectId,
       leadId: leadId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 

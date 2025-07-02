@@ -19,6 +19,9 @@ export const PERMISSIONS = {
   ISSUE_CREATE: "issue:create",
   ISSUE_UPDATE: "issue:update",
   ISSUE_DELETE: "issue:delete",
+
+  // Assignment management
+  ASSIGNMENT_MANAGE: "assignment:manage",
 } as const;
 
 export type Permission =

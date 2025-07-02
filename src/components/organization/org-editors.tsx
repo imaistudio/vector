@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Edit, Check, X, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 // Get the current origin from the browser
 const getUrlOrigin = () => {
@@ -374,7 +375,7 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
       setLogoKey(key);
     } catch (err) {
       console.error(err);
-      // TODO: show toast / error feedback
+      toast.error((err as Error)?.message || "Upload failed");
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = "";
       setUploading(false);

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -12,10 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Plus, X, User } from "lucide-react";
-import { getDynamicIcon } from "@/lib/dynamic-icons";
-import { cn } from "@/lib/utils";
 import { StateSelector, AssigneeSelector } from "./issue-selectors";
 import type { Member, State } from "./issue-selectors";
+import { PERMISSIONS } from "@/auth/permission-constants";
+import { authClient } from "@/lib/auth-client";
+import { usePermission } from "@/hooks/use-permissions";
 
 // Helper to derive initials from a name/email
 function getAssigneeInitials(
@@ -33,19 +33,39 @@ function getAssigneeInitials(
 }
 
 export interface IssueAssignmentsProps {
+  orgSlug: string;
   issueId: string;
-  states: State[];
-  members: Member[];
+  /**
+   * The list of workflow states available within the organization. Accepts either
+   * mutable or readonly arrays so callers don't need to cast or clone.
+   */
+  states: readonly State[] | State[];
+  /**
+   * Organization member list. Accepts either mutable or readonly arrays so callers
+   * don't need to cast or clone.
+   */
+  members: readonly Member[] | Member[];
   defaultStateId: string;
 }
 
 export function IssueAssignments({
+  orgSlug,
   issueId,
   states,
   members,
   defaultStateId,
 }: IssueAssignmentsProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  // Current user info
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id || "";
+
+  // Permission check (manage assignments)
+  const { hasPermission: canManage } = usePermission(
+    orgSlug,
+    PERMISSIONS.ASSIGNMENT_MANAGE,
+  );
 
   // Fetch assignments for this issue
   const { data: assignments = [], refetch } =
@@ -69,10 +89,9 @@ export function IssueAssignments({
       onSuccess: () => refetch(),
     });
 
-  const removeAssignmentMutation =
-    trpc.issue.updateAssignmentAssignee.useMutation({
-      onSuccess: () => refetch(),
-    });
+  const deleteAssignmentMutation = trpc.issue.deleteAssignment.useMutation({
+    onSuccess: () => refetch(),
+  });
 
   // Helper to filter members so the same user cannot be assigned twice
   const assignedUserIds = assignments
@@ -99,10 +118,7 @@ export function IssueAssignments({
   };
 
   const handleRemoveAssignment = (assignmentId: string) => {
-    removeAssignmentMutation.mutate({
-      assignmentId,
-      assigneeId: null,
-    });
+    deleteAssignmentMutation.mutate({ assignmentId });
   };
 
   const handleUpdateAssignee = (assignmentId: string, assigneeId: string) => {
@@ -129,10 +145,7 @@ export function IssueAssignments({
       {/* Assignments list - matching issues table design */}
       <div className="divide-y">
         {assignments.map((assignment) => {
-          const StateIcon = assignment.stateIcon
-            ? getDynamicIcon(assignment.stateIcon)
-            : null;
-          const stateColor = assignment.stateColor || "#94a3b8";
+          // (Icon not used directly in this component)
 
           return (
             <div
@@ -148,8 +161,10 @@ export function IssueAssignments({
                       !assignedUserIds.includes(m.userId),
                   )}
                   selectedAssignee={assignment.assigneeId || ""}
-                  onAssigneeSelect={(userId) =>
-                    handleUpdateAssignee(assignment.id, userId)
+                  onAssigneeSelect={
+                    canManage || assignment.assigneeId === currentUserId
+                      ? (userId) => handleUpdateAssignee(assignment.id, userId)
+                      : undefined
                   }
                   displayMode="labelOnly"
                   trigger={
@@ -187,8 +202,10 @@ export function IssueAssignments({
               <StateSelector
                 states={states}
                 selectedState={assignment.stateId}
-                onStateSelect={(stateId) =>
-                  handleStateChange(assignment.id, stateId)
+                onStateSelect={
+                  canManage || assignment.assigneeId === currentUserId
+                    ? (stateId) => handleStateChange(assignment.id, stateId)
+                    : () => {}
                 }
                 align="end"
                 className="border-none bg-transparent p-0 shadow-none"
@@ -199,6 +216,9 @@ export function IssueAssignments({
                 variant="ghost"
                 size="sm"
                 onClick={() => handleRemoveAssignment(assignment.id)}
+                disabled={
+                  !(canManage || assignment.assigneeId === currentUserId)
+                }
                 className="text-muted-foreground hover:text-destructive h-6 w-6 flex-shrink-0 p-0"
               >
                 <X className="h-3 w-3" />

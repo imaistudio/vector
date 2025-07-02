@@ -54,6 +54,9 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { getDynamicIcon } from "@/lib/dynamic-icons";
+import { usePermission } from "@/hooks/use-permissions";
+import { PERMISSIONS } from "@/auth/permission-constants";
+import { toast } from "sonner";
 
 interface TeamViewPageProps {
   params: Promise<{ orgId: string; teamKey: string }>;
@@ -130,8 +133,12 @@ function AddMemberDialog({
       utils.team.listMembers.invalidate({ teamId }).catch(() => {});
       onSuccess?.();
       onClose();
+      toast.success("Member added to team");
     },
-    onError: (e) => console.error(e.message),
+    onError: (error) => {
+      console.error(error.message);
+      toast.error(`Failed to add member: ${error.message}`);
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -263,7 +270,7 @@ function MembersList({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="mb-4 text-4xl">👥</div>
+          <div className="mb-4 text-4xl">��</div>
           <h3 className="mb-2 text-lg font-semibold">No members yet</h3>
           <p className="text-muted-foreground mb-6">
             Add team members to get started.
@@ -376,6 +383,13 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
     params.then(setResolvedParams);
   }, [params]);
 
+  // Check user permissions for team management
+  const { data: currentUser } = authClient.useSession();
+  const { hasPermission: canUpdateTeam } = usePermission(
+    resolvedParams?.orgId || "",
+    PERMISSIONS.TEAM_UPDATE,
+  );
+
   // Fetch team data
   const {
     data: team,
@@ -395,13 +409,24 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
     { enabled: !!team },
   );
 
-  // Mutations
+  // Determine if user can edit team (team lead or has permission)
+  const canEdit = !!(
+    currentUser &&
+    team &&
+    (team.leadId === currentUser.user.id || canUpdateTeam)
+  );
+
+  // Mutations with toast error handling
   const updateTeamMutation = trpc.team.update.useMutation({
     onSuccess: () => {
       refetchTeam();
       setEditingName(false);
       setEditingDescription(false);
       setEditingKey(false);
+      toast.success("Team updated successfully");
+    },
+    onError: (error) => {
+      toast.error(`Failed to update team: ${error.message}`);
     },
   });
 
@@ -413,6 +438,10 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
       if (team) {
         utils.team.listMembers.invalidate({ teamId: team.id }).catch(() => {});
       }
+      toast.success("Member removed from team");
+    },
+    onError: (error) => {
+      toast.error(`Failed to remove member: ${error.message}`);
     },
   });
 
@@ -431,8 +460,6 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   if (teamLoading)
     return <TeamLoadingSkeleton resolvedParams={resolvedParams} />;
   if (!team) return notFound();
-
-  const canEdit = true; // TODO: Check user permissions
 
   const handleNameSave = () => {
     if (!nameValue.trim()) return;
@@ -534,8 +561,11 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
               ) : (
                 <Badge
                   variant="secondary"
-                  className="cursor-pointer font-mono text-xs"
-                  onClick={() => setEditingKey(true)}
+                  className={cn(
+                    "font-mono text-xs",
+                    canEdit && "cursor-pointer",
+                  )}
+                  onClick={() => canEdit && setEditingKey(true)}
                 >
                   {team.key}
                 </Badge>

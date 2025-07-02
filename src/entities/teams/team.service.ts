@@ -14,8 +14,10 @@ import {
   and,
   like,
   count,
+  or,
 } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { alias } from "drizzle-orm/pg-core";
 
 // -----------------------------------------------------------------------------
 // Types
@@ -262,4 +264,38 @@ export async function findTeamByKey(
     .limit(1);
 
   return result[0]?.team || null;
+}
+
+// -----------------------------------------------------------------------------
+// Access helpers
+// -----------------------------------------------------------------------------
+
+/**
+ * Returns true if the given user can access the given team. A user can access a
+ * team if they are the lead, a member, or were the creator (via `createdBy`).
+ * Organisation-wide administrators are handled by higher-level guards.
+ */
+export async function userHasTeamAccess(
+  userId: string,
+  teamId: string,
+): Promise<boolean> {
+  // Quick joins to avoid unnecessary row transfers.
+  const tmAlias = alias(teamMemberTable, "tmAlias");
+
+  const rows = await db
+    .select({ id: teamTable.id })
+    .from(teamTable)
+    .leftJoin(
+      tmAlias,
+      and(eq(tmAlias.teamId, teamTable.id), eq(tmAlias.userId, userId)),
+    )
+    .where(
+      and(
+        eq(teamTable.id, teamId),
+        or(eq(teamTable.leadId, userId), eq(tmAlias.userId, userId)),
+      ),
+    )
+    .limit(1);
+
+  return rows.length > 0;
 }

@@ -1,6 +1,6 @@
 import { createTRPCRouter, protectedProcedure, getUserId } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import {
   projectMember as projectMemberTable,
   teamMember as teamMemberTable,
@@ -31,6 +31,7 @@ import {
   changeAssignmentState,
   updateAssignmentAssignee,
 } from "@/entities/issues/assignment.service";
+import { assertCanManageAssignment } from "@/trpc/permissions";
 import { z } from "zod";
 import { assertAssigneeOrLeadOrAdmin } from "@/trpc/permissions";
 import { OrganizationService } from "@/entities/organizations/organization.service";
@@ -335,11 +336,41 @@ export const issueRouter = createTRPCRouter({
         stateId: z.string().uuid(),
       }),
     )
-    .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
-    })
     .mutation(async ({ ctx, input }) => {
       const userId = getUserId(ctx);
+
+      // Permission: if assigning to someone else, ensure manage permission
+      if (input.assigneeId && input.assigneeId !== userId) {
+        // need manage permission in org
+        // Fetch org id via issue
+        const issueOrg = await ctx.db
+          .select({ organizationId: organizationTable.id })
+          .from(issueTable)
+          .innerJoin(
+            organizationTable,
+            eq(issueTable.organizationId, organizationTable.id),
+          )
+          .where(eq(issueTable.id, input.issueId))
+          .limit(1);
+
+        if (issueOrg.length === 0) {
+          throw new TRPCError({ code: "NOT_FOUND" });
+        }
+
+        const allowed = await (
+          await import("@/auth/permissions")
+        ).hasPermission(
+          userId,
+          issueOrg[0].organizationId,
+          (await import("@/auth/permission-constants")).PERMISSIONS
+            .ASSIGNMENT_MANAGE,
+        );
+
+        if (!allowed) {
+          throw new TRPCError({ code: "FORBIDDEN" });
+        }
+      }
+
       const { id } = await createAssignment({
         issueId: input.issueId,
         assigneeId: input.assigneeId ?? null,
@@ -356,6 +387,11 @@ export const issueRouter = createTRPCRouter({
         stateId: z.string().uuid(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertCanManageAssignment(ctx, input.assignmentId).then(() =>
+        next(),
+      );
+    })
     .mutation(async ({ ctx, input }) => {
       const userId = getUserId(ctx);
       await changeAssignmentState(input.assignmentId, userId, input.stateId);
@@ -368,6 +404,11 @@ export const issueRouter = createTRPCRouter({
         assigneeId: z.string().nullable(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertCanManageAssignment(ctx, input.assignmentId).then(() =>
+        next(),
+      );
+    })
     .mutation(async ({ ctx, input }) => {
       const userId = getUserId(ctx);
       await updateAssignmentAssignee(
@@ -377,7 +418,53 @@ export const issueRouter = createTRPCRouter({
       );
     }),
 
-  getAssignees: protectedProcedure
+  // Remove an assignment entirely (if more than one assignment exists for the issue)
+  deleteAssignment: protectedProcedure
+    .input(z.object({ assignmentId: z.string().uuid() }))
+    .use(({ ctx, next, input }) => {
+      return assertCanManageAssignment(ctx, input.assignmentId).then(() =>
+        next(),
+      );
+    })
+    .mutation(async ({ ctx, input }) => {
+      // Fetch the assignment to know its issue id & current count
+      const assignment = await ctx.db
+        .select({ issueId: assignmentTable.issueId })
+        .from(assignmentTable)
+        .where(eq(assignmentTable.id, input.assignmentId))
+        .limit(1);
+
+      if (assignment.length === 0) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Assignment not found",
+        });
+      }
+
+      const { issueId } = assignment[0];
+
+      // Ensure we're not deleting the very last assignment – keep at least one
+      const [{ cnt }] = await ctx.db
+        .select({ cnt: count() })
+        .from(assignmentTable)
+        .where(eq(assignmentTable.issueId, issueId));
+
+      if (Number(cnt) <= 1) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot delete the only assignment for an issue.",
+        });
+      }
+
+      await ctx.db
+        .delete(assignmentTable)
+        .where(eq(assignmentTable.id, input.assignmentId));
+
+      return { success: true } as const;
+    }),
+
+  // Fetch all assignments for a specific issue (alias used by frontend)
+  getAssignments: protectedProcedure
     .input(z.object({ issueId: z.string().uuid() }))
     .query(async ({ input, ctx }) => {
       return OrganizationService.getIssueAssignments(input.issueId);
@@ -392,7 +479,33 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertAssigneeOrLeadOrAdmin(ctx, input.issueId);
+      // Require manage permission (bulk assignment editing)
+      const issueOrg = await ctx.db
+        .select({ organizationId: organizationTable.id })
+        .from(issueTable)
+        .innerJoin(
+          organizationTable,
+          eq(issueTable.organizationId, organizationTable.id),
+        )
+        .where(eq(issueTable.id, input.issueId))
+        .limit(1);
+
+      if (issueOrg.length === 0) {
+        throw new TRPCError({ code: "NOT_FOUND" });
+      }
+
+      const allowed = await (
+        await import("@/auth/permissions")
+      ).hasPermission(
+        getUserId(ctx),
+        issueOrg[0].organizationId,
+        (await import("@/auth/permission-constants")).PERMISSIONS
+          .ASSIGNMENT_MANAGE,
+      );
+
+      if (!allowed) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
 
       // Get current assignments
       const currentAssignments = await OrganizationService.getIssueAssignments(

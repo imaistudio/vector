@@ -16,6 +16,10 @@ import {
 import { TeamSelector } from "@/components/teams/team-selector";
 import { toast } from "sonner";
 import { ProjectMembersSection } from "@/components/projects/project-members";
+import { usePermission } from "@/hooks/use-permissions";
+import { PERMISSIONS } from "@/auth/permission-constants";
+import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 interface ProjectViewClientProps {
   params: { orgId: string; projectKey: string };
@@ -28,6 +32,17 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   const [descriptionValue, setDescriptionValue] = useState("");
 
   const router = useRouter();
+
+  // Check user permissions for project management
+  const { data: currentUser } = authClient.useSession();
+  const { hasPermission: canUpdateProject } = usePermission(
+    params.orgId,
+    PERMISSIONS.PROJECT_UPDATE,
+  );
+
+  // Current user session for actorId in mutations
+  const { data: session } = authClient.useSession();
+  const currentUserId = session?.user?.id;
 
   // Queries
   const projectQuery = trpc.project.getByKey.useQuery(
@@ -122,28 +137,31 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
   const handleStatusChange = (statusId: string) => {
     if (!project) return;
+    if (!currentUserId) return;
     changeStatusMutation.mutate({
       projectId: project.id,
       statusId: statusId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 
   const handleTeamChange = (teamId: string) => {
     if (!project) return;
+    if (!currentUserId) return;
     changeTeamMutation.mutate({
       projectId: project.id,
       teamId: teamId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 
   const handleLeadChange = (leadId: string) => {
     if (!project) return;
+    if (!currentUserId) return;
     changeLeadMutation.mutate({
       projectId: project.id,
       leadId: leadId || null,
-      actorId: "current-user", // TODO: get actual user ID
+      actorId: currentUserId,
     });
   };
 
@@ -155,6 +173,13 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     name: member.name,
     email: member.email,
   }));
+
+  // Determine if user can edit project (project lead or has permission)
+  const canEdit = !!(
+    currentUser &&
+    project &&
+    (project.leadId === currentUser.user.id || canUpdateProject)
+  );
 
   useEffect(() => {
     if (
@@ -274,8 +299,8 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                 <Input
                   value={titleValue}
                   onChange={(e) => setTitleValue(e.target.value)}
-                  className="h-auto border-none p-0 text-3xl font-semibold shadow-none focus-visible:ring-0"
-                  style={{ fontSize: "1.875rem", lineHeight: "2.25rem" }}
+                  className="h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0"
+                  style={{ fontFamily: "var(--font-title)" }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleTitleSave();
                     if (e.key === "Escape") {
@@ -307,8 +332,11 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
               </div>
             ) : (
               <h1
-                className="hover:text-muted-foreground cursor-pointer text-3xl leading-tight font-semibold transition-colors"
-                onClick={() => setEditingTitle(true)}
+                className={cn(
+                  "text-3xl leading-tight font-semibold transition-colors",
+                  canEdit && "hover:text-muted-foreground cursor-pointer",
+                )}
+                onClick={() => canEdit && setEditingTitle(true)}
               >
                 {project.name}
               </h1>
@@ -355,18 +383,25 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
               <div>
                 {project.description ? (
                   <div
-                    className="prose prose-sm text-muted-foreground hover:text-foreground max-w-none cursor-pointer transition-colors"
-                    onClick={() => setEditingDescription(true)}
+                    className={cn(
+                      "prose prose-sm text-muted-foreground max-w-none transition-colors",
+                      canEdit && "hover:text-foreground cursor-pointer",
+                    )}
+                    onClick={() => canEdit && setEditingDescription(true)}
                   >
                     <p className="whitespace-pre-wrap">{project.description}</p>
                   </div>
-                ) : (
+                ) : canEdit ? (
                   <button
                     className="text-muted-foreground hover:text-foreground border-muted-foreground/20 hover:border-muted-foreground/40 w-full rounded-lg border-2 border-dashed bg-transparent p-4 text-left text-base"
                     onClick={() => setEditingDescription(true)}
                   >
                     Add a description...
                   </button>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    No description provided.
+                  </p>
                 )}
               </div>
             )}

@@ -322,8 +322,8 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                   <Input
                     value={titleValue}
                     onChange={(e) => setTitleValue(e.target.value)}
-                    className="h-auto border-none p-0 text-3xl font-semibold shadow-none focus-visible:ring-0"
-                    style={{ fontSize: "1.875rem", lineHeight: "2.25rem" }}
+                    className="h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0"
+                    style={{ fontFamily: "var(--font-title)" }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleTitleSave();
                       if (e.key === "Escape") {
@@ -436,12 +436,13 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
           <div className="space-y-2">
             {states && members && (
               <IssueAssignments
+                orgSlug={resolvedParams.orgId}
                 issueId={issue.id}
-                states={states as any}
-                members={members as any}
+                states={states ?? []}
+                members={members ?? []}
                 defaultStateId={
-                  states.find((s) => s.type === "todo")?.id ||
-                  states[0]?.id ||
+                  states?.find((s) => s.type === "todo")?.id ||
+                  states?.[0]?.id ||
                   ""
                 }
               />

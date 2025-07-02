@@ -7,10 +7,12 @@ import {
   findTeamByKey,
   deleteTeam,
   listTeamMembers,
+  userHasTeamAccess,
 } from "@/entities/teams/team.service";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { z } from "zod";
-import { assertAdmin } from "@/trpc/permissions";
+import { assertTeamLeadOrPermission } from "@/trpc/permissions";
+import { PERMISSIONS } from "@/auth/permission-constants";
 import { TRPCError } from "@trpc/server";
 
 export const teamRouter = createTRPCRouter({
@@ -40,7 +42,10 @@ export const teamRouter = createTRPCRouter({
     )
     .query(async ({ input, ctx }) => {
       const userId = getUserId(ctx);
-      // TODO: Verify user has access to this team
+      const canAccess = await userHasTeamAccess(userId, input.teamId);
+      if (!canAccess) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
       return await listTeamMembers(input.teamId);
     }),
 
@@ -82,10 +87,6 @@ export const teamRouter = createTRPCRouter({
     }),
 
   update: protectedProcedure
-    .use(({ ctx, next }) => {
-      assertAdmin(ctx);
-      return next();
-    })
     .input(
       z.object({
         id: z.string().uuid(),
@@ -103,6 +104,13 @@ export const teamRouter = createTRPCRouter({
         }),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertTeamLeadOrPermission(
+        ctx,
+        input.id,
+        PERMISSIONS.TEAM_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input }) => {
       await updateTeam({ id: input.id, data: input.data });
     }),
@@ -113,11 +121,14 @@ export const teamRouter = createTRPCRouter({
         teamId: z.string().uuid(),
       }),
     )
-    .mutation(async ({ input, ctx }) => {
-      const userId = getUserId(ctx);
-
-      // Note: We should verify user has permission to delete this team
-      // For now, assuming they do if they're authenticated
+    .use(({ ctx, next, input }) => {
+      return assertTeamLeadOrPermission(
+        ctx,
+        input.teamId,
+        PERMISSIONS.TEAM_DELETE,
+      ).then(() => next());
+    })
+    .mutation(async ({ input }) => {
       await deleteTeam(input.teamId);
     }),
 
@@ -129,6 +140,13 @@ export const teamRouter = createTRPCRouter({
         role: z.string().optional(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertTeamLeadOrPermission(
+        ctx,
+        input.teamId,
+        PERMISSIONS.TEAM_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input }) => {
       await addTeamMember(input.teamId, input.userId, input.role);
     }),
@@ -140,6 +158,13 @@ export const teamRouter = createTRPCRouter({
         userId: z.string(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertTeamLeadOrPermission(
+        ctx,
+        input.teamId,
+        PERMISSIONS.TEAM_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input }) => {
       try {
         await removeTeamMember(input.teamId, input.userId);

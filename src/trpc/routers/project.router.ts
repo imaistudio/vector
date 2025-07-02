@@ -13,7 +13,7 @@ import {
 } from "@/entities/projects/project.service";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { z } from "zod";
-import { assertAdmin, assertProjectLeadOrAdmin } from "@/trpc/permissions";
+import { assertProjectLeadOrPermission } from "@/trpc/permissions";
 import { eq } from "drizzle-orm";
 import {
   project as projectTable,
@@ -21,6 +21,7 @@ import {
 } from "@/db/schema";
 import { TRPCError } from "@trpc/server";
 import { userHasProjectAccess } from "@/entities/projects/project.service";
+import { PERMISSIONS } from "@/auth/permission-constants";
 
 export const projectRouter = createTRPCRouter({
   getByKey: protectedProcedure
@@ -56,7 +57,10 @@ export const projectRouter = createTRPCRouter({
     )
     .query(async ({ input, ctx }) => {
       const userId = getUserId(ctx);
-      // TODO: verify user has access to this project (omitted for brevity)
+      const canAccess = await userHasProjectAccess(userId, input.projectId);
+      if (!canAccess) {
+        throw new TRPCError({ code: "FORBIDDEN" });
+      }
       return await listProjectMembers(input.projectId);
     }),
 
@@ -91,7 +95,11 @@ export const projectRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ projectId: z.string().uuid() }))
     .use(({ ctx, next, input }) => {
-      return assertProjectLeadOrAdmin(ctx, input.projectId).then(() => next());
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_DELETE,
+      ).then(() => next());
     })
     .mutation(async ({ input }) => {
       await deleteProject(input.projectId);
@@ -153,7 +161,11 @@ export const projectRouter = createTRPCRouter({
       }),
     )
     .use(({ ctx, next, input }) => {
-      return assertProjectLeadOrAdmin(ctx, input.id).then(() => next());
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.id,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
     })
     .mutation(async ({ input }) => {
       await updateProject({ id: input.id, data: input.data });
@@ -168,6 +180,13 @@ export const projectRouter = createTRPCRouter({
         actorId: z.string(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input, ctx }) => {
       await updateProject({
         id: input.projectId,
@@ -183,6 +202,13 @@ export const projectRouter = createTRPCRouter({
         actorId: z.string(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input, ctx }) => {
       await updateProject({
         id: input.projectId,
@@ -198,6 +224,13 @@ export const projectRouter = createTRPCRouter({
         actorId: z.string(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input, ctx }) => {
       await updateProject({
         id: input.projectId,
@@ -213,6 +246,13 @@ export const projectRouter = createTRPCRouter({
         role: z.string().optional(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input }) => {
       await addProjectMember(input.projectId, input.userId, input.role);
     }),
@@ -224,6 +264,13 @@ export const projectRouter = createTRPCRouter({
         userId: z.string(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return assertProjectLeadOrPermission(
+        ctx,
+        input.projectId,
+        PERMISSIONS.PROJECT_UPDATE,
+      ).then(() => next());
+    })
     .mutation(async ({ input }) => {
       try {
         await removeProjectMember(input.projectId, input.userId);
