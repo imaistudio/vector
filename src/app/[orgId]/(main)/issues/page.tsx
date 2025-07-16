@@ -184,6 +184,7 @@ export default function IssuesPage() {
       pageSize: PAGE_SIZE,
       ...(selectedProject && { projectId: selectedProject }),
       ...(selectedTeam && { teamId: selectedTeam }),
+      assignedOnly: true,
     },
   );
 

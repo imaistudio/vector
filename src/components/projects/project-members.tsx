@@ -64,6 +64,11 @@ export function ProjectMembersSection({
     { enabled: !!projectId },
   );
 
+  // Fetch organization members for filtering
+  const { data: orgMembers = [] } = trpc.organization.listMembers.useQuery({
+    orgSlug,
+  });
+
   const removeMemberMutation = trpc.project.removeMember.useMutation({
     onSuccess: () => {
       utils.project.listMembers.invalidate({ projectId }).catch(() => {});
@@ -97,6 +102,24 @@ export function ProjectMembersSection({
             size="sm"
             onClick={() => setShowAddMemberDialog(true)}
             className="gap-1"
+            disabled={
+              orgMembers.filter(
+                (member) =>
+                  !members.some(
+                    (projectMember) => projectMember.userId === member.userId,
+                  ),
+              ).length === 0
+            }
+            title={
+              orgMembers.filter(
+                (member) =>
+                  !members.some(
+                    (projectMember) => projectMember.userId === member.userId,
+                  ),
+              ).length === 0
+                ? "All organization members are already in this project"
+                : ""
+            }
           >
             <UserPlus className="size-3" />
             Add member
@@ -122,7 +145,29 @@ export function ProjectMembersSection({
               Add project members to get started.
             </p>
             {canEdit && (
-              <Button onClick={() => setShowAddMemberDialog(true)}>
+              <Button
+                onClick={() => setShowAddMemberDialog(true)}
+                disabled={
+                  orgMembers.filter(
+                    (member) =>
+                      !members.some(
+                        (projectMember) =>
+                          projectMember.userId === member.userId,
+                      ),
+                  ).length === 0
+                }
+                title={
+                  orgMembers.filter(
+                    (member) =>
+                      !members.some(
+                        (projectMember) =>
+                          projectMember.userId === member.userId,
+                      ),
+                  ).length === 0
+                    ? "All organization members are already in this project"
+                    : ""
+                }
+              >
                 <UserPlus className="mr-2 size-4" /> Invite Member
               </Button>
             )}
@@ -159,6 +204,12 @@ function AddMemberDialog({
   const { data: orgMembers = [] } = trpc.organization.listMembers.useQuery({
     orgSlug,
   });
+
+  // Fetch current project members to filter them out
+  const { data: projectMembers = [] } = trpc.project.listMembers.useQuery(
+    { projectId },
+    { enabled: !!projectId },
+  );
 
   const utils = trpc.useUtils();
 
@@ -216,28 +267,46 @@ function AddMemberDialog({
                     className="h-9"
                   />
                   <CommandList>
-                    <CommandEmpty>No member found.</CommandEmpty>
+                    <CommandEmpty>
+                      {orgMembers.filter(
+                        (member) =>
+                          !projectMembers.some(
+                            (projectMember) =>
+                              projectMember.userId === member.userId,
+                          ),
+                      ).length === 0
+                        ? "All organization members are already in this project"
+                        : "No member found"}
+                    </CommandEmpty>
                     <CommandGroup>
-                      {orgMembers.map((member) => (
-                        <CommandItem
-                          key={member.userId}
-                          value={member.name}
-                          onSelect={() => {
-                            setSelectedMember(member.userId);
-                            setMemberComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedMember === member.userId
-                                ? "opacity-100"
-                                : "opacity-0",
-                            )}
-                          />
-                          {member.name}
-                        </CommandItem>
-                      ))}
+                      {orgMembers
+                        .filter(
+                          (member) =>
+                            !projectMembers.some(
+                              (projectMember) =>
+                                projectMember.userId === member.userId,
+                            ),
+                        )
+                        .map((member) => (
+                          <CommandItem
+                            key={member.userId}
+                            value={member.name}
+                            onSelect={() => {
+                              setSelectedMember(member.userId);
+                              setMemberComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedMember === member.userId
+                                  ? "opacity-100"
+                                  : "opacity-0",
+                              )}
+                            />
+                            {member.name}
+                          </CommandItem>
+                        ))}
                     </CommandGroup>
                   </CommandList>
                 </Command>
@@ -252,8 +321,27 @@ function AddMemberDialog({
           </Button>
           <Button
             size="sm"
-            disabled={!selectedMember || addMemberMutation.isPending}
+            disabled={
+              !selectedMember ||
+              addMemberMutation.isPending ||
+              orgMembers.filter(
+                (member) =>
+                  !projectMembers.some(
+                    (projectMember) => projectMember.userId === member.userId,
+                  ),
+              ).length === 0
+            }
             onClick={handleSubmit}
+            title={
+              orgMembers.filter(
+                (member) =>
+                  !projectMembers.some(
+                    (projectMember) => projectMember.userId === member.userId,
+                  ),
+              ).length === 0
+                ? "All organization members are already in this project"
+                : ""
+            }
           >
             {addMemberMutation.isPending ? "Adding…" : "Add member"}
           </Button>

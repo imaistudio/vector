@@ -17,12 +17,24 @@ interface LegacyCreateProjectButtonProps
 
 export function CreateProjectButton({
   orgSlug,
+  defaultStates,
   ...rest
-}: LegacyCreateProjectButtonProps) {
+}: LegacyCreateProjectButtonProps & {
+  defaultStates?: {
+    teamId?: string;
+    leadId?: string;
+    statusId?: string;
+    [key: string]: unknown;
+  };
+}) {
   // `_size` is ignored – sizing is handled internally.
   return (
     <PermissionGate orgSlug={orgSlug} permission={PERMISSIONS.PROJECT_CREATE}>
-      <CreateProjectDialog orgSlug={orgSlug} {...rest} />
+      <CreateProjectDialog
+        orgSlug={orgSlug}
+        defaultStates={defaultStates}
+        {...rest}
+      />
     </PermissionGate>
   );
 }

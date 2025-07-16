@@ -59,7 +59,7 @@ export interface ProjectsTableProps {
   projects: ReadonlyArray<ProjectRowData>;
   statuses: ReadonlyArray<Status>;
   teams: ReadonlyArray<Team>;
-  members: ReadonlyArray<Member>;
+  members?: ReadonlyArray<Member>; // Optional since new ProjectLeadSelector fetches its own data
   onStatusChange: (projectId: string, statusId: string) => void;
   onTeamChange: (projectId: string, teamId: string) => void;
   onLeadChange: (projectId: string, leadId: string) => void;
@@ -179,7 +179,7 @@ export function ProjectsTable({
 
               {/* Lead Selector */}
               <LeadSelector
-                members={members}
+                members={members || []}
                 selectedLead={project.leadId || ""}
                 onLeadSelect={(lid) => onLeadChange(project.id, lid)}
                 displayMode="iconWhenUnselected"

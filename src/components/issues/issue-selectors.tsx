@@ -25,6 +25,12 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Utils & helpers
 import { cn } from "@/lib/utils";
@@ -34,11 +40,15 @@ import { trpc } from "@/lib/trpc";
 // Icons
 import { FolderOpen, User, Check, Circle, Calendar, Clock } from "lucide-react";
 
+// Calendar component
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+
 // ---------------------------------------------------------------------------
 // 🧩 Type inference – derive types directly from tRPC router outputs
 // ---------------------------------------------------------------------------
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/trpc/routers/_app";
+import { Input } from "../ui/input";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 
@@ -110,17 +120,35 @@ export function ProjectSelector({
   const hasSelection = selectedProject !== "";
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
+  // Get selected project data
+  const selectedProjectObj = projects.find((p) => p.id === selectedProject);
+  const currentColor = selectedProjectObj?.color || "#94a3b8"; // Default grey
+  const currentName = selectedProjectObj?.name || "Project";
+  const currentIconName = selectedProjectObj?.icon;
+  const CurrentIcon = currentIconName
+    ? getDynamicIcon(currentIconName) || FolderOpen
+    : FolderOpen;
+
   const DefaultBtn = (
     <Button
       variant="outline"
       size="sm"
       className={cn("bg-muted/30 hover:bg-muted/50 h-8 gap-2", className)}
     >
-      {showIcon && <FolderOpen className="h-3 w-3" />}
-      {showLabel &&
-        (selectedProject
-          ? projects.find((p) => p.id === selectedProject)?.name
-          : "Project")}
+      {showIcon &&
+        (selectedProject ? (
+          CurrentIcon ? (
+            <CurrentIcon className="h-3 w-3" style={{ color: currentColor }} />
+          ) : (
+            <div
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: currentColor }}
+            />
+          )
+        ) : (
+          <FolderOpen className="h-3 w-3" />
+        ))}
+      {showLabel && currentName}
     </Button>
   );
 
@@ -148,26 +176,35 @@ export function ProjectSelector({
                 />
                 None
               </CommandItem>
-              {projects.map((project) => (
-                <CommandItem
-                  key={project.id}
-                  value={project.name}
-                  onSelect={() => {
-                    onProjectSelect(project.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      selectedProject === project.id
-                        ? "opacity-100"
-                        : "opacity-0",
-                    )}
-                  />
-                  {project.name}
-                </CommandItem>
-              ))}
+              {projects.map((project) => {
+                const Icon = project.icon
+                  ? getDynamicIcon(project.icon) || FolderOpen
+                  : FolderOpen;
+                return (
+                  <CommandItem
+                    key={project.id}
+                    value={project.name}
+                    onSelect={() => {
+                      onProjectSelect(project.id);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        selectedProject === project.id
+                          ? "opacity-100"
+                          : "opacity-0",
+                      )}
+                    />
+                    <Icon
+                      className="mr-2 h-3 w-3"
+                      style={{ color: project.color || "#94a3b8" }}
+                    />
+                    {project.name}
+                  </CommandItem>
+                );
+              })}
             </CommandGroup>
           </CommandList>
         </Command>
@@ -426,6 +463,8 @@ interface AssigneeSelectorProps {
   displayMode?: SelectorDisplayMode;
   trigger?: React.ReactElement;
   className?: string;
+  currentUserId?: string;
+  canManageAll?: boolean;
   /** Position of the popover relative to its trigger. */
   align?: "start" | "center" | "end";
 }
@@ -440,6 +479,8 @@ export function AssigneeSelector({
   displayMode,
   trigger,
   className,
+  currentUserId = "",
+  canManageAll = false,
   align = "start",
 }: AssigneeSelectorProps & { align?: "start" | "center" | "end" }) {
   const [open, setOpen] = useState(false);
@@ -506,8 +547,15 @@ export function AssigneeSelector({
                 <CommandItem
                   value=""
                   onSelect={() => {
+                    if (!canManageAll && currentUserId !== "") return; // cannot unassign others
                     handleSelect("");
                   }}
+                  disabled={!canManageAll && currentUserId !== ""}
+                  className={cn(
+                    !canManageAll &&
+                      currentUserId !== "" &&
+                      "pointer-events-none opacity-50",
+                  )}
                 >
                   <Check
                     className={cn(
@@ -517,7 +565,7 @@ export function AssigneeSelector({
                         : "opacity-0",
                     )}
                   />
-                  Unassigned
+                  Unassign all
                 </CommandItem>
               )}
               {members.map((member) => (
@@ -565,6 +613,8 @@ interface DateSelectorProps {
   className?: string;
   placeholder?: string;
   icon?: React.ComponentType<{ className?: string }>;
+  title?: string;
+  tooltipText?: string;
   /** Position of the popover relative to its trigger. */
   align?: "start" | "center" | "end";
 }
@@ -577,6 +627,8 @@ export function DateSelector({
   className,
   placeholder = "Select date",
   icon: Icon = Calendar,
+  title,
+  tooltipText,
   align = "start",
 }: DateSelectorProps & { align?: "start" | "center" | "end" }) {
   const [open, setOpen] = useState(false);
@@ -595,7 +647,7 @@ export function DateSelector({
     });
   };
 
-  const DefaultBtn = (
+  const buttonContent = (
     <Button
       variant="outline"
       size="sm"
@@ -606,19 +658,38 @@ export function DateSelector({
     </Button>
   );
 
+  const DefaultBtn =
+    displayMode === "iconWhenUnselected" && !hasSelection && tooltipText ? (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonContent}</TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    ) : (
+      buttonContent
+    );
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className="w-64 p-3">
+      <PopoverContent align={align} className="w-auto p-3">
         <div className="space-y-3">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => {
-              onDateSelect(e.target.value);
+          {title && (
+            <div className="text-center text-sm font-medium">{title}</div>
+          )}
+          <CalendarComponent
+            mode="single"
+            selected={selectedDate ? new Date(selectedDate) : undefined}
+            onSelect={(date) => {
+              if (date) {
+                onDateSelect(date.toISOString().split("T")[0]);
+              }
               setOpen(false);
             }}
-            className="border-input bg-background ring-offset-background focus-visible:ring-ring w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            initialFocus
           />
           {selectedDate && (
             <Button
@@ -662,6 +733,9 @@ export function TimeEstimatesSelector({
 }: TimeEstimatesSelectorProps & { align?: "start" | "center" | "end" }) {
   const [open, setOpen] = useState(false);
 
+  // Filter states to only show "done" type states
+  const doneStates = states.filter((state) => state.type === "done");
+
   const totalHours = Object.values(estimatedTimes).reduce(
     (sum, hours) => sum + (hours || 0),
     0,
@@ -678,15 +752,51 @@ export function TimeEstimatesSelector({
     return m > 0 ? `${h}h ${m}m` : `${h}h`;
   };
 
+  const getDisplayContent = () => {
+    if (!hasEstimates) {
+      return "Estimates";
+    }
+
+    // Get states that have estimates
+    const statesWithEstimates = doneStates.filter(
+      (state) => estimatedTimes[state.id] && estimatedTimes[state.id] > 0,
+    );
+
+    if (statesWithEstimates.length === 0) {
+      return `${formatHours(totalHours)} total`;
+    }
+
+    // If only one state has estimates, show it with icon
+    if (statesWithEstimates.length === 1) {
+      const state = statesWithEstimates[0];
+      const StateIcon = state.icon ? getDynamicIcon(state.icon) : null;
+      const hours = estimatedTimes[state.id];
+
+      return (
+        <div className="flex items-center gap-1">
+          {StateIcon && (
+            <StateIcon
+              className="h-3 w-3"
+              style={{ color: state.color || "#94a3b8" }}
+            />
+          )}
+          <span>{formatHours(hours)}</span>
+        </div>
+      );
+    }
+
+    // If multiple states have estimates, show total with count
+    return `${formatHours(totalHours)} (${statesWithEstimates.length} states)`;
+  };
+
   const DefaultBtn = (
     <Button
       variant="outline"
       size="sm"
       className={cn("bg-muted/30 hover:bg-muted/50 h-8 gap-2", className)}
     >
-      {showIcon && <Clock className="h-3 w-3" />}
-      {showLabel &&
-        (hasEstimates ? `${formatHours(totalHours)} total` : "Estimates")}
+      {showIcon && !hasEstimates && <Clock className="h-3 w-3" />}
+      {showLabel && getDisplayContent()}
     </Button>
   );
 
@@ -695,15 +805,17 @@ export function TimeEstimatesSelector({
       <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
       <PopoverContent align={align} className="w-80 p-3">
         <div className="space-y-3">
-          <div className="text-sm font-medium">Time Estimates by State</div>
+          <div className="text-sm font-medium">
+            Time Estimates by Done States
+          </div>
           <div className="text-muted-foreground text-xs">
-            Estimate how long the issue will spend in each state
+            Estimate how long the issue will spend in each completed state
           </div>
           <div className="max-h-60 space-y-2 overflow-y-auto">
-            {states.map((state) => {
+            {doneStates.map((state) => {
               const StateIcon = state.icon ? getDynamicIcon(state.icon) : null;
               return (
-                <div key={state.id} className="flex items-center gap-3">
+                <div key={state.id} className="my-1 flex items-center gap-3">
                   <div className="flex min-w-0 flex-1 items-center gap-2">
                     {StateIcon ? (
                       <StateIcon
@@ -718,12 +830,12 @@ export function TimeEstimatesSelector({
                     )}
                     <span className="truncate text-sm">{state.name}</span>
                   </div>
-                  <input
+                  <Input
                     type="number"
                     min="0"
                     step="0.5"
                     placeholder="0"
-                    className="border-input bg-background ring-offset-background focus-visible:ring-ring w-20 rounded-md border px-2 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+                    className="border-input bg-background ring-offset-background focus-visible:ring-ring h-8 w-20 rounded-md border px-2 py-1 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
                     value={estimatedTimes[state.id] || ""}
                     onChange={(e) => {
                       const value = parseFloat(e.target.value);
@@ -771,6 +883,8 @@ interface MultiAssigneeSelectorProps {
   highlightAssigneeId?: string | null;
   assignments?: AssignmentInfo[];
   activeFilter?: string;
+  currentUserId?: string;
+  canManageAll?: boolean;
 }
 
 export function MultiAssigneeSelector({
@@ -782,6 +896,8 @@ export function MultiAssigneeSelector({
   highlightAssigneeId = null,
   assignments = [],
   activeFilter = "all",
+  currentUserId = "",
+  canManageAll = false,
 }: MultiAssigneeSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -810,6 +926,7 @@ export function MultiAssigneeSelector({
 
   const handleToggleAssignee = (userId: string) => {
     if (isLoading) return;
+    if (!canManageAll && userId !== currentUserId) return; // permission guard
     const isSelected = selectedAssigneeIds.includes(userId);
     if (isSelected) {
       onAssigneesChange(selectedAssigneeIds.filter((id) => id !== userId));
@@ -1004,6 +1121,11 @@ export function MultiAssigneeSelector({
                   value={member.name || member.email}
                   onSelect={() => handleToggleAssignee(member.userId)}
                   disabled={isLoading}
+                  className={cn(
+                    !canManageAll &&
+                      member.userId !== currentUserId &&
+                      "pointer-events-none opacity-50",
+                  )}
                 >
                   <div className="flex w-full items-center gap-3">
                     <Checkbox

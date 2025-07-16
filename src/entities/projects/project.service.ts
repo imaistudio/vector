@@ -28,6 +28,18 @@ import { formatDateForDb } from "@/lib/date";
 type ProjectInsertModel = InferInsertModel<typeof projectTable>;
 export type Project = InferSelectModel<typeof projectTable>;
 
+// Type for project with joined details (status, team, lead info)
+export type ProjectWithDetails = Project & {
+  statusName?: string | null;
+  statusColor?: string | null;
+  statusIcon?: string | null;
+  statusType?: string | null;
+  teamName?: string | null;
+  teamKey?: string | null;
+  leadName?: string | null;
+  leadEmail?: string | null;
+};
+
 // Use table-derived type to stay in sync with schema. All insertable columns minus
 // auto-generated audit fields → compile-safe params for `createProject()`.
 export type CreateProjectParams =
@@ -218,6 +230,90 @@ export async function deleteProject(projectId: string): Promise<void> {
   await db.delete(projectTable).where(eq(projectTable.id, projectId));
 }
 
+/**
+ * Changes the project lead and updates project membership roles accordingly.
+ *
+ * Business rules:
+ * 1. If newLeadId is provided, the user must be a project member
+ * 2. The old lead becomes a regular member
+ * 3. The new lead gets the "lead" role
+ * 4. Updates the project.leadId field
+ */
+export async function changeProjectLead(
+  projectId: string,
+  newLeadId: string | null,
+): Promise<void> {
+  // First, verify the project exists
+  const project = await db
+    .select({ id: projectTable.id, leadId: projectTable.leadId })
+    .from(projectTable)
+    .where(eq(projectTable.id, projectId))
+    .limit(1);
+
+  if (project.length === 0) {
+    throw new Error("Project not found");
+  }
+
+  const currentLeadId = project[0].leadId;
+
+  await db.transaction(async (tx) => {
+    // If there's a current lead, change their role to "member"
+    if (currentLeadId) {
+      await tx
+        .update(projectMemberTable)
+        .set({ role: "member" })
+        .where(
+          and(
+            eq(projectMemberTable.projectId, projectId),
+            eq(projectMemberTable.userId, currentLeadId),
+          ),
+        );
+    }
+
+    // If there's a new lead, ensure they're a project member and set their role to "lead"
+    if (newLeadId) {
+      // Check if the user is already a project member
+      const existingMember = await tx
+        .select({ userId: projectMemberTable.userId })
+        .from(projectMemberTable)
+        .where(
+          and(
+            eq(projectMemberTable.projectId, projectId),
+            eq(projectMemberTable.userId, newLeadId),
+          ),
+        )
+        .limit(1);
+
+      if (existingMember.length > 0) {
+        // Update existing member to lead role
+        await tx
+          .update(projectMemberTable)
+          .set({ role: "lead" })
+          .where(
+            and(
+              eq(projectMemberTable.projectId, projectId),
+              eq(projectMemberTable.userId, newLeadId),
+            ),
+          );
+      } else {
+        // Add new member with lead role
+        await tx.insert(projectMemberTable).values({
+          projectId,
+          userId: newLeadId,
+          role: "lead",
+          joinedAt: new Date(),
+        });
+      }
+    }
+
+    // Update the project's leadId field
+    await tx
+      .update(projectTable)
+      .set({ leadId: newLeadId, updatedAt: new Date() })
+      .where(eq(projectTable.id, projectId));
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Member helpers
 // -----------------------------------------------------------------------------
@@ -265,10 +361,25 @@ export async function addMember(
 
   const now = new Date();
 
+  // Check if user is already a member
+  const existing = await db
+    .select({ userId: projectMemberTable.userId })
+    .from(projectMemberTable)
+    .where(
+      and(
+        eq(projectMemberTable.projectId, projectId),
+        eq(projectMemberTable.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    throw new Error("User is already a member of this project");
+  }
+
   await db
     .insert(projectMemberTable)
-    .values({ projectId, userId, role, joinedAt: now })
-    .onConflictDoNothing();
+    .values({ projectId, userId, role, joinedAt: now });
 }
 
 export async function removeMember(
@@ -326,7 +437,7 @@ export async function removeMember(
 export async function findProjectByKey(
   orgSlug: string,
   projectKey: string,
-): Promise<Project | null> {
+): Promise<ProjectWithDetails | null> {
   const leadUser = alias(userTable, "leadUser");
 
   const result = await db

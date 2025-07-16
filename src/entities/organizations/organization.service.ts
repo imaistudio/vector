@@ -761,6 +761,7 @@ export class OrganizationService {
     filters?: {
       projectId?: string;
       teamId?: string;
+      assignedOnly?: boolean;
     },
   ) {
     const orgRow = await db
@@ -824,8 +825,10 @@ export class OrganizationService {
     const whereConditions = [
       eq(issue.organizationId, orgId),
       visibilityCondition,
-      not(isNull(assignmentAll.assigneeId)),
-    ];
+      filters?.assignedOnly !== false
+        ? not(isNull(assignmentAll.assigneeId))
+        : undefined,
+    ].filter(Boolean);
 
     if (filters?.projectId) {
       whereConditions.push(eq(issue.projectId, filters.projectId));
@@ -888,7 +891,10 @@ export class OrganizationService {
     const totalCountConditions = [
       eq(issue.organizationId, orgId),
       visibilityCondition,
-    ];
+      filters?.assignedOnly !== false
+        ? not(isNull(assignmentAll.assigneeId))
+        : undefined,
+    ].filter(Boolean);
 
     if (filters?.projectId) {
       totalCountConditions.push(eq(issue.projectId, filters.projectId));
@@ -917,8 +923,10 @@ export class OrganizationService {
     const countsConditions = [
       eq(issue.organizationId, orgId),
       visibilityCondition,
-      not(isNull(assignmentAll.assigneeId)),
-    ];
+      filters?.assignedOnly !== false
+        ? not(isNull(assignmentAll.assigneeId))
+        : undefined,
+    ].filter(Boolean);
 
     if (filters?.projectId) {
       countsConditions.push(eq(issue.projectId, filters.projectId));
@@ -1218,6 +1226,9 @@ export class OrganizationService {
     userId: string,
     page = 1,
     pageSize = 25,
+    filters?: {
+      teamId?: string;
+    },
   ) {
     const orgRow = await db
       .select({ id: organization.id })
@@ -1250,6 +1261,8 @@ export class OrganizationService {
             eq(pm.userId, userId),
             eq(tm.userId, userId),
           ),
+          // Add team filter if specified
+          filters?.teamId ? eq(project.teamId, filters.teamId) : undefined,
         ),
       );
 
@@ -1317,7 +1330,7 @@ export class OrganizationService {
     userId: string,
     limit = 100,
   ) {
-    return (await this.getUserProjectsPaged(orgSlug, userId, 1, limit))
+    return (await this.getUserProjectsPaged(orgSlug, userId, 1, limit, {}))
       .projects;
   }
 }

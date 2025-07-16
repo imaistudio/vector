@@ -15,11 +15,9 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Simplified selector components for teams, leads, and status
-import {
-  TeamSelector,
-  AssigneeSelector,
-} from "@/components/issues/issue-selectors";
+import { TeamSelector } from "@/components/issues/issue-selectors";
 import { StatusSelector } from "@/components/projects/project-selectors";
+import { ProjectLeadSelector } from "./project-lead-selector";
 
 // ---------------------------------------------------------------------------
 // 🧩 Internal content component (dialog body)
@@ -28,27 +26,37 @@ interface CreateProjectDialogContentProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess?: (projectId: string) => void;
+  defaultStates?: {
+    teamId?: string;
+    leadId?: string;
+    statusId?: string;
+    [key: string]: unknown;
+  };
 }
 
 function CreateProjectDialogContent({
   orgSlug,
   onClose,
   onSuccess,
+  defaultStates,
 }: CreateProjectDialogContentProps) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState<string>("");
-  const [selectedLead, setSelectedLead] = useState<string>("");
-  const [selectedStatus, setSelectedStatus] = useState<string>("");
+  const [selectedTeam, setSelectedTeam] = useState<string>(
+    defaultStates?.teamId || "",
+  );
+  const [selectedLead, setSelectedLead] = useState<string>(
+    defaultStates?.leadId || "",
+  );
+  const [selectedStatus, setSelectedStatus] = useState<string>(
+    defaultStates?.statusId || "",
+  );
 
   const utils = trpc.useUtils();
 
-  // Get teams and organization members
+  // Get teams
   const { data: teams = [] } = trpc.organization.listTeams.useQuery({
-    orgSlug,
-  });
-  const { data: members = [] } = trpc.organization.listMembers.useQuery({
     orgSlug,
   });
 
@@ -73,6 +81,10 @@ function CreateProjectDialogContent({
       Promise.all([
         utils.organization.listProjects.invalidate({ orgSlug }),
         utils.organization.listProjectsPaged.invalidate({ orgSlug }),
+        // If a lead was selected, invalidate their project members query
+        selectedLead
+          ? utils.project.listMembers.invalidate({ projectId: result.id })
+          : Promise.resolve(),
       ]).catch(() => {});
       onSuccess?.(result.id);
       onClose();
@@ -141,10 +153,10 @@ function CreateProjectDialogContent({
               // (applies to all inline selectors below)
             />
 
-            <AssigneeSelector
-              members={members}
-              selectedAssignee={selectedLead}
-              onAssigneeSelect={setSelectedLead}
+            <ProjectLeadSelector
+              orgSlug={orgSlug}
+              selectedLead={selectedLead}
+              onLeadSelect={setSelectedLead}
               displayMode="iconWhenUnselected"
               align="center"
               className="h-9"
@@ -219,6 +231,13 @@ export interface CreateProjectDialogProps {
   variant?: "default" | "floating";
   /** Additional classes for the trigger button */
   className?: string;
+  /** Object for default values for selectors */
+  defaultStates?: {
+    teamId?: string;
+    leadId?: string;
+    statusId?: string;
+    [key: string]: unknown;
+  };
 }
 
 export function CreateProjectDialog({
@@ -226,6 +245,7 @@ export function CreateProjectDialog({
   onProjectCreated,
   variant = "default",
   className,
+  defaultStates,
 }: CreateProjectDialogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -265,6 +285,7 @@ export function CreateProjectDialog({
           orgSlug={orgSlug}
           onClose={() => setIsDialogOpen(false)}
           onSuccess={handleSuccess}
+          defaultStates={defaultStates}
         />
       )}
     </>

@@ -9,10 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDateHuman } from "@/lib/date";
-import {
-  StatusSelector,
-  LeadSelector,
-} from "@/components/projects/project-selectors";
+import { StatusSelector } from "@/components/projects/project-selectors";
+import { ProjectLeadSelector } from "@/components/projects/project-lead-selector";
 import { TeamSelector } from "@/components/teams/team-selector";
 import { toast } from "sonner";
 import { ProjectMembersSection } from "@/components/projects/project-members";
@@ -27,6 +25,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { getDynamicIcon } from "@/lib/dynamic-icons";
+import { UsersIcon, CalendarIcon, ClockIcon } from "lucide-react";
+import type { ProjectWithDetails } from "@/entities/projects/project.service";
 
 interface ProjectViewClientProps {
   params: { orgId: string; projectKey: string };
@@ -79,10 +79,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   });
 
   const teamsQuery = trpc.organization.listTeams.useQuery({
-    orgSlug: params.orgId,
-  });
-
-  const membersQuery = trpc.organization.listMembers.useQuery({
     orgSlug: params.orgId,
   });
 
@@ -144,6 +140,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
       projectQuery.refetch();
       utils.organization.listProjects.invalidate({ orgSlug: params.orgId });
       utils.organization.listTeams.invalidate({ orgSlug: params.orgId });
+      utils.project.listMembers.invalidate({ projectId: project?.id || "" });
       toast.success("Project lead updated");
     },
     onError: (error) => {
@@ -240,14 +237,14 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     });
   };
 
-  const project = projectQuery.data;
+  const project = projectQuery.data as
+    | (ProjectWithDetails & {
+        createdAt: string;
+        updatedAt: string;
+      })
+    | null;
   const statuses = statusesQuery.data || [];
   const teams = teamsQuery.data || [];
-  const members = (membersQuery.data || []).map((member) => ({
-    userId: member.userId,
-    name: member.name,
-    email: member.email,
-  }));
 
   // Determine if user can edit project (project lead or has permission)
   const canEdit = !!(
@@ -355,8 +352,9 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
             <div className="bg-muted-foreground/20 h-4 w-px" />
 
             {/* Lead */}
-            <LeadSelector
-              members={members}
+            <ProjectLeadSelector
+              orgSlug={params.orgId}
+              projectId={project.id}
               selectedLead={project.leadId || ""}
               onLeadSelect={handleLeadChange}
               className="border-none bg-transparent shadow-none"
@@ -579,7 +577,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
           </div>
 
           {/* Description */}
-          <div className="mb-8">
+          <div className="mb-4">
             {editingDescription ? (
               <div className="space-y-4">
                 <Textarea
@@ -642,52 +640,85 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
             )}
           </div>
 
+          {/* Properties Bar */}
+          <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            {/* Status */}
+            <div className="flex min-w-[120px] items-center gap-1">
+              <span className="text-muted-foreground">
+                <StatusSelector
+                  statuses={statuses}
+                  selectedStatus={project.statusId || ""}
+                  onStatusSelect={handleStatusChange}
+                  className="h-5 w-5 border-none bg-transparent p-0 shadow-none"
+                  displayMode="iconOnly"
+                />
+              </span>
+              <span className="text-muted-foreground text-xs">Status</span>
+              <span className="ml-1 font-medium">
+                {project.statusName || "—"}
+              </span>
+            </div>
+            {/* Lead */}
+            <div className="flex min-w-[120px] items-center gap-1">
+              <span className="text-muted-foreground">
+                <ProjectLeadSelector
+                  orgSlug={params.orgId}
+                  projectId={project.id}
+                  selectedLead={project.leadId || ""}
+                  onLeadSelect={handleLeadChange}
+                  className="h-5 w-5 border-none bg-transparent p-0 shadow-none"
+                  displayMode="iconOnly"
+                />
+              </span>
+              <span className="text-muted-foreground text-xs">Lead</span>
+              <span className="ml-1 font-medium">
+                {project.leadName || "—"}
+              </span>
+            </div>
+            {/* Team */}
+            <div className="flex min-w-[120px] items-center gap-1">
+              <span className="text-muted-foreground">
+                <UsersIcon className="size-4" />
+              </span>
+              <span className="text-muted-foreground text-xs">Team</span>
+              <span className="ml-1 font-medium">
+                {project.teamName || "—"}
+              </span>
+            </div>
+            {/* Dates */}
+            <div className="flex min-w-[180px] items-center gap-1">
+              <span className="text-muted-foreground">
+                <CalendarIcon className="size-4" />
+              </span>
+              <span className="text-muted-foreground text-xs">Dates</span>
+              <span className="ml-1">
+                {project.startDate
+                  ? formatDateHuman(new Date(project.startDate))
+                  : "—"}
+                {project.dueDate
+                  ? ` → ${formatDateHuman(new Date(project.dueDate))}`
+                  : ""}
+              </span>
+            </div>
+            {/* Created/Updated */}
+            <div className="flex min-w-[160px] items-center gap-1">
+              <span className="text-muted-foreground">
+                <ClockIcon className="size-4" />
+              </span>
+              <span className="text-muted-foreground text-xs">Created</span>
+              <span className="ml-1">
+                {formatDateHuman(new Date(project.createdAt))}
+              </span>
+              <span className="text-muted-foreground mx-1 text-xs">·</span>
+              <span className="text-muted-foreground text-xs">Updated</span>
+              <span className="ml-1">
+                {formatDateHuman(new Date(project.updatedAt))}
+              </span>
+            </div>
+          </div>
+
           {/* Project Details */}
           <div className="space-y-6">
-            {/* Dates Grid */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div>
-                <h3 className="text-muted-foreground mb-2 text-sm font-medium">
-                  Start Date
-                </h3>
-                <p className="text-sm">
-                  {project.startDate
-                    ? formatDateHuman(new Date(project.startDate))
-                    : "Not set"}
-                </p>
-              </div>
-              <div>
-                <h3 className="text-muted-foreground mb-2 text-sm font-medium">
-                  Due Date
-                </h3>
-                <p className="text-sm">
-                  {project.dueDate
-                    ? formatDateHuman(new Date(project.dueDate))
-                    : "Not set"}
-                </p>
-              </div>
-            </div>
-
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div>
-                <h3 className="text-muted-foreground mb-2 text-sm font-medium">
-                  Created
-                </h3>
-                <p className="text-sm">
-                  {formatDateHuman(new Date(project.createdAt))}
-                </p>
-              </div>
-              <div>
-                <h3 className="text-muted-foreground mb-2 text-sm font-medium">
-                  Updated
-                </h3>
-                <p className="text-sm">
-                  {formatDateHuman(new Date(project.updatedAt))}
-                </p>
-              </div>
-            </div>
-
             {/* Activity Feed placeholder */}
             <div>
               <h2 className="mb-2 text-sm font-semibold">Activity</h2>

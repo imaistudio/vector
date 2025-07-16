@@ -273,6 +273,7 @@ export const organizationRouter = createTRPCRouter({
         orgSlug: z.string(),
         page: z.number().int().min(1).default(1),
         pageSize: z.number().int().min(1).max(100).default(25),
+        teamId: z.string().uuid().optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
@@ -286,6 +287,7 @@ export const organizationRouter = createTRPCRouter({
         getUserId(ctx),
         input.page,
         input.pageSize,
+        { teamId: input.teamId },
       );
     }),
 
@@ -312,6 +314,7 @@ export const organizationRouter = createTRPCRouter({
         pageSize: z.number().int().min(1).max(100).default(25),
         projectId: z.string().uuid().optional(),
         teamId: z.string().uuid().optional(),
+        assignedOnly: z.boolean().optional(), // <-- Add this line
       }),
     )
     .query(async ({ input, ctx }) => {
@@ -328,6 +331,11 @@ export const organizationRouter = createTRPCRouter({
         {
           projectId: input.projectId,
           teamId: input.teamId,
+          assignedOnly: input.assignedOnly,
+        } as {
+          projectId?: string;
+          teamId?: string;
+          assignedOnly?: boolean;
         },
       );
     }),

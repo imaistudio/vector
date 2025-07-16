@@ -98,9 +98,16 @@ export function IssueAssignments({
     .map((a) => a.assigneeId)
     .filter((id): id is string => !!id);
 
-  const availableMembers = members.filter(
+  let availableMembers = members.filter(
     (m) => !assignedUserIds.includes(m.userId),
   );
+
+  // If the user cannot manage assignments, they may only assign themselves
+  if (!canManage) {
+    availableMembers = availableMembers.filter(
+      (m) => m.userId === currentUserId,
+    );
+  }
 
   const handleAddAssignee = (assigneeId: string) => {
     addAssigneeMutation.mutate({
@@ -137,6 +144,7 @@ export function IssueAssignments({
           size="sm"
           onClick={() => setAddDialogOpen(true)}
           className="h-6 gap-1 text-xs"
+          disabled={availableMembers.length === 0}
         >
           <Plus className="h-3 w-3" />
         </Button>

@@ -23,6 +23,11 @@ import { formatDateHuman } from "@/lib/date";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { IssuesTable } from "@/components/issues/issues-table";
+import { ProjectsTable } from "@/components/projects/projects-table";
+import type { IssueRowData } from "@/components/issues/issues-table";
+import type { ProjectRowData } from "@/components/projects/projects-table";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -55,6 +60,8 @@ import { getDynamicIcon } from "@/lib/dynamic-icons";
 import { usePermission } from "@/hooks/use-permissions";
 import { PERMISSIONS } from "@/auth/permission-constants";
 import { toast } from "sonner";
+import { CreateIssueDialog } from "@/components/issues/create-issue-dialog";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 
 interface TeamViewPageProps {
   params: Promise<{ orgId: string; teamKey: string }>;
@@ -375,6 +382,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   const [iconValue, setIconValue] = useState<string | null>(null);
   const [colorValue, setColorValue] = useState<string | null>(null);
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
+  const [activeTab, setActiveTab] = useState("members");
 
   // Resolve params
   useEffect(() => {
@@ -407,6 +415,75 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
     { enabled: !!team },
   );
 
+  // Fetch team issues
+  const { data: teamIssuesData } = trpc.organization.listIssuesPaged.useQuery(
+    {
+      orgSlug: resolvedParams?.orgId || "",
+      teamId: team?.id || "",
+      page: 1,
+      pageSize: 25,
+      assignedOnly: false,
+    },
+    { enabled: !!team && !!resolvedParams },
+  );
+
+  // Fetch team projects
+  const { data: teamProjectsData } =
+    trpc.organization.listProjectsPaged.useQuery(
+      {
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+        page: 1,
+        pageSize: 25,
+      },
+      { enabled: !!team && !!resolvedParams },
+    );
+
+  // Fetch supporting data for tables
+  const { data: states = [] } = trpc.organization.listIssueStates.useQuery(
+    {
+      orgSlug: resolvedParams?.orgId || "",
+    },
+    { enabled: !!resolvedParams },
+  );
+
+  const { data: priorities = [] } =
+    trpc.organization.listIssuePriorities.useQuery(
+      {
+        orgSlug: resolvedParams?.orgId || "",
+      },
+      { enabled: !!resolvedParams },
+    );
+
+  const { data: teams = [] } = trpc.organization.listTeams.useQuery(
+    {
+      orgSlug: resolvedParams?.orgId || "",
+    },
+    { enabled: !!resolvedParams },
+  );
+
+  const { data: projects = [] } = trpc.organization.listProjects.useQuery(
+    {
+      orgSlug: resolvedParams?.orgId || "",
+    },
+    { enabled: !!resolvedParams },
+  );
+
+  const { data: statuses = [] } =
+    trpc.organization.listProjectStatuses.useQuery(
+      {
+        orgSlug: resolvedParams?.orgId || "",
+      },
+      { enabled: !!resolvedParams },
+    );
+
+  const { data: members = [] } = trpc.organization.listMembers.useQuery(
+    {
+      orgSlug: resolvedParams?.orgId || "",
+    },
+    { enabled: !!resolvedParams },
+  );
+
   // Determine if user can edit team (team lead or has permission)
   const canEdit = !!(
     currentUser &&
@@ -435,6 +512,99 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   });
 
   const utils = trpc.useUtils();
+
+  // Issue mutations
+  const deleteMutation = trpc.issue.delete.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssuesPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changePriorityMutation = trpc.issue.changePriority.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssuesPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const updateAssigneesMutation = trpc.issue.updateAssignees.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssuesPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changeTeamMutation = trpc.issue.changeTeam.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssuesPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changeProjectMutation = trpc.issue.changeProject.useMutation({
+    onSuccess: () => {
+      utils.organization.listIssuesPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changeAssignmentStateMutation =
+    trpc.issue.changeAssignmentState.useMutation({
+      onSuccess: () => {
+        utils.organization.listIssuesPaged.invalidate({
+          orgSlug: resolvedParams?.orgId || "",
+          teamId: team?.id || "",
+        });
+      },
+    });
+
+  // Project mutations
+  const changeStatusMutation = trpc.project.changeStatus.useMutation({
+    onSuccess: () => {
+      utils.organization.listProjectsPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changeProjectTeamMutation = trpc.project.changeTeam.useMutation({
+    onSuccess: () => {
+      utils.organization.listProjectsPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const changeLeadMutation = trpc.project.changeLead.useMutation({
+    onSuccess: () => {
+      utils.organization.listProjectsPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
+
+  const deleteProjectMutation = trpc.project.delete.useMutation({
+    onSuccess: () => {
+      utils.organization.listProjectsPaged.invalidate({
+        orgSlug: resolvedParams?.orgId || "",
+        teamId: team?.id || "",
+      });
+    },
+  });
 
   const removeMemberMutation = trpc.team.removeMember.useMutation({
     onSuccess: () => {
@@ -503,6 +673,92 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
       teamId: team.id,
       userId,
     });
+  };
+
+  // Issue handlers
+  const handlePriorityChange = (issueId: string, priorityId: string) => {
+    if (!currentUser?.user?.id || !priorityId) return;
+    changePriorityMutation.mutate({
+      issueId,
+      actorId: currentUser.user.id,
+      priorityId,
+    });
+  };
+
+  const handleAssigneesChange = (issueId: string, assigneeIds: string[]) => {
+    if (!currentUser?.user?.id) return;
+    updateAssigneesMutation.mutate({
+      issueId,
+      assigneeIds,
+      actorId: currentUser.user.id,
+    });
+  };
+
+  const handleIssueTeamChange = (issueId: string, teamId: string) => {
+    if (!currentUser?.user?.id) return;
+    changeTeamMutation.mutate({
+      issueId,
+      actorId: currentUser.user.id,
+      teamId: teamId || null,
+    });
+  };
+
+  const handleIssueProjectChange = (issueId: string, projectId: string) => {
+    if (!currentUser?.user?.id) return;
+    changeProjectMutation.mutate({
+      issueId,
+      actorId: currentUser.user.id,
+      projectId: projectId || null,
+    });
+  };
+
+  const handleAssignmentStateChange = (
+    assignmentId: string,
+    stateId: string,
+  ) => {
+    if (!currentUser?.user?.id || !assignmentId || !stateId) return;
+    changeAssignmentStateMutation.mutate({
+      assignmentId,
+      stateId,
+    });
+  };
+
+  const handleIssueDelete = (issueId: string) => {
+    if (!confirm("Delete this issue? This action cannot be undone.")) return;
+    deleteMutation.mutate({ issueId });
+  };
+
+  // Project handlers
+  const handleStatusChange = (projectId: string, statusId: string) => {
+    if (!currentUser?.user?.id) return;
+    changeStatusMutation.mutate({
+      projectId,
+      statusId: statusId || null,
+      actorId: currentUser.user.id,
+    });
+  };
+
+  const handleProjectTeamChange = (projectId: string, teamId: string) => {
+    if (!currentUser?.user?.id) return;
+    changeProjectTeamMutation.mutate({
+      projectId,
+      teamId: teamId || null,
+      actorId: currentUser.user.id,
+    });
+  };
+
+  const handleProjectLeadChange = (projectId: string, leadId: string) => {
+    if (!currentUser?.user?.id) return;
+    changeLeadMutation.mutate({
+      projectId,
+      leadId: leadId || null,
+      actorId: currentUser.user.id,
+    });
+  };
+
+  const handleProjectDelete = (projectId: string) => {
+    if (!confirm("Delete this project? This cannot be undone.")) return;
+    deleteProjectMutation.mutate({ projectId });
   };
 
   return (
@@ -790,7 +1046,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
             </div>
 
             {/* Description */}
-            <div className="mb-8">
+            <div className="mb-2">
               {editingDescription ? (
                 <div className="space-y-4">
                   <Textarea
@@ -853,34 +1109,145 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
               )}
             </div>
 
-            {/* Team Members */}
-            <div>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="flex items-center gap-2 text-sm font-semibold">
-                  <Users className="size-4" />
-                  Members ({teamMembers.length})
-                </h2>
-                {canEdit && (
-                  <Button
-                    size="sm"
-                    onClick={() => setShowAddMemberDialog(true)}
-                    className="gap-1"
-                  >
-                    <Plus className="size-3" />
-                    Add member
-                  </Button>
-                )}
-              </div>
+            {/* Team Content Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger asChild value="members">
+                  <div className="flex items-center gap-2">
+                    Members ({teamMembers.length})
+                    {canEdit && (
+                      <Button
+                        onClick={() => setShowAddMemberDialog(true)}
+                        className="h-5 gap-1 px-0 text-xs"
+                        variant="outline"
+                      >
+                        <Plus className="size-3" />
+                      </Button>
+                    )}
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger asChild value="issues">
+                  <div className="flex items-center gap-2">
+                    Issues ({teamIssuesData?.total || 0})
+                    {canEdit && (
+                      <CreateIssueDialog
+                        orgSlug={resolvedParams.orgId}
+                        defaultStates={{ teamId: team.id }}
+                        className="h-5 gap-1 px-0 text-xs"
+                      />
+                    )}
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger asChild value="projects">
+                  <div className="flex items-center gap-2">
+                    Projects ({teamProjectsData?.total || 0})
+                    {canEdit && (
+                      <CreateProjectDialog
+                        orgSlug={resolvedParams.orgId}
+                        defaultStates={{ teamId: team.id }}
+                        className="h-5 gap-1 px-0 text-xs"
+                      />
+                    )}
+                  </div>
+                </TabsTrigger>
+              </TabsList>
 
-              <div className="rounded-lg border">
-                <MembersList
-                  members={teamMembers}
-                  onRemoveMember={canEdit ? handleRemoveMember : undefined}
-                  removePending={removeMemberMutation.isPending}
-                  canEdit={canEdit}
-                />
-              </div>
-            </div>
+              {/* Members Tab */}
+              <TabsContent value="members">
+                <div className="rounded-lg border">
+                  <MembersList
+                    members={teamMembers}
+                    onRemoveMember={canEdit ? handleRemoveMember : undefined}
+                    removePending={removeMemberMutation.isPending}
+                    canEdit={canEdit}
+                  />
+                </div>
+              </TabsContent>
+
+              {/* Issues Tab */}
+              <TabsContent value="issues">
+                <div className="rounded-lg border">
+                  {teamIssuesData?.issues &&
+                  teamIssuesData.issues.length > 0 ? (
+                    <IssuesTable
+                      orgSlug={resolvedParams.orgId}
+                      issues={teamIssuesData.issues}
+                      states={states}
+                      priorities={priorities}
+                      teams={teams}
+                      projects={projects}
+                      onPriorityChange={handlePriorityChange}
+                      onAssigneesChange={handleAssigneesChange}
+                      onTeamChange={handleIssueTeamChange}
+                      onProjectChange={handleIssueProjectChange}
+                      onDelete={handleIssueDelete}
+                      deletePending={deleteMutation.isPending}
+                      isUpdatingAssignees={updateAssigneesMutation.isPending}
+                      onAssignmentStateChange={handleAssignmentStateChange}
+                      isUpdatingAssignmentStates={
+                        changeAssignmentStateMutation.isPending
+                      }
+                      currentUserId={currentUser?.user?.id || ""}
+                      canChangeAll={currentUser?.user?.role === "admin"}
+                      activeFilter="all"
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="mb-4 text-4xl">🎯</div>
+                        <h3 className="mb-2 text-lg font-semibold">
+                          No issues found
+                        </h3>
+                        <p className="text-muted-foreground mb-6">
+                          This team doesn't have any issues yet.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              {/* Projects Tab */}
+              <TabsContent value="projects">
+                <div className="rounded-lg border">
+                  {teamProjectsData?.projects &&
+                  teamProjectsData.projects.length > 0 ? (
+                    <ProjectsTable
+                      orgSlug={resolvedParams.orgId}
+                      projects={teamProjectsData.projects.map((project) => ({
+                        ...project,
+                        updatedAt: new Date(project.updatedAt),
+                        createdAt: new Date(project.createdAt),
+                      }))}
+                      statuses={statuses}
+                      teams={teams}
+                      members={members.map((member) => ({
+                        userId: member.userId,
+                        name: member.name,
+                        email: member.email,
+                      }))}
+                      onStatusChange={handleStatusChange}
+                      onTeamChange={handleProjectTeamChange}
+                      onLeadChange={handleProjectLeadChange}
+                      onDelete={handleProjectDelete}
+                      deletePending={deleteProjectMutation.isPending}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="mb-4 text-4xl">📁</div>
+                        <h3 className="mb-2 text-lg font-semibold">
+                          No projects found
+                        </h3>
+                        <p className="text-muted-foreground mb-6">
+                          This team doesn't have any projects yet.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       </div>

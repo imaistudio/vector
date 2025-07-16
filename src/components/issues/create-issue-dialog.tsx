@@ -23,6 +23,8 @@ import {
   Check,
   MoreHorizontal,
   Plus,
+  ClockPlus,
+  ClockAlert,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import { cn } from "@/lib/utils";
@@ -152,20 +154,39 @@ interface CreateIssueDialogContentProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess?: (issueId: string) => void;
+  defaultStates?: {
+    teamId?: string;
+    projectId?: string;
+    stateId?: string;
+    priorityId?: string;
+    assigneeIds?: string[];
+    [key: string]: unknown;
+  };
 }
 
 function CreateIssueDialogContent({
   orgSlug,
   onClose,
   onSuccess,
+  defaultStates,
 }: CreateIssueDialogContentProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState<string>("");
-  const [selectedProject, setSelectedProject] = useState<string>("");
-  const [selectedState, setSelectedState] = useState<string>("");
-  const [selectedAssignees, setSelectedAssignees] = useState<string[]>([]);
-  const [selectedPriority, setSelectedPriority] = useState<string>("");
+  const [selectedTeam, setSelectedTeam] = useState<string>(
+    defaultStates?.teamId || "",
+  );
+  const [selectedProject, setSelectedProject] = useState<string>(
+    defaultStates?.projectId || "",
+  );
+  const [selectedState, setSelectedState] = useState<string>(
+    defaultStates?.stateId || "",
+  );
+  const [selectedAssignees, setSelectedAssignees] = useState<string[]>(
+    defaultStates?.assigneeIds || [],
+  );
+  const [selectedPriority, setSelectedPriority] = useState<string>(
+    defaultStates?.priorityId || "",
+  );
   const [manualFormatOverride, setManualFormatOverride] = useState<
     "team" | "project" | "org" | null
   >(null);
@@ -353,27 +374,6 @@ function CreateIssueDialogContent({
                   selectedPriority={selectedPriority}
                   onPrioritySelect={setSelectedPriority}
                 />
-
-                <DateSelector
-                  selectedDate={startDate}
-                  onDateSelect={setStartDate}
-                  placeholder="Start date"
-                  displayMode="iconWhenUnselected"
-                />
-
-                <DateSelector
-                  selectedDate={dueDate}
-                  onDateSelect={setDueDate}
-                  placeholder="Due date"
-                  displayMode="iconWhenUnselected"
-                />
-
-                <TimeEstimatesSelector
-                  estimatedTimes={estimatedTimes}
-                  onEstimatedTimesChange={setEstimatedTimes}
-                  states={states}
-                  displayMode="iconWhenUnselected"
-                />
               </div>
               <div className="ml-auto">
                 <KeyFormatSelector
@@ -386,15 +386,44 @@ function CreateIssueDialogContent({
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Title */}
-          <Input
-            placeholder="Issue title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="text-base"
-            autoFocus
-          />
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <div className="flex flex-row gap-2">
+            {/* Title */}
+            <DateSelector
+              selectedDate={startDate}
+              onDateSelect={setStartDate}
+              placeholder="Start date"
+              displayMode="iconWhenUnselected"
+              className="h-10"
+              icon={ClockPlus}
+              title="Set start date"
+              tooltipText="Start date"
+            />
+            <Input
+              placeholder="Issue title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="h-10 text-base"
+              autoFocus
+            />
+            <DateSelector
+              selectedDate={dueDate}
+              onDateSelect={setDueDate}
+              placeholder="Due date"
+              displayMode="iconWhenUnselected"
+              className="h-10"
+              icon={ClockAlert}
+              title="Set due date"
+              tooltipText="Due date"
+            />
+            <TimeEstimatesSelector
+              estimatedTimes={estimatedTimes}
+              onEstimatedTimesChange={setEstimatedTimes}
+              states={states}
+              displayMode="iconWhenUnselected"
+              className="h-10"
+            />
+          </div>
 
           {/* Description */}
           <Textarea
@@ -450,6 +479,15 @@ export interface CreateIssueDialogProps {
   variant?: "default" | "floating";
   /** Additional classes for the trigger button */
   className?: string;
+  /** Object for default values for selectors */
+  defaultStates?: {
+    teamId?: string;
+    projectId?: string;
+    stateId?: string;
+    priorityId?: string;
+    assigneeIds?: string[];
+    [key: string]: unknown;
+  };
 }
 
 export function CreateIssueDialog({
@@ -457,6 +495,7 @@ export function CreateIssueDialog({
   onIssueCreated,
   variant = "default",
   className,
+  defaultStates,
 }: CreateIssueDialogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -496,6 +535,7 @@ export function CreateIssueDialog({
           orgSlug={orgSlug}
           onClose={() => setIsDialogOpen(false)}
           onSuccess={handleSuccess}
+          defaultStates={defaultStates}
         />
       )}
     </>

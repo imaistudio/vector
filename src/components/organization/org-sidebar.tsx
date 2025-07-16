@@ -241,7 +241,18 @@ export function OrgSidebar({ orgId }: OrgSidebarProps) {
                       );
                     }
                   })()}
-                  <span className="truncate">{project.name}</span>
+                  <span className="flex-1 truncate">{project.name}</span>
+                  {/* Status icon on the right */}
+                  {project.statusIcon &&
+                    (() => {
+                      const StatusIcon = getDynamicIcon(project.statusIcon);
+                      return StatusIcon ? (
+                        <StatusIcon
+                          className="ml-auto size-3 flex-shrink-0"
+                          style={{ color: project.statusColor || "#6b7280" }}
+                        />
+                      ) : null;
+                    })()}
                 </Link>
               );
             })

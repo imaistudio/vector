@@ -34,7 +34,6 @@ import {
 } from "@/entities/issues/assignment.service";
 import { assertCanManageAssignment } from "@/trpc/permissions";
 import { z } from "zod";
-import { assertAssigneeOrLeadOrAdmin } from "@/trpc/permissions";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { PermissionPolicy } from "@/auth/policy-engine";
 import { PERMISSIONS } from "@/auth/permission-constants";
@@ -216,7 +215,10 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
     })
     .mutation(async ({ input }) => {
       await changePriority(input.issueId, input.actorId, input.priorityId);
@@ -231,7 +233,10 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
     })
     .mutation(async ({ input }) => {
       await changeProject(input.issueId, input.actorId, input.projectId);
@@ -246,7 +251,10 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
     })
     .mutation(async ({ input }) => {
       await changeTeam(input.issueId, input.actorId, input.teamId);
@@ -261,7 +269,10 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
-      await assertAssigneeOrLeadOrAdmin(ctx, input.issueId);
+      await PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      });
       return assign(input.issueId, input.actorId, input.assigneeId);
     }),
 
@@ -273,6 +284,12 @@ export const issueRouter = createTRPCRouter({
         title: z.string().min(1),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
+    })
     .mutation(async ({ input }) => {
       await updateTitle(input.issueId, input.actorId, input.title);
     }),
@@ -285,6 +302,12 @@ export const issueRouter = createTRPCRouter({
         description: z.string().nullable(),
       }),
     )
+    .use(({ ctx, next, input }) => {
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
+    })
     .mutation(async ({ input }) => {
       await updateDescription(input.issueId, input.actorId, input.description);
     }),
@@ -327,7 +350,10 @@ export const issueRouter = createTRPCRouter({
   delete: protectedProcedure
     .input(z.object({ issueId: z.string().uuid() }))
     .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
     })
     .mutation(async ({ input }) => {
       await deleteIssue(input.issueId);
@@ -586,7 +612,10 @@ export const issueRouter = createTRPCRouter({
       }),
     )
     .use(({ ctx, next, input }) => {
-      return assertAssigneeOrLeadOrAdmin(ctx, input.issueId).then(() => next());
+      return PermissionPolicy.require(ctx, PERMISSIONS.ISSUE_UPDATE, {
+        type: "issue",
+        id: input.issueId,
+      }).then(() => next());
     })
     .mutation(async ({ input }) => {
       await updateEstimatedTimes(

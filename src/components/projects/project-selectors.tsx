@@ -40,6 +40,8 @@ export type Team = {
   id: string;
   name: string;
   key: string;
+  icon?: string | null;
+  color?: string | null;
 };
 
 export type Member = {
@@ -262,7 +264,7 @@ function _DeprecatedTeamSelector({
   return null;
 }
 
-// Lead/Assignee Selector Component
+// Lead/Assignee Selector Component - DEPRECATED: Use ProjectLeadSelector instead
 interface LeadSelectorProps {
   members: ReadonlyArray<Member>;
   selectedLead: string;
@@ -272,6 +274,9 @@ interface LeadSelectorProps {
   className?: string;
 }
 
+/**
+ * @deprecated Use ProjectLeadSelector from './project-lead-selector' instead
+ */
 export function LeadSelector({
   members,
   selectedLead,

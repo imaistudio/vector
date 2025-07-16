@@ -362,6 +362,8 @@ export function IssuesTable({
                   highlightAssigneeId={highlightAssigneeId}
                   assignments={assignments}
                   activeFilter={activeFilter}
+                  currentUserId={currentUserId}
+                  canManageAll={canChangeAll}
                 />
 
                 {/* Actions */}

@@ -10,6 +10,8 @@ import {
   findProjectByKey,
   listProjectMembers,
   deleteProject,
+  changeProjectLead,
+  type ProjectWithDetails,
 } from "@/entities/projects/project.service";
 import { OrganizationService } from "@/entities/organizations/organization.service";
 import { z } from "zod";
@@ -257,10 +259,7 @@ export const projectRouter = createTRPCRouter({
       }).then(() => next());
     })
     .mutation(async ({ input }) => {
-      await updateProject({
-        id: input.projectId,
-        data: { leadId: input.leadId },
-      });
+      await changeProjectLead(input.projectId, input.leadId);
     }),
 
   addMember: protectedProcedure

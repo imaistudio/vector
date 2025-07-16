@@ -90,9 +90,13 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     },
   });
 
+  const utils = trpc.useUtils();
+
   const changeLeadMutation = trpc.project.changeLead.useMutation({
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       pagedQuery.refetch();
+      // Invalidate project members for the specific project that was updated
+      utils.project.listMembers.invalidate({ projectId: variables.projectId });
       toast.success("Project lead updated");
     },
     onError: (error: unknown) => {

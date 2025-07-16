@@ -146,11 +146,26 @@ export async function addMember(
   userId: string,
   role: string = "member",
 ): Promise<void> {
+  // Check if user is already a member
+  const existing = await db
+    .select({ userId: teamMemberTable.userId })
+    .from(teamMemberTable)
+    .where(
+      and(
+        eq(teamMemberTable.teamId, teamId),
+        eq(teamMemberTable.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    throw new Error("User is already a member of this team");
+  }
+
   const now = new Date();
   await db
     .insert(teamMemberTable)
-    .values({ teamId, userId, role: role as "lead" | "member", joinedAt: now })
-    .onConflictDoNothing();
+    .values({ teamId, userId, role: role as "lead" | "member", joinedAt: now });
 }
 
 export async function removeMember(
