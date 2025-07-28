@@ -1,4 +1,9 @@
-import { query, mutation } from "./_generated/server";
+import {
+  query,
+  mutation,
+  type QueryCtx,
+  type MutationCtx,
+} from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { Doc, Id } from "./_generated/dataModel";
@@ -29,6 +34,58 @@ const PERMISSIONS = {
 
 type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
+// Helper function to check if user has permission via built-in roles or custom roles
+async function checkUserPermission(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: Id<"organizations">,
+  userId: Id<"users">,
+  requiredPermission: Permission,
+): Promise<boolean> {
+  // Check if user is member of organization
+  const member = await ctx.db
+    .query("members")
+    .withIndex("by_org_user", (q) =>
+      q.eq("organizationId", organizationId).eq("userId", userId),
+    )
+    .first();
+
+  if (!member) return false;
+
+  // Owners and admins have all permissions
+  if (member.role === "owner" || member.role === "admin") {
+    return true;
+  }
+
+  // Check if user has permission via custom roles
+  const roleAssignments = await ctx.db
+    .query("orgRoleAssignments")
+    .withIndex("by_organization", (q) => q.eq("organizationId", organizationId))
+    .collect();
+
+  for (const assignment of roleAssignments) {
+    if (assignment.userId !== userId) continue;
+
+    const role = await ctx.db.get(assignment.roleId);
+    if (!role) continue;
+
+    const rolePermissions = await ctx.db
+      .query("orgRolePermissions")
+      .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
+      .collect();
+
+    for (const rolePerm of rolePermissions) {
+      if (
+        rolePerm.permission === requiredPermission ||
+        rolePerm.permission === "*"
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 // List all roles for an organization
 export const list = query({
   args: { orgSlug: v.string() },
@@ -54,7 +111,20 @@ export const list = query({
 
     if (!member) throw new Error("FORBIDDEN");
 
-    // Check if user has permission to view roles
+    // Owners and admins have permission to view roles
+    if (member.role === "owner" || member.role === "admin") {
+      const roles = await ctx.db
+        .query("orgRoles")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", organization._id),
+        )
+        .order("desc")
+        .collect();
+
+      return roles;
+    }
+
+    // Check if user has permission to view roles via custom roles
     const roleAssignments = await ctx.db
       .query("orgRoleAssignments")
       .withIndex("by_organization", (q) =>
@@ -128,7 +198,29 @@ export const get = query({
 
     if (!member) throw new Error("FORBIDDEN");
 
-    // Check if user has permission to view roles
+    // Owners and admins have permission to view roles
+    if (member.role === "owner" || member.role === "admin") {
+      const role = await ctx.db.get(args.roleId);
+      if (!role || role.organizationId !== organization._id) {
+        throw new Error("Role not found");
+      }
+
+      const permissions = await ctx.db
+        .query("orgRolePermissions")
+        .withIndex("by_role", (q) => q.eq("roleId", args.roleId))
+        .collect();
+
+      return {
+        id: role._id,
+        name: role.name,
+        description: role.description,
+        system: role.system,
+        createdAt: role._creationTime,
+        permissions: permissions.map((p) => p.permission),
+      };
+    }
+
+    // Check if user has permission to view roles via custom roles
     const roleAssignments = await ctx.db
       .query("orgRoleAssignments")
       .withIndex("by_organization", (q) =>
@@ -203,47 +295,13 @@ export const create = mutation({
 
     if (!organization) throw new Error("Organization not found");
 
-    // Check if user is member of organization
-    const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", organization._id).eq("userId", userId),
-      )
-      .first();
-
-    if (!member) throw new Error("FORBIDDEN");
-
     // Check if user has permission to create roles
-    const roleAssignments = await ctx.db
-      .query("orgRoleAssignments")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", organization._id),
-      )
-      .collect();
-
-    let hasPermission = false;
-    for (const assignment of roleAssignments) {
-      if (assignment.userId !== userId) continue;
-
-      const role = await ctx.db.get(assignment.roleId);
-      if (!role) continue;
-
-      const rolePermissions = await ctx.db
-        .query("orgRolePermissions")
-        .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
-        .collect();
-
-      for (const rolePerm of rolePermissions) {
-        if (
-          rolePerm.permission === PERMISSIONS.ROLE_CREATE ||
-          rolePerm.permission === "*"
-        ) {
-          hasPermission = true;
-          break;
-        }
-      }
-      if (hasPermission) break;
-    }
+    const hasPermission = await checkUserPermission(
+      ctx,
+      organization._id,
+      userId,
+      PERMISSIONS.ROLE_CREATE,
+    );
 
     if (!hasPermission) throw new Error("FORBIDDEN");
 

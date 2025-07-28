@@ -24,8 +24,6 @@ import {
   Check,
   MoreHorizontal,
   Plus,
-  ClockPlus,
-  ClockAlert,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import { cn } from "@/lib/utils";
@@ -40,8 +38,6 @@ import {
   StateSelector,
   PrioritySelector,
   AssigneeSelector,
-  DateSelector,
-  TimeEstimatesSelector,
   type Team,
   type Project,
   type State,
@@ -72,107 +68,138 @@ function KeyFormatSelector({
 }: KeyFormatSelectorProps) {
   return (
     <div className="flex items-center gap-2">
-      <span className="text-muted-foreground text-xs">Issue Key:</span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-7 text-xs">
-            {preview}
-            <MoreHorizontal className="ml-1 h-3 w-3" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hover:bg-muted/50 h-6 w-6 rounded-md p-0"
+          >
+            <MoreHorizontal className="text-muted-foreground h-3 w-3" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuContent align="end" className="w-52 p-1">
+          <DropdownMenuItem
+            onClick={() => setManualFormatOverride(null)}
+            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
+          >
+            <span className="flex w-full items-center justify-between">
+              <span className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  {!manualFormatOverride && (
+                    <Check className="text-primary h-3 w-3" />
+                  )}
+                </div>
+                Auto-detect format
+              </span>
+            </span>
+          </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setManualFormatOverride("org")}
-            className="flex items-center justify-between"
+            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
           >
-            <div className="flex items-center gap-2">
-              <Building2 className="h-4 w-4" />
-              Organization-based
-            </div>
-            {manualFormatOverride === "org" && <Check className="h-3 w-3" />}
+            <span className="flex w-full items-center justify-between">
+              <span className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  {manualFormatOverride === "org" ? (
+                    <Check className="text-primary h-3 w-3" />
+                  ) : (
+                    <Building2 className="text-muted-foreground h-3 w-3" />
+                  )}
+                </div>
+                Org format
+              </span>
+            </span>
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setManualFormatOverride("team")}
-            className="flex items-center justify-between"
+            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
           >
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Team-based
-            </div>
-            {manualFormatOverride === "team" && <Check className="h-3 w-3" />}
+            <span className="flex w-full items-center justify-between">
+              <span className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  {manualFormatOverride === "team" ? (
+                    <Check className="text-primary h-3 w-3" />
+                  ) : (
+                    <Users className="text-muted-foreground h-3 w-3" />
+                  )}
+                </div>
+                Team format
+              </span>
+            </span>
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() => setManualFormatOverride("project")}
-            className="flex items-center justify-between"
+            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
           >
-            <div className="flex items-center gap-2">
-              <FolderOpen className="h-4 w-4" />
-              Project-based
-            </div>
-            {manualFormatOverride === "project" && (
-              <Check className="h-3 w-3" />
-            )}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => setManualFormatOverride(null)}
-            className="flex items-center justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">Auto-detect</span>
-            </div>
-            {manualFormatOverride === null && <Check className="h-3 w-3" />}
+            <span className="flex w-full items-center justify-between">
+              <span className="flex items-center gap-2">
+                <div className="flex h-4 w-4 items-center justify-center">
+                  {manualFormatOverride === "project" ? (
+                    <Check className="text-primary h-3 w-3" />
+                  ) : (
+                    <FolderOpen className="text-muted-foreground h-3 w-3" />
+                  )}
+                </div>
+                Project format
+              </span>
+            </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {manualFormatOverride && (
+        <span className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400">
+          <div className="h-1 w-1 rounded-full bg-orange-500" />
+          forced
+        </span>
+      )}
+      <code className="bg-muted flex h-8 items-center rounded-md px-2.5 font-mono text-sm">
+        {preview}
+      </code>
     </div>
   );
 }
 
-// Main Create Issue Dialog
-export interface CreateIssueDialogProps {
+interface CreateIssueDialogContentProps {
   orgSlug: string;
-  teamId?: string;
-  projectId?: string;
+  onClose: () => void;
   onSuccess?: (issueId: string) => void;
-  className?: string;
-  open?: boolean;
-  onClose?: () => void;
-  defaultAssignee?: string;
+  defaultStates?: {
+    teamId?: string;
+    projectId?: string;
+    stateId?: string;
+    priorityId?: string;
+    assigneeIds?: string[];
+    [key: string]: unknown;
+  };
 }
 
-export function CreateIssueDialog({
+function CreateIssueDialogContent({
   orgSlug,
-  teamId: initialTeamId,
-  projectId: initialProjectId,
-  onSuccess,
-  className,
-  open,
   onClose,
-  defaultAssignee: initialAssignee,
-}: CreateIssueDialogProps) {
-  const [isOpen, setIsOpen] = useState(open ?? false);
-  // ---------------------------------------------
-  //   Form state
-  // ---------------------------------------------
+  onSuccess,
+  defaultStates,
+}: CreateIssueDialogContentProps) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState(initialTeamId || "");
-  const [selectedProject, setSelectedProject] = useState(
-    initialProjectId || "",
+  const [selectedTeam, setSelectedTeam] = useState<string>(
+    defaultStates?.teamId || "",
   );
-  const [selectedState, setSelectedState] = useState("");
-  const [selectedPriority, setSelectedPriority] = useState("");
-  const [selectedAssignees, setSelectedAssignees] = useState<string[]>(
-    initialAssignee ? [initialAssignee] : [],
+  const [selectedProject, setSelectedProject] = useState<string>(
+    defaultStates?.projectId || "",
+  );
+  const [selectedState, setSelectedState] = useState<string>(
+    defaultStates?.stateId || "",
+  );
+  const [selectedAssignee, setSelectedAssignee] = useState<string>(
+    defaultStates?.assigneeIds?.[0] || "",
+  );
+  const [selectedPriority, setSelectedPriority] = useState<string>(
+    defaultStates?.priorityId || "",
   );
   const [manualFormatOverride, setManualFormatOverride] = useState<
     "team" | "project" | "org" | null
   >(null);
-  const [startDate, setStartDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [estimatedTimes, setEstimatedTimes] = useState<{
-    [key: string]: number;
-  }>({});
 
   // ---------------------------------------------
   //   Fetch data (teams, projects, states)
@@ -185,6 +212,7 @@ export function CreateIssueDialog({
   const prioritiesData = useQuery(api.organizations.listIssuePriorities, {
     orgSlug,
   });
+  const currentUser = useQuery(api.users.currentUser);
 
   // Transform data to maintain frontend compatibility
   const teams = teamsData ? withIds(teamsData) : [];
@@ -232,53 +260,70 @@ export function CreateIssueDialog({
     }
   }, [priorities, selectedPriority]);
 
+  // Auto-select current user as default assignee
+  useEffect(() => {
+    if (currentUser && !selectedAssignee) {
+      setSelectedAssignee(currentUser._id);
+    }
+  }, [currentUser, selectedAssignee]);
+
   const createIssueMutation = useMutation(api.issues.create);
 
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleCreate = async () => {
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!title.trim()) return;
 
-    setIsLoading(true);
-    try {
-      const result = await createIssueMutation({
-        orgSlug,
-        data: {
-          title,
-          description,
-          projectId: selectedProject as Id<"projects">,
-          stateId: selectedState as Id<"issueStates"> | undefined,
-          priorityId: selectedPriority as Id<"issuePriorities"> | undefined,
-          assigneeIds: selectedAssignees as Id<"users">[],
-        },
-      });
-
-      toast.success(`Issue ${result.key} created`);
-      onSuccess?.(result.issueId);
-      handleClose();
-
-      // Reset form
-      setTitle("");
-      setDescription("");
-      setSelectedTeam(initialTeamId || "");
-      setSelectedProject(initialProjectId || "");
-      setSelectedState("");
-      setSelectedPriority("");
-      setSelectedAssignees(initialAssignee ? [initialAssignee] : []);
-      setManualFormatOverride(null);
-      setStartDate("");
-      setDueDate("");
-      setEstimatedTimes({});
-    } catch (error) {
-      toast.error("Failed to create issue");
-    } finally {
-      setIsLoading(false);
+    // Validate required selections based on effective format
+    if (effectiveFormat === "team" && !selectedTeam) {
+      alert("Please select a team for team-based issue keys");
+      return;
     }
-  };
+    if (effectiveFormat === "project" && !selectedProject) {
+      alert("Please select a project for project-based issue keys");
+      return;
+    }
 
-  const handleClose = () => {
-    setIsOpen(false);
-    onClose?.();
+    setIsLoading(true);
+    createIssueMutation({
+      orgSlug,
+      data: {
+        title,
+        description,
+        projectId: selectedProject
+          ? (selectedProject as Id<"projects">)
+          : undefined,
+        stateId: selectedState
+          ? (selectedState as Id<"issueStates">)
+          : undefined,
+        priorityId: selectedPriority
+          ? (selectedPriority as Id<"issuePriorities">)
+          : undefined,
+        assigneeIds: selectedAssignee ? [selectedAssignee as Id<"users">] : [],
+      },
+    })
+      .then((result) => {
+        toast.success(`Issue ${result.key} created`);
+        onSuccess?.(result.issueId);
+        onClose();
+
+        // Reset form
+        setTitle("");
+        setDescription("");
+        setSelectedTeam("");
+        setSelectedProject("");
+        setSelectedState("");
+        setSelectedPriority("");
+        setSelectedAssignee("");
+        setManualFormatOverride(null);
+      })
+      .catch((error) => {
+        toast.error("Failed to create issue");
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
   };
 
   const getIssueKeyPreview = () => {
@@ -299,145 +344,187 @@ export function CreateIssueDialog({
       return `${orgSlug.toUpperCase()}-${nextNumber}`;
     }
 
-    // Auto-detect example
-    if (selectedProject) {
+    // Auto-detect logic (original behavior)
+    if (effectiveFormat === "team" && selectedTeam) {
+      const team = teams.find((t: TeamWithId) => t.id === selectedTeam);
+      return team ? `${team.key}-${nextNumber}` : `TEAM-${nextNumber}`;
+    }
+    if (effectiveFormat === "project" && selectedProject) {
       const project = projects.find(
         (p: ProjectWithId) => p.id === selectedProject,
       );
       return project ? `${project.key}-${nextNumber}` : `PROJ-${nextNumber}`;
     }
-    if (selectedTeam) {
-      const team = teams.find((t: TeamWithId) => t.id === selectedTeam);
-      return team ? `${team.key}-${nextNumber}` : `TEAM-${nextNumber}`;
-    }
+    // Org default
     return `${orgSlug.toUpperCase()}-${nextNumber}`;
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="flex h-[90vh] max-w-2xl flex-col p-0">
-        <DialogHeader className="border-b p-4">
-          <div className="flex items-center justify-between">
-            <DialogTitle>Create Issue</DialogTitle>
-            <KeyFormatSelector
-              manualFormatOverride={manualFormatOverride}
-              setManualFormatOverride={setManualFormatOverride}
-              preview={getIssueKeyPreview()}
-            />
-          </div>
-        </DialogHeader>
+    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
+      <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
+        <DialogHeader className="">
+          <DialogTitle className="flex items-center">
+            <div className="text-muted-foreground flex w-full items-center gap-2 text-sm">
+              {/* Properties Row */}
+              <div className="flex flex-wrap gap-2">
+                <TeamSelector
+                  teams={teams}
+                  selectedTeam={selectedTeam}
+                  onTeamSelect={setSelectedTeam}
+                  displayMode="iconWhenUnselected"
+                />
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleCreate();
-          }}
-          className="flex flex-1 flex-col"
-        >
-          <div className="flex-1 space-y-4 overflow-y-auto p-4">
-            {/* Title */}
-            <div>
-              <Input
-                placeholder="Issue title"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="text-base"
-                autoFocus
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <Textarea
-                placeholder="Add a description..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-[100px] resize-none"
-              />
-            </div>
-
-            {/* Selectors Grid */}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {/* Team & Project */}
-              <TeamSelector
-                teams={teams}
-                selectedTeam={selectedTeam}
-                onTeamSelect={setSelectedTeam}
-              />
-              <ProjectSelector
-                projects={projects}
-                selectedProject={selectedProject}
-                onProjectSelect={setSelectedProject}
-              />
-
-              {/* State & Priority */}
-              <StateSelector
-                states={states}
-                selectedState={selectedState}
-                onStateSelect={setSelectedState}
-              />
-              <PrioritySelector
-                priorities={priorities}
-                selectedPriority={selectedPriority}
-                onPrioritySelect={setSelectedPriority}
-              />
-
-              {/* Assignee */}
-              <div className="sm:col-span-2">
                 <AssigneeSelector
                   members={members}
-                  selectedAssignee={selectedAssignees[0] || ""}
-                  onAssigneeSelect={(assigneeId) =>
-                    setSelectedAssignees(assigneeId ? [assigneeId] : [])
-                  }
+                  selectedAssignee={selectedAssignee}
+                  onAssigneeSelect={setSelectedAssignee}
+                  displayMode="iconWhenUnselected"
+                  currentUserId={currentUser?._id || ""}
+                  canManageAll={true}
                 />
-              </div>
 
-              {/* Date fields - simplified for now */}
-              <div>
-                <label className="text-sm font-medium">Start Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+                <ProjectSelector
+                  projects={projects}
+                  selectedProject={selectedProject}
+                  onProjectSelect={setSelectedProject}
+                />
+
+                <StateSelector
+                  states={states}
+                  selectedState={selectedState}
+                  onStateSelect={setSelectedState}
+                />
+
+                <PrioritySelector
+                  priorities={priorities}
+                  selectedPriority={selectedPriority}
+                  onPrioritySelect={setSelectedPriority}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">Due Date</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+              <div className="ml-auto">
+                <KeyFormatSelector
+                  manualFormatOverride={manualFormatOverride}
+                  setManualFormatOverride={setManualFormatOverride}
+                  preview={getIssueKeyPreview()}
                 />
               </div>
             </div>
-          </div>
+          </DialogTitle>
+        </DialogHeader>
 
-          {/* Footer */}
-          <div className="bg-muted/20 border-t px-4 py-3">
-            <div className="flex items-center justify-between">
-              <div className="text-muted-foreground text-xs">
-                Preview: <code className="text-xs">{getIssueKeyPreview()}</code>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={handleClose}
-                  disabled={isLoading}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={!title.trim() || isLoading}>
-                  {isLoading ? "Creating..." : "Create Issue"}
-                </Button>
-              </div>
-            </div>
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-2">
+          {/* Title */}
+          <Input
+            placeholder="Issue title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            className="text-base"
+            autoFocus
+          />
+
+          {/* Description */}
+          <Textarea
+            placeholder="Add description..."
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          />
         </form>
+
+        <div className="flex w-full flex-row items-center justify-between gap-2">
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={
+              !title.trim() ||
+              isLoading ||
+              (effectiveFormat === "team" && !selectedTeam) ||
+              (effectiveFormat === "project" && !selectedProject)
+            }
+            onClick={handleSubmit}
+          >
+            {isLoading ? "Creating…" : "Create issue"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 🖱️ Public wrapper — handles trigger button + open state
+// ---------------------------------------------------------------------------
+
+export interface CreateIssueDialogProps {
+  /** Organization slug the issue belongs to */
+  orgSlug: string;
+  /** Optional callback fired after the issue is successfully created */
+  onIssueCreated?: () => void;
+  /** Visual style of trigger button */
+  variant?: "default" | "floating";
+  /** Additional classes for the trigger button */
+  className?: string;
+  /** Object for default values for selectors */
+  defaultStates?: {
+    teamId?: string;
+    projectId?: string;
+    stateId?: string;
+    priorityId?: string;
+    assigneeIds?: string[];
+    [key: string]: unknown;
+  };
+}
+
+export function CreateIssueDialog({
+  orgSlug,
+  onIssueCreated,
+  variant = "default",
+  className,
+  defaultStates,
+}: CreateIssueDialogProps) {
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleSuccess = () => {
+    onIssueCreated?.();
+    setIsDialogOpen(false);
+  };
+
+  const trigger =
+    variant === "floating" ? (
+      <Button
+        onClick={() => setIsDialogOpen(true)}
+        className={cn(
+          "h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl",
+          className,
+        )}
+        size="icon"
+      >
+        <Plus className="h-5 w-5" />
+      </Button>
+    ) : (
+      <Button
+        size="sm"
+        onClick={() => setIsDialogOpen(true)}
+        className={cn("gap-1 text-sm", className)}
+        variant="outline"
+      >
+        <Plus className="size-4" />
+      </Button>
+    );
+
+  return (
+    <>
+      {trigger}
+      {isDialogOpen && (
+        <CreateIssueDialogContent
+          orgSlug={orgSlug}
+          onClose={() => setIsDialogOpen(false)}
+          onSuccess={handleSuccess}
+          defaultStates={defaultStates}
+        />
+      )}
+    </>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -340,14 +340,18 @@ interface LogoEditorProps {
 }
 
 export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
-  const [logoKey, setLogoKey] = useState<string | undefined | null>(
-    initialValue ?? undefined,
-  );
+  const [logoKey, setLogoKey] = useState<string | null>(initialValue ?? null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  const updateMutation = useMutation(api.organizations.update);
+  const generateUploadUrl = useMutation(
+    api.organizations.generateLogoUploadUrl,
+  );
+  const updateLogoWithStorageId = useMutation(
+    api.organizations.updateLogoWithStorageId,
+  );
+  const getLogoUrl = useQuery(api.organizations.getLogoUrl, { orgSlug });
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -356,25 +360,12 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
     try {
       setUploading(true);
 
-      // Step 1: request a presigned URL for this upload
-      const presignRes = await fetch(`/api/orgs/${orgSlug}/logo-presign`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileType: file.type }),
-      });
+      // Step 1: Generate upload URL using Convex
+      const uploadUrl = await generateUploadUrl({ orgSlug });
 
-      if (!presignRes.ok) {
-        throw new Error("Failed to generate upload URL");
-      }
-
-      const { uploadUrl, key } = (await presignRes.json()) as {
-        uploadUrl: string;
-        key: string;
-      };
-
-      // Step 2: upload the file directly to S3
+      // Step 2: Upload the file directly to Convex storage
       const uploadRes = await fetch(uploadUrl, {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": file.type },
         body: file,
       });
@@ -383,13 +374,15 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
         throw new Error("Upload failed");
       }
 
-      // Step 3: persist the logo key in DB
-      await updateMutation({
+      const { storageId } = await uploadRes.json();
+
+      // Step 3: Update organization with storage ID
+      await updateLogoWithStorageId({
         orgSlug,
-        data: { logo: key },
+        storageId,
       });
 
-      setLogoKey(key);
+      setLogoKey(storageId);
     } catch (err) {
       console.error(err);
       toast.error((err as Error)?.message || "Upload failed");
@@ -402,9 +395,9 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
   return (
     <div className="flex items-center gap-4">
       {/* Avatar preview */}
-      {logoKey ? (
+      {getLogoUrl ? (
         <img
-          src={`/api/files/${logoKey}`}
+          src={getLogoUrl}
           alt="Organization logo"
           className="size-16 rounded border object-cover"
         />

@@ -2,7 +2,6 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { auth } from "./auth";
 
 /**
  * Get issue by organization slug and issue key
@@ -91,7 +90,7 @@ export const create = mutation({
     data: v.object({
       title: v.string(),
       description: v.optional(v.string()),
-      projectId: v.id("projects"),
+      projectId: v.optional(v.id("projects")),
       stateId: v.optional(v.id("issueStates")),
       priorityId: v.optional(v.id("issuePriorities")),
       assigneeIds: v.optional(v.array(v.id("users"))),
@@ -125,20 +124,37 @@ export const create = mutation({
       throw new Error("Access denied - not a member of this organization");
     }
 
-    // Verify project exists and belongs to org
-    const project = await ctx.db.get(args.data.projectId);
-    if (!project || project.organizationId !== org._id) {
-      throw new Error("Project not found or not in this organization");
+    // Handle project if provided
+    let project = null;
+    let issueKey: string;
+    let nextNumber: number;
+
+    if (args.data.projectId) {
+      // Verify project exists and belongs to org
+      project = await ctx.db.get(args.data.projectId);
+      if (!project || project.organizationId !== org._id) {
+        throw new Error("Project not found or not in this organization");
+      }
+
+      // Generate issue key - get next number for the project
+      const existingIssues = await ctx.db
+        .query("issues")
+        .withIndex("by_project", (q) => q.eq("projectId", args.data.projectId))
+        .collect();
+
+      nextNumber = existingIssues.length + 1;
+      issueKey = `${project.key}-${nextNumber}`;
+    } else {
+      // Generate org-based issue key
+      const existingIssues = await ctx.db
+        .query("issues")
+        .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+        .filter((q) => q.eq(q.field("projectId"), undefined))
+        .collect();
+
+      nextNumber = existingIssues.length + 1;
+      issueKey = `${org.slug.toUpperCase()}-${nextNumber}`;
     }
-
-    // Generate issue key - get next number for the project
-    const existingIssues = await ctx.db
-      .query("issues")
-      .withIndex("by_project", (q) => q.eq("projectId", args.data.projectId))
-      .collect();
-
-    const nextNumber = existingIssues.length + 1;
-    const issueKey = `${project.key}-${nextNumber}`;
 
     // Verify assignees are members of the organization if provided
     if (args.data.assigneeIds) {
@@ -177,7 +193,7 @@ export const create = mutation({
       description: args.data.description?.trim(),
       priorityId: args.data.priorityId,
       reporterId: userId,
-      teamId: project.teamId, // Use project's team if available
+      teamId: project?.teamId, // Use project's team if available
     });
 
     // Create assignee relationships if provided
@@ -1125,27 +1141,47 @@ export const updateAssignees = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
-    // This is a simplified implementation. The legacy code has more complex logic
-    // for adding/removing assignees. For now, we will just overwrite the assignees.
+    // Get the issue to find the organization
+    const issue = await ctx.db.get(args.issueId);
+    if (!issue) {
+      throw new Error("Issue not found");
+    }
+
+    // Get existing assignments
     const existingAssignments = await ctx.db
       .query("issueAssignees")
       .withIndex("by_issue", (q) => q.eq("issueId", args.issueId))
       .collect();
 
-    const stateId = existingAssignments[0]?.stateId;
+    // Determine the state to use for new assignments
+    let stateId: Id<"issueStates">;
 
+    if (existingAssignments.length > 0) {
+      // Use the state from existing assignments
+      stateId = existingAssignments[0].stateId;
+    } else {
+      // Get default state from organization
+      const defaultState = await ctx.db
+        .query("issueStates")
+        .withIndex("by_organization", (q) =>
+          q.eq("organizationId", issue.organizationId),
+        )
+        .order("asc")
+        .first();
+
+      if (!defaultState) {
+        throw new Error("No issue states found for organization");
+      }
+
+      stateId = defaultState._id;
+    }
+
+    // Remove existing assignments
     for (const assignment of existingAssignments) {
       await ctx.db.delete(assignment._id);
     }
 
-    if (!stateId) {
-      // If there are no existing assignments, we can't determine the state.
-      // This is a simplification and should be handled more gracefully.
-      throw new Error(
-        "Cannot update assignees for an issue with no existing assignments.",
-      );
-    }
-
+    // Add new assignments
     for (const assigneeId of args.assigneeIds) {
       await ctx.db.insert("issueAssignees", {
         issueId: args.issueId,
@@ -1222,7 +1258,7 @@ export const updateDescription = mutation({
 export const updateEstimatedTimes = mutation({
   args: {
     issueId: v.id("issues"),
-    estimatedTimes: v.union(v.object({}), v.null()),
+    estimatedTimes: v.optional(v.record(v.string(), v.number())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);

@@ -20,14 +20,14 @@ interface Organization {
 }
 
 interface OrgOptionsDropdownProps {
-  currentOrgId: string;
+  currentOrgSlug: string;
   currentOrgName: string;
   currentOrgLogo?: string | null;
   organizations?: Organization[];
 }
 
 export function OrgOptionsDropdown({
-  currentOrgId,
+  currentOrgSlug,
   currentOrgName,
   currentOrgLogo,
   organizations = [],
@@ -38,10 +38,10 @@ export function OrgOptionsDropdown({
   // Check if we're currently in settings
   const isInSettings = pathname.includes("/settings");
 
-  const handleOrgSwitch = (orgId: string) => {
-    if (orgId !== currentOrgId) {
+  const handleOrgSwitch = (orgSlug: string) => {
+    if (orgSlug !== currentOrgSlug) {
       // Redirect to the selected organization's issues page
-      window.location.href = `/${orgId}/issues`;
+      window.location.href = `/${orgSlug}/issues`;
     }
     setIsOpen(false);
   };
@@ -51,12 +51,12 @@ export function OrgOptionsDropdown({
   };
 
   const handleSettingsClick = () => {
-    window.location.href = `/${currentOrgId}/settings`;
+    window.location.href = `/${currentOrgSlug}/settings`;
     setIsOpen(false);
   };
 
   const handleDashboardClick = () => {
-    window.location.href = `/${currentOrgId}/issues`;
+    window.location.href = `/${currentOrgSlug}/issues`;
     setIsOpen(false);
   };
 
@@ -121,7 +121,7 @@ export function OrgOptionsDropdown({
         {/* Current Organization */}
         <DropdownMenuItem
           className="flex cursor-pointer items-center gap-2 px-2 py-1.5"
-          onSelect={() => handleOrgSwitch(currentOrgId)}
+          onSelect={() => handleOrgSwitch(currentOrgSlug)}
         >
           {currentOrgLogo ? (
             <img
@@ -140,12 +140,12 @@ export function OrgOptionsDropdown({
 
         {/* Other Organizations */}
         {organizations
-          .filter((org) => org.id !== currentOrgId)
+          .filter((org) => org.slug !== currentOrgSlug)
           .map((org) => (
             <DropdownMenuItem
               key={org.id}
               className="flex cursor-pointer items-center gap-2 px-2 py-1.5"
-              onSelect={() => handleOrgSwitch(org.id)}
+              onSelect={() => handleOrgSwitch(org.slug)}
             >
               {org.logo ? (
                 <img

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@/lib/convex";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import {
   MoreHorizontal,
   Trash2,
   ChevronsUpDown,
+  Target,
+  FolderOpen,
 } from "lucide-react";
 import { IconPicker } from "@/components/ui/icon-picker";
 import { notFound } from "next/navigation";
@@ -60,13 +62,10 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { toast } from "sonner";
 import { CreateIssueDialog } from "@/components/issues/create-issue-dialog";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { useParams } from "next/navigation";
 
 import { Id } from "@/convex/_generated/dataModel";
 import { FunctionReturnType } from "convex/server";
-
-interface TeamViewPageProps {
-  params: Promise<{ orgSlug: string; teamKey: string }>;
-}
 
 // Loading skeleton component
 function TeamLoadingSkeleton({}: {
@@ -128,7 +127,8 @@ function AddMemberDialog({
   const [memberComboboxOpen, setMemberComboboxOpen] = useState(false);
   const [isAddingMember, setIsAddingMember] = useState(false);
 
-  const orgMembers = useQuery(api.organizations.listMembers, { orgSlug }) ?? [];
+  const orgMembersQuery = useQuery(api.organizations.listMembers, { orgSlug });
+  const orgMembers = orgMembersQuery.data ?? [];
   const addMemberMutation = useMutation(api.teams.addMember);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -268,7 +268,9 @@ function MembersList({
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="mb-4 text-4xl">��</div>
+          <div className="mb-4 flex justify-center">
+            <Users className="text-muted-foreground/50 h-16 w-16" />
+          </div>
           <h3 className="mb-2 text-lg font-semibold">No members yet</h3>
           <p className="text-muted-foreground mb-6">
             Add team members to get started.
@@ -361,11 +363,11 @@ const DEFAULT_COLORS = [
   "#6b7280", // gray-500
 ];
 
-export default function TeamViewPage({ params }: TeamViewPageProps) {
-  const [resolvedParams, setResolvedParams] = useState<{
-    orgSlug: string;
-    teamKey: string;
-  } | null>(null);
+export default function TeamViewPage() {
+  const params = useParams();
+  const orgSlug = params.orgSlug as string;
+  const teamKey = params.teamKey as string;
+
   const [editingName, setEditingName] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [editingKey, setEditingKey] = useState(false);
@@ -380,107 +382,66 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   const [isUpdatingIssues, setIsUpdatingIssues] = useState(false);
   const [isUpdatingProjects, setIsUpdatingProjects] = useState(false);
 
-  // Resolve params
-  useEffect(() => {
-    params.then(setResolvedParams);
-  }, [params]);
-
   // Check user permissions for team management
-  const user = useQuery(api.users.currentUser);
+  const userQuery = useQuery(api.users.currentUser);
+  const user = userQuery.data;
   const { hasPermission: canUpdateTeam } = usePermission(
-    resolvedParams?.orgSlug || "",
+    orgSlug,
     PERMISSIONS.TEAM_UPDATE,
   );
 
   // Fetch team data
-  const team = useQuery(
-    api.teams.getByKey,
-    resolvedParams
-      ? {
-          orgSlug: resolvedParams.orgSlug,
-          teamKey: resolvedParams.teamKey,
-        }
-      : "skip",
-  );
+  const teamQuery = useQuery(api.teams.getByKey, {
+    orgSlug,
+    teamKey,
+  });
+  const team = teamQuery.data;
 
   // Fetch team members
-  const teamMembers =
-    useQuery(
-      api.teams.listMembers,
-      resolvedParams
-        ? {
-            orgSlug: resolvedParams.orgSlug,
-            teamKey: resolvedParams.teamKey,
-          }
-        : "skip",
-    ) ?? [];
+  const teamMembersQuery = useQuery(api.teams.listMembers, {
+    orgSlug,
+    teamKey,
+  });
+  const teamMembers = teamMembersQuery.data ?? [];
 
   // Fetch team issues
-  const teamIssuesData = useQuery(
-    api.issues.listIssues,
-    resolvedParams
-      ? {
-          orgSlug: resolvedParams.orgSlug,
-          teamId: team?._id,
-        }
-      : "skip",
-  );
+  const teamIssuesQuery = useQuery(api.issues.listIssues, {
+    orgSlug,
+    teamId: team?.key,
+  });
+  const teamIssuesData = teamIssuesQuery.data;
 
-  // Fetch all projects for the organization
-  const allProjects =
-    useQuery(
-      api.projects.list,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
-
-  // Filter projects by team
-  const teamProjects = allProjects.filter((p) => p.teamId === team?._id);
+  // Fetch team projects
+  const teamProjectsQuery = useQuery(api.projects.list, {
+    orgSlug,
+    teamId: team?.key,
+  });
+  const teamProjects = teamProjectsQuery.data ?? [];
 
   // Fetch supporting data for tables
-  const states =
-    useQuery(
-      api.organizations.listIssueStates,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const statesQuery = useQuery(api.organizations.listIssueStates, { orgSlug });
+  const states = statesQuery.data ?? [];
 
-  const priorities =
-    useQuery(
-      api.organizations.listIssuePriorities,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const prioritiesQuery = useQuery(api.organizations.listIssuePriorities, {
+    orgSlug,
+  });
+  const priorities = prioritiesQuery.data ?? [];
 
-  const teams =
-    useQuery(
-      api.organizations.listTeams,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const teamsQuery = useQuery(api.organizations.listTeams, { orgSlug });
+  const teams = teamsQuery.data ?? [];
 
-  const projects =
-    useQuery(
-      api.organizations.listProjects,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const projectsQuery = useQuery(api.organizations.listProjects, { orgSlug });
+  const projects = projectsQuery.data ?? [];
 
-  const statuses =
-    useQuery(
-      api.organizations.listProjectStatuses,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const statusesQuery = useQuery(api.organizations.listProjectStatuses, {
+    orgSlug,
+  });
+  const statuses = statusesQuery.data ?? [];
 
-  const members =
-    useQuery(
-      api.organizations.listMembers,
-      resolvedParams ? { orgSlug: resolvedParams.orgSlug } : "skip",
-    ) ?? [];
+  const membersQuery = useQuery(api.organizations.listMembers, { orgSlug });
+  const members = membersQuery.data ?? [];
 
-  // Determine if user can edit team (team lead or has permission)
-  const canEdit = !!(
-    user &&
-    team &&
-    (team.leadId === user._id || canUpdateTeam)
-  );
-
-  // Mutations with toast error handling
+  // Mutations with toast error handling - ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
   const updateTeamMutation = useMutation(api.teams.update);
   const deleteMutation = useMutation(api.issues.deleteIssue);
   const changePriorityMutation = useMutation(api.issues.changePriority);
@@ -496,26 +457,73 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   const deleteProjectMutation = useMutation(api.projects.deleteProject);
   const removeMemberMutation = useMutation(api.teams.removeMember);
 
-  // Initialize editing values when team loads
-  useEffect(() => {
-    if (team) {
-      setNameValue(team.name);
-      setDescriptionValue(team.description || "");
-      setKeyValue(team.key);
-      setIconValue(team.icon || null);
-      setColorValue(team.color || null);
-    }
-  }, [team]);
+  // Check if any queries are still loading
+  const isLoading =
+    userQuery.isPending ||
+    teamQuery.isPending ||
+    teamMembersQuery.isPending ||
+    teamIssuesQuery.isPending ||
+    teamProjectsQuery.isPending ||
+    statesQuery.isPending ||
+    prioritiesQuery.isPending ||
+    teamsQuery.isPending ||
+    projectsQuery.isPending ||
+    statusesQuery.isPending ||
+    membersQuery.isPending;
 
-  if (!resolvedParams) return <TeamLoadingSkeleton resolvedParams={null} />;
+  // Check for errors
+  const hasError =
+    userQuery.isError ||
+    teamQuery.isError ||
+    teamMembersQuery.isError ||
+    teamIssuesQuery.isError ||
+    teamProjectsQuery.isError ||
+    statesQuery.isError ||
+    prioritiesQuery.isError ||
+    teamsQuery.isError ||
+    projectsQuery.isError ||
+    statusesQuery.isError ||
+    membersQuery.isError;
+
+  // Show loading state
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  // Show error state
+  if (hasError) {
+    return <div>Error loading team data. Please try again.</div>;
+  }
+
+  // Show not found if team doesn't exist
+  if (!team) {
+    notFound();
+  }
+
+  // Determine if user can edit team (team lead or has permission)
+  const canEdit = !!(
+    user &&
+    team &&
+    (team.leadId === user._id || canUpdateTeam)
+  );
+
+  // Initialize editing values when team loads
+  if (team) {
+    if (nameValue !== team.name) setNameValue(team.name);
+    if (descriptionValue !== (team.description || ""))
+      setDescriptionValue(team.description || "");
+    if (keyValue !== team.key) setKeyValue(team.key);
+    if (iconValue !== (team.icon || null)) setIconValue(team.icon || null);
+    if (colorValue !== (team.color || null)) setColorValue(team.color || null);
+  }
+
   if (!user) return <div>Loading...</div>; // Or a proper loading state
-  if (!team) return notFound();
 
   const handleNameSave = async () => {
-    if (!nameValue.trim()) return;
+    if (!nameValue.trim() || !team) return;
     setIsUpdating(true);
     await updateTeamMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       data: { name: nameValue.trim() },
     });
@@ -524,9 +532,10 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   };
 
   const handleDescriptionSave = async () => {
+    if (!team) return;
     setIsUpdating(true);
     await updateTeamMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       data: { description: descriptionValue.trim() || undefined },
     });
@@ -535,10 +544,10 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   };
 
   const handleKeySave = async () => {
-    if (!keyValue.trim()) return;
+    if (!keyValue.trim() || !team) return;
     setIsUpdating(true);
     await updateTeamMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       data: { name: keyValue.trim().toUpperCase() },
     });
@@ -547,10 +556,11 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   };
 
   const handleIconChange = async (iconName: string | null) => {
+    if (!team) return;
     setIconValue(iconName);
     setIsUpdating(true);
     await updateTeamMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       data: { icon: iconName ?? undefined },
     });
@@ -558,10 +568,11 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   };
 
   const handleColorChange = async (color: string) => {
+    if (!team) return;
     setColorValue(color);
     setIsUpdating(true);
     await updateTeamMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       data: { color },
     });
@@ -569,9 +580,10 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
   };
 
   const handleRemoveMember = async (membershipId: Id<"teamMembers">) => {
+    if (!team) return;
     setIsUpdating(true);
     await removeMemberMutation({
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
       teamKey: team.key,
       membershipId,
     });
@@ -681,7 +693,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
     setIsUpdatingProjects(true);
     await deleteProjectMutation({
       projectKey,
-      orgSlug: resolvedParams.orgSlug,
+      orgSlug,
     });
     setIsUpdatingProjects(false);
   };
@@ -694,16 +706,14 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
           <div className="bg-background/95 supports-[backdrop-filter]:bg-background/60 flex items-center justify-between border-b px-2 backdrop-blur">
             <div className="flex h-8 flex-wrap items-center gap-2">
               <Link
-                href={`/${resolvedParams.orgSlug}/teams`}
+                href={`/${orgSlug}/teams`}
                 className="text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm transition-colors"
               >
                 <ArrowLeft className="size-3" />
                 Teams
               </Link>
               <span className="text-muted-foreground text-sm">/</span>
-              <span className="text-sm font-medium">
-                {resolvedParams.teamKey}
-              </span>
+              <span className="text-sm font-medium">{teamKey}</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -719,7 +729,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleKeySave();
                       if (e.key === "Escape") {
-                        setKeyValue(team.key);
+                        setKeyValue(team?.key || "");
                         setEditingKey(false);
                       }
                     }}
@@ -736,7 +746,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     variant="ghost"
                     className="h-6 px-1"
                     onClick={() => {
-                      setKeyValue(team.key);
+                      setKeyValue(team?.key || "");
                       setEditingKey(false);
                     }}
                   >
@@ -752,7 +762,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   )}
                   onClick={() => canEdit && setEditingKey(true)}
                 >
-                  {team.key}
+                  {team?.key}
                 </Badge>
               )}
             </div>
@@ -763,10 +773,10 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
             {/* Team Header */}
             <div className="mb-2 max-w-4xl space-y-2">
               <div className="text-muted-foreground flex items-center gap-2 text-xs">
-                <span className="font-mono">{team.key}</span>
+                <span className="font-mono">{team?.key}</span>
                 <span>•</span>
                 <span>
-                  Created {formatDateHuman(new Date(team._creationTime))}
+                  Created {formatDateHuman(new Date(team?._creationTime || 0))}
                 </span>
               </div>
 
@@ -856,7 +866,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") handleNameSave();
                       if (e.key === "Escape") {
-                        setNameValue(team.name);
+                        setNameValue(team?.name || "");
                         setEditingName(false);
                       }
                     }}
@@ -874,7 +884,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        setNameValue(team.name);
+                        setNameValue(team?.name || "");
                         setEditingName(false);
                       }}
                     >
@@ -966,7 +976,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     )}
                     onClick={() => canEdit && setEditingName(true)}
                   >
-                    {team.name}
+                    {team?.name}
                   </span>
                 </h1>
               )}
@@ -983,7 +993,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     className="min-h-[120px] resize-none text-base"
                     onKeyDown={(e) => {
                       if (e.key === "Escape") {
-                        setDescriptionValue(team.description || "");
+                        setDescriptionValue(team?.description || "");
                         setEditingDescription(false);
                       }
                     }}
@@ -1000,7 +1010,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        setDescriptionValue(team.description || "");
+                        setDescriptionValue(team?.description || "");
                         setEditingDescription(false);
                       }}
                     >
@@ -1010,7 +1020,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                 </div>
               ) : (
                 <div>
-                  {team.description ? (
+                  {team?.description ? (
                     <div
                       className={cn(
                         "prose prose-sm text-muted-foreground max-w-none transition-colors",
@@ -1018,7 +1028,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                       )}
                       onClick={() => canEdit && setEditingDescription(true)}
                     >
-                      <p className="whitespace-pre-wrap">{team.description}</p>
+                      <p className="whitespace-pre-wrap">{team?.description}</p>
                     </div>
                   ) : canEdit ? (
                     <button
@@ -1058,8 +1068,8 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     Issues ({teamIssuesData?.total || 0})
                     {canEdit && (
                       <CreateIssueDialog
-                        orgSlug={resolvedParams.orgSlug}
-                        teamId={team._id}
+                        orgSlug={orgSlug}
+                        defaultStates={{ teamId: team?._id }}
                         className="h-5 gap-1 px-0 text-xs"
                       />
                     )}
@@ -1070,8 +1080,8 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                     Projects ({teamProjects.length})
                     {canEdit && (
                       <CreateProjectDialog
-                        orgSlug={resolvedParams.orgSlug}
-                        defaultStates={{ teamId: team._id }}
+                        orgSlug={orgSlug}
+                        defaultStates={{ teamId: team?._id }}
                         className="h-5 gap-1 px-0 text-xs"
                       />
                     )}
@@ -1097,7 +1107,7 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   {teamIssuesData?.issues &&
                   teamIssuesData.issues.length > 0 ? (
                     <IssuesTable
-                      orgSlug={resolvedParams.orgSlug}
+                      orgSlug={orgSlug}
                       issues={teamIssuesData.issues}
                       states={states}
                       priorities={priorities}
@@ -1119,7 +1129,9 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   ) : (
                     <div className="flex items-center justify-center py-12">
                       <div className="text-center">
-                        <div className="mb-4 text-4xl">🎯</div>
+                        <div className="mb-4 flex justify-center">
+                          <Target className="text-muted-foreground/50 h-16 w-16" />
+                        </div>
                         <h3 className="mb-2 text-lg font-semibold">
                           No issues found
                         </h3>
@@ -1137,20 +1149,22 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                 <div className="rounded-lg border">
                   {teamProjects && teamProjects.length > 0 ? (
                     <ProjectsTable
-                      orgSlug={resolvedParams.orgSlug}
+                      orgSlug={orgSlug}
                       projects={teamProjects.map((project) => ({
                         ...project,
                         id: project._id,
+                        icon: project.icon,
+                        color: project.color,
+                        statusId: project.status?._id,
+                        statusName: project.status?.name,
+                        statusColor: project.status?.color,
+                        statusIcon: project.status?.icon,
+                        statusType: project.status?.type,
                         updatedAt: new Date(project._creationTime),
                         createdAt: new Date(project._creationTime),
                       }))}
                       statuses={statuses.map((s) => ({ ...s, id: s._id }))}
                       teams={teams.map((t) => ({ ...t, id: t._id }))}
-                      members={members.map((member) => ({
-                        userId: member.userId,
-                        name: member.user?.name ?? "",
-                        email: member.user?.email ?? "",
-                      }))}
                       onStatusChange={handleStatusChange}
                       onTeamChange={handleProjectTeamChange}
                       onLeadChange={handleProjectLeadChange}
@@ -1160,7 +1174,9 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
                   ) : (
                     <div className="flex items-center justify-center py-12">
                       <div className="text-center">
-                        <div className="mb-4 text-4xl">📁</div>
+                        <div className="mb-4 flex justify-center">
+                          <FolderOpen className="text-muted-foreground/50 h-16 w-16" />
+                        </div>
                         <h3 className="mb-2 text-lg font-semibold">
                           No projects found
                         </h3>
@@ -1180,8 +1196,8 @@ export default function TeamViewPage({ params }: TeamViewPageProps) {
       {/* Add Member Dialog */}
       {showAddMemberDialog && (
         <AddMemberDialog
-          orgSlug={resolvedParams.orgSlug}
-          teamKey={team.key}
+          orgSlug={orgSlug}
+          teamKey={team?.key || ""}
           onClose={() => setShowAddMemberDialog(false)}
           onSuccess={() => {
             // No need to refetch here, useQuery will handle re-renders

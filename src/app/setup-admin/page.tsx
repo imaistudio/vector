@@ -26,7 +26,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "@/lib/convex";
 
 export const dynamic = "force-dynamic";
@@ -62,7 +62,7 @@ export default function SetupAdminPage() {
     },
   });
 
-  const bootstrapMutation = useMutation(api.users.bootstrapAdmin);
+  const bootstrapMutation = useAction(api.users.bootstrapAdmin);
 
   const onSubmit = async (values: SetupAdminForm) => {
     setGlobalError(null);

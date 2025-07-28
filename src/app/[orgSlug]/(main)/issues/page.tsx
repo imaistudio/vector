@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
+import { api } from "@/lib/convex";
 import { Button } from "@/components/ui/button";
 import { CreateIssueDialog } from "@/components/issues/create-issue-dialog";
 import { useParams } from "next/navigation";
@@ -42,7 +42,7 @@ const filterTabs = [
 
 export default function IssuesPage() {
   const params = useParams();
-  const orgSlug = params.orgId as string;
+  const orgSlug = params.orgSlug as string;
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedTeam, setSelectedTeam] = useState<string>("");
@@ -198,7 +198,9 @@ export default function IssuesPage() {
             ))}
           </div>
 
+          {/* Global filters and create button */}
           <div className="flex items-center gap-1">
+            {/* Team filter */}
             <TeamSelector
               teams={mappedTeams}
               selectedTeam={selectedTeam}
@@ -207,6 +209,7 @@ export default function IssuesPage() {
               className="h-6 text-xs"
             />
 
+            {/* Project filter */}
             <ProjectSelector
               projects={mappedProjects}
               selectedProject={selectedProject}
@@ -220,6 +223,7 @@ export default function IssuesPage() {
         </div>
       </div>
 
+      {/* Issues list */}
       <div className="flex-1">
         <IssuesTable
           orgSlug={orgSlug}
@@ -243,6 +247,7 @@ export default function IssuesPage() {
         />
       </div>
 
+      {/* Pagination controls */}
       <div className="text-muted-foreground flex justify-between border-t p-2 text-xs">
         <span>
           Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}

@@ -46,7 +46,7 @@ export interface IssueAssignmentsProps {
    * don't need to cast or clone.
    */
   members: readonly Member[] | Member[];
-  defaultStateId: Id<"issueStates">;
+  defaultStateId?: Id<"issueStates">;
 }
 
 export function IssueAssignments({
@@ -102,7 +102,7 @@ export function IssueAssignments({
       await addAssigneeMutation({
         issueId,
         assigneeId: assigneeId as Id<"users">,
-        stateId: defaultStateId,
+        stateId: defaultStateId || undefined,
       });
       setAddDialogOpen(false);
     } catch (error) {

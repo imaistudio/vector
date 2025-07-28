@@ -98,7 +98,11 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
 
   const handleDeleteRole = async (roleId: Id<"orgRoles">) => {
     if (confirm("Are you sure you want to delete this role?")) {
-      await deleteMutation({ orgSlug, roleId });
+      try {
+        await deleteMutation({ orgSlug, roleId });
+      } catch (error) {
+        console.error("Failed to delete role:", error);
+      }
     }
   };
 

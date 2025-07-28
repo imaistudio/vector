@@ -8,25 +8,29 @@ export default defineSchema({
 
   // Extend the users table with additional fields for Better-Auth compatibility
   users: defineTable({
-    name: v.string(),
-    email: v.string(),
-    emailVerified: v.boolean(),
+    name: v.optional(v.string()),
     image: v.optional(v.string()),
+    email: v.optional(v.string()),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+    // Our custom fields
     username: v.optional(v.string()),
-    displayUsername: v.optional(v.string()),
     role: v.optional(v.string()),
-    banned: v.optional(v.boolean()),
-    banReason: v.optional(v.string()),
-    banExpires: v.optional(v.number()),
   })
-    .index("by_email", ["email"])
-    .index("by_username", ["username"]),
+    .index("email", ["email"])
+    .index("phone", ["phone"])
+    .index("by_username", ["username"])
+    .searchIndex("by_name_email_username", {
+      searchField: "name",
+    }),
 
   // Organizations (equivalent to Drizzle 'organization' table)
   organizations: defineTable({
     name: v.string(),
     slug: v.string(),
-    logo: v.optional(v.string()),
+    logo: v.optional(v.id("_storage")),
     metadata: v.optional(v.string()),
   }).index("by_slug", ["slug"]),
 

@@ -3,5 +3,8 @@ import { api } from "../../convex/_generated/api";
 // Re-export the API for convenience
 export { api };
 
-// Export commonly used hooks for easier imports
-export { useQuery, useMutation, useAction } from "convex/react";
+// Export richer useQuery from convex-helpers for better status states
+export { useQuery } from "convex-helpers/react";
+
+// Export standard hooks for mutations and actions
+export { useMutation, useAction } from "convex/react";

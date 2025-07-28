@@ -100,6 +100,7 @@ function CreateProjectDialogContent({
           key: key.trim().toUpperCase(),
           description: description.trim() || undefined,
           leadId: selectedLead ? (selectedLead as Id<"users">) : undefined,
+          teamId: selectedTeam ? (selectedTeam as Id<"teams">) : undefined,
           statusId: selectedStatus
             ? (selectedStatus as Id<"projectStatuses">)
             : undefined,

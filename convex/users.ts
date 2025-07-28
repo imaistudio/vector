@@ -1,7 +1,8 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, action } from "./_generated/server";
 import { v } from "convex/values";
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
 import { auth } from "./auth";
+import { api } from "./_generated/api";
 
 /**
  * Get the current authenticated user
@@ -25,7 +26,6 @@ export const currentUser = query({
 export const updateProfile = mutation({
   args: {
     name: v.string(),
-    displayUsername: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -35,7 +35,6 @@ export const updateProfile = mutation({
 
     await ctx.db.patch(userId, {
       name: args.name,
-      displayUsername: args.displayUsername,
     });
 
     return { success: true };
@@ -72,7 +71,7 @@ export const hasAnyUsers = query({
  * Bootstrap the very first administrator user
  * Creates both user and credential account, throws if admin already exists
  */
-export const bootstrapAdmin = mutation({
+export const bootstrapAdmin = action({
   args: {
     name: v.string(),
     email: v.string(),
@@ -81,49 +80,28 @@ export const bootstrapAdmin = mutation({
   },
   handler: async (ctx, args) => {
     // Check if admin already exists
-    const existingAdmin = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("role"), "admin"))
-      .first();
+    const existingAdmin = await ctx.runQuery(api.users.adminExists);
 
     if (existingAdmin) {
       throw new Error("An admin account already exists");
     }
 
-    // Check for existing user with same email or username
-    const existingByEmail = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
-
-    if (existingByEmail) {
-      throw new Error("A user with this email already exists");
-    }
-
-    if (args.username) {
-      const existingByUsername = await ctx.db
-        .query("users")
-        .withIndex("by_username", (q) => q.eq("username", args.username))
-        .first();
-
-      if (existingByUsername) {
-        throw new Error("A user with this username already exists");
-      }
-    }
-
-    // Create the admin user using Convex Auth
-    // We'll use the signIn mutation to create the user with proper auth integration
-    const userId = await ctx.db.insert("users", {
-      name: args.name,
-      email: args.email,
-      emailVerified: true,
-      username: args.username,
-      displayUsername: args.username,
-      role: "admin",
-      banned: false,
+    // Create the admin user using Convex Auth's createAccount
+    const { account, user } = await createAccount(ctx, {
+      provider: "password",
+      account: {
+        id: args.email, // unique identifier
+        secret: args.password, // Convex Auth will hash this automatically
+      },
+      profile: {
+        email: args.email,
+        name: args.name,
+        username: args.username,
+        role: "admin", // Set admin role immediately
+      },
     });
 
-    return { id: userId };
+    return { id: user._id };
   },
 });
 
@@ -187,7 +165,11 @@ export const searchUsers = query({
     }
 
     const limit = args.limit ?? 10;
-    const searchQuery = args.query.toLowerCase();
+    const searchQuery = args.query.trim();
+
+    if (searchQuery.length === 0) {
+      return [];
+    }
 
     // If organizationId provided, only search within that org
     if (args.organizationId) {
@@ -200,34 +182,66 @@ export const searchUsers = query({
 
       const memberUserIds = members.map((m) => m.userId);
 
-      // Get user details and filter by search query
-      const users = await Promise.all(
-        memberUserIds.map((id) => ctx.db.get(id)),
+      // Search by name using search index
+      const nameResults = await ctx.db
+        .query("users")
+        .withSearchIndex("by_name_email_username", (q) =>
+          q.search("name", searchQuery),
+        )
+        .collect();
+
+      // Search by exact email match
+      const emailResults = await ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", searchQuery))
+        .collect();
+
+      // Search by exact username match
+      const usernameResults = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", searchQuery))
+        .collect();
+
+      // Combine and filter to org members only
+      const allResults = [...nameResults, ...emailResults, ...usernameResults];
+      const orgMemberSet = new Set(memberUserIds);
+      const filteredResults = allResults.filter((user) =>
+        orgMemberSet.has(user._id),
       );
 
-      return users
-        .filter(
-          (user) =>
-            user &&
-            (user.name.toLowerCase().includes(searchQuery) ||
-              user.email.toLowerCase().includes(searchQuery) ||
-              (user.username &&
-                user.username.toLowerCase().includes(searchQuery))),
-        )
-        .slice(0, limit);
+      // Remove duplicates and limit results
+      const uniqueResults = Array.from(
+        new Map(filteredResults.map((user) => [user._id, user])).values(),
+      );
+
+      return uniqueResults.slice(0, limit);
     }
 
     // Global search (for admin users)
-    const allUsers = await ctx.db.query("users").collect();
+    const [nameResults, emailResults, usernameResults] = await Promise.all([
+      ctx.db
+        .query("users")
+        .withSearchIndex("by_name_email_username", (q) =>
+          q.search("name", searchQuery),
+        )
+        .collect(),
+      ctx.db
+        .query("users")
+        .withIndex("email", (q) => q.eq("email", searchQuery))
+        .collect(),
+      ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", searchQuery))
+        .collect(),
+    ]);
 
-    return allUsers
-      .filter(
-        (user) =>
-          user.name.toLowerCase().includes(searchQuery) ||
-          user.email.toLowerCase().includes(searchQuery) ||
-          (user.username && user.username.toLowerCase().includes(searchQuery)),
-      )
-      .slice(0, limit);
+    // Combine and deduplicate results
+    const allResults = [...nameResults, ...emailResults, ...usernameResults];
+    const uniqueResults = Array.from(
+      new Map(allResults.map((user) => [user._id, user])).values(),
+    );
+
+    return uniqueResults.slice(0, limit);
   },
 });
 
@@ -272,9 +286,13 @@ export const getPendingInvitations = query({
       return [];
     }
 
+    if (!user.email) {
+      return [];
+    }
+
     const invites = await ctx.db
       .query("invitations")
-      .withIndex("by_email", (q) => q.eq("email", user.email))
+      .withIndex("by_email", (q) => q.eq("email", user.email!))
       .filter((q) => q.eq(q.field("status"), "pending"))
       .collect();
 

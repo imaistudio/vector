@@ -12,8 +12,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { formatDateHuman } from "@/lib/date";
-import { StatusSelector, LeadSelector } from "./project-selectors";
+import { StatusSelector } from "./project-selectors";
 import type { Status, Team, Member } from "./project-selectors";
+import { ProjectLeadSelector } from "./project-lead-selector";
 import { getDynamicIcon } from "@/lib/dynamic-icons";
 import { TeamSelector } from "@/components/teams/team-selector";
 
@@ -27,6 +28,9 @@ export interface ProjectRowData {
   createdAt: Date;
   startDate?: string | null;
   dueDate?: string | null;
+  // Project details
+  icon?: string | null;
+  color?: string | null;
   // Status details
   statusId?: string | null;
   statusName?: string | null;
@@ -59,7 +63,6 @@ export interface ProjectsTableProps {
   projects: ReadonlyArray<ProjectRowData>;
   statuses: ReadonlyArray<Status>;
   teams: ReadonlyArray<Team>;
-  members?: ReadonlyArray<Member>; // Optional since new ProjectLeadSelector fetches its own data
   onStatusChange: (projectId: string, statusId: string) => void;
   onTeamChange: (projectId: string, teamId: string) => void;
   onLeadChange: (projectId: string, leadId: string) => void;
@@ -72,7 +75,6 @@ export function ProjectsTable({
   projects,
   statuses,
   teams,
-  members,
   onStatusChange,
   onTeamChange,
   onLeadChange,
@@ -97,6 +99,12 @@ export function ProjectsTable({
     <div className="divide-y">
       <AnimatePresence initial={false}>
         {projects.map((project) => {
+          // Project icon / color
+          const ProjectIcon = project.icon
+            ? getDynamicIcon(project.icon) || Circle
+            : Circle;
+          const projectColor = project.color || "#94a3b8";
+
           // Status icon / color
           const StatusIcon = project.statusIcon
             ? getDynamicIcon(project.statusIcon) || Circle
@@ -113,27 +121,13 @@ export function ProjectsTable({
               key={project.id}
               className="hover:bg-muted/50 flex items-center gap-2 px-3 py-1.5 transition-colors"
             >
-              {/* Status Selector */}
-              <StatusSelector
-                statuses={statuses}
-                selectedStatus={project.statusId || ""}
-                onStatusSelect={(sid) => onStatusChange(project.id, sid)}
-                displayMode="iconOnly"
-                trigger={
-                  <div className="flex-shrink-0 cursor-pointer">
-                    <StatusIcon
-                      className="size-4"
-                      style={{ color: statusColor }}
-                    />
-                  </div>
-                }
-                className="border-none bg-transparent p-0 shadow-none"
-              />
-
-              {/* Project Key */}
-              {/* <span className="text-muted-foreground flex-shrink-0 font-mono text-xs">
-                {project.key}
-              </span> */}
+              {/* Project Icon */}
+              <div className="flex-shrink-0">
+                <ProjectIcon
+                  className="size-4"
+                  style={{ color: projectColor }}
+                />
+              </div>
 
               {/* Title */}
               <Link
@@ -150,6 +144,15 @@ export function ProjectsTable({
                   </p>
                 )}
               </Link>
+
+              {/* Status Selector */}
+              <StatusSelector
+                statuses={statuses}
+                selectedStatus={project.statusId || ""}
+                onStatusSelect={(sid) => onStatusChange(project.id, sid)}
+                displayMode="iconWhenUnselected"
+                className="border-none bg-transparent p-0 shadow-none"
+              />
 
               {/* Team Selector */}
               <div className="flex-shrink-0">
@@ -178,26 +181,14 @@ export function ProjectsTable({
               </div>
 
               {/* Lead Selector */}
-              <LeadSelector
-                members={members || []}
+              <ProjectLeadSelector
+                orgSlug={orgSlug}
+                projectKey={project.key}
                 selectedLead={project.leadId || ""}
-                onLeadSelect={(lid) => onLeadChange(project.id, lid)}
-                displayMode="iconWhenUnselected"
-                trigger={
-                  project.leadId ? (
-                    <div className="flex cursor-pointer items-center gap-2">
-                      <Avatar className="size-6">
-                        <AvatarFallback className="text-xs">
-                          {getLeadInitials(project.leadName, project.leadEmail)}
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-                  ) : (
-                    <div className="flex size-6 cursor-pointer items-center justify-center">
-                      <span className="text-muted-foreground text-xs">—</span>
-                    </div>
-                  )
+                onLeadSelect={(leadId: string) =>
+                  onLeadChange(project.id, leadId)
                 }
+                displayMode="iconWhenUnselected"
                 className="border-none bg-transparent p-0 shadow-none"
               />
 

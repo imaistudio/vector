@@ -2,7 +2,6 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { auth } from "./auth";
 
 /**
  * Get project by organization slug and project key
@@ -73,6 +72,7 @@ export const create = mutation({
       name: v.string(),
       description: v.optional(v.string()),
       leadId: v.optional(v.id("users")),
+      teamId: v.optional(v.id("teams")),
       statusId: v.optional(v.id("projectStatuses")),
     }),
   },
@@ -131,6 +131,14 @@ export const create = mutation({
       }
     }
 
+    // Validate team exists in organization if provided
+    if (args.data.teamId) {
+      const team = await ctx.db.get(args.data.teamId);
+      if (!team || team.organizationId !== org._id) {
+        throw new Error("Team not found or not in this organization");
+      }
+    }
+
     // Validate input
     if (!args.data.key.trim()) {
       throw new Error("Project key is required");
@@ -155,6 +163,7 @@ export const create = mutation({
       name: args.data.name.trim(),
       description: args.data.description?.trim(),
       leadId: args.data.leadId,
+      teamId: args.data.teamId,
       statusId: args.data.statusId,
       createdBy: userId,
     });
@@ -326,6 +335,7 @@ export const changeLead = mutation({
 export const list = query({
   args: {
     orgSlug: v.string(),
+    teamId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -356,10 +366,26 @@ export const list = query({
     }
 
     // Get all projects in organization
-    const projects = await ctx.db
+    let projectsQuery = ctx.db
       .query("projects")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
-      .collect();
+      .withIndex("by_organization", (q) => q.eq("organizationId", org._id));
+
+    // Filter by team if teamId is provided
+    if (args.teamId) {
+      const team = await ctx.db
+        .query("teams")
+        .withIndex("by_org_key", (q) =>
+          q.eq("organizationId", org._id).eq("key", args.teamId!),
+        )
+        .first();
+      if (team) {
+        projectsQuery = projectsQuery.filter((q) =>
+          q.eq(q.field("teamId"), team._id),
+        );
+      }
+    }
+
+    const projects = await projectsQuery.collect();
 
     // Batch database calls for better performance
     const leadIds = projects

@@ -82,10 +82,30 @@ export function ProjectLeadSelector({
   const projectMembers: ProjectMember[] =
     useQuery(
       api.projects.listMembers,
-      projectKey ? { orgSlug, projectKey } : { orgSlug, projectKey: "" },
+      projectKey ? { orgSlug, projectKey } : "skip",
     ) ?? [];
+
+  // Get project data to find the lead
+  const project = useQuery(
+    api.projects.getByKey,
+    projectKey ? { orgSlug, projectKey } : "skip",
+  );
+
+  // For existing projects, we need to include the project lead even if they're not explicitly added as project members
   const members: (ProjectMember | OrgMember)[] = projectKey
-    ? projectMembers
+    ? (() => {
+        const leadId = project?.leadId;
+
+        if (leadId && !projectMembers.some((m) => m.userId === leadId)) {
+          // Find the lead in org members and add them to the list
+          const leadFromOrg = orgMembers.find((m) => m.userId === leadId);
+          if (leadFromOrg) {
+            return [...projectMembers, leadFromOrg];
+          }
+        }
+
+        return projectMembers;
+      })()
     : orgMembers;
 
   // Sort members: current user first, then alphabetically by name

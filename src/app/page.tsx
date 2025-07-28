@@ -2,17 +2,20 @@
 
 import { redirect } from "next/navigation";
 import { useEffect } from "react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/convex";
 import { api } from "@/lib/convex";
 
 // --- Post-login redirect logic -----------------------------------------------------------
 export default function Home() {
-  const user = useQuery(api.users.currentUser);
-  const userOrgs = useQuery(api.users.getOrganizations);
+  const userQuery = useQuery(api.users.currentUser);
+  const userOrgsQuery = useQuery(api.users.getOrganizations);
+
+  const user = userQuery.data;
+  const userOrgs = userOrgsQuery.data;
   const hasOrganizations = userOrgs && userOrgs.length > 0;
 
   useEffect(() => {
-    if (user === undefined) {
+    if (userQuery.isPending) {
       // Still loading, don't redirect yet
       return;
     }
@@ -28,7 +31,7 @@ export default function Home() {
         redirect("/org-setup");
       }
     }
-  }, [user, hasOrganizations, userOrgs]);
+  }, [user, hasOrganizations, userOrgs, userQuery.isPending]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center">

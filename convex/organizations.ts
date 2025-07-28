@@ -7,7 +7,6 @@ import {
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { auth } from "./auth";
 import {
   ISSUE_PRIORITY_DEFAULTS,
   ISSUE_STATE_DEFAULTS,
@@ -199,7 +198,7 @@ export const acceptInvitation = mutation({
     if (invite.status !== "pending") {
       throw new Error("Invitation is not pending");
     }
-    if (invite.email.toLowerCase() !== user.email.toLowerCase()) {
+    if (invite.email.toLowerCase() !== user.email?.toLowerCase()) {
       throw new Error(
         `This invitation is for ${invite.email}, but you are logged in as ${user.email}.`,
       );
@@ -480,7 +479,7 @@ export const create = mutation({
     data: v.object({
       name: v.string(),
       slug: v.string(),
-      logo: v.optional(v.string()),
+      logo: v.optional(v.id("_storage")),
     }),
   },
   handler: async (ctx, args) => {
@@ -527,6 +526,41 @@ export const create = mutation({
       role: "owner",
     });
 
+    // Create default issue states
+    for (const state of ISSUE_STATE_DEFAULTS) {
+      await ctx.db.insert("issueStates", {
+        organizationId: orgId,
+        name: state.name,
+        position: state.position,
+        color: state.color,
+        icon: state.icon,
+        type: state.type,
+      });
+    }
+
+    // Create default issue priorities
+    for (const priority of ISSUE_PRIORITY_DEFAULTS) {
+      await ctx.db.insert("issuePriorities", {
+        organizationId: orgId,
+        name: priority.name,
+        weight: priority.weight,
+        color: priority.color,
+        icon: priority.icon,
+      });
+    }
+
+    // Create default project statuses
+    for (const status of PROJECT_STATUS_DEFAULTS) {
+      await ctx.db.insert("projectStatuses", {
+        organizationId: orgId,
+        name: status.name,
+        position: status.position,
+        color: status.color,
+        icon: status.icon,
+        type: status.type,
+      });
+    }
+
     return { orgId };
   },
 });
@@ -540,7 +574,7 @@ export const update = mutation({
     data: v.object({
       name: v.optional(v.string()),
       slug: v.optional(v.string()),
-      logo: v.optional(v.string()),
+      logo: v.optional(v.id("_storage")),
     }),
   },
   handler: async (ctx, args) => {
@@ -604,7 +638,7 @@ export const update = mutation({
     const updateData: Partial<{
       name: string;
       slug: string;
-      logo: string;
+      logo: Id<"_storage">;
     }> = {};
 
     if (args.data.name !== undefined) {
@@ -681,7 +715,8 @@ export const listMembers = query({
               _id: user._id,
               name: user.name,
               email: user.email,
-              displayUsername: user.displayUsername,
+              username: user.username,
+              role: user.role,
             }
           : null,
       };
@@ -749,7 +784,8 @@ export const searchMembers = query({
               _id: user._id,
               name: user.name,
               email: user.email,
-              displayUsername: user.displayUsername,
+              username: user.username,
+              role: user.role,
             }
           : null,
       };
@@ -763,7 +799,7 @@ export const searchMembers = query({
           member.user &&
           (member.user.name?.toLowerCase().includes(searchTerm) ||
             member.user.email?.toLowerCase().includes(searchTerm) ||
-            member.user.displayUsername?.toLowerCase().includes(searchTerm)),
+            member.user.username?.toLowerCase().includes(searchTerm)),
       );
     }
 
@@ -1059,7 +1095,7 @@ export const invite = mutation({
     // Check if user already exists
     const existingUser = await ctx.db
       .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .withIndex("email", (q) => q.eq("email", args.email))
       .first();
 
     if (existingUser) {
@@ -1513,7 +1549,7 @@ export const resetIssuePriorities = mutation({
       )
       .first();
 
-    if (!member || member.role !== "admin") {
+    if (!member || (member.role !== "admin" && member.role !== "owner")) {
       throw new Error("Unauthorized");
     }
 
@@ -1560,7 +1596,7 @@ export const resetIssueStates = mutation({
       )
       .first();
 
-    if (!member || member.role !== "admin") {
+    if (!member || (member.role !== "admin" && member.role !== "owner")) {
       throw new Error("Unauthorized");
     }
 
@@ -1608,7 +1644,7 @@ export const resetProjectStatuses = mutation({
       )
       .first();
 
-    if (!member || member.role !== "admin") {
+    if (!member || (member.role !== "admin" && member.role !== "owner")) {
       throw new Error("Unauthorized");
     }
 
@@ -2015,3 +2051,136 @@ async function getOrgMember(ctx: QueryCtx | MutationCtx, orgSlug: string) {
 
   return membership;
 }
+
+/**
+ * Generate upload URL for organization logo
+ */
+export const generateLogoUploadUrl = mutation({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Not authenticated");
+    }
+
+    // Find organization
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    // Verify user is owner or admin
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_org_user", (q) =>
+        q.eq("organizationId", org._id).eq("userId", userId),
+      )
+      .first();
+
+    if (
+      !membership ||
+      (membership.role !== "owner" && membership.role !== "admin")
+    ) {
+      throw new Error("Insufficient permissions to upload logo");
+    }
+
+    // Generate upload URL
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Update organization logo with storage ID
+ */
+export const updateLogoWithStorageId = mutation({
+  args: {
+    orgSlug: v.string(),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new Error("Not authenticated");
+    }
+
+    // Find organization
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+
+    // Verify user is owner or admin
+    const membership = await ctx.db
+      .query("members")
+      .withIndex("by_org_user", (q) =>
+        q.eq("organizationId", org._id).eq("userId", userId),
+      )
+      .first();
+
+    if (
+      !membership ||
+      (membership.role !== "owner" && membership.role !== "admin")
+    ) {
+      throw new Error("Insufficient permissions to update logo");
+    }
+
+    // Update organization with storage ID
+    await ctx.db.patch(org._id, {
+      logo: args.storageId,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Get organization logo URL
+ */
+export const getLogoUrl = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find organization
+    const org = await ctx.db
+      .query("organizations")
+      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .first();
+
+    if (!org || !org.logo) {
+      return null;
+    }
+
+    // Generate URL for the logo
+    return await ctx.storage.getUrl(org.logo);
+  },
+});
+
+/**
+ * Get file URL by storage ID string (for API routes)
+ */
+export const getFileUrlByString = query({
+  args: {
+    storageIdString: v.string(),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Convert string to storage ID
+      const storageId = args.storageIdString as Id<"_storage">;
+      // Generate URL for the file
+      return await ctx.storage.getUrl(storageId);
+    } catch (error) {
+      return null;
+    }
+  },
+});

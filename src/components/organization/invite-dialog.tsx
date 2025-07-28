@@ -12,6 +12,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useFormSubmission } from "@/hooks/use-error-handling";
+import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle } from "lucide-react";
 
 type NonOwnerMemberRole = "member" | "admin";
 
@@ -24,22 +28,23 @@ export function InviteDialog({
 }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<NonOwnerMemberRole>("member");
-  const [isLoading, setIsLoading] = useState(false);
 
   const inviteMutation = useMutation(api.organizations.invite);
 
-  const handleInvite = async () => {
-    if (!email) return;
-
-    setIsLoading(true);
-    try {
-      await inviteMutation({ orgSlug, email, role });
+  const { submit, isSubmitting, error } = useFormSubmission(inviteMutation, {
+    context: "Invite",
+    successMessage: "Invitation sent successfully",
+    onSuccess: () => {
       onClose();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
+      setEmail("");
+      setRole("member");
+    },
+  });
+
+  const handleInvite = async () => {
+    if (!email.trim()) return;
+
+    await submit({ orgSlug, email: email.trim(), role });
   };
 
   return (
@@ -53,6 +58,13 @@ export function InviteDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error.userMessage}</AlertDescription>
+            </Alert>
+          )}
+
           <Input
             placeholder="email@example.com"
             value={email}
@@ -84,10 +96,10 @@ export function InviteDialog({
           </Button>
           <Button
             size="sm"
-            disabled={!email || isLoading}
+            disabled={!email || isSubmitting}
             onClick={handleInvite}
           >
-            {isLoading ? "Sending…" : "Send Invite"}
+            {isSubmitting ? "Sending…" : "Send Invite"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -27,17 +27,24 @@ interface CreateTeamDialogContentProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess?: (teamId: string) => void;
+  defaultStates?: {
+    leadId?: string;
+    [key: string]: unknown;
+  };
 }
 
 function CreateTeamDialogContent({
   orgSlug,
   onClose,
   onSuccess,
+  defaultStates,
 }: CreateTeamDialogContentProps) {
   const [name, setName] = useState("");
   const [key, setKey] = useState("");
   const [description, setDescription] = useState("");
-  const [selectedLead, setSelectedLead] = useState<string>("");
+  const [selectedLead, setSelectedLead] = useState<string>(
+    defaultStates?.leadId || "",
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   // Get organization members for lead selection
@@ -189,6 +196,11 @@ export interface CreateTeamDialogProps {
   variant?: "default" | "floating";
   /** Additional classes for the trigger button */
   className?: string;
+  /** Object for default values for selectors */
+  defaultStates?: {
+    leadId?: string;
+    [key: string]: unknown;
+  };
 }
 
 export function CreateTeamDialog({
@@ -196,6 +208,7 @@ export function CreateTeamDialog({
   onTeamCreated,
   variant = "default",
   className,
+  defaultStates,
 }: CreateTeamDialogProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
@@ -235,6 +248,7 @@ export function CreateTeamDialog({
           orgSlug={orgSlug}
           onClose={() => setIsDialogOpen(false)}
           onSuccess={handleSuccess}
+          defaultStates={defaultStates}
         />
       )}
     </>

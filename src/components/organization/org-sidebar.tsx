@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type LucideIcon, CheckSquare, FolderOpen, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CreateIssueSimple } from "@/components/issues/create-issue-simple";
+import { CreateIssueDialog } from "@/components/issues/create-issue-dialog";
 import { CreateTeamButton } from "@/components/teams/create-team-button";
 import { CreateProjectButton } from "@/components/projects/create-project-button";
 import { PermissionGate } from "@/hooks/use-permissions";
@@ -14,7 +14,7 @@ import { api } from "@/lib/convex";
 import { withIds } from "@/lib/convex-helpers";
 import type { ReactNode } from "react";
 import { getDynamicIcon } from "@/lib/dynamic-icons";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 
@@ -32,13 +32,6 @@ interface OrgSidebarProps {
 
 export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
   const pathname = usePathname();
-  const [createIssueOpen, setCreateIssueOpen] = useState(false);
-  const [isClient, setIsClient] = useState(false);
-
-  // Ensure we're on the client side
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
 
   // Fetch user's teams and projects
   const userTeamsData = useQuery(api.organizations.listTeams, {
@@ -53,20 +46,6 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
   const userTeams = userTeamsData ? withIds(userTeamsData) : [];
   const userProjects = userProjectsData ? withIds(userProjectsData) : [];
 
-  // Don't render during SSR
-  if (!isClient) {
-    return (
-      <nav className="space-y-4 p-2 pt-0">
-        <div className="space-y-1">
-          <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium">
-            <CheckSquare className="size-4" />
-            <span>Loading...</span>
-          </div>
-        </div>
-      </nav>
-    );
-  }
-
   const navItems: NavItem[] = [
     {
       label: "My Issues",
@@ -74,14 +53,11 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
       icon: CheckSquare,
       createElement: (
         <PermissionGate orgSlug={orgSlug} permission={PERMISSIONS.ISSUE_CREATE}>
-          <Button
-            variant="ghost"
-            size="sm"
+          <CreateIssueDialog
+            orgSlug={orgSlug}
+            variant="default"
             className="h-6 w-6 p-0"
-            onClick={() => setCreateIssueOpen(true)}
-          >
-            <Plus className="h-3 w-3" />
-          </Button>
+          />
         </PermissionGate>
       ),
     },
@@ -311,17 +287,6 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
           </div>
         </div>
       </nav>
-
-      {/* Create Issue Dialog */}
-      <CreateIssueSimple
-        open={createIssueOpen}
-        onClose={() => setCreateIssueOpen(false)}
-        orgSlug={orgSlug}
-        onSuccess={() => {
-          setCreateIssueOpen(false);
-          // Could add toast notification here
-        }}
-      />
     </>
   );
 }

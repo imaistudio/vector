@@ -511,7 +511,7 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                   defaultStateId={
                     states?.find((s) => s.type === "todo")?._id ||
                     states?.[0]?._id ||
-                    ("" as Id<"issueStates">)
+                    undefined
                   }
                 />
               )}

@@ -1,20 +1,54 @@
-import { OrgSettingsSidebar } from "@/components/organization";
+"use client";
+
+import {
+  OrgSettingsSidebar,
+  OrgOptionsDropdown,
+} from "@/components/organization";
+import { useQuery } from "convex/react";
+import { api } from "@/lib/convex";
+import { useParams } from "next/navigation";
 
 interface OrgSettingsLayoutProps {
   children: React.ReactNode;
-  params: Promise<{ orgSlug: string }>;
 }
 
-export default async function OrgSettingsLayout({
+export default function OrgSettingsLayout({
   children,
-  params,
 }: OrgSettingsLayoutProps) {
-  const { orgSlug } = await params;
+  const params = useParams();
+  const orgSlug = params.orgSlug as string;
+  const user = useQuery(api.users.currentUser);
+  const members = useQuery(api.organizations.listMembersWithRoles, { orgSlug });
+  const organization = useQuery(api.organizations.getBySlug, { orgSlug });
+  const userRole =
+    members?.find((m) => m.userId === user?._id)?.role || "member";
 
   return (
-    <div className="flex h-full min-h-screen">
-      <OrgSettingsSidebar orgSlug={orgSlug} userRole={"member"} />
-      <main className="flex-1">{children}</main>
+    <div className="bg-secondary flex h-screen">
+      {/* Settings Sidebar */}
+      <aside className="hidden w-56 lg:block">
+        <div className="flex h-full flex-col">
+          {/* Organization Options Dropdown */}
+          <div className="p-2">
+            <OrgOptionsDropdown
+              currentOrgSlug={orgSlug}
+              currentOrgName={organization?.name ?? "Organization"}
+              currentOrgLogo={organization?.logo}
+              organizations={[]}
+            />
+          </div>
+
+          {/* Settings Navigation */}
+          <div className="flex-1 overflow-y-auto">
+            <OrgSettingsSidebar orgSlug={orgSlug} userRole={userRole} />
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border">
+        {children}
+      </main>
     </div>
   );
 }

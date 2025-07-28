@@ -84,6 +84,8 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     key: project.key,
     updatedAt: new Date(project._creationTime), // Using creation time as update time for now
     createdAt: new Date(project._creationTime),
+    icon: project.icon,
+    color: project.color,
     statusId: project.status?._id,
     statusName: project.status?.name,
     statusColor: project.status?.color,
@@ -165,43 +167,43 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   };
 
   const handleDelete = (projectId: string) => {
-    if (!confirm("Delete this project? This cannot be undone.")) return;
     // Find the project by id to get the projectKey
     const project = projects.find((p) => p.id === projectId);
     if (project) {
-      deleteMutation({ orgSlug, projectKey: project.key });
+      deleteMutation({
+        orgSlug,
+        projectKey: project.key,
+      });
     }
   };
 
   // Filter projects based on active filter
   const filteredProjects = projects.filter((project) => {
     if (activeFilter === "all") return true;
-    return project.statusType === activeFilter;
+    const status = statuses.find((s) => s.id === project.statusId);
+    return status?.type === activeFilter;
   });
 
-  const statusCounts: Record<StatusType, number> = projects.reduce(
-    (acc, proj) => {
-      const statusType = proj.statusType as StatusType;
-      if (statusType) {
-        acc[statusType] = (acc[statusType] || 0) + 1;
-      }
+  // Calculate counts for each status
+  const statusCounts = statusValues.reduce(
+    (acc, statusType) => {
+      const count = projects.filter((project) => {
+        const status = statuses.find((s) => s.id === project.statusId);
+        return status?.type === statusType;
+      }).length;
+      acc[statusType] = count;
       return acc;
     },
     {} as Record<StatusType, number>,
   );
 
-  // Use counts from backend if available, fallback to computed
-  const backendCounts: Record<string, number> = {}; // No longer available from Convex
-
-  const updatedTabs = filterTabs.map((tab) => ({
-    ...tab,
-    count:
-      tab.key === "all"
-        ? (projectsData?.length ?? 0)
-        : (backendCounts[tab.key as string] ??
-          statusCounts[tab.key as StatusType] ??
-          0),
-  }));
+  // Update tabs with counts
+  const updatedTabs = filterTabs.map((tab) => {
+    if (tab.key === "all") {
+      return { ...tab, count: projects.length };
+    }
+    return { ...tab, count: statusCounts[tab.key as StatusType] || 0 };
+  });
 
   const visibleTabs = updatedTabs.filter((t) => t.key === "all" || t.count > 0);
 
@@ -260,7 +262,6 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
             projects={filteredProjects}
             statuses={statuses}
             teams={teams}
-            members={members}
             onStatusChange={handleStatusChange}
             onTeamChange={handleTeamChange}
             onLeadChange={handleLeadChange}

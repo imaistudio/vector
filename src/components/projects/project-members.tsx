@@ -32,6 +32,7 @@ import {
   MoreHorizontal,
   Trash2,
   Users,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
@@ -96,35 +97,34 @@ export function ProjectMembersSection({
         <h2 className="flex items-center gap-2 text-sm font-semibold">
           <Users className="size-4" />
           Members ({members.length})
+          {canEdit && (
+            <Button
+              onClick={() => setShowAddMemberDialog(true)}
+              className="h-5 gap-1 px-0 text-xs"
+              variant="outline"
+              disabled={
+                orgMembers.filter(
+                  (member) =>
+                    !members.some(
+                      (projectMember) => projectMember.userId === member.userId,
+                    ),
+                ).length === 0
+              }
+              title={
+                orgMembers.filter(
+                  (member) =>
+                    !members.some(
+                      (projectMember) => projectMember.userId === member.userId,
+                    ),
+                ).length === 0
+                  ? "All organization members are already in this project"
+                  : ""
+              }
+            >
+              <Plus className="size-3" />
+            </Button>
+          )}
         </h2>
-        {canEdit && (
-          <Button
-            size="sm"
-            onClick={() => setShowAddMemberDialog(true)}
-            className="gap-1"
-            disabled={
-              orgMembers.filter(
-                (member) =>
-                  !members.some(
-                    (projectMember) => projectMember.userId === member.userId,
-                  ),
-              ).length === 0
-            }
-            title={
-              orgMembers.filter(
-                (member) =>
-                  !members.some(
-                    (projectMember) => projectMember.userId === member.userId,
-                  ),
-              ).length === 0
-                ? "All organization members are already in this project"
-                : ""
-            }
-          >
-            <UserPlus className="size-3" />
-            Add member
-          </Button>
-        )}
       </div>
 
       {hasMembers ? (
@@ -139,7 +139,9 @@ export function ProjectMembersSection({
       ) : (
         <div className="flex items-center justify-center py-12">
           <div className="text-center">
-            <div className="mb-4 text-4xl">👥</div>
+            <div className="mb-4 flex justify-center">
+              <Users className="text-muted-foreground/50 h-16 w-16" />
+            </div>
             <h3 className="mb-2 text-lg font-semibold">No members yet</h3>
             <p className="text-muted-foreground mb-6">
               Add project members to get started.
@@ -168,7 +170,8 @@ export function ProjectMembersSection({
                     : ""
                 }
               >
-                <UserPlus className="mr-2 size-4" /> Invite Member
+                <Plus className="mr-2 size-3" />
+                Add member
               </Button>
             )}
           </div>
@@ -236,16 +239,13 @@ function AddMemberDialog({
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserPlus className="size-4" /> Add project member
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Member</label>
+      <DialogHeader className="sr-only">
+        <DialogTitle>Add project member</DialogTitle>
+      </DialogHeader>
+      <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
+        <form onSubmit={handleSubmit} className="space-y-2">
+          {/* Member Selection */}
+          <div className="relative">
             <Popover
               open={memberComboboxOpen}
               onOpenChange={setMemberComboboxOpen}
@@ -255,7 +255,7 @@ function AddMemberDialog({
                   variant="outline"
                   role="combobox"
                   aria-expanded={memberComboboxOpen}
-                  className="h-9 w-full justify-between"
+                  className="h-9 w-full justify-between pr-20 text-base"
                 >
                   {selectedMember
                     ? orgMembers.find((m) => m.userId === selectedMember)?.user
@@ -294,7 +294,7 @@ function AddMemberDialog({
                         .map((member) => (
                           <CommandItem
                             key={member.userId}
-                            value={member.user?.name}
+                            value={member.user?.name ?? ""}
                             onSelect={() => {
                               setSelectedMember(member.userId);
                               setMemberComboboxOpen(false);
@@ -316,10 +316,13 @@ function AddMemberDialog({
                 </Command>
               </PopoverContent>
             </Popover>
+            <span className="text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs">
+              Member
+            </span>
           </div>
         </form>
 
-        <DialogFooter>
+        <div className="flex w-full flex-row items-center justify-between gap-2">
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
@@ -349,7 +352,7 @@ function AddMemberDialog({
           >
             {isAddingMember ? "Adding…" : "Add member"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
