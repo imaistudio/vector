@@ -1,12 +1,12 @@
-import { spawnSync } from "node:child_process";
-import { exit, platform } from "node:process";
+import { spawnSync } from 'node:child_process';
+import { exit, platform } from 'node:process';
 
 function run(cmd: string, args: string[]) {
-  console.log(`\n▶️  Running: ${cmd} ${args.join(" ")}`);
+  console.log(`\n▶️  Running: ${cmd} ${args.join(' ')}`);
   const result = spawnSync(cmd, args, {
-    stdio: "inherit",
+    stdio: 'inherit',
     // On Windows we need a shell for commands like pnpm and docker compose
-    shell: platform === "win32",
+    shell: platform === 'win32',
   });
 
   if (result.status !== 0) {
@@ -16,21 +16,21 @@ function run(cmd: string, args: string[]) {
 }
 
 console.log(
-  "\n🛠️  Starting AIKP project setup\n----------------------------------",
+  '\n🛠️  Starting AIKP project setup\n----------------------------------'
 );
 
 // 1) Install deps
-run("pnpm", ["install"]);
+run('pnpm', ['install']);
 
 // 2) Start (or ensure) Postgres container
-run("docker", ["compose", "-f", "docker-compose.dev-postgres.yml", "up", "-d"]);
+run('docker', ['compose', '-f', 'docker-compose.dev-postgres.yml', 'up', '-d']);
 
 // 3) Push migrations to the database
-run("pnpm", ["run", "db:push"]);
+run('pnpm', ['run', 'db:push']);
 
 // 4) Prepare Husky hooks & other post-install tasks
-run("pnpm", ["run", "prepare"]);
+run('pnpm', ['run', 'prepare']);
 
 console.log(
-  "\n✅  Project setup complete! You can now run 'pnpm dev' to start the app.\n",
+  "\n✅  Project setup complete! You can now run 'pnpm dev' to start the app.\n"
 );

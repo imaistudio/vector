@@ -28,8 +28,8 @@ This phase designed and implemented the comprehensive Convex schema, mapping all
 **Schema Structure (`convex/schema.ts`):**
 
 ```typescript
-import { defineSchema, defineTable } from "convex/server";
-import { v } from "convex/values";
+import { defineSchema, defineTable } from 'convex/server';
+import { v } from 'convex/values';
 
 export default defineSchema({
   // Auth & Users
@@ -40,8 +40,8 @@ export default defineSchema({
     image: v.optional(v.string()),
     emailVerified: v.optional(v.string()),
   })
-    .index("by_email", ["email"])
-    .index("by_username", ["username"]),
+    .index('by_email', ['email'])
+    .index('by_username', ['username']),
 
   // Organizations
   organizations: defineTable({
@@ -50,136 +50,136 @@ export default defineSchema({
     logo: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_slug", ["slug"]),
+  }).index('by_slug', ['slug']),
 
   // Organization Members
   members: defineTable({
-    organizationId: v.id("organizations"),
-    userId: v.id("users"),
-    role: v.union(v.literal("admin"), v.literal("member")),
+    organizationId: v.id('organizations'),
+    userId: v.id('users'),
+    role: v.union(v.literal('admin'), v.literal('member')),
     joinedAt: v.number(),
   })
-    .index("by_org_user", ["organizationId", "userId"])
-    .index("by_user", ["userId"])
-    .index("by_org", ["organizationId"]),
+    .index('by_org_user', ['organizationId', 'userId'])
+    .index('by_user', ['userId'])
+    .index('by_org', ['organizationId']),
 
   // Teams
   teams: defineTable({
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     description: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_organization", ["organizationId"]),
+  }).index('by_organization', ['organizationId']),
 
   // Projects
   projects: defineTable({
-    organizationId: v.id("organizations"),
-    teamId: v.optional(v.id("teams")),
+    organizationId: v.id('organizations'),
+    teamId: v.optional(v.id('teams')),
     name: v.string(),
     key: v.string(),
     description: v.optional(v.string()),
-    leadId: v.optional(v.id("users")),
+    leadId: v.optional(v.id('users')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_organization", ["organizationId"])
-    .index("by_team", ["teamId"])
-    .index("by_key", ["key"]),
+    .index('by_organization', ['organizationId'])
+    .index('by_team', ['teamId'])
+    .index('by_key', ['key']),
 
   // Issue States
   issueStates: defineTable({
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     color: v.string(),
     order: v.number(),
     isDefault: v.boolean(),
     isResolved: v.boolean(),
   })
-    .index("by_organization", ["organizationId"])
-    .index("by_org_default", ["organizationId", "isDefault"]),
+    .index('by_organization', ['organizationId'])
+    .index('by_org_default', ['organizationId', 'isDefault']),
 
   // Issue Priorities
   issuePriorities: defineTable({
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     color: v.string(),
     order: v.number(),
     isDefault: v.boolean(),
   })
-    .index("by_organization", ["organizationId"])
-    .index("by_org_default", ["organizationId", "isDefault"]),
+    .index('by_organization', ['organizationId'])
+    .index('by_org_default', ['organizationId', 'isDefault']),
 
   // Issues
   issues: defineTable({
-    organizationId: v.id("organizations"),
-    projectId: v.id("projects"),
+    organizationId: v.id('organizations'),
+    projectId: v.id('projects'),
     title: v.string(),
     description: v.optional(v.string()),
-    statusId: v.id("issueStates"),
-    priorityId: v.id("issuePriorities"),
-    assigneeId: v.optional(v.id("users")),
-    reporterId: v.id("users"),
+    statusId: v.id('issueStates'),
+    priorityId: v.id('issuePriorities'),
+    assigneeId: v.optional(v.id('users')),
+    reporterId: v.id('users'),
     key: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_project", ["projectId"])
-    .index("by_organization", ["organizationId"])
-    .index("by_assignee", ["assigneeId"])
-    .index("by_reporter", ["reporterId"])
-    .index("by_status", ["statusId"])
-    .index("by_priority", ["priorityId"])
-    .index("by_key", ["key"]),
+    .index('by_project', ['projectId'])
+    .index('by_organization', ['organizationId'])
+    .index('by_assignee', ['assigneeId'])
+    .index('by_reporter', ['reporterId'])
+    .index('by_status', ['statusId'])
+    .index('by_priority', ['priorityId'])
+    .index('by_key', ['key']),
 
   // Custom Roles
   orgRoles: defineTable({
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     description: v.optional(v.string()),
     isSystem: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_organization", ["organizationId"]),
+  }).index('by_organization', ['organizationId']),
 
   // Role Permissions
   orgRolePermissions: defineTable({
-    roleId: v.id("orgRoles"),
+    roleId: v.id('orgRoles'),
     permission: v.string(),
     createdAt: v.number(),
   })
-    .index("by_role", ["roleId"])
-    .index("by_permission", ["permission"]),
+    .index('by_role', ['roleId'])
+    .index('by_permission', ['permission']),
 
   // Role Assignments
   orgRoleAssignments: defineTable({
-    roleId: v.id("orgRoles"),
-    userId: v.id("users"),
-    organizationId: v.id("organizations"),
+    roleId: v.id('orgRoles'),
+    userId: v.id('users'),
+    organizationId: v.id('organizations'),
     assignedAt: v.number(),
   })
-    .index("by_role", ["roleId"])
-    .index("by_user", ["userId"])
-    .index("by_org", ["organizationId"])
-    .index("by_user_org", ["userId", "organizationId"]),
+    .index('by_role', ['roleId'])
+    .index('by_user', ['userId'])
+    .index('by_org', ['organizationId'])
+    .index('by_user_org', ['userId', 'organizationId']),
 
   // Invitations
   invitations: defineTable({
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("member")),
+    role: v.union(v.literal('admin'), v.literal('member')),
     status: v.union(
-      v.literal("pending"),
-      v.literal("accepted"),
-      v.literal("expired"),
+      v.literal('pending'),
+      v.literal('accepted'),
+      v.literal('expired')
     ),
     token: v.string(),
     expiresAt: v.number(),
     createdAt: v.number(),
   })
-    .index("by_token", ["token"])
-    .index("by_organization", ["organizationId"])
-    .index("by_email", ["email"]),
+    .index('by_token', ['token'])
+    .index('by_organization', ['organizationId'])
+    .index('by_email', ['email']),
 });
 ```
 
@@ -233,7 +233,7 @@ CREATE TABLE projects (
 ```typescript
 // Convex
 projects: defineTable({
-  organizationId: v.id("organizations"), // Document reference
+  organizationId: v.id('organizations'), // Document reference
   name: v.string(),
 });
 ```
@@ -272,8 +272,8 @@ args: {
 
 ```typescript
 // Schema-driven types
-const user: Doc<"users"> = await ctx.db.get(userId);
-const organizationId: Id<"organizations"> = args.organizationId;
+const user: Doc<'users'> = await ctx.db.get(userId);
+const organizationId: Id<'organizations'> = args.organizationId;
 ```
 
 ## Performance Optimizations

@@ -3,13 +3,13 @@
  * This helps maintain UI/UX compatibility during the tRPC -> Convex migration
  */
 
-import type { Id, Doc, TableNames } from "@/convex/_generated/dataModel";
+import type { Id, Doc, TableNames } from '@/convex/_generated/dataModel';
 
 /**
  * Transform Convex document to frontend format (adds id field from _id)
  */
 export function withId<T extends { _id: Id<TableNames> }>(
-  doc: T,
+  doc: T
 ): T & { id: string } {
   return {
     ...doc,
@@ -21,7 +21,7 @@ export function withId<T extends { _id: Id<TableNames> }>(
  * Transform array of Convex documents to frontend format
  */
 export function withIds<T extends { _id: Id<TableNames> }>(
-  docs: T[],
+  docs: T[]
 ): (T & { id: string })[] {
   return docs.map(withId);
 }
@@ -43,35 +43,35 @@ export function extractId<T extends { _id: Id<TableNames> }>(doc: T): string {
 /**
  * Transform team data for frontend compatibility
  */
-export function transformTeam(team: Doc<"teams">) {
+export function transformTeam(team: Doc<'teams'>) {
   return withId(team);
 }
 
 /**
  * Transform project data for frontend compatibility
  */
-export function transformProject(project: Doc<"projects">) {
+export function transformProject(project: Doc<'projects'>) {
   return withId(project);
 }
 
 /**
  * Transform state data for frontend compatibility
  */
-export function transformState(state: Doc<"issueStates">) {
+export function transformState(state: Doc<'issueStates'>) {
   return withId(state);
 }
 
 /**
  * Transform priority data for frontend compatibility
  */
-export function transformPriority(priority: Doc<"issuePriorities">) {
+export function transformPriority(priority: Doc<'issuePriorities'>) {
   return withId(priority);
 }
 
 /**
  * Transform member data for frontend compatibility
  */
-export function transformMember(member: Doc<"members">) {
+export function transformMember(member: Doc<'members'>) {
   return withId(member);
 }
 
@@ -79,8 +79,8 @@ export function transformMember(member: Doc<"members">) {
  * Get string ID from either Convex document or plain ID
  */
 export function getStringId<T extends TableNames>(
-  idOrDoc: string | { _id: Id<T> },
+  idOrDoc: string | { _id: Id<T> }
 ): string {
-  if (typeof idOrDoc === "string") return idOrDoc;
+  if (typeof idOrDoc === 'string') return idOrDoc;
   return idOrDoc._id.toString();
 }

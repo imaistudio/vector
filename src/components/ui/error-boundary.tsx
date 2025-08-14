@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import React from "react";
-import { AlertTriangle, RefreshCw, Home, ArrowLeft } from "lucide-react";
-import { Button } from "./button";
+import React from 'react';
+import { AlertTriangle, RefreshCw, Home, ArrowLeft } from 'lucide-react';
+import { Button } from './button';
 
 interface ErrorInfo {
   componentStack: string;
@@ -51,7 +51,7 @@ export class ErrorBoundary extends React.Component<
     });
 
     // Log error to monitoring service
-    console.error("Error caught by boundary:", error, errorInfo);
+    console.error('Error caught by boundary:', error, errorInfo);
 
     if (this.props.onError) {
       this.props.onError(error, errorInfo);
@@ -67,7 +67,7 @@ export class ErrorBoundary extends React.Component<
   };
 
   goHome = () => {
-    window.location.href = "/";
+    window.location.href = '/';
   };
 
   render() {
@@ -108,12 +108,12 @@ function DefaultErrorFallback({
   goHome,
 }: DefaultErrorFallbackProps) {
   const isUnauthorized =
-    error.message.includes("FORBIDDEN") ||
-    error.message.includes("Unauthorized") ||
-    error.message.includes("Access denied");
+    error.message.includes('FORBIDDEN') ||
+    error.message.includes('Unauthorized') ||
+    error.message.includes('Access denied');
 
   const isNotFound =
-    error.message.includes("not found") || error.message.includes("Not found");
+    error.message.includes('not found') || error.message.includes('Not found');
 
   if (isUnauthorized) {
     return <UnauthorizedErrorFallback goHome={goHome} />;
@@ -128,35 +128,35 @@ function DefaultErrorFallback({
 
 function UnauthorizedErrorFallback({ goHome }: { goHome: () => void }) {
   return (
-    <div className="bg-background flex min-h-[400px] w-full items-center justify-center p-4">
-      <div className="max-w-md space-y-6 text-center">
-        <div className="flex justify-center">
-          <div className="bg-destructive/10 rounded-full p-4">
-            <AlertTriangle className="text-destructive size-12" />
+    <div className='bg-background flex min-h-[400px] w-full items-center justify-center p-4'>
+      <div className='max-w-md space-y-6 text-center'>
+        <div className='flex justify-center'>
+          <div className='bg-destructive/10 rounded-full p-4'>
+            <AlertTriangle className='text-destructive size-12' />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <h2 className="text-foreground text-xl font-semibold">
+        <div className='space-y-2'>
+          <h2 className='text-foreground text-xl font-semibold'>
             Access Denied
           </h2>
-          <p className="text-muted-foreground text-sm">
+          <p className='text-muted-foreground text-sm'>
             You don&apos;t have permission to access this resource.
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 pt-2">
-          <Button onClick={goHome} className="gap-2">
-            <Home className="size-4" />
+        <div className='flex flex-col gap-3 pt-2'>
+          <Button onClick={goHome} className='gap-2'>
+            <Home className='size-4' />
             Go to Dashboard
           </Button>
 
           <Button
-            variant="outline"
+            variant='outline'
             onClick={() => window.history.back()}
-            className="gap-2"
+            className='gap-2'
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className='size-4' />
             Go Back
           </Button>
         </div>
@@ -173,24 +173,24 @@ function NotFoundErrorFallback({
   retry: () => void;
 }) {
   return (
-    <div className="bg-background flex min-h-[400px] w-full items-center justify-center p-4">
-      <div className="max-w-md space-y-6 text-center">
-        <div className="space-y-2">
-          <h2 className="text-foreground text-xl font-semibold">Not Found</h2>
-          <p className="text-muted-foreground text-sm">
+    <div className='bg-background flex min-h-[400px] w-full items-center justify-center p-4'>
+      <div className='max-w-md space-y-6 text-center'>
+        <div className='space-y-2'>
+          <h2 className='text-foreground text-xl font-semibold'>Not Found</h2>
+          <p className='text-muted-foreground text-sm'>
             The resource you&apos;re looking for doesn&apos;t exist or has been
             moved.
           </p>
         </div>
 
-        <div className="flex flex-col gap-3 pt-2">
-          <Button onClick={retry} variant="outline" className="gap-2">
-            <RefreshCw className="size-4" />
+        <div className='flex flex-col gap-3 pt-2'>
+          <Button onClick={retry} variant='outline' className='gap-2'>
+            <RefreshCw className='size-4' />
             Try Again
           </Button>
 
-          <Button onClick={goHome} className="gap-2">
-            <Home className="size-4" />
+          <Button onClick={goHome} className='gap-2'>
+            <Home className='size-4' />
             Go to Dashboard
           </Button>
         </div>
@@ -204,32 +204,32 @@ function GenericErrorFallback({
   retry,
   goHome,
 }: DefaultErrorFallbackProps) {
-  const isDevelopment = process.env.NODE_ENV === "development";
+  const isDevelopment = process.env.NODE_ENV === 'development';
 
   return (
-    <div className="bg-background flex min-h-[400px] w-full items-center justify-center p-4">
-      <div className="max-w-md space-y-6 text-center">
-        <div className="flex justify-center">
-          <div className="bg-destructive/10 rounded-full p-4">
-            <AlertTriangle className="text-destructive size-12" />
+    <div className='bg-background flex min-h-[400px] w-full items-center justify-center p-4'>
+      <div className='max-w-md space-y-6 text-center'>
+        <div className='flex justify-center'>
+          <div className='bg-destructive/10 rounded-full p-4'>
+            <AlertTriangle className='text-destructive size-12' />
           </div>
         </div>
 
-        <div className="space-y-2">
-          <h2 className="text-foreground text-xl font-semibold">
+        <div className='space-y-2'>
+          <h2 className='text-foreground text-xl font-semibold'>
             Something went wrong
           </h2>
-          <p className="text-muted-foreground text-sm">
+          <p className='text-muted-foreground text-sm'>
             An unexpected error occurred. Please try again or contact support if
             the problem persists.
           </p>
 
           {isDevelopment && (
-            <details className="text-muted-foreground mt-4 text-left text-xs">
-              <summary className="cursor-pointer font-medium">
+            <details className='text-muted-foreground mt-4 text-left text-xs'>
+              <summary className='cursor-pointer font-medium'>
                 Error Details (Development)
               </summary>
-              <pre className="bg-muted mt-2 rounded p-2 text-wrap">
+              <pre className='bg-muted mt-2 rounded p-2 text-wrap'>
                 {error.message}
                 {error.stack && `\n\n${error.stack}`}
               </pre>
@@ -237,14 +237,14 @@ function GenericErrorFallback({
           )}
         </div>
 
-        <div className="flex flex-col gap-3 pt-2">
-          <Button onClick={retry} className="gap-2">
-            <RefreshCw className="size-4" />
+        <div className='flex flex-col gap-3 pt-2'>
+          <Button onClick={retry} className='gap-2'>
+            <RefreshCw className='size-4' />
             Try Again
           </Button>
 
-          <Button onClick={goHome} variant="outline" className="gap-2">
-            <Home className="size-4" />
+          <Button onClick={goHome} variant='outline' className='gap-2'>
+            <Home className='size-4' />
             Go to Dashboard
           </Button>
         </div>

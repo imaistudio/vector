@@ -23,7 +23,7 @@ Entity list pages should follow the pattern established by the **Issues Page** (
 ```tsx
 export default function EntityListPage() {
   // 1. Client component with state and data fetching hooks
-  const [activeFilter, setActiveFilter] = useState("all");
+  const [activeFilter, setActiveFilter] = useState('all');
   const { data, isLoading } = trpc.entity.list.useQuery({
     filter: activeFilter,
   });
@@ -36,17 +36,17 @@ export default function EntityListPage() {
   });
 
   return (
-    <div className="bg-background h-full">
+    <div className='bg-background h-full'>
       {/* Header with filter tabs and create button */}
-      <div className="border-b">
-        <div className="flex items-center justify-between p-1">
-          <div className="flex items-center gap-1">{/* Filter tabs */}</div>
+      <div className='border-b'>
+        <div className='flex items-center justify-between p-1'>
+          <div className='flex items-center gap-1'>{/* Filter tabs */}</div>
           <CreateEntityDialog />
         </div>
       </div>
 
       {/* Main content area */}
-      <div className="flex-1">
+      <div className='flex-1'>
         <EntityTable entities={data} />
       </div>
     </div>

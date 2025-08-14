@@ -1,4 +1,4 @@
-import ProjectViewClient from "./project-view-client";
+import ProjectViewClient from './project-view-client';
 
 interface ProjectViewPageProps {
   params: Promise<{ orgSlug: string; projectKey: string }>;

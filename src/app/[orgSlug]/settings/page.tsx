@@ -1,4 +1,4 @@
-import OrgSettingsPageClient from "./settings-client";
+import OrgSettingsPageClient from './settings-client';
 
 interface OrgSettingsPageProps {
   params: Promise<{ orgSlug: string }>;

@@ -15,11 +15,11 @@ Successfully implemented a permission check for the status change button in the 
     <StateSelector
       states={mappedStates}
       selectedState={currentUserAssignment.stateId}
-      onStateSelect={(stateId) => {
+      onStateSelect={stateId => {
         // Assigned users can change their own assignment status
         changeAssignmentStateMutation({
           assignmentId: currentUserAssignment._id,
-          stateId: stateId as Id<"issueStates">,
+          stateId: stateId as Id<'issueStates'>,
         });
       }}
     />
@@ -120,7 +120,7 @@ Added permission checks for ALL interactive elements in the issue view page:
 const { isAllowed: canEditTeam } = usePermissionCheck(
   orgSlug,
   PERMISSIONS.TEAM_EDIT,
-  { orgSlug, teamId: team?._id },
+  { orgSlug, teamId: team?._id }
 );
 
 const canEdit = !!(user && team && (team.leadId === user._id || canEditTeam));
@@ -134,7 +134,7 @@ const canEdit = !!(user && team && (team.leadId === user._id || canEditTeam));
 const { isAllowed: canEditProject } = usePermissionCheck(
   params.orgSlug,
   PERMISSIONS.PROJECT_EDIT,
-  { orgSlug: params.orgSlug, projectId: project?._id },
+  { orgSlug: params.orgSlug, projectId: project?._id }
 );
 
 const canEdit = !!(
@@ -153,7 +153,7 @@ The simple function you requested that returns a boolean:
 ```tsx
 const { isAllowed, isLoading } = usePermissionCheck(
   orgSlug,
-  PERMISSIONS.ISSUE_EDIT,
+  PERMISSIONS.ISSUE_EDIT
 );
 ```
 
@@ -205,7 +205,7 @@ const { isAllowed, isLoading } = usePermissionCheck(
 <PermissionAwareSelector
   orgSlug={orgSlug}
   permission={PERMISSIONS.ISSUE_EDIT}
-  fallbackMessage="You need edit permissions"
+  fallbackMessage='You need edit permissions'
 >
   <TeamSelector onTeamSelect={canEdit ? handleChange : () => {}} />
 </PermissionAwareSelector>
@@ -217,7 +217,7 @@ const { isAllowed, isLoading } = usePermissionCheck(
 <PermissionAwareWrapper
   orgSlug={orgSlug}
   permission={PERMISSIONS.ISSUE_EDIT}
-  fallbackMessage="You need edit permissions"
+  fallbackMessage='You need edit permissions'
 >
   <div onClick={canEdit ? handleEdit : undefined}>{content}</div>
 </PermissionAwareWrapper>

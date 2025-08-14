@@ -16,18 +16,18 @@ Convex distinguishes between four types of errors:
 ### Import Pattern
 
 ```typescript
-import { v, ConvexError } from "convex/values";
+import { v, ConvexError } from 'convex/values';
 ```
 
 ### Basic Usage
 
 ```typescript
 export const getUser = query({
-  args: { userId: v.id("users") },
+  args: { userId: v.id('users') },
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
     if (!user) {
-      throw new ConvexError("USER_NOT_FOUND");
+      throw new ConvexError('USER_NOT_FOUND');
     }
     return user;
   },
@@ -41,7 +41,7 @@ export const getUser = query({
 ```typescript
 const userId = await getAuthUserId(ctx);
 if (!userId) {
-  throw new ConvexError("UNAUTHORIZED");
+  throw new ConvexError('UNAUTHORIZED');
 }
 ```
 
@@ -49,7 +49,7 @@ if (!userId) {
 
 ```typescript
 if (!hasPermission) {
-  throw new ConvexError("FORBIDDEN");
+  throw new ConvexError('FORBIDDEN');
 }
 ```
 
@@ -57,7 +57,7 @@ if (!hasPermission) {
 
 ```typescript
 if (!resource) {
-  throw new ConvexError("RESOURCE_NOT_FOUND");
+  throw new ConvexError('RESOURCE_NOT_FOUND');
 }
 ```
 
@@ -65,7 +65,7 @@ if (!resource) {
 
 ```typescript
 if (!isValidInput) {
-  throw new ConvexError("INVALID_INPUT");
+  throw new ConvexError('INVALID_INPUT');
 }
 ```
 
@@ -101,10 +101,10 @@ const createUser = useMutation(api.users.create);
 
 const handleSubmit = async () => {
   try {
-    await createUser({ name: "John" });
+    await createUser({ name: 'John' });
   } catch (error) {
     // Handle ConvexError here
-    console.error("User creation failed:", error);
+    console.error('User creation failed:', error);
   }
 };
 ```

@@ -9,10 +9,10 @@ This document covers conventions for creating tRPC routers and API endpoints.
 
   ```typescript
   // Good
-  import { projectRouter } from "./project.router";
+  import { projectRouter } from './project.router';
 
   // Bad
-  const projectRouter = await import("./project.router");
+  const projectRouter = await import('./project.router');
   ```
 
 ## Route Convention

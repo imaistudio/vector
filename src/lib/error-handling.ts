@@ -1,14 +1,14 @@
-import { toast } from "sonner";
+import { toast } from 'sonner';
 
 // Error categories for better UX
 export type ErrorCategory =
-  | "validation"
-  | "permission"
-  | "not_found"
-  | "conflict"
-  | "network"
-  | "server"
-  | "unknown";
+  | 'validation'
+  | 'permission'
+  | 'not_found'
+  | 'conflict'
+  | 'network'
+  | 'server'
+  | 'unknown';
 
 // Error information structure
 export interface ErrorInfo {
@@ -29,27 +29,27 @@ const ERROR_PATTERNS: Array<{
   // Validation errors
   {
     pattern: /required|cannot be empty/i,
-    category: "validation",
-    userMessage: "Please check your input and try again.",
+    category: 'validation',
+    userMessage: 'Please check your input and try again.',
     retryable: false,
   },
   {
     pattern: /must be at least|must be less than|invalid/i,
-    category: "validation",
-    userMessage: "Please check your input and try again.",
+    category: 'validation',
+    userMessage: 'Please check your input and try again.',
     retryable: false,
   },
 
   // Permission errors
   {
     pattern: /not authenticated|unauthorized/i,
-    category: "permission",
-    userMessage: "Please sign in to continue.",
+    category: 'permission',
+    userMessage: 'Please sign in to continue.',
     retryable: false,
   },
   {
     pattern: /access denied|insufficient permissions|not a member/i,
-    category: "permission",
+    category: 'permission',
     userMessage: "You don't have permission to perform this action.",
     retryable: false,
   },
@@ -57,32 +57,32 @@ const ERROR_PATTERNS: Array<{
   // Not found errors
   {
     pattern: /not found/i,
-    category: "not_found",
-    userMessage: "The requested resource was not found.",
+    category: 'not_found',
+    userMessage: 'The requested resource was not found.',
     retryable: false,
   },
 
   // Conflict errors
   {
     pattern: /already exists|already a member|duplicate/i,
-    category: "conflict",
-    userMessage: "This item already exists.",
+    category: 'conflict',
+    userMessage: 'This item already exists.',
     retryable: false,
   },
 
   // Network errors
   {
     pattern: /network|connection|timeout/i,
-    category: "network",
-    userMessage: "Network error. Please check your connection and try again.",
+    category: 'network',
+    userMessage: 'Network error. Please check your connection and try again.',
     retryable: true,
   },
 
   // Server errors
   {
     pattern: /server|internal|error/i,
-    category: "server",
-    userMessage: "Something went wrong. Please try again later.",
+    category: 'server',
+    userMessage: 'Something went wrong. Please try again later.',
     retryable: true,
   },
 ];
@@ -107,9 +107,9 @@ export function analyzeError(error: unknown): ErrorInfo {
 
   // Default to unknown error
   return {
-    category: "unknown",
+    category: 'unknown',
     message: errorMessage,
-    userMessage: "Something went wrong. Please try again.",
+    userMessage: 'Something went wrong. Please try again.',
     retryable: true,
   };
 }
@@ -120,40 +120,40 @@ export function analyzeError(error: unknown): ErrorInfo {
 export function showErrorToast(error: unknown, context?: string): void {
   const errorInfo = analyzeError(error);
 
-  const title = context ? `${context} failed` : "Operation failed";
+  const title = context ? `${context} failed` : 'Operation failed';
 
   switch (errorInfo.category) {
-    case "validation":
+    case 'validation':
       toast.error(title, {
         description: errorInfo.userMessage,
       });
       break;
 
-    case "permission":
+    case 'permission':
       toast.error(title, {
         description: errorInfo.userMessage,
       });
       break;
 
-    case "not_found":
+    case 'not_found':
       toast.error(title, {
         description: errorInfo.userMessage,
       });
       break;
 
-    case "conflict":
+    case 'conflict':
       toast.warning(title, {
         description: errorInfo.userMessage,
       });
       break;
 
-    case "network":
+    case 'network':
       toast.error(title, {
         description: errorInfo.userMessage,
       });
       break;
 
-    case "server":
+    case 'server':
       toast.error(title, {
         description: errorInfo.userMessage,
       });
@@ -171,7 +171,7 @@ export function showErrorToast(error: unknown, context?: string): void {
  * Show success toast notification
  */
 export function showSuccessToast(message: string, context?: string): void {
-  const title = context ? `${context} successful` : "Success";
+  const title = context ? `${context} successful` : 'Success';
   toast.success(title, {
     description: message,
   });
@@ -184,7 +184,7 @@ export async function handleMutationError<T>(
   mutationFn: () => Promise<T>,
   context?: string,
   onSuccess?: (result: T) => void,
-  onError?: (error: ErrorInfo) => void,
+  onError?: (error: ErrorInfo) => void
 ): Promise<T | null> {
   try {
     const result = await mutationFn();
@@ -222,7 +222,7 @@ export function useMutationErrorHandler() {
       mutationFn: () => Promise<T>,
       context?: string,
       onSuccess?: (result: T) => void,
-      onError?: (error: ErrorInfo) => void,
+      onError?: (error: ErrorInfo) => void
     ) => handleMutationError(mutationFn, context, onSuccess, onError),
   };
 }

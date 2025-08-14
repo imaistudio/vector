@@ -5,10 +5,10 @@ This utility provides proper error handling for Convex Auth errors, extracting u
 ## Usage
 
 ```typescript
-import { extractAuthErrorMessage } from "@/lib/auth-error-handler";
+import { extractAuthErrorMessage } from '@/lib/auth-error-handler';
 
 try {
-  await signIn("password", formData);
+  await signIn('password', formData);
 } catch (error) {
   const userFriendlyMessage = extractAuthErrorMessage(error);
   setError(userFriendlyMessage);
@@ -49,7 +49,7 @@ import {
   isNetworkError,
   isServerError,
   isAuthError,
-} from "@/lib/auth-error-handler";
+} from '@/lib/auth-error-handler';
 
 if (isNetworkError(error)) {
   // Handle network-specific UI

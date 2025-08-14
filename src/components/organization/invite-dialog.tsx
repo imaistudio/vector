@@ -1,9 +1,9 @@
-"use client";
-import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+'use client';
+import { useState } from 'react';
+import { useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,13 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
-import { useFormSubmission } from "@/hooks/use-error-handling";
+} from '@/components/ui/dialog';
+import { useFormSubmission } from '@/hooks/use-error-handling';
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
-type NonOwnerMemberRole = "member" | "admin";
+type NonOwnerMemberRole = 'member' | 'admin';
 
 export function InviteDialog({
   orgSlug,
@@ -26,18 +26,18 @@ export function InviteDialog({
   orgSlug: string;
   onClose: () => void;
 }) {
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<NonOwnerMemberRole>("member");
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<NonOwnerMemberRole>('member');
 
   const inviteMutation = useMutation(api.organizations.invite);
 
   const { submit, isSubmitting, error } = useFormSubmission(inviteMutation, {
-    context: "Invite",
-    successMessage: "Invitation sent successfully",
+    context: 'Invite',
+    successMessage: 'Invitation sent successfully',
     onSuccess: () => {
       onClose();
-      setEmail("");
-      setRole("member");
+      setEmail('');
+      setRole('member');
     },
   });
 
@@ -49,7 +49,7 @@ export function InviteDialog({
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className='sm:max-w-sm'>
         <DialogHeader>
           <DialogTitle>Invite member</DialogTitle>
           <DialogDescription>
@@ -57,33 +57,33 @@ export function InviteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className='space-y-4 py-2'>
           {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
+            <Alert variant='destructive'>
+              <AlertCircle className='h-4 w-4' />
               <AlertDescription>{error.userMessage}</AlertDescription>
             </Alert>
           )}
 
           <Input
-            placeholder="email@example.com"
+            placeholder='email@example.com'
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
+            onChange={e => setEmail(e.target.value)}
+            type='email'
           />
 
-          <div className="flex gap-2">
+          <div className='flex gap-2'>
             <Button
-              variant={role === "member" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setRole("member")}
+              variant={role === 'member' ? 'secondary' : 'outline'}
+              size='sm'
+              onClick={() => setRole('member')}
             >
               Member
             </Button>
             <Button
-              variant={role === "admin" ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setRole("admin")}
+              variant={role === 'admin' ? 'secondary' : 'outline'}
+              size='sm'
+              onClick={() => setRole('admin')}
             >
               Admin
             </Button>
@@ -91,15 +91,15 @@ export function InviteDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant='ghost' size='sm' onClick={onClose}>
             Cancel
           </Button>
           <Button
-            size="sm"
+            size='sm'
             disabled={!email || isSubmitting}
             onClick={handleInvite}
           >
-            {isSubmitting ? "Sending…" : "Send Invite"}
+            {isSubmitting ? 'Sending…' : 'Send Invite'}
           </Button>
         </DialogFooter>
       </DialogContent>

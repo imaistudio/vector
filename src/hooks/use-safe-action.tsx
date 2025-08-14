@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
-import { toast } from "sonner";
-import { useErrorBoundary } from "@/components/ui/error-boundary";
-import { usePermission } from "@/hooks/use-permissions";
-import type { Permission } from "@/convex/_shared/permissions";
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useErrorBoundary } from '@/components/ui/error-boundary';
+import { usePermission } from '@/hooks/use-permissions';
+import type { Permission } from '@/convex/_shared/permissions';
 
 interface SafeActionOptions {
   // Permission checking
@@ -42,7 +42,7 @@ interface SafeActionResult {
  */
 export function useSafeAction(
   action: (...args: unknown[]) => Promise<unknown>,
-  options: SafeActionOptions = {},
+  options: SafeActionOptions = {}
 ): SafeActionResult {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -52,8 +52,8 @@ export function useSafeAction(
   // Check permissions if required
   const { hasPermission: permissionResult, isLoading: permissionLoading } =
     usePermission(
-      options.orgSlug || "",
-      options.permission || "org:view", // fallback permission
+      options.orgSlug || '',
+      options.permission || 'org:view' // fallback permission
     );
 
   const hasPermission = !options.permission || permissionResult;
@@ -66,14 +66,14 @@ export function useSafeAction(
 
       // Check permissions first
       if (options.permission && !hasPermission) {
-        const permissionError = new Error("FORBIDDEN");
+        const permissionError = new Error('FORBIDDEN');
         setError(permissionError);
 
         if (options.onError) {
           options.onError(permissionError);
         } else {
           toast.error("You don't have permission to perform this action");
-          router.push("/403");
+          router.push('/403');
         }
         return;
       }
@@ -82,7 +82,7 @@ export function useSafeAction(
       if (options.requireConfirmation) {
         const confirmed = window.confirm(
           options.confirmationMessage ||
-            "Are you sure you want to perform this action?",
+            'Are you sure you want to perform this action?'
         );
         if (!confirmed) {
           return;
@@ -122,46 +122,46 @@ export function useSafeAction(
 
         // Handle specific error types
         if (
-          error.message === "FORBIDDEN" ||
-          error.message.includes("FORBIDDEN")
+          error.message === 'FORBIDDEN' ||
+          error.message.includes('FORBIDDEN')
         ) {
           toast.error("You don't have permission to perform this action");
-          router.push("/403");
+          router.push('/403');
           return;
         }
 
         if (
-          error.message.includes("not found") ||
-          error.message.includes("Not found")
+          error.message.includes('not found') ||
+          error.message.includes('Not found')
         ) {
-          toast.error("The requested resource was not found");
-          router.push("/404");
+          toast.error('The requested resource was not found');
+          router.push('/404');
           return;
         }
 
         // Handle network/connectivity errors
         if (
-          error.message.includes("fetch") ||
-          error.message.includes("network")
+          error.message.includes('fetch') ||
+          error.message.includes('network')
         ) {
           toast.error(
-            "Network error. Please check your connection and try again.",
+            'Network error. Please check your connection and try again.'
           );
           return;
         }
 
         // Handle validation errors
         if (
-          error.message.includes("validation") ||
-          error.message.includes("invalid")
+          error.message.includes('validation') ||
+          error.message.includes('invalid')
         ) {
-          toast.error("Please check your input and try again");
+          toast.error('Please check your input and try again');
           return;
         }
 
         // General error handling
         const errorMessage =
-          options.errorMessage || "An unexpected error occurred";
+          options.errorMessage || 'An unexpected error occurred';
         toast.error(errorMessage);
 
         if (options.onError) {
@@ -170,8 +170,8 @@ export function useSafeAction(
 
         // Capture error for error boundary if it's a critical error
         if (
-          error.message.includes("CRITICAL") ||
-          error.message.includes("CRASH")
+          error.message.includes('CRITICAL') ||
+          error.message.includes('CRASH')
         ) {
           captureError(error);
         }
@@ -179,7 +179,7 @@ export function useSafeAction(
         setIsLoading(false);
       }
     },
-    [action, options, hasPermission, router, captureError],
+    [action, options, hasPermission, router, captureError]
   );
 
   return {
@@ -199,15 +199,15 @@ export function useSafeSubmit(
   options: SafeActionOptions & {
     validateData?: (data: Record<string, unknown>) => string | null;
     resetForm?: () => void;
-  } = {},
+  } = {}
 ) {
   const safeAction = useSafeAction(
     (data: unknown) => submitAction(data as Record<string, unknown>),
     {
       ...options,
-      loadingMessage: options.loadingMessage || "Submitting...",
-      successMessage: options.successMessage || "Saved successfully",
-    },
+      loadingMessage: options.loadingMessage || 'Submitting...',
+      successMessage: options.successMessage || 'Saved successfully',
+    }
   );
 
   const submit = useCallback(
@@ -228,7 +228,7 @@ export function useSafeSubmit(
         options.resetForm();
       }
     },
-    [safeAction, options],
+    [safeAction, options]
   );
 
   return {
@@ -244,12 +244,12 @@ export function useSafeDelete(
   deleteAction: (id: string) => Promise<unknown>,
   options: Omit<
     SafeActionOptions,
-    "requireConfirmation" | "confirmationMessage"
+    'requireConfirmation' | 'confirmationMessage'
   > & {
     itemName?: string;
-  } = {},
+  } = {}
 ) {
-  const itemName = options.itemName || "item";
+  const itemName = options.itemName || 'item';
 
   return useSafeAction((id: unknown) => deleteAction(id as string), {
     ...options,

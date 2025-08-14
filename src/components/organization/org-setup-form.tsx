@@ -1,37 +1,37 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert } from "@/components/ui/alert";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Loader2 } from "lucide-react";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert } from '@/components/ui/alert';
+import { useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { Loader2 } from 'lucide-react';
 
 export function OrgSetupForm() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: "",
-    slug: "",
+    name: '',
+    slug: '',
   });
 
   const createOrgMutation = useMutation(api.organizations.create);
 
   const handleNameChange = (value: string) => {
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
       name: value,
       // Auto-generate slug from name
       slug: value
         .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, "") // Remove special characters
-        .replace(/\s+/g, "-") // Replace spaces with hyphens
-        .replace(/-+/g, "-") // Replace multiple hyphens with single
-        .replace(/^-|-$/g, ""), // Remove leading/trailing hyphens
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens with single
+        .replace(/^-|-$/g, ''), // Remove leading/trailing hyphens
     }));
   };
 
@@ -43,11 +43,11 @@ export function OrgSetupForm() {
     try {
       // Validate inputs
       if (!formData.name.trim()) {
-        throw new Error("Organization name is required");
+        throw new Error('Organization name is required');
       }
 
       if (!formData.slug.trim()) {
-        throw new Error("Organization slug is required");
+        throw new Error('Organization slug is required');
       }
 
       // Create organization
@@ -62,12 +62,12 @@ export function OrgSetupForm() {
         // Redirect to the new organization's issues page using slug
         router.push(`/${formData.slug}/issues`);
       } else {
-        throw new Error("Failed to create organization");
+        throw new Error('Failed to create organization');
       }
     } catch (err) {
-      console.error("Organization creation failed:", err);
+      console.error('Organization creation failed:', err);
       setError(
-        err instanceof Error ? err.message : "Failed to create organization",
+        err instanceof Error ? err.message : 'Failed to create organization'
       );
     } finally {
       setIsLoading(false);
@@ -75,57 +75,57 @@ export function OrgSetupForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && <Alert variant="destructive">{error}</Alert>}
+    <form onSubmit={handleSubmit} className='space-y-6'>
+      {error && <Alert variant='destructive'>{error}</Alert>}
 
-      <div className="space-y-2">
-        <Label htmlFor="orgName">Organization Name</Label>
+      <div className='space-y-2'>
+        <Label htmlFor='orgName'>Organization Name</Label>
         <Input
-          id="orgName"
-          type="text"
-          placeholder="My Company"
+          id='orgName'
+          type='text'
+          placeholder='My Company'
           value={formData.name}
-          onChange={(e) => handleNameChange(e.target.value)}
+          onChange={e => handleNameChange(e.target.value)}
           disabled={isLoading}
           required
-          className="h-11"
+          className='h-11'
         />
-        <p className="text-muted-foreground text-sm">
+        <p className='text-muted-foreground text-sm'>
           This will be the display name for your organization
         </p>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="orgSlug">Organization URL</Label>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground text-sm">aikp.dev/</span>
+      <div className='space-y-2'>
+        <Label htmlFor='orgSlug'>Organization URL</Label>
+        <div className='flex items-center gap-2'>
+          <span className='text-muted-foreground text-sm'>aikp.dev/</span>
           <Input
-            id="orgSlug"
-            type="text"
-            placeholder="my-company"
+            id='orgSlug'
+            type='text'
+            placeholder='my-company'
             value={formData.slug}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, slug: e.target.value }))
+            onChange={e =>
+              setFormData(prev => ({ ...prev, slug: e.target.value }))
             }
             disabled={isLoading}
             required
-            pattern="[a-z0-9-]+"
-            className="h-11 flex-1"
+            pattern='[a-z0-9-]+'
+            className='h-11 flex-1'
           />
         </div>
-        <p className="text-muted-foreground text-sm">
+        <p className='text-muted-foreground text-sm'>
           This will be used in your organization&apos;s URL. Only lowercase
           letters, numbers, and hyphens are allowed.
         </p>
       </div>
 
       <Button
-        type="submit"
-        className="h-11 w-full"
+        type='submit'
+        className='h-11 w-full'
         disabled={isLoading || !formData.name.trim() || !formData.slug.trim()}
       >
-        {isLoading && <Loader2 className="mr-2 size-4 animate-spin" />}
-        {isLoading ? "Creating Organization..." : "Create Organization"}
+        {isLoading && <Loader2 className='mr-2 size-4 animate-spin' />}
+        {isLoading ? 'Creating Organization...' : 'Create Organization'}
       </Button>
     </form>
   );

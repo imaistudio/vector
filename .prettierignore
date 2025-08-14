@@ -1,0 +1,13 @@
+# Ignore old archived code
+archive/
+
+# Build outputs and caches
+.next/
+dist/
+build/
+coverage/
+.eslintcache
+node_modules/
+
+# Generated
+convex/_generated/

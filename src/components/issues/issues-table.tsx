@@ -1,17 +1,17 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { motion, AnimatePresence } from "motion/react";
-import { Button } from "@/components/ui/button";
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'motion/react';
+import { Button } from '@/components/ui/button';
 
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Trash2, Circle } from "lucide-react";
-import React from "react";
+} from '@/components/ui/dropdown-menu';
+import { MoreHorizontal, Trash2, Circle, ArrowUp } from 'lucide-react';
+import React from 'react';
 
 import {
   PrioritySelector,
@@ -19,9 +19,9 @@ import {
   ProjectSelector,
   MultiAssigneeSelector,
   MultiAssignmentStateSelector,
-} from "@/components/issues/issue-selectors";
-import { getDynamicIcon } from "@/lib/dynamic-icons";
-import { formatDateHuman } from "@/lib/date";
+} from '@/components/issues/issue-selectors';
+import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { formatDateHuman } from '@/lib/date';
 
 // Re-exported entity from the selector module give us fully-typed data
 import type {
@@ -29,18 +29,18 @@ import type {
   Project,
   State,
   Priority,
-} from "@/components/issues/issue-selectors";
-import { api } from "@/convex/_generated/api";
-import { Prettify } from "@/lib/utils";
-import { FunctionReturnType } from "convex/server";
+} from '@/components/issues/issue-selectors';
+import { api } from '@/convex/_generated/api';
+import { Prettify } from '@/lib/utils';
+import { FunctionReturnType } from 'convex/server';
 
 // Permission system
-import { PermissionAware } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import { PermissionAware } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 // Infer issue row type directly from tRPC router output to stay in sync with DB.
 export type IssueRowData = Prettify<
-  FunctionReturnType<typeof api.issues.listIssues>["issues"][number]
+  FunctionReturnType<typeof api.issues.listIssues>['issues'][number]
 >;
 
 export interface IssuesTableProps {
@@ -112,8 +112,8 @@ export function IssuesTable({
       }
     >();
 
-    issues.forEach((row) => {
-      if (row.id === "unassigned") return; // Skip empty assignments
+    issues.forEach(row => {
+      if (row.id === 'unassigned') return; // Skip empty assignments
       const existing = map.get(row.id);
 
       if (existing) {
@@ -137,7 +137,7 @@ export function IssuesTable({
         // Update user-specific metadata
         if (row.assigneeId === currentUserId) {
           existing.currentUserStateType = row.stateType ?? null;
-          if (activeFilter !== "all" && row.stateType === activeFilter) {
+          if (activeFilter !== 'all' && row.stateType === activeFilter) {
             existing.hasCurrentUserWithActiveFilter = true;
           }
         }
@@ -150,7 +150,7 @@ export function IssuesTable({
         }
       } else {
         const hasCurrentUserWithActiveFilter =
-          activeFilter !== "all" &&
+          activeFilter !== 'all' &&
           row.assigneeId === currentUserId &&
           row.stateType === activeFilter;
 
@@ -190,7 +190,7 @@ export function IssuesTable({
         assignments,
         hasCurrentUserWithActiveFilter,
         currentUserStateType,
-      }),
+      })
     );
   }, [issues, currentUserId, activeFilter]);
 
@@ -198,7 +198,7 @@ export function IssuesTable({
   const sortedGrouped = React.useMemo(() => {
     return [...groupedIssues].sort((a, b) => {
       // When filtering by state, prioritize issues where current user has that state
-      if (activeFilter !== "all") {
+      if (activeFilter !== 'all') {
         if (
           a.hasCurrentUserWithActiveFilter !== b.hasCurrentUserWithActiveFilter
         ) {
@@ -208,10 +208,10 @@ export function IssuesTable({
         // If both/neither have current user with active filter,
         // check if either has ANY assignment with the active filter
         const aHasFilterState = a.assignments.some(
-          (assignment) => assignment.stateType === activeFilter,
+          assignment => assignment.stateType === activeFilter
         );
         const bHasFilterState = b.assignments.some(
-          (assignment) => assignment.stateType === activeFilter,
+          assignment => assignment.stateType === activeFilter
         );
 
         if (aHasFilterState !== bHasFilterState) {
@@ -226,11 +226,11 @@ export function IssuesTable({
 
   if (issues.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 text-4xl">📋</div>
-          <h3 className="mb-2 text-lg font-semibold">No issues found</h3>
-          <p className="text-muted-foreground mb-6">
+      <div className='flex items-center justify-center py-12'>
+        <div className='text-center'>
+          <div className='mb-4 text-4xl'>📋</div>
+          <h3 className='mb-2 text-lg font-semibold'>No issues found</h3>
+          <p className='text-muted-foreground mb-6'>
             Get started by creating your first issue.
           </p>
         </div>
@@ -239,7 +239,7 @@ export function IssuesTable({
   }
 
   return (
-    <div className="divide-y">
+    <div className='divide-y'>
       <AnimatePresence initial={false}>
         {sortedGrouped.map(
           ({
@@ -253,18 +253,18 @@ export function IssuesTable({
             const PriorityIcon = issue.priorityIcon
               ? getDynamicIcon(issue.priorityIcon) || Circle
               : Circle;
-            const priorityColor = issue.priorityColor || "#94a3b8";
+            const priorityColor = issue.priorityColor || '#94a3b8';
 
             // Determine which assignee to highlight based on filter
             let highlightAssigneeId: string | null = null;
-            if (activeFilter !== "all") {
+            if (activeFilter !== 'all') {
               // First priority: current user if they have the active filter state
               if (currentUserStateType === activeFilter) {
                 highlightAssigneeId = currentUserId;
               } else {
                 // Otherwise, highlight the first assignee that has the active filter state
                 const matchingAssignment = assignments.find(
-                  (a) => a.stateType === activeFilter,
+                  a => a.stateType === activeFilter
                 );
                 if (matchingAssignment?.assigneeId) {
                   highlightAssigneeId = matchingAssignment.assigneeId;
@@ -281,7 +281,7 @@ export function IssuesTable({
                 transition={{ duration: 0.2 }}
                 key={issue.id}
                 className={`hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors ${
-                  hasCurrentUserWithActiveFilter ? "bg-accent/30" : ""
+                  hasCurrentUserWithActiveFilter ? 'bg-accent/30' : ''
                 }`}
               >
                 {/* Priority Selector */}
@@ -292,25 +292,35 @@ export function IssuesTable({
                 >
                   <PrioritySelector
                     priorities={priorities as Priority[]}
-                    selectedPriority={issue.priorityId || ""}
-                    onPrioritySelect={(pid) => onPriorityChange(issue.id, pid)}
-                    displayMode="labelOnly"
+                    selectedPriority={issue.priorityId || ''}
+                    onPrioritySelect={pid => onPriorityChange(issue.id, pid)}
+                    displayMode='labelOnly'
                     trigger={
-                      <div className="flex-shrink-0 cursor-pointer">
+                      <div className='flex-shrink-0 cursor-pointer'>
                         <PriorityIcon
-                          className="size-4"
+                          className='size-4'
                           style={{ color: priorityColor }}
                         />
                       </div>
                     }
-                    className="border-none bg-transparent p-0 shadow-none"
+                    className='border-none bg-transparent p-0 shadow-none'
                   />
                 </PermissionAware>
 
                 {/* Issue Key */}
-                <span className="text-muted-foreground flex-shrink-0 font-mono text-xs">
-                  {issue.key}
-                </span>
+                <div className='flex flex-shrink-0 items-center gap-2'>
+                  <span className='text-muted-foreground font-mono text-xs'>
+                    {issue.key}
+                  </span>
+                  {issue.parentIssueKey && (
+                    <div className='flex items-center gap-1'>
+                      <ArrowUp className='text-muted-foreground/60 h-3 w-3' />
+                      <span className='text-muted-foreground/60 font-mono text-xs'>
+                        {issue.parentIssueKey}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {/* State / Assignment Selector */}
                 <MultiAssignmentStateSelector
@@ -324,10 +334,10 @@ export function IssuesTable({
                 />
 
                 {/* Title */}
-                <div className="min-w-0 flex-1">
+                <div className='min-w-0 flex-1'>
                   <Link
                     href={`/${orgSlug}/issues/${issue.key}`}
-                    className="hover:text-primary block truncate text-sm font-medium transition-colors"
+                    className='hover:text-primary block truncate text-sm font-medium transition-colors'
                   >
                     {issue.title}
                   </Link>
@@ -343,9 +353,9 @@ export function IssuesTable({
                     <TeamSelector
                       teams={teams}
                       selectedTeam={
-                        teams.find((t) => t.key === issue.teamKey)?._id || ""
+                        teams.find(t => t.key === issue.teamKey)?._id || ''
                       }
-                      onTeamSelect={(tid) => onTeamChange(issue.id, tid)}
+                      onTeamSelect={tid => onTeamChange(issue.id, tid)}
                     />
                   </PermissionAware>
                 )}
@@ -359,17 +369,17 @@ export function IssuesTable({
                     <ProjectSelector
                       projects={projects}
                       selectedProject={
-                        projects.find((p) => p.key === issue.projectKey)?._id ||
-                        ""
+                        projects.find(p => p.key === issue.projectKey)?._id ||
+                        ''
                       }
-                      onProjectSelect={(pid) => onProjectChange(issue.id, pid)}
+                      onProjectSelect={pid => onProjectChange(issue.id, pid)}
                     />
                   </PermissionAware>
                 )}
 
                 {/* Last Updated */}
-                <div className="flex-shrink-0">
-                  <span className="text-muted-foreground text-xs">
+                <div className='flex-shrink-0'>
+                  <span className='text-muted-foreground text-xs'>
                     {formatDateHuman(new Date(issue.updatedAt))}
                   </span>
                 </div>
@@ -378,7 +388,7 @@ export function IssuesTable({
                 <MultiAssigneeSelector
                   orgSlug={orgSlug}
                   selectedAssigneeIds={assigneeIds}
-                  onAssigneesChange={(ids) => onAssigneesChange(issue.id!, ids)}
+                  onAssigneesChange={ids => onAssigneesChange(issue.id!, ids)}
                   isLoading={isUpdatingAssignees}
                   highlightAssigneeId={highlightAssigneeId}
                   assignments={assignments}
@@ -388,25 +398,25 @@ export function IssuesTable({
                 />
 
                 {/* Actions */}
-                <div className="flex-shrink-0">
+                <div className='flex-shrink-0'>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        aria-label="Open issue actions"
+                        variant='ghost'
+                        size='sm'
+                        className='h-6 w-6 p-0'
+                        aria-label='Open issue actions'
                       >
-                        <MoreHorizontal className="size-4" />
+                        <MoreHorizontal className='size-4' />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align='end'>
                       <DropdownMenuItem
-                        variant="destructive"
+                        variant='destructive'
                         disabled={deletePending}
                         onClick={() => onDelete(issue.id!)}
                       >
-                        <Trash2 className="size-4" />
+                        <Trash2 className='size-4' />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -414,7 +424,7 @@ export function IssuesTable({
                 </div>
               </motion.div>
             );
-          },
+          }
         )}
       </AnimatePresence>
     </div>

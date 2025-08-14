@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { defineNotification } from "../core";
-import { emailSender } from "../channels/email";
+import { z } from 'zod';
+import { defineNotification } from '../core';
+import { emailSender } from '../channels/email';
 
 const schema = z.object({
   inviterName: z.string(),
@@ -10,7 +10,7 @@ const schema = z.object({
 export type InvitePayload = z.infer<typeof schema>;
 
 export const sendInviteNotification = defineNotification({
-  type: "organization.invite",
+  type: 'organization.invite',
   schema,
   channels: {
     email: async ({ to, inviterName, inviteLink }) => {

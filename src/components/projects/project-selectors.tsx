@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -14,20 +14,20 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from '@/components/ui/command';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Users, User, Circle, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { getDynamicIcon } from "@/lib/dynamic-icons";
+} from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Users, User, Circle, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { getDynamicIcon } from '@/lib/dynamic-icons';
 
-import { useAccess } from "@/components/ui/permission-aware";
+import { useAccess } from '@/components/ui/permission-aware';
 
 // Type definitions matching issue selectors
 export type Status = {
@@ -54,23 +54,23 @@ export type Member = {
 
 // Display mode matching issue selectors
 export type SelectorDisplayMode =
-  | "default" // icon + label
-  | "labelOnly" // label only (no icon)
-  | "iconOnly" // icon only (no label, always)
-  | "iconWhenUnselected"; // icon when unselected, icon+label once a value selected
+  | 'default' // icon + label
+  | 'labelOnly' // label only (no icon)
+  | 'iconOnly' // icon only (no label, always)
+  | 'iconWhenUnselected'; // icon when unselected, icon+label once a value selected
 
 function resolveVisibility(
   mode: SelectorDisplayMode | undefined,
-  hasSelection: boolean,
+  hasSelection: boolean
 ): { showIcon: boolean; showLabel: boolean } {
   switch (mode) {
-    case "labelOnly":
+    case 'labelOnly':
       return { showIcon: false, showLabel: true };
-    case "iconOnly":
+    case 'iconOnly':
       return { showIcon: true, showLabel: false };
-    case "iconWhenUnselected":
+    case 'iconWhenUnselected':
       return { showIcon: true, showLabel: hasSelection };
-    case "default":
+    case 'default':
     default:
       return { showIcon: true, showLabel: true };
   }
@@ -78,11 +78,11 @@ function resolveVisibility(
 
 function getInitials(name?: string | null, email?: string | null): string {
   const displayName = name || email;
-  if (!displayName) return "?";
+  if (!displayName) return '?';
   return displayName
-    .split(" ")
-    .map((part) => part.charAt(0))
-    .join("")
+    .split(' ')
+    .map(part => part.charAt(0))
+    .join('')
     .toUpperCase()
     .slice(0, 2);
 }
@@ -96,7 +96,7 @@ interface StatusSelectorProps {
   trigger?: React.ReactNode;
   className?: string;
   /** Position of the popover relative to its trigger. */
-  align?: "start" | "center" | "end";
+  align?: 'start' | 'center' | 'end';
 }
 
 export function StatusSelector({
@@ -106,18 +106,18 @@ export function StatusSelector({
   displayMode,
   trigger,
   className,
-  align = "start",
+  align = 'start',
 }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
 
-  const hasSelection = selectedStatus !== "";
+  const hasSelection = selectedStatus !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   // Get selected status data
-  const selectedStatusObj = statuses.find((s) => s._id === selectedStatus);
-  const currentColor = selectedStatusObj?.color || "#94a3b8"; // Default grey
-  const currentName = selectedStatusObj?.name || "Status";
+  const selectedStatusObj = statuses.find(s => s._id === selectedStatus);
+  const currentColor = selectedStatusObj?.color || '#94a3b8'; // Default grey
+  const currentName = selectedStatusObj?.name || 'Status';
   const currentIconName = selectedStatusObj?.icon;
   const CurrentIcon = currentIconName
     ? getDynamicIcon(currentIconName) || Circle
@@ -125,22 +125,22 @@ export function StatusSelector({
 
   const DefaultBtn = (
     <Button
-      variant="outline"
-      size="sm"
-      className={cn("bg-muted/30 hover:bg-muted/50 h-8 gap-2", className)}
+      variant='outline'
+      size='sm'
+      className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
       {showIcon &&
         (selectedStatus ? (
           CurrentIcon ? (
-            <CurrentIcon className="h-3 w-3" style={{ color: currentColor }} />
+            <CurrentIcon className='h-3 w-3' style={{ color: currentColor }} />
           ) : (
             <div
-              className="h-2 w-2 rounded-full"
+              className='h-2 w-2 rounded-full'
               style={{ backgroundColor: currentColor }}
             />
           )
         ) : (
-          <Circle className="h-3 w-3" />
+          <Circle className='h-3 w-3' />
         ))}
       {showLabel && currentName}
     </Button>
@@ -149,13 +149,13 @@ export function StatusSelector({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className="w-64 p-0">
+      <PopoverContent align={align} className='w-64 p-0'>
         <Command>
-          <CommandInput placeholder="Search status..." className="h-9" />
+          <CommandInput placeholder='Search status...' className='h-9' />
           <CommandList>
             <CommandEmpty>No status found.</CommandEmpty>
             <CommandGroup>
-              {statuses.map((status) => {
+              {statuses.map(status => {
                 const Icon = status.icon
                   ? getDynamicIcon(status.icon) || Circle
                   : Circle;
@@ -173,20 +173,20 @@ export function StatusSelector({
                   >
                     <Check
                       className={cn(
-                        "mr-2 h-4 w-4",
+                        'mr-2 h-4 w-4',
                         selectedStatus === status._id
-                          ? "opacity-100"
-                          : "opacity-0",
+                          ? 'opacity-100'
+                          : 'opacity-0'
                       )}
                     />
 
                     <Icon
-                      className="mr-2 h-3 w-3"
-                      style={{ color: status.color || "#94a3b8" }}
+                      className='mr-2 h-3 w-3'
+                      style={{ color: status.color || '#94a3b8' }}
                     />
                     {status.name}
                     {viewOnly && (
-                      <span className="text-muted-foreground ml-auto text-xs">
+                      <span className='text-muted-foreground ml-auto text-xs'>
                         (view only)
                       </span>
                     )}
@@ -206,7 +206,7 @@ interface TeamSelectorProps {
   teams: ReadonlyArray<Team>;
   selectedTeam: string;
   onTeamSelect: (teamId: string) => void;
-  displayMode?: "full" | "iconOnly" | "iconWhenUnselected";
+  displayMode?: 'full' | 'iconOnly' | 'iconWhenUnselected';
   className?: string;
 }
 
@@ -215,51 +215,51 @@ function _DeprecatedTeamSelector({
   teams,
   selectedTeam,
   onTeamSelect,
-  displayMode = "full",
+  displayMode = 'full',
   className,
 }: TeamSelectorProps) {
   const open = false;
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const setOpen = (_unused: boolean) => {};
 
-  const selectedTeamObj = teams.find((t) => t.id === selectedTeam);
+  const selectedTeamObj = teams.find(t => t.id === selectedTeam);
 
-  if (displayMode === "iconWhenUnselected" && !selectedTeam) {
+  if (displayMode === 'iconWhenUnselected' && !selectedTeam) {
     return (
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
-            size="sm"
+            variant='outline'
+            size='sm'
             className={cn(
-              "bg-muted/30 hover:bg-muted/50 h-8 w-8 p-0",
-              className,
+              'bg-muted/30 hover:bg-muted/50 h-8 w-8 p-0',
+              className
             )}
           >
-            <Users className="text-muted-foreground h-3 w-3" />
+            <Users className='text-muted-foreground h-3 w-3' />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuContent align='start' className='w-48'>
           <DropdownMenuItem
             onClick={() => {
-              onTeamSelect("");
+              onTeamSelect('');
               setOpen(false);
             }}
-            className="flex items-center gap-2"
+            className='flex items-center gap-2'
           >
-            <Users className="text-muted-foreground size-4" />
+            <Users className='text-muted-foreground size-4' />
             No team
           </DropdownMenuItem>
-          {teams.map((team) => (
+          {teams.map(team => (
             <DropdownMenuItem
               key={team.id}
               onClick={() => {
                 onTeamSelect(team.id);
                 setOpen(false);
               }}
-              className="flex items-center gap-2"
+              className='flex items-center gap-2'
             >
-              <Users className="size-4" />
+              <Users className='size-4' />
               {team.name}
             </DropdownMenuItem>
           ))}
@@ -270,7 +270,7 @@ function _DeprecatedTeamSelector({
 
   if (selectedTeamObj) {
     return (
-      <Badge variant="secondary" className="text-xs">
+      <Badge variant='secondary' className='text-xs'>
         {selectedTeamObj.key}
       </Badge>
     );
@@ -284,7 +284,7 @@ interface LeadSelectorProps {
   members: ReadonlyArray<Member>;
   selectedLead: string;
   onLeadSelect: (leadId: string) => void;
-  displayMode?: "full" | "iconOnly" | "iconWhenUnselected";
+  displayMode?: 'full' | 'iconOnly' | 'iconWhenUnselected';
   trigger?: React.ReactNode;
   className?: string;
 }
@@ -296,43 +296,43 @@ export function LeadSelector({
   members,
   selectedLead,
   onLeadSelect,
-  displayMode = "full",
+  displayMode = 'full',
   trigger,
   className,
 }: LeadSelectorProps) {
   const [open, setOpen] = useState(false);
 
-  const selectedLeadObj = members.find((m) => m.userId === selectedLead);
+  const selectedLeadObj = members.find(m => m.userId === selectedLead);
 
   const defaultTrigger = selectedLead ? (
     <Button
-      variant="outline"
-      size="sm"
-      className={cn("bg-muted/30 hover:bg-muted/50 h-8 gap-2", className)}
+      variant='outline'
+      size='sm'
+      className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
-      <Avatar className="size-5">
-        <AvatarFallback className="text-xs">
+      <Avatar className='size-5'>
+        <AvatarFallback className='text-xs'>
           {getInitials(selectedLeadObj?.name, selectedLeadObj?.email)}
         </AvatarFallback>
       </Avatar>
-      <span className="text-sm">{selectedLeadObj?.name}</span>
+      <span className='text-sm'>{selectedLeadObj?.name}</span>
     </Button>
-  ) : displayMode === "iconWhenUnselected" ? (
+  ) : displayMode === 'iconWhenUnselected' ? (
     <Button
-      variant="outline"
-      size="sm"
-      className={cn("bg-muted/30 hover:bg-muted/50 h-8 w-8 p-0", className)}
+      variant='outline'
+      size='sm'
+      className={cn('bg-muted/30 hover:bg-muted/50 h-8 w-8 p-0', className)}
     >
-      <User className="text-muted-foreground h-3 w-3" />
+      <User className='text-muted-foreground h-3 w-3' />
     </Button>
   ) : (
     <Button
-      variant="outline"
-      size="sm"
-      className={cn("bg-muted/30 hover:bg-muted/50 h-8 gap-2", className)}
+      variant='outline'
+      size='sm'
+      className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
-      <User className="text-muted-foreground h-3 w-3" />
-      <span className="text-sm">Lead</span>
+      <User className='text-muted-foreground h-3 w-3' />
+      <span className='text-sm'>Lead</span>
     </Button>
   );
 
@@ -341,28 +341,28 @@ export function LeadSelector({
       <DropdownMenuTrigger asChild>
         {trigger || defaultTrigger}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent align='start' className='w-48'>
         <DropdownMenuItem
           onClick={() => {
-            onLeadSelect("");
+            onLeadSelect('');
             setOpen(false);
           }}
-          className="flex items-center gap-2"
+          className='flex items-center gap-2'
         >
-          <User className="text-muted-foreground size-4" />
+          <User className='text-muted-foreground size-4' />
           No lead
         </DropdownMenuItem>
-        {members.map((member) => (
+        {members.map(member => (
           <DropdownMenuItem
             key={member.userId}
             onClick={() => {
               onLeadSelect(member.userId);
               setOpen(false);
             }}
-            className="flex items-center gap-2"
+            className='flex items-center gap-2'
           >
-            <Avatar className="size-5">
-              <AvatarFallback className="text-xs">
+            <Avatar className='size-5'>
+              <AvatarFallback className='text-xs'>
                 {getInitials(member.name, member.email)}
               </AvatarFallback>
             </Avatar>

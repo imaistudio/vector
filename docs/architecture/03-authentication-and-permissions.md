@@ -221,15 +221,15 @@ import { PageProtection } from "@/components/ui/permission-aware";
 #### Basic Permission Check
 
 ```typescript
-import { hasScopedPermission } from "@/convex/permissions";
-import { PERMISSIONS } from "@/convex/permissions";
+import { hasScopedPermission } from '@/convex/permissions';
+import { PERMISSIONS } from '@/convex/permissions';
 
 // Organization-level permission
 const canCreateProject = await hasScopedPermission(
   ctx,
   { organizationId: org._id },
   userId,
-  PERMISSIONS.PROJECT_CREATE,
+  PERMISSIONS.PROJECT_CREATE
 );
 
 // Team-scoped permission
@@ -237,14 +237,14 @@ const canEditTeam = await hasScopedPermission(
   ctx,
   { organizationId: org._id, teamId: team._id },
   userId,
-  PERMISSIONS.TEAM_EDIT,
+  PERMISSIONS.TEAM_EDIT
 );
 ```
 
 #### Require Permission (throws if not granted)
 
 ```typescript
-import { requirePermission } from "@/convex/permissions";
+import { requirePermission } from '@/convex/permissions';
 
 await requirePermission(ctx, organizationId, PERMISSIONS.TEAM_CREATE);
 ```
@@ -256,7 +256,7 @@ import {
   canViewIssue,
   canEditIssue,
   canAssignIssue,
-} from "@/convex/permissions";
+} from '@/convex/permissions';
 
 const canView = await canViewIssue(ctx, issue, userId);
 const canEdit = await canEditIssue(ctx, issue, userId);

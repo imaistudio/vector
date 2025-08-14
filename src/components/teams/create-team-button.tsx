@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import type React from "react";
-import { CreateTeamDialog } from "./create-team-dialog";
-import { PermissionGate } from "@/hooks/use-permissions";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import type React from 'react';
+import { CreateTeamDialog } from './create-team-dialog';
+import { PermissionGate } from '@/hooks/use-permissions';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 /**
  * Thin wrapper kept for backwards-compatibility. Accepts the previous props
@@ -13,7 +13,7 @@ import { PERMISSIONS } from "@/convex/_shared/permissions";
 interface LegacyCreateTeamButtonProps
   extends React.ComponentProps<typeof CreateTeamDialog> {
   /** Optional size prop kept for API parity but not used. */
-  size?: "default" | "sm" | "lg" | "icon";
+  size?: 'default' | 'sm' | 'lg' | 'icon';
 }
 
 export function CreateTeamButton({

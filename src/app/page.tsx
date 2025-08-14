@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { redirect } from "next/navigation";
-import { useEffect } from "react";
-import { useQuery } from "@/lib/convex";
-import { api } from "@/lib/convex";
+import { redirect } from 'next/navigation';
+import { useEffect } from 'react';
+import { useQuery } from '@/lib/convex';
+import { api } from '@/lib/convex';
 
 // --- Post-login redirect logic -----------------------------------------------------------
 export default function Home() {
@@ -22,20 +22,20 @@ export default function Home() {
 
     if (user === null) {
       // Not authenticated
-      redirect("/auth/login");
+      redirect('/auth/login');
     } else {
       // Authenticated
       if (hasOrganizations && userOrgs?.[0]?.slug) {
         redirect(`/${userOrgs[0].slug}/issues`);
       } else {
-        redirect("/org-setup");
+        redirect('/org-setup');
       }
     }
   }, [user, hasOrganizations, userOrgs, userQuery.isPending]);
 
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-2xl font-semibold">Loading...</div>
+    <div className='flex h-screen w-full items-center justify-center'>
+      <div className='text-2xl font-semibold'>Loading...</div>
     </div>
   );
 }

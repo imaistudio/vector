@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import type React from "react";
-import { CreateProjectDialog } from "./create-project-dialog";
-import { ScopedPermissionGate } from "@/hooks/use-permissions";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import type React from 'react';
+import { CreateProjectDialog } from './create-project-dialog';
+import { ScopedPermissionGate } from '@/hooks/use-permissions';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 /**
  * Thin wrapper kept for backwards-compatibility. Accepts the previous props
@@ -12,7 +12,7 @@ import { PERMISSIONS } from "@/convex/_shared/permissions";
 interface LegacyCreateProjectButtonProps
   extends React.ComponentProps<typeof CreateProjectDialog> {
   /** Optional size prop kept for API parity but not used. */
-  size?: "default" | "sm" | "lg" | "icon";
+  size?: 'default' | 'sm' | 'lg' | 'icon';
 }
 
 export function CreateProjectButton({

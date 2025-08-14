@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { Badge } from "./badge";
-import { useScopedPermission } from "@/hooks/use-permissions";
-import type { PermissionScope } from "@/hooks/use-permissions";
-import type { Permission } from "@/convex/_shared/permissions";
+import { Badge } from './badge';
+import { useScopedPermission } from '@/hooks/use-permissions';
+import type { PermissionScope } from '@/hooks/use-permissions';
+import type { Permission } from '@/convex/_shared/permissions';
 
 interface PermissionIndicatorProps {
   scope: PermissionScope;
@@ -24,7 +24,7 @@ export function PermissionIndicator({
 
   if (isLoading) {
     return (
-      <Badge variant="outline" className="text-xs">
+      <Badge variant='outline' className='text-xs'>
         {label || permission}: checking...
       </Badge>
     );
@@ -32,14 +32,14 @@ export function PermissionIndicator({
 
   return (
     <Badge
-      variant={hasPermission ? "default" : "secondary"}
+      variant={hasPermission ? 'default' : 'secondary'}
       className={`text-xs ${
         hasPermission
-          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100"
-          : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100"
+          ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
+          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
       }`}
     >
-      {label || permission}: {hasPermission ? "✓" : "✗"}
+      {label || permission}: {hasPermission ? '✓' : '✗'}
     </Badge>
   );
 }

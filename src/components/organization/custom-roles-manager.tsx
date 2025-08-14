@@ -1,13 +1,13 @@
-import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { Button } from "@/components/ui/button";
-import { Plus, Check } from "lucide-react";
+import { useState } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { Button } from '@/components/ui/button';
+import { Plus, Check } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -15,15 +15,15 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { cn } from "@/lib/utils";
-import { Id, Doc } from "@/convex/_generated/dataModel";
+} from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+import { Id, Doc } from '@/convex/_generated/dataModel';
 
-type CustomRole = Doc<"orgRoles">;
+type CustomRole = Doc<'orgRoles'>;
 
 interface CustomRolesManagerProps {
   orgSlug: string;
-  userId: Id<"users">;
+  userId: Id<'users'>;
   assignedRoles: CustomRole[];
   disabled?: boolean;
   className?: string;
@@ -40,7 +40,7 @@ export function CustomRolesManager({
 }: CustomRolesManagerProps) {
   const [open, setOpen] = useState(false);
   const [processingRoleId, setProcessingRoleId] =
-    useState<Id<"orgRoles"> | null>(null);
+    useState<Id<'orgRoles'> | null>(null);
 
   // Fetch all custom (non-system) roles for this organization
   const allRoles = useQuery(api.roles.list, { orgSlug });
@@ -49,8 +49,8 @@ export function CustomRolesManager({
   const removeAssignmentMutation = useMutation(api.roles.removeAssignment);
 
   const handleToggleRole = async (
-    roleId: Id<"orgRoles">,
-    isAssigned: boolean,
+    roleId: Id<'orgRoles'>,
+    isAssigned: boolean
   ) => {
     setProcessingRoleId(roleId);
     try {
@@ -65,8 +65,8 @@ export function CustomRolesManager({
     }
   };
 
-  const customRoles = allRoles?.filter((r) => !r.system) ?? [];
-  const assignedRoleIds = new Set(assignedRoles.map((r) => r._id));
+  const customRoles = allRoles?.filter(r => !r.system) ?? [];
+  const assignedRoleIds = new Set(assignedRoles.map(r => r._id));
 
   const isLoading = !!processingRoleId;
 
@@ -74,31 +74,31 @@ export function CustomRolesManager({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
-          variant="ghost"
-          size="sm"
+          variant='ghost'
+          size='sm'
           className={cn(
-            "h-6 px-2 text-xs font-medium",
+            'h-6 px-2 text-xs font-medium',
             assignedRoles.length > 0
-              ? "bg-blue-50 text-blue-600"
-              : "text-muted-foreground",
-            className,
+              ? 'bg-blue-50 text-blue-600'
+              : 'text-muted-foreground',
+            className
           )}
           disabled={disabled || isLoading}
         >
-          <Plus className="mr-1 size-3" />
+          <Plus className='mr-1 size-3' />
           {assignedRoles.length > 0
-            ? `${assignedRoles.length} role${assignedRoles.length === 1 ? "" : "s"}`
-            : "Roles"}
+            ? `${assignedRoles.length} role${assignedRoles.length === 1 ? '' : 's'}`
+            : 'Roles'}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
+      <PopoverContent className='w-80 p-0' align='end'>
         <Command>
-          <CommandInput placeholder="Search roles…" className="h-9" />
+          <CommandInput placeholder='Search roles…' className='h-9' />
           <CommandList>
             <CommandEmpty>No custom roles found.</CommandEmpty>
 
             <CommandGroup>
-              {customRoles.map((role) => {
+              {customRoles.map(role => {
                 const isAssigned = assignedRoleIds.has(role._id);
                 const isProcessing = processingRoleId === role._id;
 
@@ -111,21 +111,21 @@ export function CustomRolesManager({
                     }
                     disabled={disabled || isProcessing}
                   >
-                    <div className="flex w-full items-center gap-3">
+                    <div className='flex w-full items-center gap-3'>
                       <div
                         className={cn(
-                          "flex h-4 w-4 items-center justify-center rounded border",
+                          'flex h-4 w-4 items-center justify-center rounded border',
                           isAssigned
-                            ? "border-blue-600 bg-blue-600"
-                            : "border-input",
+                            ? 'border-blue-600 bg-blue-600'
+                            : 'border-input'
                         )}
                       >
-                        {isAssigned && <Check className="h-3 w-3 text-white" />}
+                        {isAssigned && <Check className='h-3 w-3 text-white' />}
                       </div>
-                      <div className="flex-1">
-                        <div className="font-medium">{role.name}</div>
+                      <div className='flex-1'>
+                        <div className='font-medium'>{role.name}</div>
                         {role.description && (
-                          <div className="text-muted-foreground text-xs">
+                          <div className='text-muted-foreground text-xs'>
                             {role.description}
                           </div>
                         )}
@@ -138,7 +138,7 @@ export function CustomRolesManager({
 
             {/* No Custom Roles Message */}
             {customRoles.length === 0 && (
-              <div className="text-muted-foreground p-4 text-center text-sm">
+              <div className='text-muted-foreground p-4 text-center text-sm'>
                 No custom roles have been created yet.
               </div>
             )}

@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { CreateTeamButton, TeamsTable } from "@/components/teams";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from 'react';
+import { CreateTeamButton, TeamsTable } from '@/components/teams';
+import { Button } from '@/components/ui/button';
 
-import { PageSkeleton } from "@/components/ui/table-skeleton";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Id } from "@/convex/_generated/dataModel";
+import { PageSkeleton } from '@/components/ui/table-skeleton';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { Id } from '@/convex/_generated/dataModel';
 
 interface TeamsPageContentProps {
   orgSlug: string;
@@ -32,7 +32,7 @@ export function TeamsPageContent({
 
   // Transform teams data to match expected interface
   const teams =
-    teamsData?.map((team) => ({
+    teamsData?.map(team => ({
       id: team._id,
       name: team.name,
       description: team.description,
@@ -58,7 +58,7 @@ export function TeamsPageContent({
   const deleteMutation = useMutation(api.teams.deleteTeam);
 
   const handleDelete = (teamId: string) => {
-    deleteMutation({ teamId: teamId as Id<"teams"> });
+    deleteMutation({ teamId: teamId as Id<'teams'> });
   };
 
   // --------------------------------------------------
@@ -78,22 +78,22 @@ export function TeamsPageContent({
   }
 
   return (
-    <div className="bg-background h-full">
+    <div className='bg-background h-full'>
       {/* Header with tabs */}
-      <div className="border-b">
-        <div className="flex items-center justify-between p-1">
-          <div className="flex items-center gap-1">
+      <div className='border-b'>
+        <div className='flex items-center justify-between p-1'>
+          <div className='flex items-center gap-1'>
             <Button
-              variant="secondary"
-              size="sm"
-              className="bg-secondary h-6 gap-2 rounded-xs px-3 text-xs font-normal"
+              variant='secondary'
+              size='sm'
+              className='bg-secondary h-6 gap-2 rounded-xs px-3 text-xs font-normal'
             >
               <span>All teams</span>
-              <span className="text-muted-foreground text-xs">{total}</span>
+              <span className='text-muted-foreground text-xs'>{total}</span>
             </Button>
           </div>
           {canCreateTeams && (
-            <CreateTeamButton orgSlug={orgSlug} size="sm" className="h-6" />
+            <CreateTeamButton orgSlug={orgSlug} size='sm' className='h-6' />
           )}
         </div>
       </div>

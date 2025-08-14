@@ -20,7 +20,7 @@ The error handling system provides:
 The `analyzeError` function categorizes errors based on message patterns:
 
 ```typescript
-import { analyzeError } from "@/lib/error-handling";
+import { analyzeError } from '@/lib/error-handling';
 
 const errorInfo = analyzeError(error);
 // Returns: { category, message, userMessage, retryable }
@@ -41,10 +41,10 @@ const errorInfo = analyzeError(error);
 Automatic toast notifications with appropriate styling:
 
 ```typescript
-import { showErrorToast, showSuccessToast } from "@/lib/error-handling";
+import { showErrorToast, showSuccessToast } from '@/lib/error-handling';
 
-showErrorToast(error, "User invitation");
-showSuccessToast("Profile updated successfully", "Profile update");
+showErrorToast(error, 'User invitation');
+showSuccessToast('Profile updated successfully', 'Profile update');
 ```
 
 **Toast Types:**
@@ -60,15 +60,15 @@ showSuccessToast("Profile updated successfully", "Profile update");
 For simple mutation error handling:
 
 ```typescript
-import { useConvexMutation } from "@/hooks/use-error-handling";
+import { useConvexMutation } from '@/hooks/use-error-handling';
 
 const { execute, isLoading, error } = useConvexMutation(
   api.organizations.invite,
   {
-    context: "Invite",
-    onSuccess: (result) => console.log("Success:", result),
-    onError: (errorInfo) => console.log("Error:", errorInfo),
-  },
+    context: 'Invite',
+    onSuccess: result => console.log('Success:', result),
+    onError: errorInfo => console.log('Error:', errorInfo),
+  }
 );
 
 // Usage
@@ -80,19 +80,19 @@ const result = await execute({ orgSlug, email, role });
 For form submissions with built-in success messages:
 
 ```typescript
-import { useFormSubmission } from "@/hooks/use-error-handling";
+import { useFormSubmission } from '@/hooks/use-error-handling';
 
 const { submit, isSubmitting, error } = useFormSubmission(
   api.users.updateProfile,
   {
-    context: "Profile update",
-    successMessage: "Profile updated successfully",
+    context: 'Profile update',
+    successMessage: 'Profile updated successfully',
     onSuccess: () => router.refresh(),
-  },
+  }
 );
 
 // Usage
-await submit({ name: "John Doe" });
+await submit({ name: 'John Doe' });
 ```
 
 #### `useAsyncOperation`
@@ -100,15 +100,15 @@ await submit({ name: "John Doe" });
 For operations with retry logic:
 
 ```typescript
-import { useAsyncOperation } from "@/hooks/use-error-handling";
+import { useAsyncOperation } from '@/hooks/use-error-handling';
 
 const { execute, isLoading, error, retryCount } = useAsyncOperation(
   api.files.upload,
   {
-    context: "File upload",
+    context: 'File upload',
     maxRetries: 3,
     retryDelay: 1000,
-  },
+  }
 );
 ```
 
@@ -256,7 +256,7 @@ Provide meaningful context for better error messages:
 ```typescript
 // Good
 const { submit } = useFormSubmission(mutation, {
-  context: "User invitation",
+  context: 'User invitation',
 });
 
 // Avoid
@@ -269,8 +269,8 @@ Use `onSuccess` callbacks for navigation and UI updates:
 
 ```typescript
 const { submit } = useFormSubmission(mutation, {
-  context: "Project creation",
-  onSuccess: (result) => {
+  context: 'Project creation',
+  onSuccess: result => {
     router.push(`/projects/${result.projectId}`);
     setDialogOpen(false);
   },
@@ -300,18 +300,18 @@ Show errors inline for better UX:
 For custom error handling, use the utility functions directly:
 
 ```typescript
-import { analyzeError, showErrorToast } from "@/lib/error-handling";
+import { analyzeError, showErrorToast } from '@/lib/error-handling';
 
 try {
   await mutation(args);
 } catch (error) {
   const errorInfo = analyzeError(error);
 
-  if (errorInfo.category === "permission") {
+  if (errorInfo.category === 'permission') {
     // Handle permission errors specially
-    router.push("/login");
+    router.push('/login');
   } else {
-    showErrorToast(error, "Operation");
+    showErrorToast(error, 'Operation');
   }
 }
 ```
@@ -326,13 +326,13 @@ try {
 const [isLoading, setIsLoading] = useState(false);
 const [error, setError] = useState<string | null>(null);
 
-const handleSubmit = async (data) => {
+const handleSubmit = async data => {
   setIsLoading(true);
   setError(null);
 
   try {
     await mutation(data);
-    toast.success("Success!");
+    toast.success('Success!');
   } catch (error) {
     setError(error.message);
     toast.error(error.message);
@@ -346,11 +346,11 @@ const handleSubmit = async (data) => {
 
 ```typescript
 const { submit, isSubmitting, error } = useFormSubmission(mutation, {
-  context: "Operation",
-  successMessage: "Success!",
+  context: 'Operation',
+  successMessage: 'Success!',
 });
 
-const handleSubmit = async (data) => {
+const handleSubmit = async data => {
   await submit(data);
 };
 ```
@@ -362,7 +362,7 @@ const handleSubmit = async (data) => {
 ```typescript
 try {
   await mutation(args);
-  toast.success("Success");
+  toast.success('Success');
 } catch (error) {
   toast.error(error.message);
 }
@@ -372,8 +372,8 @@ try {
 
 ```typescript
 const { submit } = useFormSubmission(mutation, {
-  context: "Operation",
-  successMessage: "Success",
+  context: 'Operation',
+  successMessage: 'Success',
 });
 
 await submit(args);
@@ -384,15 +384,15 @@ await submit(args);
 ### Unit Tests
 
 ```typescript
-import { analyzeError } from "@/lib/error-handling";
+import { analyzeError } from '@/lib/error-handling';
 
-describe("Error Analysis", () => {
-  it("categorizes validation errors", () => {
-    const error = new Error("Name is required");
+describe('Error Analysis', () => {
+  it('categorizes validation errors', () => {
+    const error = new Error('Name is required');
     const result = analyzeError(error);
 
-    expect(result.category).toBe("validation");
-    expect(result.userMessage).toBe("Please check your input and try again.");
+    expect(result.category).toBe('validation');
+    expect(result.userMessage).toBe('Please check your input and try again.');
   });
 });
 ```
@@ -423,12 +423,10 @@ describe("InviteDialog", () => {
 ### Common Issues
 
 1. **Error not categorized correctly**
-
    - Check if the error message matches the patterns in `ERROR_PATTERNS`
    - Add new patterns if needed
 
 2. **Toast not showing**
-
    - Ensure `Toaster` component is mounted in your app
    - Check that `showErrorToast` is being called
 
@@ -442,8 +440,8 @@ Enable debug logging to see error analysis:
 
 ```typescript
 // In development
-if (process.env.NODE_ENV === "development") {
-  console.log("Error analysis:", analyzeError(error));
+if (process.env.NODE_ENV === 'development') {
+  console.log('Error analysis:', analyzeError(error));
 }
 ```
 

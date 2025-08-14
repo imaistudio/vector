@@ -20,14 +20,12 @@
 ## On-boarding & Organisation Switching
 
 1.  **New signup → create organisation**
-
     1.  User signs up ➜ redirected to **organisation setup** wizard.
     2.  Wizard collects _org name_, _slug_ (+ optional logo).
     3.  Upon completion the user becomes **admin** of the new org (`member.role = "admin"`).
     4.  Default project settings are seeded; user lands on **Dashboard**.
 
 2.  **Invite to existing org → new platform user**
-
     1.  User receives invitation email, clicks link.
     2.  Completes minimal signup (password, name).
     3.  Invitation is accepted ⇒ they become **member** of the inviting org.

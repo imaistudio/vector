@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import React, { Suspense } from "react";
-import { TeamsPageContent } from "@/components/teams/teams-page-content";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
-import { PageSkeleton } from "@/components/ui/table-skeleton";
+import React, { Suspense } from 'react';
+import { TeamsPageContent } from '@/components/teams/teams-page-content';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import { PageSkeleton } from '@/components/ui/table-skeleton';
 
 interface TeamsPageProps {
   params: Promise<{ orgSlug: string }>;
@@ -13,7 +13,7 @@ interface TeamsPageProps {
 function TeamsPageInner({ orgSlug }: { orgSlug: string }) {
   const canCreateTeams = useQuery(api.permissions.has, {
     orgSlug,
-    permission: "team:create",
+    permission: 'team:create',
   });
 
   if (canCreateTeams === undefined) {

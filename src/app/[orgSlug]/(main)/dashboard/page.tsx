@@ -1,4 +1,4 @@
-import DashboardClient from "./dashboard-client";
+import DashboardClient from './dashboard-client';
 
 interface DashboardPageProps {
   params: Promise<{ orgSlug: string }>;

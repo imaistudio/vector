@@ -1,15 +1,15 @@
-"use client";
-import React from "react";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import type { Permission } from "@/convex/_shared/permissions";
-import type { Id } from "../../convex/_generated/dataModel";
+'use client';
+import React from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '@/lib/convex';
+import type { Permission } from '@/convex/_shared/permissions';
+import type { Id } from '../../convex/_generated/dataModel';
 
 // Permission scope for client-side permission checks
 export interface PermissionScope {
   orgSlug: string;
-  teamId?: Id<"teams">;
-  projectId?: Id<"projects">;
+  teamId?: Id<'teams'>;
+  projectId?: Id<'projects'>;
 }
 
 /**
@@ -18,9 +18,9 @@ export interface PermissionScope {
  */
 export function useScopedPermission(
   scope: PermissionScope,
-  permission: Permission,
+  permission: Permission
 ) {
-  const isClient = typeof window !== "undefined";
+  const isClient = typeof window !== 'undefined';
 
   const hasPermission = useQuery(
     api.permissions.has,
@@ -31,7 +31,7 @@ export function useScopedPermission(
           teamId: scope.teamId,
           projectId: scope.projectId,
         }
-      : "skip",
+      : 'skip'
   );
 
   if (!isClient || hasPermission === undefined) {
@@ -59,9 +59,9 @@ export function usePermission(orgSlug: string, permission: Permission) {
  */
 export function useScopedPermissions(
   scope: PermissionScope,
-  permissions: Permission[],
+  permissions: Permission[]
 ) {
-  const isClient = typeof window !== "undefined";
+  const isClient = typeof window !== 'undefined';
 
   const permissionMap = useQuery(
     api.permissions.hasMultiple,
@@ -72,7 +72,7 @@ export function useScopedPermissions(
           teamId: scope.teamId,
           projectId: scope.projectId,
         }
-      : "skip",
+      : 'skip'
   );
 
   if (!isClient || permissionMap === undefined) {
@@ -151,18 +151,18 @@ export function PermissionGate({
  */
 export function useScopedPermissionChecker(
   scope: PermissionScope,
-  permissions: Permission[],
+  permissions: Permission[]
 ) {
   const { permissions: permissionMap, isLoading } = useScopedPermissions(
     scope,
-    permissions,
+    permissions
   );
 
   const checker = React.useCallback(
     (permission: Permission) => {
       return permissionMap[permission] ?? false;
     },
-    [permissionMap],
+    [permissionMap]
   );
 
   return { can: checker, isLoading };
@@ -173,7 +173,7 @@ export function useScopedPermissionChecker(
  */
 export function usePermissionChecker(
   orgSlug: string,
-  permissions: Permission[],
+  permissions: Permission[]
 ) {
   return useScopedPermissionChecker({ orgSlug }, permissions);
 }

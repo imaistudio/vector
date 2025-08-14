@@ -1,29 +1,29 @@
-import { getDynamicIcon } from "@/lib/dynamic-icons";
-import { Circle, type LucideIcon } from "lucide-react";
+import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { Circle, type LucideIcon } from 'lucide-react';
 
 // Fallback priority icon mappings for backward compatibility
 const FALLBACK_PRIORITY_ICONS: Record<string, string> = {
-  urgent: "ArrowUp",
-  high: "ArrowUp",
-  medium: "Circle",
-  low: "ArrowDown",
-  none: "Circle",
+  urgent: 'ArrowUp',
+  high: 'ArrowUp',
+  medium: 'Circle',
+  low: 'ArrowDown',
+  none: 'Circle',
 } as const;
 
 // Fallback state type icon mappings for backward compatibility
 const FALLBACK_STATE_TYPE_ICONS: Record<string, string> = {
-  backlog: "Circle",
-  todo: "Circle",
-  in_progress: "Play",
-  done: "CheckCircle",
-  canceled: "X",
+  backlog: 'Circle',
+  todo: 'Circle',
+  in_progress: 'Play',
+  done: 'CheckCircle',
+  canceled: 'X',
 } as const;
 
 // Helper function to get priority icon with proper styling
 export function getPriorityIcon(
   priorityName?: string | null,
   priorityIcon?: string | null,
-  priorityColor?: string | null,
+  priorityColor?: string | null
 ): {
   icon: LucideIcon;
   className: string;
@@ -36,7 +36,7 @@ export function getPriorityIcon(
   const IconComponent = getDynamicIcon(iconName) || Circle;
 
   // Use database color if available, otherwise fall back to semantic colors
-  let className = "size-4";
+  let className = 'size-4';
   let style: React.CSSProperties | undefined;
 
   if (priorityColor) {
@@ -45,20 +45,20 @@ export function getPriorityIcon(
     // Fallback semantic colors based on priority name
     const normalizedName = priorityName?.toLowerCase();
     switch (normalizedName) {
-      case "urgent":
-        className += " text-red-600 fill-red-600";
+      case 'urgent':
+        className += ' text-red-600 fill-red-600';
         break;
-      case "high":
-        className += " text-orange-600 fill-orange-600";
+      case 'high':
+        className += ' text-orange-600 fill-orange-600';
         break;
-      case "medium":
-        className += " text-yellow-600 fill-yellow-600";
+      case 'medium':
+        className += ' text-yellow-600 fill-yellow-600';
         break;
-      case "low":
-        className += " text-blue-600 fill-blue-600";
+      case 'low':
+        className += ' text-blue-600 fill-blue-600';
         break;
       default:
-        className += " text-gray-400 fill-gray-400";
+        className += ' text-gray-400 fill-gray-400';
         break;
     }
   }
@@ -74,7 +74,7 @@ export function getPriorityIcon(
 export function getStateTypeIcon(
   stateType?: string | null,
   stateColor?: string | null,
-  stateIcon?: string | null,
+  stateIcon?: string | null
 ): {
   icon: LucideIcon;
   className: string;
@@ -88,11 +88,11 @@ export function getStateTypeIcon(
   // Use database color or fallback
   const style: React.CSSProperties = stateColor
     ? { color: stateColor, fill: stateColor }
-    : { color: "#6b7280", fill: "#6b7280" }; // gray-500 fallback
+    : { color: '#6b7280', fill: '#6b7280' }; // gray-500 fallback
 
   return {
     icon: IconComponent,
-    className: "size-4",
+    className: 'size-4',
     style,
   };
 }

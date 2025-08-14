@@ -1,22 +1,22 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -24,11 +24,11 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { ChevronDown, Check } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { Id } from "../../../convex/_generated/dataModel";
-import type { FunctionReturnType } from "convex/server";
+} from '@/components/ui/command';
+import { ChevronDown, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { Id } from '../../../convex/_generated/dataModel';
+import type { FunctionReturnType } from 'convex/server';
 
 // Infer types from Convex query outputs
 type Project = FunctionReturnType<
@@ -54,11 +54,11 @@ export function CreateIssueSimple({
   orgSlug,
   onSuccess,
 }: CreateIssueSimpleProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedProject, setSelectedProject] = useState("");
-  const [selectedState, setSelectedState] = useState("");
-  const [selectedPriority, setSelectedPriority] = useState("");
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedProject, setSelectedProject] = useState('');
+  const [selectedState, setSelectedState] = useState('');
+  const [selectedPriority, setSelectedPriority] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   // Fetch data
@@ -82,7 +82,7 @@ export function CreateIssueSimple({
   useEffect(() => {
     if (states.length > 0 && !selectedState) {
       const defaultState =
-        states.find((s: State) => s.type === "todo") || states[0];
+        states.find((s: State) => s.type === 'todo') || states[0];
       setSelectedState(defaultState._id);
     }
   }, [states, selectedState]);
@@ -108,12 +108,12 @@ export function CreateIssueSimple({
         data: {
           title: title.trim(),
           description: description.trim() || undefined,
-          projectId: selectedProject as Id<"projects">,
+          projectId: selectedProject as Id<'projects'>,
           stateId: selectedState
-            ? (selectedState as Id<"issueStates">)
+            ? (selectedState as Id<'issueStates'>)
             : undefined,
           priorityId: selectedPriority
-            ? (selectedPriority as Id<"issuePriorities">)
+            ? (selectedPriority as Id<'issuePriorities'>)
             : undefined,
         },
       });
@@ -122,14 +122,14 @@ export function CreateIssueSimple({
       onClose();
 
       // Reset form
-      setTitle("");
-      setDescription("");
-      setSelectedProject("");
-      setSelectedState("");
-      setSelectedPriority("");
+      setTitle('');
+      setDescription('');
+      setSelectedProject('');
+      setSelectedState('');
+      setSelectedPriority('');
     } catch (error) {
-      console.error("Failed to create issue:", error);
-      alert("Failed to create issue. Please try again.");
+      console.error('Failed to create issue:', error);
+      alert('Failed to create issue. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -137,50 +137,50 @@ export function CreateIssueSimple({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-md">
+      <DialogContent className='max-w-md'>
         <DialogHeader>
           <DialogTitle>Create Issue</DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className='space-y-4'>
           {/* Title */}
           <div>
-            <label className="text-sm font-medium">Title</label>
+            <label className='text-sm font-medium'>Title</label>
             <Input
-              placeholder="Issue title"
+              placeholder='Issue title'
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={e => setTitle(e.target.value)}
               autoFocus
             />
           </div>
 
           {/* Description */}
           <div>
-            <label className="text-sm font-medium">Description</label>
+            <label className='text-sm font-medium'>Description</label>
             <Textarea
-              placeholder="Add a description..."
+              placeholder='Add a description...'
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="min-h-[80px] resize-none"
+              onChange={e => setDescription(e.target.value)}
+              className='min-h-[80px] resize-none'
             />
           </div>
 
           {/* Project */}
           <div>
-            <label className="text-sm font-medium">Project</label>
+            <label className='text-sm font-medium'>Project</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant='outline' className='w-full justify-between'>
                   {selectedProject
                     ? projects.find((p: Project) => p._id === selectedProject)
                         ?.name
-                    : "Select project"}
-                  <ChevronDown className="h-4 w-4 opacity-50" />
+                    : 'Select project'}
+                  <ChevronDown className='h-4 w-4 opacity-50' />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-full p-0">
+              <PopoverContent className='w-full p-0'>
                 <Command>
-                  <CommandInput placeholder="Search projects..." />
+                  <CommandInput placeholder='Search projects...' />
                   <CommandList>
                     <CommandEmpty>No project found.</CommandEmpty>
                     <CommandGroup>
@@ -192,10 +192,10 @@ export function CreateIssueSimple({
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
+                              'mr-2 h-4 w-4',
                               selectedProject === project._id
-                                ? "opacity-100"
-                                : "opacity-0",
+                                ? 'opacity-100'
+                                : 'opacity-0'
                             )}
                           />
                           {project.name}
@@ -210,19 +210,19 @@ export function CreateIssueSimple({
 
           {/* State */}
           <div>
-            <label className="text-sm font-medium">State</label>
+            <label className='text-sm font-medium'>State</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant='outline' className='w-full justify-between'>
                   {selectedState
                     ? states.find((s: State) => s._id === selectedState)?.name
-                    : "Select state"}
-                  <ChevronDown className="h-4 w-4 opacity-50" />
+                    : 'Select state'}
+                  <ChevronDown className='h-4 w-4 opacity-50' />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-full p-0">
+              <PopoverContent className='w-full p-0'>
                 <Command>
-                  <CommandInput placeholder="Search states..." />
+                  <CommandInput placeholder='Search states...' />
                   <CommandList>
                     <CommandEmpty>No state found.</CommandEmpty>
                     <CommandGroup>
@@ -234,10 +234,10 @@ export function CreateIssueSimple({
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
+                              'mr-2 h-4 w-4',
                               selectedState === state._id
-                                ? "opacity-100"
-                                : "opacity-0",
+                                ? 'opacity-100'
+                                : 'opacity-0'
                             )}
                           />
                           {state.name}
@@ -252,21 +252,21 @@ export function CreateIssueSimple({
 
           {/* Priority */}
           <div>
-            <label className="text-sm font-medium">Priority</label>
+            <label className='text-sm font-medium'>Priority</label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full justify-between">
+                <Button variant='outline' className='w-full justify-between'>
                   {selectedPriority
                     ? priorities.find(
-                        (p: Priority) => p._id === selectedPriority,
+                        (p: Priority) => p._id === selectedPriority
                       )?.name
-                    : "Select priority"}
-                  <ChevronDown className="h-4 w-4 opacity-50" />
+                    : 'Select priority'}
+                  <ChevronDown className='h-4 w-4 opacity-50' />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-full p-0">
+              <PopoverContent className='w-full p-0'>
                 <Command>
-                  <CommandInput placeholder="Search priorities..." />
+                  <CommandInput placeholder='Search priorities...' />
                   <CommandList>
                     <CommandEmpty>No priority found.</CommandEmpty>
                     <CommandGroup>
@@ -278,10 +278,10 @@ export function CreateIssueSimple({
                         >
                           <Check
                             className={cn(
-                              "mr-2 h-4 w-4",
+                              'mr-2 h-4 w-4',
                               selectedPriority === priority._id
-                                ? "opacity-100"
-                                : "opacity-0",
+                                ? 'opacity-100'
+                                : 'opacity-0'
                             )}
                           />
                           {priority.name}
@@ -295,20 +295,20 @@ export function CreateIssueSimple({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-2 pt-4">
+          <div className='flex justify-end gap-2 pt-4'>
             <Button
-              type="button"
-              variant="ghost"
+              type='button'
+              variant='ghost'
               onClick={onClose}
               disabled={isLoading}
             >
               Cancel
             </Button>
             <Button
-              type="submit"
+              type='submit'
               disabled={!title.trim() || !selectedProject || isLoading}
             >
-              {isLoading ? "Creating..." : "Create Issue"}
+              {isLoading ? 'Creating...' : 'Create Issue'}
             </Button>
           </div>
         </form>

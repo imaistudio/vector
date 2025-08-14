@@ -1,5 +1,5 @@
-import nodemailer from "nodemailer";
-import { env } from "@/env";
+import nodemailer from 'nodemailer';
+import { env } from '@/env';
 
 export async function emailSender({
   to,
@@ -11,7 +11,7 @@ export async function emailSender({
   html: string;
 }) {
   if (!env.SMTP_HOST) {
-    console.info("[email:fallback]", { to, subject, html });
+    console.info('[email:fallback]', { to, subject, html });
     return;
   }
   const transporter = nodemailer.createTransport({
@@ -27,7 +27,7 @@ export async function emailSender({
   });
 
   await transporter.sendMail({
-    from: env.SMTP_FROM ?? env.SMTP_USER ?? "AIKP <no-reply@aikp.local>",
+    from: env.SMTP_FROM ?? env.SMTP_USER ?? 'AIKP <no-reply@aikp.local>',
     to,
     subject,
     html,

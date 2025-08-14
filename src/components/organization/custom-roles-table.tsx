@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { AnimatePresence, motion } from "motion/react";
-import { Button } from "@/components/ui/button";
-import { Shield, Edit, Trash2, Users } from "lucide-react";
-import { formatDateHuman } from "@/lib/date";
-import type { Id } from "@/convex/_generated/dataModel";
+import { AnimatePresence, motion } from 'motion/react';
+import { Button } from '@/components/ui/button';
+import { Shield, Edit, Trash2, Users } from 'lucide-react';
+import { formatDateHuman } from '@/lib/date';
+import type { Id } from '@/convex/_generated/dataModel';
 
 export interface CustomRoleRow {
-  _id: Id<"orgRoles">;
+  _id: Id<'orgRoles'>;
   name: string;
   description: string | undefined;
   createdAt: number;
@@ -19,9 +19,9 @@ interface CustomRolesTableProps {
   canAssign: boolean;
   canEdit: boolean;
   canDelete: boolean;
-  onAssign: (roleId: Id<"orgRoles">) => void;
-  onEdit: (roleId: Id<"orgRoles">) => void;
-  onDelete: (roleId: Id<"orgRoles">) => void;
+  onAssign: (roleId: Id<'orgRoles'>) => void;
+  onEdit: (roleId: Id<'orgRoles'>) => void;
+  onDelete: (roleId: Id<'orgRoles'>) => void;
 }
 
 export function CustomRolesTable({
@@ -35,8 +35,8 @@ export function CustomRolesTable({
 }: CustomRolesTableProps) {
   if (roles.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-muted-foreground text-center text-sm">
+      <div className='flex items-center justify-center py-12'>
+        <div className='text-muted-foreground text-center text-sm'>
           No custom roles created yet.
         </div>
       </div>
@@ -44,9 +44,9 @@ export function CustomRolesTable({
   }
 
   return (
-    <div className="divide-y">
+    <div className='divide-y'>
       <AnimatePresence initial={false}>
-        {roles.map((role) => (
+        {roles.map(role => (
           <motion.div
             key={role._id}
             layout
@@ -54,59 +54,59 @@ export function CustomRolesTable({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2 }}
-            className="hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors"
+            className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
           >
             {/* Icon */}
-            <Shield className="size-4 flex-shrink-0 text-purple-600" />
+            <Shield className='size-4 flex-shrink-0 text-purple-600' />
 
             {/* Role name & description */}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">{role.name}</div>
+            <div className='min-w-0 flex-1'>
+              <div className='truncate text-sm font-medium'>{role.name}</div>
               {role.description && (
-                <div className="text-muted-foreground truncate text-xs">
+                <div className='text-muted-foreground truncate text-xs'>
                   {role.description}
                 </div>
               )}
             </div>
 
             {/* Created date */}
-            <div className="text-muted-foreground flex-shrink-0 text-xs">
+            <div className='text-muted-foreground flex-shrink-0 text-xs'>
               {formatDateHuman(new Date(role.createdAt))}
             </div>
 
             {/* Actions */}
-            <div className="flex flex-shrink-0 gap-1">
+            <div className='flex flex-shrink-0 gap-1'>
               {canAssign && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-7 p-0"
+                  variant='ghost'
+                  size='sm'
+                  className='size-7 p-0'
                   onClick={() => onAssign(role._id)}
-                  title="Assign role"
+                  title='Assign role'
                 >
-                  <Users className="size-3" />
+                  <Users className='size-3' />
                 </Button>
               )}
               {canEdit && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-7 p-0"
+                  variant='ghost'
+                  size='sm'
+                  className='size-7 p-0'
                   onClick={() => onEdit(role._id)}
-                  title="Edit role"
+                  title='Edit role'
                 >
-                  <Edit className="size-3" />
+                  <Edit className='size-3' />
                 </Button>
               )}
               {canDelete && (
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="size-7 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                  variant='ghost'
+                  size='sm'
+                  className='size-7 p-0 text-red-600 hover:bg-red-50 hover:text-red-700'
                   onClick={() => onDelete(role._id)}
-                  title="Delete role"
+                  title='Delete role'
                 >
-                  <Trash2 className="size-3" />
+                  <Trash2 className='size-3' />
                 </Button>
               )}
             </div>

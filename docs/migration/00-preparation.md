@@ -72,7 +72,7 @@ This phase involved comprehensive research and analysis of the current system ar
 
 ```typescript
 export const auth = betterAuth({
-  database: drizzleAdapter(db, { provider: "pg" }),
+  database: drizzleAdapter(db, { provider: 'pg' }),
   emailAndPassword: { enabled: true },
   plugins: [username(), admin(), organization()],
   session: { cookieCache: { enabled: true, maxAge: 300 } },
@@ -167,7 +167,7 @@ bootstrapAdmin: publicProcedure
       email: z.string().email(),
       password: z.string().min(8),
       username: z.string().min(1).optional(),
-    }),
+    })
   )
   .mutation(async ({ input }) => {
     // Service layer call
@@ -185,7 +185,7 @@ bootstrapAdmin: publicProcedure
 const s3Client = new S3Client({
   region: env.AWS_REGION,
   endpoint: env.S3_ENDPOINT ?? undefined, // Supports MinIO/R2
-  forcePathStyle: env.S3_FORCE_PATH_STYLE === "true",
+  forcePathStyle: env.S3_FORCE_PATH_STYLE === 'true',
   credentials: { accessKeyId, secretAccessKey },
 });
 ```

@@ -18,21 +18,21 @@ Our permission system provides several utilities to check and enforce permission
 For most use cases, use the `usePermissionCheck` hook to get a simple boolean:
 
 ```tsx
-import { usePermissionCheck } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import { usePermissionCheck } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 function MyComponent({ orgSlug }: { orgSlug: string }) {
   // Simple permission check - returns boolean
   const { isAllowed, isLoading } = usePermissionCheck(
     orgSlug,
-    PERMISSIONS.ISSUE_EDIT,
+    PERMISSIONS.ISSUE_EDIT
   );
 
   if (isLoading) return <div>Loading...</div>;
 
   return (
     <button disabled={!isAllowed}>
-      {isAllowed ? "Edit Issue" : "No Permission"}
+      {isAllowed ? 'Edit Issue' : 'No Permission'}
     </button>
   );
 }
@@ -45,14 +45,14 @@ function MyComponent({ orgSlug }: { orgSlug: string }) {
 Automatically disable buttons and show tooltips when users lack permissions:
 
 ```tsx
-import { PermissionAwareButton } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import { PermissionAwareButton } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 <PermissionAwareButton
   orgSlug={orgSlug}
   permission={PERMISSIONS.ISSUE_EDIT}
   onClick={() => editIssue()}
-  fallbackMessage="You need edit permissions to modify issues"
+  fallbackMessage='You need edit permissions to modify issues'
 >
   Edit Issue
 </PermissionAwareButton>;
@@ -63,14 +63,14 @@ import { PERMISSIONS } from "@/convex/_shared/permissions";
 Disable form inputs based on permissions:
 
 ```tsx
-import { PermissionAwareField } from "@/components/ui/permission-aware";
+import { PermissionAwareField } from '@/components/ui/permission-aware';
 
 <PermissionAwareField
   orgSlug={orgSlug}
   permission={PERMISSIONS.ISSUE_EDIT}
-  fallbackMessage="You cannot edit issue titles"
+  fallbackMessage='You cannot edit issue titles'
 >
-  <Input placeholder="Issue title..." />
+  <Input placeholder='Issue title...' />
 </PermissionAwareField>;
 ```
 
@@ -79,7 +79,7 @@ import { PermissionAwareField } from "@/components/ui/permission-aware";
 Conditionally show/hide entire sections:
 
 ```tsx
-import { PermissionGate } from "@/components/ui/permission-aware";
+import { PermissionGate } from '@/components/ui/permission-aware';
 
 <PermissionGate
   orgSlug={orgSlug}
@@ -95,12 +95,12 @@ import { PermissionGate } from "@/components/ui/permission-aware";
 Protect entire pages from unauthorized access:
 
 ```tsx
-import { PageProtection } from "@/components/ui/permission-aware";
+import { PageProtection } from '@/components/ui/permission-aware';
 
 <PageProtection
   orgSlug={orgSlug}
   requiredPermissions={[PERMISSIONS.TEAM_VIEW]}
-  fallbackPath="/dashboard"
+  fallbackPath='/dashboard'
 >
   <TeamPage />
 </PageProtection>;
@@ -114,14 +114,14 @@ For team or project-specific permissions, use the `scope` parameter:
 // Team-scoped permission
 const { isAllowed } = usePermissionCheck(orgSlug, PERMISSIONS.ISSUE_EDIT, {
   orgSlug,
-  teamId: "team123",
+  teamId: 'team123',
 });
 
 // Project-scoped permission
 <PermissionAwareButton
   orgSlug={orgSlug}
   permission={PERMISSIONS.PROJECT_EDIT}
-  scope={{ orgSlug, projectId: "project456" }}
+  scope={{ orgSlug, projectId: 'project456' }}
   onClick={() => editProject()}
 >
   Edit Project
@@ -157,15 +157,15 @@ Check multiple permissions efficiently:
 function Dashboard({ orgSlug }: { orgSlug: string }) {
   const { isAllowed: canCreateProjects } = usePermissionCheck(
     orgSlug,
-    PERMISSIONS.PROJECT_CREATE,
+    PERMISSIONS.PROJECT_CREATE
   );
   const { isAllowed: canCreateTeams } = usePermissionCheck(
     orgSlug,
-    PERMISSIONS.TEAM_CREATE,
+    PERMISSIONS.TEAM_CREATE
   );
   const { isAllowed: canManageMembers } = usePermissionCheck(
     orgSlug,
-    PERMISSIONS.ORG_MANAGE_MEMBERS,
+    PERMISSIONS.ORG_MANAGE_MEMBERS
   );
 
   return (
@@ -213,7 +213,7 @@ The system automatically handles various error states:
 function IssueStatusButton({ orgSlug, currentUserAssignment, states }) {
   const { isAllowed: canUpdateState } = usePermissionCheck(
     orgSlug,
-    PERMISSIONS.ISSUE_STATE_UPDATE,
+    PERMISSIONS.ISSUE_STATE_UPDATE
   );
 
   return (
@@ -246,7 +246,7 @@ function IssueForm({ orgSlug, issue }) {
   return (
     <form>
       {/* Always visible fields */}
-      <Input name="title" value={issue.title} />
+      <Input name='title' value={issue.title} />
 
       {/* Permission-gated sections */}
       <PermissionGate

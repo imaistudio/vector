@@ -1,13 +1,13 @@
-import { query, mutation } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
-import type { Id, Doc } from "./_generated/dataModel";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { canViewIssue, canViewTeam, canViewProject } from "./access";
+import { query, mutation } from './_generated/server';
+import { v, ConvexError } from 'convex/values';
+import type { Id, Doc } from './_generated/dataModel';
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { canViewIssue, canViewTeam, canViewProject } from './access';
 import {
   ISSUE_PRIORITY_DEFAULTS,
   ISSUE_STATE_DEFAULTS,
   PROJECT_STATUS_DEFAULTS,
-} from "../src/lib/defaults";
+} from '../src/lib/defaults';
 
 /**
  * Get organization by slug
@@ -19,29 +19,29 @@ export const getBySlug = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     return org;
@@ -58,50 +58,50 @@ export const listMembersWithRoles = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     const members = await ctx.db
-      .query("members")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('members')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
-    const users = await Promise.all(members.map((m) => ctx.db.get(m.userId)));
+    const users = await Promise.all(members.map(m => ctx.db.get(m.userId)));
 
     const roles = await ctx.db
-      .query("orgRoleAssignments")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('orgRoleAssignments')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
-    const roleDefs = await Promise.all(roles.map((r) => ctx.db.get(r.roleId)));
+    const roleDefs = await Promise.all(roles.map(r => ctx.db.get(r.roleId)));
 
     return members.map((m, i) => {
       const user = users[i];
-      const userRoles = roles.filter((r) => r.userId === m.userId);
+      const userRoles = roles.filter(r => r.userId === m.userId);
       const customRoles = userRoles
-        .map((ur) => roleDefs.find((rd) => rd?._id === ur.roleId))
+        .map(ur => roleDefs.find(rd => rd?._id === ur.roleId))
         .filter((r): r is NonNullable<typeof r> => !!r);
       return {
         ...m,
@@ -110,7 +110,7 @@ export const listMembersWithRoles = query({
         image: user?.image,
         roleId: userRoles[0]?.roleId ?? null,
         roleName:
-          roleDefs.find((rd) => rd?._id === userRoles[0]?.roleId)?.name ?? null,
+          roleDefs.find(rd => rd?._id === userRoles[0]?.roleId)?.name ?? null,
         customRoles,
       };
     });
@@ -124,100 +124,100 @@ export const listInvites = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     return await ctx.db
-      .query("invitations")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
-      .filter((q) => q.eq(q.field("status"), "pending"))
+      .query('invitations')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .filter(q => q.eq(q.field('status'), 'pending'))
       .collect();
   },
 });
 
 export const revokeInvite = mutation({
   args: {
-    inviteId: v.id("invitations"),
+    inviteId: v.id('invitations'),
   },
   handler: async (ctx, args) => {
     const invite = await ctx.db.get(args.inviteId);
 
     if (!invite) {
-      throw new ConvexError("INVITE_NOT_FOUND");
+      throw new ConvexError('INVITE_NOT_FOUND');
     }
 
-    await ctx.db.patch(invite._id, { status: "revoked" });
+    await ctx.db.patch(invite._id, { status: 'revoked' });
   },
 });
 
 export const acceptInvitation = mutation({
   args: {
-    inviteId: v.id("invitations"),
+    inviteId: v.id('invitations'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
     const user = await ctx.db.get(userId);
     if (!user) {
-      throw new ConvexError("USER_NOT_FOUND");
+      throw new ConvexError('USER_NOT_FOUND');
     }
 
     const invite = await ctx.db.get(args.inviteId);
 
     if (!invite) {
-      throw new ConvexError("INVITATION_NOT_FOUND");
+      throw new ConvexError('INVITATION_NOT_FOUND');
     }
-    if (invite.status !== "pending") {
-      throw new ConvexError("INVITATION_NOT_PENDING");
+    if (invite.status !== 'pending') {
+      throw new ConvexError('INVITATION_NOT_PENDING');
     }
     if (invite.email.toLowerCase() !== user.email?.toLowerCase()) {
       throw new ConvexError(
-        `This invitation is for ${invite.email}, but you are logged in as ${user.email}.`,
+        `This invitation is for ${invite.email}, but you are logged in as ${user.email}.`
       );
     }
     if (invite.expiresAt < Date.now()) {
-      await ctx.db.patch(invite._id, { status: "expired" });
-      throw new ConvexError("INVITATION_EXPIRED");
+      await ctx.db.patch(invite._id, { status: 'expired' });
+      throw new ConvexError('INVITATION_EXPIRED');
     }
 
     await ctx.db.patch(invite._id, {
-      status: "accepted",
+      status: 'accepted',
       acceptedAt: Date.now(),
     });
 
     const existingMembership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", invite.organizationId).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', invite.organizationId).eq('userId', userId)
       )
       .first();
 
     if (!existingMembership) {
-      await ctx.db.insert("members", {
+      await ctx.db.insert('members', {
         organizationId: invite.organizationId,
         userId,
         role: invite.role,
@@ -230,7 +230,7 @@ export const acceptInvitation = mutation({
 
 export const resendInvite = mutation({
   args: {
-    token: v.id("invitations"),
+    token: v.id('invitations'),
   },
   handler: async (ctx, args) => {
     // This is a simplified implementation. The legacy code sends an email.
@@ -238,7 +238,7 @@ export const resendInvite = mutation({
     const invite = await ctx.db.get(args.token);
 
     if (!invite) {
-      throw new ConvexError("INVITE_NOT_FOUND");
+      throw new ConvexError('INVITE_NOT_FOUND');
     }
 
     const expiresAt = new Date();
@@ -251,45 +251,45 @@ export const resendInvite = mutation({
 export const removeMember = mutation({
   args: {
     orgSlug: v.string(),
-    userId: v.id("users"),
+    userId: v.id('users'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", args.userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', args.userId)
       )
       .first();
 
     if (!member) {
-      throw new ConvexError("MEMBER_NOT_FOUND");
+      throw new ConvexError('MEMBER_NOT_FOUND');
     }
 
     await ctx.db.delete(member._id);
@@ -302,55 +302,55 @@ export const removeMember = mutation({
 export const updateMemberRole = mutation({
   args: {
     orgSlug: v.string(),
-    userId: v.id("users"),
-    role: v.union(v.literal("member"), v.literal("admin")),
+    userId: v.id('users'),
+    role: v.union(v.literal('member'), v.literal('admin')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is owner or admin
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_MEMBER_ROLE");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_MEMBER_ROLE');
     }
 
     // Find the member to update
     const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", args.userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', args.userId)
       )
       .first();
 
     if (!member) {
-      throw new ConvexError("MEMBER_NOT_FOUND");
+      throw new ConvexError('MEMBER_NOT_FOUND');
     }
 
     // Don't allow changing owner role
-    if (member.role === "owner") {
-      throw new ConvexError("CANNOT_CHANGE_OWNER_ROLE");
+    if (member.role === 'owner') {
+      throw new ConvexError('CANNOT_CHANGE_OWNER_ROLE');
     }
 
     // Update the member's role
@@ -370,55 +370,55 @@ export const getOrganizationStats = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get counts
     const memberCount = await ctx.db
-      .query("members")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('members')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect()
-      .then((members) => members.length);
+      .then(members => members.length);
 
     const projectCount = await ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('projects')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect()
-      .then((projects) => projects.length);
+      .then(projects => projects.length);
 
     const teamCount = await ctx.db
-      .query("teams")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('teams')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect()
-      .then((teams) => teams.length);
+      .then(teams => teams.length);
 
     const issueCount = await ctx.db
-      .query("issues")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issues')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect()
-      .then((issues) => issues.length);
+      .then(issues => issues.length);
 
     return {
       memberCount,
@@ -440,35 +440,35 @@ export const getRecentProjects = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get recent projects
     const projects = await ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('projects')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Sort by creation time (newest first) and limit
@@ -491,44 +491,44 @@ export const getRecentIssues = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get recent issues
     const issues = await ctx.db
-      .query("issues")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issues')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Filter issues based on visibility permissions
-    const issuePromises = issues.map(async (issue) => {
+    const issuePromises = issues.map(async issue => {
       const canView = await canViewIssue(ctx, issue);
       return canView ? issue : null;
     });
     const visibleIssues = (await Promise.all(issuePromises)).filter(
-      (issue): issue is Doc<"issues"> => issue !== null,
+      (issue): issue is Doc<'issues'> => issue !== null
     );
 
     // Sort by creation time (newest first) and limit
@@ -548,56 +548,56 @@ export const create = mutation({
     data: v.object({
       name: v.string(),
       slug: v.string(),
-      logo: v.optional(v.id("_storage")),
+      logo: v.optional(v.id('_storage')),
     }),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Validate input
     if (!args.data.name.trim()) {
-      throw new ConvexError("ORGANIZATION_NAME_REQUIRED");
+      throw new ConvexError('ORGANIZATION_NAME_REQUIRED');
     }
     if (!args.data.slug.trim()) {
-      throw new ConvexError("ORGANIZATION_SLUG_REQUIRED");
+      throw new ConvexError('ORGANIZATION_SLUG_REQUIRED');
     }
     if (args.data.name.length > 100) {
-      throw new ConvexError("ORGANIZATION_NAME_TOO_LONG");
+      throw new ConvexError('ORGANIZATION_NAME_TOO_LONG');
     }
     if (args.data.slug.length > 50) {
-      throw new ConvexError("ORGANIZATION_SLUG_TOO_LONG");
+      throw new ConvexError('ORGANIZATION_SLUG_TOO_LONG');
     }
 
     // Check if slug is unique
     const existingOrg = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.data.slug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.data.slug))
       .first();
 
     if (existingOrg) {
-      throw new ConvexError("ORGANIZATION_SLUG_UNIQUE");
+      throw new ConvexError('ORGANIZATION_SLUG_UNIQUE');
     }
 
     // Create organization
-    const orgId = await ctx.db.insert("organizations", {
+    const orgId = await ctx.db.insert('organizations', {
       name: args.data.name.trim(),
       slug: args.data.slug.trim(),
       logo: args.data.logo,
     });
 
     // Add creator as owner
-    await ctx.db.insert("members", {
+    await ctx.db.insert('members', {
       organizationId: orgId,
       userId,
-      role: "owner",
+      role: 'owner',
     });
 
     // Create default issue states
     for (const state of ISSUE_STATE_DEFAULTS) {
-      await ctx.db.insert("issueStates", {
+      await ctx.db.insert('issueStates', {
         organizationId: orgId,
         name: state.name,
         position: state.position,
@@ -609,7 +609,7 @@ export const create = mutation({
 
     // Create default issue priorities
     for (const priority of ISSUE_PRIORITY_DEFAULTS) {
-      await ctx.db.insert("issuePriorities", {
+      await ctx.db.insert('issuePriorities', {
         organizationId: orgId,
         name: priority.name,
         weight: priority.weight,
@@ -620,7 +620,7 @@ export const create = mutation({
 
     // Create default project statuses
     for (const status of PROJECT_STATUS_DEFAULTS) {
-      await ctx.db.insert("projectStatuses", {
+      await ctx.db.insert('projectStatuses', {
         organizationId: orgId,
         name: status.name,
         position: status.position,
@@ -643,63 +643,63 @@ export const update = mutation({
     data: v.object({
       name: v.optional(v.string()),
       slug: v.optional(v.string()),
-      logo: v.optional(v.id("_storage")),
+      logo: v.optional(v.id('_storage')),
     }),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is owner or admin
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_ORGANIZATION");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_ORGANIZATION');
     }
 
     // Validate input
     if (args.data.name && !args.data.name.trim()) {
-      throw new ConvexError("ORGANIZATION_NAME_EMPTY");
+      throw new ConvexError('ORGANIZATION_NAME_EMPTY');
     }
     if (args.data.name && args.data.name.length > 100) {
-      throw new ConvexError("ORGANIZATION_NAME_TOO_LONG");
+      throw new ConvexError('ORGANIZATION_NAME_TOO_LONG');
     }
     if (args.data.slug && !args.data.slug.trim()) {
-      throw new ConvexError("ORGANIZATION_SLUG_EMPTY");
+      throw new ConvexError('ORGANIZATION_SLUG_EMPTY');
     }
     if (args.data.slug && args.data.slug.length > 50) {
-      throw new ConvexError("ORGANIZATION_SLUG_TOO_LONG");
+      throw new ConvexError('ORGANIZATION_SLUG_TOO_LONG');
     }
 
     // Check if slug is unique (if being updated)
     if (args.data?.slug && args.data.slug.trim() !== org.slug) {
       const existingOrg = await ctx.db
-        .query("organizations")
-        .withIndex("by_slug", (q) => q.eq("slug", args.data.slug!.trim()))
+        .query('organizations')
+        .withIndex('by_slug', q => q.eq('slug', args.data.slug!.trim()))
         .first();
 
       if (existingOrg) {
-        throw new ConvexError("ORGANIZATION_SLUG_UNIQUE");
+        throw new ConvexError('ORGANIZATION_SLUG_UNIQUE');
       }
     }
 
@@ -707,7 +707,7 @@ export const update = mutation({
     const updateData: Partial<{
       name: string;
       slug: string;
-      logo: Id<"_storage">;
+      logo: Id<'_storage'>;
     }> = {};
 
     if (args.data.name !== undefined) {
@@ -738,44 +738,44 @@ export const listMembers = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get all members
     const members = await ctx.db
-      .query("members")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('members')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Get user details for each member
-    const memberUserIds = members.map((m) => m.userId);
-    const users = await Promise.all(memberUserIds.map((id) => ctx.db.get(id)));
+    const memberUserIds = members.map(m => m.userId);
+    const users = await Promise.all(memberUserIds.map(id => ctx.db.get(id)));
     const userMap = new Map(memberUserIds.map((id, i) => [id, users[i]]));
 
     // Combine results
-    const membersWithUsers = members.map((member) => {
+    const membersWithUsers = members.map(member => {
       const user = userMap.get(member.userId);
       return {
         ...member,
@@ -807,44 +807,44 @@ export const searchMembers = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get all members
     const members = await ctx.db
-      .query("members")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('members')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Get user details for each member
-    const memberUserIds = members.map((m) => m.userId);
-    const users = await Promise.all(memberUserIds.map((id) => ctx.db.get(id)));
+    const memberUserIds = members.map(m => m.userId);
+    const users = await Promise.all(memberUserIds.map(id => ctx.db.get(id)));
     const userMap = new Map(memberUserIds.map((id, i) => [id, users[i]]));
 
     // Filter and search
-    let results = members.map((member) => {
+    let results = members.map(member => {
       const user = userMap.get(member.userId);
       return {
         ...member,
@@ -864,11 +864,11 @@ export const searchMembers = query({
     if (args.query) {
       const searchTerm = args.query.toLowerCase();
       results = results.filter(
-        (member) =>
+        member =>
           member.user &&
           (member.user.name?.toLowerCase().includes(searchTerm) ||
             member.user.email?.toLowerCase().includes(searchTerm) ||
-            member.user.username?.toLowerCase().includes(searchTerm)),
+            member.user.username?.toLowerCase().includes(searchTerm))
       );
     }
 
@@ -891,44 +891,44 @@ export const listTeams = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get all teams
     const allTeams = await ctx.db
-      .query("teams")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('teams')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Filter teams based on visibility permissions
-    const teamPromises = allTeams.map(async (team) => {
+    const teamPromises = allTeams.map(async team => {
       const canView = await canViewTeam(ctx, team);
       return canView ? team : null;
     });
     const visibleTeams = (await Promise.all(teamPromises)).filter(
-      (team): team is Doc<"teams"> => team !== null,
+      (team): team is Doc<'teams'> => team !== null
     );
 
     return visibleTeams;
@@ -945,49 +945,49 @@ export const listProjects = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get all projects
     const allProjects = await ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('projects')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     // Filter projects based on visibility permissions
-    const projectPromises = allProjects.map(async (project) => {
+    const projectPromises = allProjects.map(async project => {
       const canView = await canViewProject(ctx, project);
       return canView ? project : null;
     });
     const visibleProjects = (await Promise.all(projectPromises)).filter(
-      (project): project is Doc<"projects"> => project !== null,
+      (project): project is Doc<'projects'> => project !== null
     );
 
     // Get project statuses and attach to projects
     const projectsWithStatus = await Promise.all(
-      visibleProjects.map(async (project) => {
+      visibleProjects.map(async project => {
         const status = project.statusId
           ? await ctx.db.get(project.statusId)
           : null;
@@ -997,7 +997,7 @@ export const listProjects = query({
           statusColor: status?.color,
           statusIcon: status?.icon,
         };
-      }),
+      })
     );
 
     return projectsWithStatus;
@@ -1014,35 +1014,35 @@ export const listIssueStates = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get issue states
     const states = await ctx.db
-      .query("issueStates")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issueStates')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     return states;
@@ -1059,35 +1059,35 @@ export const listProjectStatuses = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get project statuses
     const statuses = await ctx.db
-      .query("projectStatuses")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('projectStatuses')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     return statuses;
@@ -1104,35 +1104,35 @@ export const listIssuePriorities = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get issue priorities
     const priorities = await ctx.db
-      .query("issuePriorities")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issuePriorities')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     return priorities;
@@ -1153,35 +1153,35 @@ export const createIssuePriority = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is admin or owner
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_CREATE_PRIORITY");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_CREATE_PRIORITY');
     }
 
-    const id = await ctx.db.insert("issuePriorities", {
+    const id = await ctx.db.insert('issuePriorities', {
       organizationId: org._id,
       name: args.name,
       weight: args.weight,
@@ -1199,7 +1199,7 @@ export const createIssuePriority = mutation({
 export const updateIssuePriority = mutation({
   args: {
     orgSlug: v.string(),
-    priorityId: v.id("issuePriorities"),
+    priorityId: v.id('issuePriorities'),
     name: v.string(),
     weight: v.optional(v.number()),
     color: v.string(),
@@ -1208,30 +1208,30 @@ export const updateIssuePriority = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_PRIORITY");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_PRIORITY');
     }
 
     await ctx.db.patch(args.priorityId, {
@@ -1253,36 +1253,36 @@ export const resetIssuePriorities = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_RESET_PRIORITY");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_RESET_PRIORITY');
     }
 
     // Delete existing priorities
     const priorities = await ctx.db
-      .query("issuePriorities")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issuePriorities')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     for (const p of priorities) {
@@ -1291,7 +1291,7 @@ export const resetIssuePriorities = mutation({
 
     // Insert defaults
     for (const priority of ISSUE_PRIORITY_DEFAULTS) {
-      await ctx.db.insert("issuePriorities", {
+      await ctx.db.insert('issuePriorities', {
         organizationId: org._id,
         name: priority.name,
         weight: priority.weight,
@@ -1308,35 +1308,35 @@ export const resetIssuePriorities = mutation({
 export const deleteIssuePriority = mutation({
   args: {
     orgSlug: v.string(),
-    priorityId: v.id("issuePriorities"),
+    priorityId: v.id('issuePriorities'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_DELETE_PRIORITY");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_DELETE_PRIORITY');
     }
 
     await ctx.db.delete(args.priorityId);
@@ -1354,45 +1354,45 @@ export const createIssueState = mutation({
     color: v.string(),
     icon: v.optional(v.string()),
     type: v.union(
-      v.literal("backlog"),
-      v.literal("todo"),
-      v.literal("in_progress"),
-      v.literal("done"),
-      v.literal("canceled"),
+      v.literal('backlog'),
+      v.literal('todo'),
+      v.literal('in_progress'),
+      v.literal('done'),
+      v.literal('canceled')
     ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is admin or owner
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_CREATE_STATE");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_CREATE_STATE');
     }
 
-    const id = await ctx.db.insert("issueStates", {
+    const id = await ctx.db.insert('issueStates', {
       organizationId: org._id,
       name: args.name,
       position: args.position,
@@ -1411,46 +1411,46 @@ export const createIssueState = mutation({
 export const updateIssueState = mutation({
   args: {
     orgSlug: v.string(),
-    stateId: v.id("issueStates"),
+    stateId: v.id('issueStates'),
     name: v.string(),
     position: v.number(),
     color: v.string(),
     icon: v.optional(v.string()),
     type: v.union(
-      v.literal("backlog"),
-      v.literal("todo"),
-      v.literal("in_progress"),
-      v.literal("done"),
-      v.literal("canceled"),
+      v.literal('backlog'),
+      v.literal('todo'),
+      v.literal('in_progress'),
+      v.literal('done'),
+      v.literal('canceled')
     ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_STATE");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_STATE');
     }
 
     await ctx.db.patch(args.stateId, {
@@ -1474,43 +1474,43 @@ export const createProjectStatus = mutation({
     color: v.string(),
     icon: v.optional(v.string()),
     type: v.union(
-      v.literal("backlog"),
-      v.literal("planned"),
-      v.literal("in_progress"),
-      v.literal("completed"),
-      v.literal("canceled"),
+      v.literal('backlog'),
+      v.literal('planned'),
+      v.literal('in_progress'),
+      v.literal('completed'),
+      v.literal('canceled')
     ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_CREATE_STATUS");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_CREATE_STATUS');
     }
 
-    const id = await ctx.db.insert("projectStatuses", {
+    const id = await ctx.db.insert('projectStatuses', {
       organizationId: org._id,
       name: args.name,
       position: args.position,
@@ -1529,46 +1529,46 @@ export const createProjectStatus = mutation({
 export const updateProjectStatus = mutation({
   args: {
     orgSlug: v.string(),
-    statusId: v.id("projectStatuses"),
+    statusId: v.id('projectStatuses'),
     name: v.string(),
     position: v.number(),
     color: v.string(),
     icon: v.optional(v.string()),
     type: v.union(
-      v.literal("backlog"),
-      v.literal("planned"),
-      v.literal("in_progress"),
-      v.literal("completed"),
-      v.literal("canceled"),
+      v.literal('backlog'),
+      v.literal('planned'),
+      v.literal('in_progress'),
+      v.literal('completed'),
+      v.literal('canceled')
     ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_STATUS");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_STATUS');
     }
 
     await ctx.db.patch(args.statusId, {
@@ -1587,35 +1587,35 @@ export const updateProjectStatus = mutation({
 export const deleteIssueState = mutation({
   args: {
     orgSlug: v.string(),
-    stateId: v.id("issueStates"),
+    stateId: v.id('issueStates'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_DELETE_STATE");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_DELETE_STATE');
     }
 
     await ctx.db.delete(args.stateId);
@@ -1628,35 +1628,35 @@ export const deleteIssueState = mutation({
 export const deleteProjectStatus = mutation({
   args: {
     orgSlug: v.string(),
-    statusId: v.id("projectStatuses"),
+    statusId: v.id('projectStatuses'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_DELETE_STATUS");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_DELETE_STATUS');
     }
 
     await ctx.db.delete(args.statusId);
@@ -1673,36 +1673,36 @@ export const resetIssueStates = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_RESET_STATES");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_RESET_STATES');
     }
 
     // Delete existing states
     const states = await ctx.db
-      .query("issueStates")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issueStates')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     for (const s of states) {
@@ -1711,7 +1711,7 @@ export const resetIssueStates = mutation({
 
     // Insert defaults
     for (const state of ISSUE_STATE_DEFAULTS) {
-      await ctx.db.insert("issueStates", {
+      await ctx.db.insert('issueStates', {
         organizationId: org._id,
         name: state.name,
         position: state.position,
@@ -1733,36 +1733,36 @@ export const resetProjectStatuses = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_RESET_STATUSES");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_RESET_STATUSES');
     }
 
     // Delete existing statuses
     const statuses = await ctx.db
-      .query("projectStatuses")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('projectStatuses')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     for (const s of statuses) {
@@ -1771,7 +1771,7 @@ export const resetProjectStatuses = mutation({
 
     // Insert defaults
     for (const status of PROJECT_STATUS_DEFAULTS) {
-      await ctx.db.insert("projectStatuses", {
+      await ctx.db.insert('projectStatuses', {
         organizationId: org._id,
         name: status.name,
         position: status.position,
@@ -1790,65 +1790,65 @@ export const invite = mutation({
   args: {
     orgSlug: v.string(),
     email: v.string(),
-    role: v.union(v.literal("member"), v.literal("admin")),
+    role: v.union(v.literal('member'), v.literal('admin')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user has permission to invite
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_INVITE_USERS");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_INVITE_USERS');
     }
 
     // Check if user already exists
     const existingUser = await ctx.db
-      .query("users")
-      .withIndex("email", (q) => q.eq("email", args.email))
+      .query('users')
+      .withIndex('email', q => q.eq('email', args.email))
       .first();
 
     if (existingUser) {
       // Check if user is already a member
       const existingMembership = await ctx.db
-        .query("members")
-        .withIndex("by_org_user", (q) =>
-          q.eq("organizationId", org._id).eq("userId", existingUser._id),
+        .query('members')
+        .withIndex('by_org_user', q =>
+          q.eq('organizationId', org._id).eq('userId', existingUser._id)
         )
         .first();
 
       if (existingMembership) {
-        throw new ConvexError("USER_ALREADY_MEMBER");
+        throw new ConvexError('USER_ALREADY_MEMBER');
       }
     }
 
     // Create invitation
-    const inviteId = await ctx.db.insert("invitations", {
+    const inviteId = await ctx.db.insert('invitations', {
       organizationId: org._id,
       email: args.email.toLowerCase(),
       role: args.role,
-      status: "pending",
+      status: 'pending',
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
       inviterId: userId,
     });
@@ -1868,8 +1868,8 @@ export const getOrgMember = query({
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
@@ -1877,9 +1877,9 @@ export const getOrgMember = query({
     }
 
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
@@ -1897,32 +1897,32 @@ export const generateLogoUploadUrl = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is owner or admin
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPLOAD_LOGO");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPLOAD_LOGO');
     }
 
     // Generate upload URL
@@ -1936,37 +1936,37 @@ export const generateLogoUploadUrl = mutation({
 export const updateLogoWithStorageId = mutation({
   args: {
     orgSlug: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.id('_storage'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is owner or admin
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (
       !membership ||
-      (membership.role !== "owner" && membership.role !== "admin")
+      (membership.role !== 'owner' && membership.role !== 'admin')
     ) {
-      throw new ConvexError("INSUFFICIENT_PERMISSIONS_UPDATE_LOGO");
+      throw new ConvexError('INSUFFICIENT_PERMISSIONS_UPDATE_LOGO');
     }
 
     // Update organization with storage ID
@@ -1988,8 +1988,8 @@ export const getLogoUrl = query({
   handler: async (ctx, args) => {
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org || !org.logo) {
@@ -2011,7 +2011,7 @@ export const getFileUrlByString = query({
   handler: async (ctx, args) => {
     try {
       // Convert string to storage ID
-      const storageId = args.storageIdString as Id<"_storage">;
+      const storageId = args.storageIdString as Id<'_storage'>;
       // Generate URL for the file
       return await ctx.storage.getUrl(storageId);
     } catch (error) {

@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 import {
   // Priority Icons
   ArrowUp,
@@ -72,7 +72,7 @@ import {
   Flame,
   Settings,
   type LucideIcon,
-} from "lucide-react";
+} from 'lucide-react';
 
 // Map of icon names to their components
 const ICON_MAP: Record<string, LucideIcon> = {

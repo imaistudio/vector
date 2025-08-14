@@ -1,5 +1,5 @@
-import { mutation } from "./_generated/server";
-import { createDefaultTeamRoles, createDefaultProjectRoles } from "./roles";
+import { mutation } from './_generated/server';
+import { createDefaultTeamRoles, createDefaultProjectRoles } from './roles';
 
 /**
  * Migration to create default roles for existing teams and projects.
@@ -7,27 +7,27 @@ import { createDefaultTeamRoles, createDefaultProjectRoles } from "./roles";
  */
 export const migrateDefaultRoles = mutation({
   args: {},
-  handler: async (ctx) => {
+  handler: async ctx => {
     // Get all existing teams that don't have roles yet
-    const teams = await ctx.db.query("teams").collect();
+    const teams = await ctx.db.query('teams').collect();
 
     for (const team of teams) {
       // Check if team already has roles
       const existingRoles = await ctx.db
-        .query("teamRoles")
-        .withIndex("by_team", (q) => q.eq("teamId", team._id))
+        .query('teamRoles')
+        .withIndex('by_team', q => q.eq('teamId', team._id))
         .collect();
 
       if (existingRoles.length === 0) {
         // Create default roles for this team
         const { leadRole, memberRole } = await createDefaultTeamRoles(
           ctx,
-          team._id,
+          team._id
         );
 
         // Assign the team lead to the Lead role if they exist
         if (team.leadId) {
-          await ctx.db.insert("teamRoleAssignments", {
+          await ctx.db.insert('teamRoleAssignments', {
             roleId: leadRole,
             userId: team.leadId,
             teamId: team._id,
@@ -37,7 +37,7 @@ export const migrateDefaultRoles = mutation({
 
         // Assign the team creator to the Lead role if they exist
         if (team.createdBy) {
-          await ctx.db.insert("teamRoleAssignments", {
+          await ctx.db.insert('teamRoleAssignments', {
             roleId: leadRole,
             userId: team.createdBy,
             teamId: team._id,
@@ -48,25 +48,25 @@ export const migrateDefaultRoles = mutation({
     }
 
     // Get all existing projects that don't have roles yet
-    const projects = await ctx.db.query("projects").collect();
+    const projects = await ctx.db.query('projects').collect();
 
     for (const project of projects) {
       // Check if project already has roles
       const existingRoles = await ctx.db
-        .query("projectRoles")
-        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .query('projectRoles')
+        .withIndex('by_project', q => q.eq('projectId', project._id))
         .collect();
 
       if (existingRoles.length === 0) {
         // Create default roles for this project
         const { leadRole, memberRole } = await createDefaultProjectRoles(
           ctx,
-          project._id,
+          project._id
         );
 
         // Assign the project lead to the Lead role if they exist
         if (project.leadId) {
-          await ctx.db.insert("projectRoleAssignments", {
+          await ctx.db.insert('projectRoleAssignments', {
             roleId: leadRole,
             userId: project.leadId,
             projectId: project._id,
@@ -76,7 +76,7 @@ export const migrateDefaultRoles = mutation({
 
         // Assign the project creator to the Lead role if they exist
         if (project.createdBy) {
-          await ctx.db.insert("projectRoleAssignments", {
+          await ctx.db.insert('projectRoleAssignments', {
             roleId: leadRole,
             userId: project.createdBy,
             projectId: project._id,
@@ -88,7 +88,7 @@ export const migrateDefaultRoles = mutation({
 
     return {
       success: true,
-      message: "Default roles created for existing teams and projects",
+      message: 'Default roles created for existing teams and projects',
     };
   },
 });
@@ -99,31 +99,31 @@ export const migrateDefaultRoles = mutation({
  */
 export const migrateTeamMembers = mutation({
   args: {},
-  handler: async (ctx) => {
+  handler: async ctx => {
     // Get all team members
-    const teamMembers = await ctx.db.query("teamMembers").collect();
+    const teamMembers = await ctx.db.query('teamMembers').collect();
 
     for (const member of teamMembers) {
       // Get the Member role for this team
       const memberRole = await ctx.db
-        .query("teamRoles")
-        .withIndex("by_team_name", (q) =>
-          q.eq("teamId", member.teamId).eq("name", "Member"),
+        .query('teamRoles')
+        .withIndex('by_team_name', q =>
+          q.eq('teamId', member.teamId).eq('name', 'Member')
         )
         .first();
 
       if (memberRole) {
         // Check if assignment already exists
         const existingAssignment = await ctx.db
-          .query("teamRoleAssignments")
-          .withIndex("by_role_user", (q) =>
-            q.eq("roleId", memberRole._id).eq("userId", member.userId),
+          .query('teamRoleAssignments')
+          .withIndex('by_role_user', q =>
+            q.eq('roleId', memberRole._id).eq('userId', member.userId)
           )
           .first();
 
         if (!existingAssignment) {
           // Assign the team member to the Member role
-          await ctx.db.insert("teamRoleAssignments", {
+          await ctx.db.insert('teamRoleAssignments', {
             roleId: memberRole._id,
             userId: member.userId,
             teamId: member.teamId,
@@ -135,7 +135,7 @@ export const migrateTeamMembers = mutation({
 
     return {
       success: true,
-      message: "Team members assigned to Member roles",
+      message: 'Team members assigned to Member roles',
     };
   },
 });
@@ -146,31 +146,31 @@ export const migrateTeamMembers = mutation({
  */
 export const migrateProjectMembers = mutation({
   args: {},
-  handler: async (ctx) => {
+  handler: async ctx => {
     // Get all project members
-    const projectMembers = await ctx.db.query("projectMembers").collect();
+    const projectMembers = await ctx.db.query('projectMembers').collect();
 
     for (const member of projectMembers) {
       // Get the Member role for this project
       const memberRole = await ctx.db
-        .query("projectRoles")
-        .withIndex("by_project_name", (q) =>
-          q.eq("projectId", member.projectId).eq("name", "Member"),
+        .query('projectRoles')
+        .withIndex('by_project_name', q =>
+          q.eq('projectId', member.projectId).eq('name', 'Member')
         )
         .first();
 
       if (memberRole) {
         // Check if assignment already exists
         const existingAssignment = await ctx.db
-          .query("projectRoleAssignments")
-          .withIndex("by_role_user", (q) =>
-            q.eq("roleId", memberRole._id).eq("userId", member.userId),
+          .query('projectRoleAssignments')
+          .withIndex('by_role_user', q =>
+            q.eq('roleId', memberRole._id).eq('userId', member.userId)
           )
           .first();
 
         if (!existingAssignment) {
           // Assign the project member to the Member role
-          await ctx.db.insert("projectRoleAssignments", {
+          await ctx.db.insert('projectRoleAssignments', {
             roleId: memberRole._id,
             userId: member.userId,
             projectId: member.projectId,
@@ -182,7 +182,7 @@ export const migrateProjectMembers = mutation({
 
     return {
       success: true,
-      message: "Project members assigned to Member roles",
+      message: 'Project members assigned to Member roles',
     };
   },
 });

@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { OrgRoleBadge } from "@/components/organization/role-badge";
-import { useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { cn } from "@/lib/utils";
+import { useState } from 'react';
+import { OrgRoleBadge } from '@/components/organization/role-badge';
+import { useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { cn } from '@/lib/utils';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover";
+} from '@/components/ui/popover';
 import {
   Command,
   CommandEmpty,
@@ -17,18 +17,18 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { Check } from "lucide-react";
-import { useRouter } from "next/navigation";
+} from '@/components/ui/command';
+import { Check } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Id } from '../../../convex/_generated/dataModel';
 
 const ROLE_OPTIONS = [
-  { value: "member", label: "Member" },
-  { value: "admin", label: "Admin" },
+  { value: 'member', label: 'Member' },
+  { value: 'admin', label: 'Admin' },
 ] as const;
 
-type RoleValue = (typeof ROLE_OPTIONS)[number]["value"];
+type RoleValue = (typeof ROLE_OPTIONS)[number]['value'];
 
 interface RoleSelectorProps {
   orgSlug: string;
@@ -57,13 +57,13 @@ export function RoleSelector({
       setIsLoading(true);
       await mutation({
         orgSlug,
-        userId: userId as Id<"users">,
+        userId: userId as Id<'users'>,
         role,
       });
       router.refresh();
       setOpen(false);
     } catch (error) {
-      console.error("Failed to update role:", error);
+      console.error('Failed to update role:', error);
     } finally {
       setIsLoading(false);
     }
@@ -74,18 +74,18 @@ export function RoleSelector({
       <PopoverTrigger asChild>
         <button
           disabled={disabled || isLoading}
-          className={cn("cursor-pointer", className)}
+          className={cn('cursor-pointer', className)}
         >
           <OrgRoleBadge role={currentRole} />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-48 p-0" align="start">
+      <PopoverContent className='w-48 p-0' align='start'>
         <Command>
-          <CommandInput placeholder="Search role..." className="h-9" />
+          <CommandInput placeholder='Search role...' className='h-9' />
           <CommandList>
             <CommandEmpty>No roles found.</CommandEmpty>
             <CommandGroup>
-              {ROLE_OPTIONS.map((opt) => (
+              {ROLE_OPTIONS.map(opt => (
                 <CommandItem
                   key={opt.value}
                   value={opt.label}
@@ -93,8 +93,8 @@ export function RoleSelector({
                 >
                   <Check
                     className={cn(
-                      "mr-2 h-4 w-4",
-                      currentRole === opt.value ? "opacity-100" : "opacity-0",
+                      'mr-2 h-4 w-4',
+                      currentRole === opt.value ? 'opacity-100' : 'opacity-0'
                     )}
                   />
                   {opt.label}

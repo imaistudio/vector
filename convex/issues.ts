@@ -1,8 +1,8 @@
-import { query, mutation } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
-import type { Id, Doc } from "./_generated/dataModel";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { requirePermission, PERMISSIONS } from "./permissions";
+import { query, mutation } from './_generated/server';
+import { v, ConvexError } from 'convex/values';
+import type { Id, Doc } from './_generated/dataModel';
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { requirePermission, PERMISSIONS } from './permissions';
 import {
   canViewIssue,
   canEditIssue,
@@ -10,7 +10,7 @@ import {
   canAssignIssue,
   canUpdateAssignmentState,
   canUpdateIssueRelations,
-} from "./access";
+} from './access';
 
 /**
  * Get issue by organization slug and issue key
@@ -23,43 +23,43 @@ export const getByKey = query({
   handler: async (ctx, args) => {
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Find issue by key within the organization
     const issue = await ctx.db
-      .query("issues")
-      .withIndex("by_key", (q) => q.eq("key", args.issueKey))
-      .filter((q) => q.eq(q.field("organizationId"), org._id))
+      .query('issues')
+      .withIndex('by_key', q => q.eq('key', args.issueKey))
+      .filter(q => q.eq(q.field('organizationId'), org._id))
       .first();
 
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can view this issue based on visibility
     if (!(await canViewIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get related data
     const project = issue.projectId ? await ctx.db.get(issue.projectId) : null;
     const assignees = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
       .collect();
 
     const assigneeUsers = await Promise.all(
-      assignees.map(async (assignee) => {
+      assignees.map(async assignee => {
         if (!assignee.assigneeId) return null;
         return await ctx.db.get(assignee.assigneeId);
-      }),
-    ).then((users) => users.filter(Boolean));
+      })
+    ).then(users => users.filter(Boolean));
 
     const createdByUser = issue.reporterId
       ? await ctx.db.get(issue.reporterId)
@@ -68,12 +68,42 @@ export const getByKey = query({
       ? await ctx.db.get(issue.priorityId)
       : null;
 
+    const childIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
+      .collect();
+
+    const children = await Promise.all(
+      childIssues.map(async child => {
+        const childPriority = child.priorityId
+          ? await ctx.db.get(child.priorityId)
+          : null;
+
+        // Get the first assignment to get a representative state
+        const firstAssignment = await ctx.db
+          .query('issueAssignees')
+          .withIndex('by_issue', q => q.eq('issueId', child._id))
+          .first();
+
+        const state = firstAssignment?.stateId
+          ? await ctx.db.get(firstAssignment.stateId)
+          : null;
+
+        return {
+          ...child,
+          priority: childPriority,
+          state,
+        };
+      })
+    );
+
     return {
       ...issue,
       project,
       assignees: assigneeUsers,
       createdBy: createdByUser,
       priority,
+      children,
     };
   },
 });
@@ -87,54 +117,71 @@ export const create = mutation({
     data: v.object({
       title: v.string(),
       description: v.optional(v.string()),
-      projectId: v.optional(v.id("projects")),
-      stateId: v.optional(v.id("issueStates")),
-      priorityId: v.optional(v.id("issuePriorities")),
-      assigneeIds: v.optional(v.array(v.id("users"))),
+      projectId: v.optional(v.id('projects')),
+      stateId: v.optional(v.id('issueStates')),
+      priorityId: v.optional(v.id('issuePriorities')),
+      assigneeIds: v.optional(v.array(v.id('users'))),
+      parentIssueId: v.optional(v.id('issues')),
       visibility: v.optional(
         v.union(
-          v.literal("private"),
-          v.literal("organization"),
-          v.literal("public"),
-        ),
+          v.literal('private'),
+          v.literal('organization'),
+          v.literal('public')
+        )
       ),
     }),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Check if user has permission to create issues
     await requirePermission(ctx, org._id, PERMISSIONS.ISSUE_CREATE);
+
+    let parentIssue: Doc<'issues'> | null = null;
+    if (args.data.parentIssueId) {
+      parentIssue = await ctx.db.get(args.data.parentIssueId);
+      if (!parentIssue) {
+        throw new ConvexError('PARENT_ISSUE_NOT_FOUND');
+      }
+      if (parentIssue.organizationId !== org._id) {
+        throw new ConvexError('PARENT_ISSUE_WRONG_ORG');
+      }
+      if (!(await canViewIssue(ctx, parentIssue))) {
+        throw new ConvexError('FORBIDDEN');
+      }
+    }
 
     // Handle project if provided
     let project = null;
     let issueKey: string;
     let nextNumber: number;
 
-    if (args.data.projectId) {
+    const projectId = args.data.projectId ?? parentIssue?.projectId;
+
+    if (projectId) {
       // Verify project exists and belongs to org
-      project = await ctx.db.get(args.data.projectId);
+      project = await ctx.db.get(projectId);
       if (!project || project.organizationId !== org._id) {
-        throw new ConvexError("PROJECT_NOT_FOUND");
+        throw new ConvexError('PROJECT_NOT_FOUND');
       }
 
       // Generate issue key - get next number for the project
       const existingIssues = await ctx.db
-        .query("issues")
-        .withIndex("by_project", (q) => q.eq("projectId", args.data.projectId))
+        .query('issues')
+        .withIndex('by_project', q => q.eq('projectId', projectId))
         .collect();
 
       nextNumber = existingIssues.length + 1;
@@ -142,8 +189,8 @@ export const create = mutation({
     } else {
       // Generate org-based issue key
       const existingIssues = await ctx.db
-        .query("issues")
-        .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+        .query('issues')
+        .withIndex('by_organization', q => q.eq('organizationId', org._id))
         .collect();
 
       nextNumber = existingIssues.length + 1;
@@ -154,52 +201,67 @@ export const create = mutation({
     if (args.data.assigneeIds && args.data.assigneeIds.length > 0) {
       for (const assigneeId of args.data.assigneeIds) {
         const assigneeMembership = await ctx.db
-          .query("members")
-          .withIndex("by_org_user", (q) =>
-            q.eq("organizationId", org._id).eq("userId", assigneeId),
+          .query('members')
+          .withIndex('by_org_user', q =>
+            q.eq('organizationId', org._id).eq('userId', assigneeId)
           )
           .first();
 
         if (!assigneeMembership) {
-          throw new ConvexError("INVALID_ASSIGNEE");
+          throw new ConvexError('INVALID_ASSIGNEE');
         }
       }
     }
 
     // Validate input
     if (!args.data.title.trim()) {
-      throw new ConvexError("INVALID_INPUT");
+      throw new ConvexError('INVALID_INPUT');
     }
     if (args.data.title.length > 200) {
-      throw new ConvexError("INVALID_INPUT");
+      throw new ConvexError('INVALID_INPUT');
     }
     if (args.data.description && args.data.description.length > 5000) {
-      throw new ConvexError("INVALID_INPUT");
+      throw new ConvexError('INVALID_INPUT');
     }
 
     // Create issue
-    const issueId = await ctx.db.insert("issues", {
+    const issueId = await ctx.db.insert('issues', {
       organizationId: org._id,
-      projectId: args.data.projectId,
+      projectId: projectId,
       key: issueKey,
       sequenceNumber: nextNumber,
       title: args.data.title.trim(),
       description: args.data.description?.trim(),
       priorityId: args.data.priorityId,
       reporterId: userId,
-      teamId: project?.teamId, // Use project's team if available
-      visibility: args.data.visibility || "organization", // Default to organization visibility
+      teamId: project?.teamId ?? parentIssue?.teamId, // Use project's team if available
+      visibility:
+        args.data.visibility ?? parentIssue?.visibility ?? 'organization', // Default to organization visibility
       createdBy: userId,
+      parentIssueId: args.data.parentIssueId,
     });
+
+    // Record activity for sub-issue creation
+    if (args.data.parentIssueId) {
+      await ctx.db.insert('issueActivities', {
+        issueId: args.data.parentIssueId,
+        actorId: userId,
+        type: 'sub_issue_created',
+        payload: {
+          subIssueId: issueId,
+          subIssueKey: issueKey,
+        },
+      });
+    }
 
     // Get the explicitly selected state, or fall back to the default "todo" state
     const assigneeStateId =
       args.data.stateId ||
       (
         await ctx.db
-          .query("issueStates")
-          .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
-          .filter((q) => q.eq(q.field("type"), "todo"))
+          .query('issueStates')
+          .withIndex('by_organization', q => q.eq('organizationId', org._id))
+          .filter(q => q.eq(q.field('type'), 'todo'))
           .first()
       )?._id;
 
@@ -207,7 +269,7 @@ export const create = mutation({
       if (args.data.assigneeIds && args.data.assigneeIds.length > 0) {
         // Create an assignment for each selected assignee
         for (const assigneeId of args.data.assigneeIds) {
-          await ctx.db.insert("issueAssignees", {
+          await ctx.db.insert('issueAssignees', {
             issueId,
             assigneeId,
             stateId: assigneeStateId,
@@ -215,7 +277,7 @@ export const create = mutation({
         }
       } else {
         // No assignee chosen – create an "unassigned" entry so the issue still has a default state
-        await ctx.db.insert("issueAssignees", {
+        await ctx.db.insert('issueAssignees', {
           issueId,
           assigneeId: undefined, // nullable field supports "unassigned"
           stateId: assigneeStateId,
@@ -232,21 +294,39 @@ export const create = mutation({
  */
 export const update = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     data: v.object({
       title: v.optional(v.string()),
       description: v.optional(v.string()),
-      priorityId: v.optional(v.id("issuePriorities")),
+      priorityId: v.optional(v.id('issuePriorities')),
+      parentIssueId: v.optional(v.id('issues')),
     }),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    if (args.data.parentIssueId) {
+      if (!(await canUpdateIssueRelations(ctx, issue))) {
+        throw new ConvexError('FORBIDDEN');
+      }
+      const parentIssue = await ctx.db.get(args.data.parentIssueId);
+      if (!parentIssue) {
+        throw new ConvexError('PARENT_ISSUE_NOT_FOUND');
+      }
+      if (parentIssue.organizationId !== issue.organizationId) {
+        throw new ConvexError('PARENT_ISSUE_WRONG_ORG');
+      }
+      // Simple cycle check
+      if (parentIssue._id === issue._id) {
+        throw new ConvexError('CYCLICAL_DEPENDENCY');
+      }
     }
 
     // Update issue - only update provided fields
@@ -263,36 +343,37 @@ export const list = query({
   args: {
     orgSlug: v.string(),
     projectKey: v.optional(v.string()),
-    stateId: v.optional(v.id("issueStates")),
-    assigneeId: v.optional(v.id("users")),
+    stateId: v.optional(v.id('issueStates')),
+    assigneeId: v.optional(v.id('users')),
     limit: v.optional(v.number()),
+    parentIssueId: v.optional(v.union(v.id('issues'), v.literal('root'))),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Find organization
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Verify user is a member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", org._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId)
       )
       .first();
 
     if (!membership) {
-      throw new ConvexError("ACCESS_DENIED");
+      throw new ConvexError('ACCESS_DENIED');
     }
 
     let issues;
@@ -301,45 +382,55 @@ export const list = query({
       const projectKey = args.projectKey;
       // Find project first
       const project = await ctx.db
-        .query("projects")
-        .withIndex("by_org_key", (q) =>
-          q.eq("organizationId", org._id).eq("key", projectKey),
+        .query('projects')
+        .withIndex('by_org_key', q =>
+          q.eq('organizationId', org._id).eq('key', projectKey)
         )
         .first();
 
       if (!project) {
-        throw new ConvexError("PROJECT_NOT_FOUND");
+        throw new ConvexError('PROJECT_NOT_FOUND');
       }
 
       // Get issues for specific project
       issues = await ctx.db
-        .query("issues")
-        .withIndex("by_project", (q) => q.eq("projectId", project._id))
+        .query('issues')
+        .withIndex('by_project', q => q.eq('projectId', project._id))
         .collect();
     } else {
       // Get all issues in organization
       issues = await ctx.db
-        .query("issues")
-        .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+        .query('issues')
+        .withIndex('by_organization', q => q.eq('organizationId', org._id))
         .collect();
     }
 
     // Apply filters
     // NOTE: Issue state is stored per-assignee; global state filter not supported yet
 
+    if (args.parentIssueId) {
+      if (args.parentIssueId === 'root') {
+        issues = issues.filter(issue => !issue.parentIssueId);
+      } else {
+        issues = issues.filter(
+          issue => issue.parentIssueId === args.parentIssueId
+        );
+      }
+    }
+
     if (args.assigneeId) {
       // Filter by assignee - need to check issueAssignees table
       const assigneeIssueIds = new Set();
       const assignments = await ctx.db
-        .query("issueAssignees")
-        .withIndex("by_assignee", (q) => q.eq("assigneeId", args.assigneeId))
+        .query('issueAssignees')
+        .withIndex('by_assignee', q => q.eq('assigneeId', args.assigneeId))
         .collect();
 
-      assignments.forEach((assignment) => {
+      assignments.forEach(assignment => {
         assigneeIssueIds.add(assignment.issueId);
       });
 
-      issues = issues.filter((issue) => assigneeIssueIds.has(issue._id));
+      issues = issues.filter(issue => assigneeIssueIds.has(issue._id));
     }
 
     // Apply limit
@@ -348,32 +439,28 @@ export const list = query({
     }
 
     // Filter issues based on visibility permissions
-    const issuePromises = issues.map(async (issue) => {
+    const issuePromises = issues.map(async issue => {
       const canView = await canViewIssue(ctx, issue);
       return canView ? issue : null;
     });
     const visibleIssues = (await Promise.all(issuePromises)).filter(
-      (issue): issue is Doc<"issues"> => issue !== null,
+      (issue): issue is Doc<'issues'> => issue !== null
     );
 
     // Batch database calls for better performance
     const projectIds = visibleIssues
-      .map((i) => i.projectId)
-      .filter(Boolean) as Id<"projects">[];
+      .map(i => i.projectId)
+      .filter(Boolean) as Id<'projects'>[];
     const priorityIds = visibleIssues
-      .map((i) => i.priorityId)
-      .filter(Boolean) as Id<"issuePriorities">[];
+      .map(i => i.priorityId)
+      .filter(Boolean) as Id<'issuePriorities'>[];
     const reporterIds = visibleIssues
-      .map((i) => i.reporterId)
-      .filter(Boolean) as Id<"users">[];
+      .map(i => i.reporterId)
+      .filter(Boolean) as Id<'users'>[];
 
-    const projects = await Promise.all(projectIds.map((id) => ctx.db.get(id)));
-    const priorities = await Promise.all(
-      priorityIds.map((id) => ctx.db.get(id)),
-    );
-    const reporters = await Promise.all(
-      reporterIds.map((id) => ctx.db.get(id)),
-    );
+    const projects = await Promise.all(projectIds.map(id => ctx.db.get(id)));
+    const priorities = await Promise.all(priorityIds.map(id => ctx.db.get(id)));
+    const reporters = await Promise.all(reporterIds.map(id => ctx.db.get(id)));
 
     const projectMap = new Map();
     projectIds.forEach((id, i) => {
@@ -392,19 +479,19 @@ export const list = query({
 
     // Get all assignees for all issues - need to query individually since index doesn't support inArray
     const allAssignments = await Promise.all(
-      visibleIssues.map((issue) =>
+      visibleIssues.map(issue =>
         ctx.db
-          .query("issueAssignees")
-          .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
-          .collect(),
-      ),
-    ).then((results) => results.flat());
+          .query('issueAssignees')
+          .withIndex('by_issue', q => q.eq('issueId', issue._id))
+          .collect()
+      )
+    ).then(results => results.flat());
 
     const assigneeIds = allAssignments
-      .map((a) => a.assigneeId)
-      .filter(Boolean) as Id<"users">[];
+      .map(a => a.assigneeId)
+      .filter(Boolean) as Id<'users'>[];
     const assigneeUsers = await Promise.all(
-      assigneeIds.map((id) => ctx.db.get(id)),
+      assigneeIds.map(id => ctx.db.get(id))
     );
     const assigneeMap = new Map();
     assigneeIds.forEach((id, i) => {
@@ -412,7 +499,7 @@ export const list = query({
     });
 
     // Group assignments by issue
-    const assignmentsByIssue = new Map<Id<"issues">, typeof allAssignments>();
+    const assignmentsByIssue = new Map<Id<'issues'>, typeof allAssignments>();
     for (const assignment of allAssignments) {
       if (!assignmentsByIssue.has(assignment.issueId)) {
         assignmentsByIssue.set(assignment.issueId, []);
@@ -421,7 +508,7 @@ export const list = query({
     }
 
     // Combine results
-    const issuesWithDetails = visibleIssues.map((issue) => {
+    const issuesWithDetails = visibleIssues.map(issue => {
       const project = issue.projectId ? projectMap.get(issue.projectId) : null;
       const priority = issue.priorityId
         ? priorityMap.get(issue.priorityId)
@@ -433,7 +520,7 @@ export const list = query({
       // Get assignees for this issue
       const issueAssignments = assignmentsByIssue.get(issue._id) ?? [];
       const assigneeUsers = issueAssignments
-        .map((assignment) => {
+        .map(assignment => {
           if (!assignment.assigneeId) return null;
           return assigneeMap.get(assignment.assigneeId);
         })
@@ -458,27 +545,27 @@ export const list = query({
  */
 export const addComment = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     body: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Verify user can view issue to comment
     if (!(await canViewIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Create comment
-    const commentId = await ctx.db.insert("comments", {
+    const commentId = await ctx.db.insert('comments', {
       issueId: issue._id,
       authorId: userId,
       body: args.body,
@@ -494,34 +581,34 @@ export const addComment = mutation({
  */
 export const listComments = query({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can view this issue
     if (!(await canViewIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get comments
     const comments = await ctx.db
-      .query("comments")
-      .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
+      .query('comments')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
       .collect();
 
     // Get author details for each comment
     const commentsWithAuthors = await Promise.all(
-      comments.map(async (comment) => {
+      comments.map(async comment => {
         const author = await ctx.db.get(comment.authorId);
         return {
           ...comment,
           author,
         };
-      }),
+      })
     );
 
     return commentsWithAuthors;
@@ -533,24 +620,34 @@ export const listComments = query({
  */
 export const deleteIssue = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can delete this issue
     if (!(await canDeleteIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    // Check for child issues
+    const children = await ctx.db
+      .query('issues')
+      .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
+      .first();
+
+    if (children) {
+      throw new ConvexError('HAS_CHILD_ISSUES');
     }
 
     // Delete related data first
     // Delete assignees
     const assignees = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
       .collect();
 
     for (const assignee of assignees) {
@@ -559,8 +656,8 @@ export const deleteIssue = mutation({
 
     // Delete comments
     const comments = await ctx.db
-      .query("comments")
-      .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
+      .query('comments')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
       .collect();
 
     for (const comment of comments) {
@@ -579,43 +676,41 @@ export const deleteIssue = mutation({
  */
 export const getAssignments = query({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
   },
   handler: async (ctx, args) => {
     // Get the issue to check permissions
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can view this issue
     if (!(await canViewIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get all assignments for this issue
     const assignments = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue", (q) => q.eq("issueId", args.issueId))
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', args.issueId))
       .collect();
 
     // Get assignee details
     const assigneeIds = assignments
-      .map((a) => a.assigneeId)
-      .filter((id): id is Id<"users"> => Boolean(id));
-    const assignees = await Promise.all(
-      assigneeIds.map((id) => ctx.db.get(id)),
-    );
+      .map(a => a.assigneeId)
+      .filter((id): id is Id<'users'> => Boolean(id));
+    const assignees = await Promise.all(assigneeIds.map(id => ctx.db.get(id)));
     const assigneeMap = new Map(assigneeIds.map((id, i) => [id, assignees[i]]));
 
     // Get state details
     const stateIds = assignments
-      .map((a) => a.stateId)
-      .filter((id): id is Id<"issueStates"> => Boolean(id));
-    const states = await Promise.all(stateIds.map((id) => ctx.db.get(id)));
+      .map(a => a.stateId)
+      .filter((id): id is Id<'issueStates'> => Boolean(id));
+    const states = await Promise.all(stateIds.map(id => ctx.db.get(id)));
     const stateMap = new Map(stateIds.map((id, i) => [id, states[i]]));
 
-    return assignments.map((assignment) => ({
+    return assignments.map(assignment => ({
       ...assignment,
       assignee: assignment.assigneeId
         ? assigneeMap.get(assignment.assigneeId)
@@ -630,54 +725,54 @@ export const getAssignments = query({
  */
 export const addAssignee = mutation({
   args: {
-    issueId: v.id("issues"),
-    assigneeId: v.id("users"),
-    stateId: v.optional(v.id("issueStates")),
+    issueId: v.id('issues'),
+    assigneeId: v.id('users'),
+    stateId: v.optional(v.id('issueStates')),
   },
   handler: async (ctx, args) => {
     // Get the issue to check permissions
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can assign users to this issue
     if (!(await canAssignIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Check if already assigned
     const existingAssignment = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue_assignee", (q) =>
-        q.eq("issueId", args.issueId).eq("assigneeId", args.assigneeId),
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', args.issueId).eq('assigneeId', args.assigneeId)
       )
       .first();
 
     if (existingAssignment) {
-      throw new ConvexError("USER_ALREADY_ASSIGNED");
+      throw new ConvexError('USER_ALREADY_ASSIGNED');
     }
 
     // Get default state if not provided
     let stateId = args.stateId;
     if (!stateId) {
       const defaultState = await ctx.db
-        .query("issueStates")
-        .withIndex("by_organization", (q) =>
-          q.eq("organizationId", issue.organizationId),
+        .query('issueStates')
+        .withIndex('by_organization', q =>
+          q.eq('organizationId', issue.organizationId)
         )
-        .order("asc")
+        .order('asc')
         .first();
 
       if (!defaultState) {
-        throw new ConvexError("NO_ISSUE_STATES_FOUND");
+        throw new ConvexError('NO_ISSUE_STATES_FOUND');
       }
 
       stateId = defaultState._id;
     }
 
     // Add assignment
-    const assignmentId = await ctx.db.insert("issueAssignees", {
+    const assignmentId = await ctx.db.insert('issueAssignees', {
       issueId: args.issueId,
       assigneeId: args.assigneeId,
       stateId,
@@ -692,25 +787,25 @@ export const addAssignee = mutation({
  */
 export const changeAssignmentState = mutation({
   args: {
-    assignmentId: v.id("issueAssignees"),
-    stateId: v.id("issueStates"),
+    assignmentId: v.id('issueAssignees'),
+    stateId: v.id('issueStates'),
   },
   handler: async (ctx, args) => {
     // Get the assignment
     const assignment = await ctx.db.get(args.assignmentId);
     if (!assignment || !assignment.assigneeId) {
-      throw new ConvexError("ASSIGNMENT_NOT_FOUND");
+      throw new ConvexError('ASSIGNMENT_NOT_FOUND');
     }
 
     // Get the issue to check permissions
     const issue = await ctx.db.get(assignment.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can update this assignment state
     if (!(await canUpdateAssignmentState(ctx, issue, assignment.assigneeId))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Update assignment state
@@ -727,37 +822,37 @@ export const changeAssignmentState = mutation({
  */
 export const updateAssignmentAssignee = mutation({
   args: {
-    assignmentId: v.id("issueAssignees"),
-    assigneeId: v.id("users"),
+    assignmentId: v.id('issueAssignees'),
+    assigneeId: v.id('users'),
   },
   handler: async (ctx, args) => {
     // Get the assignment
     const assignment = await ctx.db.get(args.assignmentId);
     if (!assignment) {
-      throw new ConvexError("ASSIGNMENT_NOT_FOUND");
+      throw new ConvexError('ASSIGNMENT_NOT_FOUND');
     }
 
     // Get the issue to check permissions
     const issue = await ctx.db.get(assignment.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can assign users to this issue
     if (!(await canAssignIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Check if the new assignee is already assigned to this issue
     const existingAssignment = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue_assignee", (q) =>
-        q.eq("issueId", assignment.issueId).eq("assigneeId", args.assigneeId),
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', assignment.issueId).eq('assigneeId', args.assigneeId)
       )
       .first();
 
     if (existingAssignment && existingAssignment._id !== args.assignmentId) {
-      throw new ConvexError("USER_ALREADY_ASSIGNED");
+      throw new ConvexError('USER_ALREADY_ASSIGNED');
     }
 
     // Update assignment assignee
@@ -774,23 +869,23 @@ export const updateAssignmentAssignee = mutation({
  */
 export const deleteAssignment = mutation({
   args: {
-    assignmentId: v.id("issueAssignees"),
+    assignmentId: v.id('issueAssignees'),
   },
   handler: async (ctx, args) => {
     const assignment = await ctx.db.get(args.assignmentId);
     if (!assignment) {
-      throw new ConvexError("ASSIGNMENT_NOT_FOUND");
+      throw new ConvexError('ASSIGNMENT_NOT_FOUND');
     }
 
     // Get the issue to check permissions
     const issue = await ctx.db.get(assignment.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     // Check if user can assign users to this issue
     if (!(await canAssignIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Delete assignment
@@ -802,30 +897,30 @@ export const deleteAssignment = mutation({
 
 export const changePriority = mutation({
   args: {
-    issueId: v.id("issues"),
-    priorityId: v.id("issuePriorities"),
+    issueId: v.id('issues'),
+    priorityId: v.id('issuePriorities'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, { priorityId: args.priorityId });
 
-    await ctx.db.insert("activities", {
+    await ctx.db.insert('activities', {
       issueId: args.issueId,
       actorId: userId,
-      type: "priority_changed",
+      type: 'priority_changed',
       payload: { priorityId: args.priorityId },
     });
   },
@@ -833,27 +928,27 @@ export const changePriority = mutation({
 
 export const updateAssignees = mutation({
   args: {
-    issueId: v.id("issues"),
-    assigneeIds: v.array(v.id("users")),
+    issueId: v.id('issues'),
+    assigneeIds: v.array(v.id('users')),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canAssignIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     // Get existing assignments
     const existingAssignments = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue", (q) => q.eq("issueId", args.issueId))
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', args.issueId))
       .collect();
 
     // Determine the state to use for new assignments
-    let stateId: Id<"issueStates">;
+    let stateId: Id<'issueStates'>;
 
     if (existingAssignments.length > 0) {
       // Use the state from existing assignments
@@ -861,15 +956,15 @@ export const updateAssignees = mutation({
     } else {
       // Get default state from organization
       const defaultState = await ctx.db
-        .query("issueStates")
-        .withIndex("by_organization", (q) =>
-          q.eq("organizationId", issue.organizationId),
+        .query('issueStates')
+        .withIndex('by_organization', q =>
+          q.eq('organizationId', issue.organizationId)
         )
-        .order("asc")
+        .order('asc')
         .first();
 
       if (!defaultState) {
-        throw new ConvexError("NO_ISSUE_STATES_FOUND");
+        throw new ConvexError('NO_ISSUE_STATES_FOUND');
       }
 
       stateId = defaultState._id;
@@ -882,7 +977,7 @@ export const updateAssignees = mutation({
 
     // Add new assignments
     for (const assigneeId of args.assigneeIds) {
-      await ctx.db.insert("issueAssignees", {
+      await ctx.db.insert('issueAssignees', {
         issueId: args.issueId,
         assigneeId,
         stateId,
@@ -893,17 +988,17 @@ export const updateAssignees = mutation({
 
 export const changeTeam = mutation({
   args: {
-    issueId: v.id("issues"),
-    teamId: v.union(v.id("teams"), v.null()),
+    issueId: v.id('issues'),
+    teamId: v.union(v.id('teams'), v.null()),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canUpdateIssueRelations(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, { teamId: args.teamId ?? undefined });
@@ -912,17 +1007,17 @@ export const changeTeam = mutation({
 
 export const changeProject = mutation({
   args: {
-    issueId: v.id("issues"),
-    projectId: v.union(v.id("projects"), v.null()),
+    issueId: v.id('issues'),
+    projectId: v.union(v.id('projects'), v.null()),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canUpdateIssueRelations(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, {
@@ -933,30 +1028,30 @@ export const changeProject = mutation({
 
 export const updateTitle = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     title: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, { title: args.title });
 
-    await ctx.db.insert("activities", {
+    await ctx.db.insert('activities', {
       issueId: args.issueId,
       actorId: userId,
-      type: "title_changed",
+      type: 'title_changed',
       payload: { title: args.title },
     });
   },
@@ -964,64 +1059,64 @@ export const updateTitle = mutation({
 
 export const updateDescription = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     description: v.union(v.string(), v.null()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, {
       description: args.description ?? undefined,
     });
 
-    await ctx.db.insert("activities", {
+    await ctx.db.insert('activities', {
       issueId: args.issueId,
       actorId: userId,
-      type: "description_changed",
+      type: 'description_changed',
     });
   },
 });
 
 export const updateEstimatedTimes = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     estimatedTimes: v.optional(v.record(v.string(), v.number())),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const issue = await ctx.db.get(args.issueId);
     if (!issue) {
-      throw new ConvexError("ISSUE_NOT_FOUND");
+      throw new ConvexError('ISSUE_NOT_FOUND');
     }
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, {
       estimatedTimes: args.estimatedTimes ?? undefined,
     });
 
-    await ctx.db.insert("activities", {
+    await ctx.db.insert('activities', {
       issueId: args.issueId,
       actorId: userId,
-      type: "estimated_times_changed",
+      type: 'estimated_times_changed',
       payload: { estimatedTimes: args.estimatedTimes },
     });
   },
@@ -1036,51 +1131,51 @@ export const listIssues = query({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     let issuesQuery = ctx.db
-      .query("issues")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id));
+      .query('issues')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id));
 
     if (args.projectId) {
       const project = await ctx.db
-        .query("projects")
-        .withIndex("by_org_key", (q) =>
-          q.eq("organizationId", org._id).eq("key", args.projectId!),
+        .query('projects')
+        .withIndex('by_org_key', q =>
+          q.eq('organizationId', org._id).eq('key', args.projectId!)
         )
         .first();
       if (project) {
-        issuesQuery = issuesQuery.filter((q) =>
-          q.eq(q.field("projectId"), project._id),
+        issuesQuery = issuesQuery.filter(q =>
+          q.eq(q.field('projectId'), project._id)
         );
       }
     }
 
     if (args.teamId) {
       const team = await ctx.db
-        .query("teams")
-        .withIndex("by_org_key", (q) =>
-          q.eq("organizationId", org._id).eq("key", args.teamId!),
+        .query('teams')
+        .withIndex('by_org_key', q =>
+          q.eq('organizationId', org._id).eq('key', args.teamId!)
         )
         .first();
       if (team) {
-        issuesQuery = issuesQuery.filter((q) =>
-          q.eq(q.field("teamId"), team._id),
+        issuesQuery = issuesQuery.filter(q =>
+          q.eq(q.field('teamId'), team._id)
         );
       }
     }
 
-    const allIssues = await issuesQuery.order("desc").collect();
+    const allIssues = await issuesQuery.order('desc').collect();
 
     // Filter issues based on visibility permissions
     const visibleIssues = [];
@@ -1092,7 +1187,7 @@ export const listIssues = query({
     }
 
     const issuesWithDetails = await Promise.all(
-      visibleIssues.map(async (issue) => {
+      visibleIssues.map(async issue => {
         const priority = issue.priorityId
           ? await ctx.db.get(issue.priorityId)
           : null;
@@ -1104,13 +1199,17 @@ export const listIssues = query({
           ? await ctx.db.get(issue.reporterId)
           : null;
 
+        const parentIssue = issue.parentIssueId
+          ? await ctx.db.get(issue.parentIssueId)
+          : null;
+
         const assignments = await ctx.db
-          .query("issueAssignees")
-          .withIndex("by_issue", (q) => q.eq("issueId", issue._id))
+          .query('issueAssignees')
+          .withIndex('by_issue', q => q.eq('issueId', issue._id))
           .collect();
 
         const assignees = await Promise.all(
-          assignments.map(async (assignment) => {
+          assignments.map(async assignment => {
             const assignee = assignment.assigneeId
               ? await ctx.db.get(assignment.assigneeId)
               : null;
@@ -1128,7 +1227,7 @@ export const listIssues = query({
               stateColor: state?.color,
               stateType: state?.type,
             };
-          }),
+          })
         );
 
         return {
@@ -1142,12 +1241,13 @@ export const listIssues = query({
           projectKey: project?.key,
           teamKey: team?.key,
           reporterName: reporter?.name,
+          parentIssueKey: parentIssue?.key,
           assignments:
             assignees.length > 0
               ? assignees
               : [
                   {
-                    assignmentId: "unassigned",
+                    assignmentId: 'unassigned',
                     assigneeId: undefined,
                     assigneeName: null,
                     assigneeEmail: null,
@@ -1159,19 +1259,19 @@ export const listIssues = query({
                   },
                 ], // Ensure at least one empty assignment for structure
         };
-      }),
+      })
     );
 
-    const flattenedIssues = issuesWithDetails.flatMap((issue) =>
-      issue.assignments.map((assignment) => ({
+    const flattenedIssues = issuesWithDetails.flatMap(issue =>
+      issue.assignments.map(assignment => ({
         ...issue,
         ...assignment,
-      })),
+      }))
     );
 
     const allStates = await ctx.db
-      .query("issueStates")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('issueStates')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
     const counts = allStates.reduce(
@@ -1179,16 +1279,16 @@ export const listIssues = query({
         acc[state.type] = 0;
         return acc;
       },
-      {} as Record<string, number>,
+      {} as Record<string, number>
     );
     let total = 0;
 
-    issuesWithDetails.forEach((issue) => {
+    issuesWithDetails.forEach(issue => {
       total++;
       const uniqueStates = new Set(
-        issue.assignments.map((a) => a.stateType).filter(Boolean),
+        issue.assignments.map(a => a.stateType).filter(Boolean)
       );
-      uniqueStates.forEach((stateType) => {
+      uniqueStates.forEach(stateType => {
         if (stateType) {
           counts[stateType] = (counts[stateType] || 0) + 1;
         }
@@ -1196,7 +1296,7 @@ export const listIssues = query({
     });
 
     return {
-      issues: flattenedIssues.filter((issue) => issue.id !== "unassigned"), // Filter out empty assignments
+      issues: flattenedIssues.filter(issue => issue.id !== 'unassigned'), // Filter out empty assignments
       total,
       counts,
     };
@@ -1205,19 +1305,19 @@ export const listIssues = query({
 
 export const changeVisibility = mutation({
   args: {
-    issueId: v.id("issues"),
+    issueId: v.id('issues'),
     visibility: v.union(
-      v.literal("private"),
-      v.literal("organization"),
-      v.literal("public"),
+      v.literal('private'),
+      v.literal('organization'),
+      v.literal('public')
     ),
   },
   handler: async (ctx, args) => {
     const issue = await ctx.db.get(args.issueId);
-    if (!issue) throw new ConvexError("ISSUE_NOT_FOUND");
+    if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
 
     if (!(await canEditIssue(ctx, issue))) {
-      throw new ConvexError("FORBIDDEN");
+      throw new ConvexError('FORBIDDEN');
     }
 
     await ctx.db.patch(args.issueId, {

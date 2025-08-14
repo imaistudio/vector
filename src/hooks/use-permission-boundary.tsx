@@ -1,8 +1,8 @@
-"use client";
-import React from "react";
-import { useRouter } from "next/navigation";
-import { usePermission } from "./use-permissions";
-import type { Permission } from "@/convex/_shared/permissions";
+'use client';
+import React from 'react';
+import { useRouter } from 'next/navigation';
+import { usePermission } from './use-permissions';
+import type { Permission } from '@/convex/_shared/permissions';
 
 /**
  * Hook that enforces a permission requirement by redirecting to 403 if denied.
@@ -15,7 +15,7 @@ export function useRequirePermission(orgSlug: string, permission: Permission) {
   React.useEffect(() => {
     if (!isLoading && !hasPermission) {
       // Redirect to 403 page using Next.js router
-      router.push("/403");
+      router.push('/403');
     }
   }, [hasPermission, isLoading, router]);
 
@@ -45,15 +45,15 @@ export function PermissionBoundary({
   React.useEffect(() => {
     if (!isLoading && !hasPermission) {
       // Redirect to 403 page using Next.js router
-      router.push("/403");
+      router.push('/403');
     }
   }, [hasPermission, isLoading, router]);
 
   if (isLoading) {
     return (
       loadingComponent || (
-        <div className="flex h-screen w-full items-center justify-center">
-          <div className="text-2xl font-semibold">Loading...</div>
+        <div className='flex h-screen w-full items-center justify-center'>
+          <div className='text-2xl font-semibold'>Loading...</div>
         </div>
       )
     );

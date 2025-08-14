@@ -3,11 +3,11 @@ import {
   query,
   type QueryCtx,
   type MutationCtx,
-} from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { v, ConvexError } from "convex/values";
-import { Id, Doc } from "./_generated/dataModel";
-import { PERMISSIONS, requirePermission } from "./permissions";
+} from './_generated/server';
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { v, ConvexError } from 'convex/values';
+import { Id, Doc } from './_generated/dataModel';
+import { PERMISSIONS, requirePermission } from './permissions';
 
 // -----------------------------------------------------------------------------
 // Default Role Creation
@@ -18,13 +18,13 @@ import { PERMISSIONS, requirePermission } from "./permissions";
  */
 export async function createDefaultTeamRoles(
   ctx: MutationCtx,
-  teamId: Id<"teams">,
+  teamId: Id<'teams'>
 ) {
   // Create Lead role
-  const leadRole = await ctx.db.insert("teamRoles", {
+  const leadRole = await ctx.db.insert('teamRoles', {
     teamId,
-    name: "Lead",
-    description: "Team lead with full team management permissions",
+    name: 'Lead',
+    description: 'Team lead with full team management permissions',
     system: true,
   });
 
@@ -32,17 +32,17 @@ export async function createDefaultTeamRoles(
   const leadPermissions = [PERMISSIONS.TEAM_ALL, PERMISSIONS.ISSUE_ALL];
 
   for (const permission of leadPermissions) {
-    await ctx.db.insert("teamRolePermissions", {
+    await ctx.db.insert('teamRolePermissions', {
       roleId: leadRole,
       permission,
     });
   }
 
   // Create Member role
-  const memberRole = await ctx.db.insert("teamRoles", {
+  const memberRole = await ctx.db.insert('teamRoles', {
     teamId,
-    name: "Member",
-    description: "Basic team member with limited permissions",
+    name: 'Member',
+    description: 'Basic team member with limited permissions',
     system: true,
   });
 
@@ -56,7 +56,7 @@ export async function createDefaultTeamRoles(
   ];
 
   for (const permission of memberPermissions) {
-    await ctx.db.insert("teamRolePermissions", {
+    await ctx.db.insert('teamRolePermissions', {
       roleId: memberRole,
       permission,
     });
@@ -70,13 +70,13 @@ export async function createDefaultTeamRoles(
  */
 export async function createDefaultProjectRoles(
   ctx: MutationCtx,
-  projectId: Id<"projects">,
+  projectId: Id<'projects'>
 ) {
   // Create Lead role
-  const leadRole = await ctx.db.insert("projectRoles", {
+  const leadRole = await ctx.db.insert('projectRoles', {
     projectId,
-    name: "Lead",
-    description: "Project lead with full project management permissions",
+    name: 'Lead',
+    description: 'Project lead with full project management permissions',
     system: true,
   });
 
@@ -84,17 +84,17 @@ export async function createDefaultProjectRoles(
   const leadPermissions = [PERMISSIONS.PROJECT_ALL, PERMISSIONS.ISSUE_ALL];
 
   for (const permission of leadPermissions) {
-    await ctx.db.insert("projectRolePermissions", {
+    await ctx.db.insert('projectRolePermissions', {
       roleId: leadRole,
       permission,
     });
   }
 
   // Create Member role
-  const memberRole = await ctx.db.insert("projectRoles", {
+  const memberRole = await ctx.db.insert('projectRoles', {
     projectId,
-    name: "Member",
-    description: "Basic project member with limited permissions",
+    name: 'Member',
+    description: 'Basic project member with limited permissions',
     system: true,
   });
 
@@ -108,7 +108,7 @@ export async function createDefaultProjectRoles(
   ];
 
   for (const permission of memberPermissions) {
-    await ctx.db.insert("projectRolePermissions", {
+    await ctx.db.insert('projectRolePermissions', {
       roleId: memberRole,
       permission,
     });
@@ -126,16 +126,14 @@ export async function createDefaultProjectRoles(
  */
 export async function assignTeamRole(
   ctx: MutationCtx,
-  teamId: Id<"teams">,
-  userId: Id<"users">,
-  roleId: Id<"teamRoles">,
+  teamId: Id<'teams'>,
+  userId: Id<'users'>,
+  roleId: Id<'teamRoles'>
 ) {
   // Check if assignment already exists
   const existing = await ctx.db
-    .query("teamRoleAssignments")
-    .withIndex("by_role_user", (q) =>
-      q.eq("roleId", roleId).eq("userId", userId),
-    )
+    .query('teamRoleAssignments')
+    .withIndex('by_role_user', q => q.eq('roleId', roleId).eq('userId', userId))
     .first();
 
   if (existing) {
@@ -143,7 +141,7 @@ export async function assignTeamRole(
   }
 
   // Create new assignment
-  return await ctx.db.insert("teamRoleAssignments", {
+  return await ctx.db.insert('teamRoleAssignments', {
     roleId,
     userId,
     teamId,
@@ -156,16 +154,14 @@ export async function assignTeamRole(
  */
 export async function assignProjectRole(
   ctx: MutationCtx,
-  projectId: Id<"projects">,
-  userId: Id<"users">,
-  roleId: Id<"projectRoles">,
+  projectId: Id<'projects'>,
+  userId: Id<'users'>,
+  roleId: Id<'projectRoles'>
 ) {
   // Check if assignment already exists
   const existing = await ctx.db
-    .query("projectRoleAssignments")
-    .withIndex("by_role_user", (q) =>
-      q.eq("roleId", roleId).eq("userId", userId),
-    )
+    .query('projectRoleAssignments')
+    .withIndex('by_role_user', q => q.eq('roleId', roleId).eq('userId', userId))
     .first();
 
   if (existing) {
@@ -173,7 +169,7 @@ export async function assignProjectRole(
   }
 
   // Create new assignment
-  return await ctx.db.insert("projectRoleAssignments", {
+  return await ctx.db.insert('projectRoleAssignments', {
     roleId,
     userId,
     projectId,
@@ -190,7 +186,7 @@ export async function assignProjectRole(
  */
 export const createTeamRole = mutation({
   args: {
-    teamId: v.id("teams"),
+    teamId: v.id('teams'),
     name: v.string(),
     description: v.optional(v.string()),
     permissions: v.array(v.string()),
@@ -198,20 +194,20 @@ export const createTeamRole = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     // Get team to check organization
     const team = await ctx.db.get(args.teamId);
     if (!team) {
-      throw new ConvexError("Team not found");
+      throw new ConvexError('Team not found');
     }
 
     // Check if user can manage team roles
     await requirePermission(ctx, team.organizationId, PERMISSIONS.TEAM_EDIT);
 
     // Create the role
-    const roleId = await ctx.db.insert("teamRoles", {
+    const roleId = await ctx.db.insert('teamRoles', {
       teamId: args.teamId,
       name: args.name,
       description: args.description,
@@ -220,7 +216,7 @@ export const createTeamRole = mutation({
 
     // Add permissions
     for (const permission of args.permissions) {
-      await ctx.db.insert("teamRolePermissions", {
+      await ctx.db.insert('teamRolePermissions', {
         roleId,
         permission,
       });
@@ -235,7 +231,7 @@ export const createTeamRole = mutation({
  */
 export const createProjectRole = mutation({
   args: {
-    projectId: v.id("projects"),
+    projectId: v.id('projects'),
     name: v.string(),
     description: v.optional(v.string()),
     permissions: v.array(v.string()),
@@ -243,24 +239,24 @@ export const createProjectRole = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     // Get project to check organization
     const project = await ctx.db.get(args.projectId);
     if (!project) {
-      throw new ConvexError("Project not found");
+      throw new ConvexError('Project not found');
     }
 
     // Check if user can manage project roles
     await requirePermission(
       ctx,
       project.organizationId,
-      PERMISSIONS.PROJECT_EDIT,
+      PERMISSIONS.PROJECT_EDIT
     );
 
     // Create the role
-    const roleId = await ctx.db.insert("projectRoles", {
+    const roleId = await ctx.db.insert('projectRoles', {
       projectId: args.projectId,
       name: args.name,
       description: args.description,
@@ -269,7 +265,7 @@ export const createProjectRole = mutation({
 
     // Add permissions
     for (const permission of args.permissions) {
-      await ctx.db.insert("projectRolePermissions", {
+      await ctx.db.insert('projectRolePermissions', {
         roleId,
         permission,
       });
@@ -284,27 +280,27 @@ export const createProjectRole = mutation({
  */
 export const assignUserToTeamRole = mutation({
   args: {
-    teamId: v.id("teams"),
-    userId: v.id("users"),
-    roleId: v.id("teamRoles"),
+    teamId: v.id('teams'),
+    userId: v.id('users'),
+    roleId: v.id('teamRoles'),
   },
   handler: async (ctx, args) => {
     const currentUserId = await getAuthUserId(ctx);
     if (!currentUserId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     // Get team to check organization
     const team = await ctx.db.get(args.teamId);
     if (!team) {
-      throw new ConvexError("Team not found");
+      throw new ConvexError('Team not found');
     }
 
     // Check if user can manage team members
     await requirePermission(
       ctx,
       team.organizationId,
-      PERMISSIONS.TEAM_MEMBER_ADD,
+      PERMISSIONS.TEAM_MEMBER_ADD
     );
 
     return await assignTeamRole(ctx, args.teamId, args.userId, args.roleId);
@@ -316,34 +312,34 @@ export const assignUserToTeamRole = mutation({
  */
 export const assignUserToProjectRole = mutation({
   args: {
-    projectId: v.id("projects"),
-    userId: v.id("users"),
-    roleId: v.id("projectRoles"),
+    projectId: v.id('projects'),
+    userId: v.id('users'),
+    roleId: v.id('projectRoles'),
   },
   handler: async (ctx, args) => {
     const currentUserId = await getAuthUserId(ctx);
     if (!currentUserId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     // Get project to check organization
     const project = await ctx.db.get(args.projectId);
     if (!project) {
-      throw new ConvexError("Project not found");
+      throw new ConvexError('Project not found');
     }
 
     // Check if user can manage project members
     await requirePermission(
       ctx,
       project.organizationId,
-      PERMISSIONS.PROJECT_MEMBER_ADD,
+      PERMISSIONS.PROJECT_MEMBER_ADD
     );
 
     return await assignProjectRole(
       ctx,
       args.projectId,
       args.userId,
-      args.roleId,
+      args.roleId
     );
   },
 });
@@ -357,7 +353,7 @@ export const assignUserToProjectRole = mutation({
  */
 export const getTeamRoles = query({
   args: {
-    teamId: v.id("teams"),
+    teamId: v.id('teams'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -366,8 +362,8 @@ export const getTeamRoles = query({
     }
 
     return await ctx.db
-      .query("teamRoles")
-      .withIndex("by_team", (q) => q.eq("teamId", args.teamId))
+      .query('teamRoles')
+      .withIndex('by_team', q => q.eq('teamId', args.teamId))
       .collect();
   },
 });
@@ -377,7 +373,7 @@ export const getTeamRoles = query({
  */
 export const getProjectRoles = query({
   args: {
-    projectId: v.id("projects"),
+    projectId: v.id('projects'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -386,8 +382,8 @@ export const getProjectRoles = query({
     }
 
     return await ctx.db
-      .query("projectRoles")
-      .withIndex("by_project", (q) => q.eq("projectId", args.projectId))
+      .query('projectRoles')
+      .withIndex('by_project', q => q.eq('projectId', args.projectId))
       .collect();
   },
 });
@@ -405,8 +401,8 @@ export const list = query({
   },
   handler: async (ctx, args) => {
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
@@ -415,8 +411,8 @@ export const list = query({
 
     // Anyone who can view the org can see its roles, so we don't do an explicit permission check here.
     return await ctx.db
-      .query("orgRoles")
-      .withIndex("by_organization", (q) => q.eq("organizationId", org._id))
+      .query('orgRoles')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
   },
 });
@@ -434,22 +430,22 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Ensure user can manage roles
     await requirePermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
 
-    const roleId = await ctx.db.insert("orgRoles", {
+    const roleId = await ctx.db.insert('orgRoles', {
       organizationId: org._id,
       name: args.name,
       description: args.description,
@@ -458,7 +454,7 @@ export const create = mutation({
 
     // Store permissions
     for (const permission of args.permissions) {
-      await ctx.db.insert("orgRolePermissions", {
+      await ctx.db.insert('orgRolePermissions', {
         roleId,
         permission,
       });
@@ -474,22 +470,22 @@ export const create = mutation({
 export const assign = mutation({
   args: {
     orgSlug: v.string(),
-    roleId: v.id("orgRoles"),
-    userId: v.id("users"),
+    roleId: v.id('orgRoles'),
+    userId: v.id('users'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     // Ensure user can manage org roles / members
@@ -497,9 +493,9 @@ export const assign = mutation({
 
     // Prevent duplicate assignment
     const existing = await ctx.db
-      .query("orgRoleAssignments")
-      .withIndex("by_role_user", (q) =>
-        q.eq("roleId", args.roleId).eq("userId", args.userId),
+      .query('orgRoleAssignments')
+      .withIndex('by_role_user', q =>
+        q.eq('roleId', args.roleId).eq('userId', args.userId)
       )
       .first();
 
@@ -507,7 +503,7 @@ export const assign = mutation({
       return existing._id;
     }
 
-    return await ctx.db.insert("orgRoleAssignments", {
+    return await ctx.db.insert('orgRoleAssignments', {
       roleId: args.roleId,
       userId: args.userId,
       organizationId: org._id,
@@ -522,30 +518,30 @@ export const assign = mutation({
 export const removeAssignment = mutation({
   args: {
     orgSlug: v.string(),
-    roleId: v.id("orgRoles"),
-    userId: v.id("users"),
+    roleId: v.id('orgRoles'),
+    userId: v.id('users'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     await requirePermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
 
     const assignment = await ctx.db
-      .query("orgRoleAssignments")
-      .withIndex("by_role_user", (q) =>
-        q.eq("roleId", args.roleId).eq("userId", args.userId),
+      .query('orgRoleAssignments')
+      .withIndex('by_role_user', q =>
+        q.eq('roleId', args.roleId).eq('userId', args.userId)
       )
       .first();
 
@@ -561,28 +557,28 @@ export const removeAssignment = mutation({
 export const get = query({
   args: {
     orgSlug: v.string(),
-    roleId: v.id("orgRoles"),
+    roleId: v.id('orgRoles'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     await requirePermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
 
     const role = await ctx.db.get(args.roleId);
     if (!role || role.organizationId !== org._id) {
-      throw new ConvexError("ROLE_NOT_FOUND");
+      throw new ConvexError('ROLE_NOT_FOUND');
     }
 
     return role;
@@ -594,7 +590,7 @@ export const get = query({
  */
 export const getPermissions = query({
   args: {
-    roleId: v.id("orgRoles"),
+    roleId: v.id('orgRoles'),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -605,8 +601,8 @@ export const getPermissions = query({
     // You might want to add a permission check here to ensure the user can view role permissions
 
     return await ctx.db
-      .query("orgRolePermissions")
-      .withIndex("by_role", (q) => q.eq("roleId", args.roleId))
+      .query('orgRolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', args.roleId))
       .collect();
   },
 });
@@ -617,7 +613,7 @@ export const getPermissions = query({
 export const update = mutation({
   args: {
     orgSlug: v.string(),
-    roleId: v.id("orgRoles"),
+    roleId: v.id('orgRoles'),
     name: v.string(),
     description: v.optional(v.string()),
     permissions: v.array(v.string()),
@@ -625,23 +621,23 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
-      throw new ConvexError("Unauthorized");
+      throw new ConvexError('Unauthorized');
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
-      throw new ConvexError("ORGANIZATION_NOT_FOUND");
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
     await requirePermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
 
     const role = await ctx.db.get(args.roleId);
     if (!role || role.organizationId !== org._id) {
-      throw new ConvexError("ROLE_NOT_FOUND");
+      throw new ConvexError('ROLE_NOT_FOUND');
     }
 
     // Update role metadata
@@ -652,8 +648,8 @@ export const update = mutation({
 
     // Replace permissions: remove old, add new
     const existingPerms = await ctx.db
-      .query("orgRolePermissions")
-      .withIndex("by_role", (q) => q.eq("roleId", role._id))
+      .query('orgRolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', role._id))
       .collect();
 
     for (const perm of existingPerms) {
@@ -661,7 +657,7 @@ export const update = mutation({
     }
 
     for (const permission of args.permissions) {
-      await ctx.db.insert("orgRolePermissions", {
+      await ctx.db.insert('orgRolePermissions', {
         roleId: role._id,
         permission,
       });

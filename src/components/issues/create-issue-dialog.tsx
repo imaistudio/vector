@@ -1,24 +1,24 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "@/lib/convex";
-import { PermissionAwareButton } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useState, useEffect, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '@/lib/convex';
+import { PermissionAwareButton } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 import {
   Building2,
   Users,
@@ -26,12 +26,12 @@ import {
   Check,
   MoreHorizontal,
   Plus,
-} from "lucide-react";
-import { Textarea } from "../ui/textarea";
-import { cn } from "@/lib/utils";
-import { Id } from "@/convex/_generated/dataModel";
-import { withIds } from "@/lib/convex-helpers";
-import { toast } from "sonner";
+} from 'lucide-react';
+import { Textarea } from '../ui/textarea';
+import { cn } from '@/lib/utils';
+import { Id } from '@/convex/_generated/dataModel';
+import { withIds } from '@/lib/convex-helpers';
+import { toast } from 'sonner';
 
 // Extracted selector components
 import {
@@ -40,15 +40,16 @@ import {
   StateSelector,
   PrioritySelector,
   AssigneeSelector,
+  IssueSelector,
   type Team,
   type Project,
   type State,
   type Priority,
-} from "./issue-selectors";
+} from './issue-selectors';
 import {
   VisibilitySelector,
   type VisibilityState,
-} from "@/components/ui/visibility-selector";
+} from '@/components/ui/visibility-selector';
 
 // Types with id field added by withIds transformation
 type TeamWithId = Team & { id: string };
@@ -62,8 +63,8 @@ type PriorityWithId = Priority & { id: string };
 
 // Key Format Selector Component
 interface KeyFormatSelectorProps {
-  manualFormatOverride: "team" | "project" | "org" | null;
-  setManualFormatOverride: (value: "team" | "project" | "org" | null) => void;
+  manualFormatOverride: 'team' | 'project' | 'org' | null;
+  setManualFormatOverride: (value: 'team' | 'project' | 'org' | null) => void;
   preview: string;
 }
 
@@ -73,27 +74,27 @@ function KeyFormatSelector({
   preview,
 }: KeyFormatSelectorProps) {
   return (
-    <div className="flex items-center gap-2">
+    <div className='flex items-center gap-2'>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="ghost"
-            size="sm"
-            className="hover:bg-muted/50 h-6 w-6 rounded-md p-0"
+            variant='ghost'
+            size='sm'
+            className='hover:bg-muted/50 h-6 w-6 rounded-md p-0'
           >
-            <MoreHorizontal className="text-muted-foreground h-3 w-3" />
+            <MoreHorizontal className='text-muted-foreground h-3 w-3' />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52 p-1">
+        <DropdownMenuContent align='end' className='w-52 p-1'>
           <DropdownMenuItem
             onClick={() => setManualFormatOverride(null)}
-            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
+            className='cursor-pointer rounded-sm px-3 py-2 text-sm'
           >
-            <span className="flex w-full items-center justify-between">
-              <span className="flex items-center gap-2">
-                <div className="flex h-4 w-4 items-center justify-center">
+            <span className='flex w-full items-center justify-between'>
+              <span className='flex items-center gap-2'>
+                <div className='flex h-4 w-4 items-center justify-center'>
                   {!manualFormatOverride && (
-                    <Check className="text-primary h-3 w-3" />
+                    <Check className='text-primary h-3 w-3' />
                   )}
                 </div>
                 Auto-detect format
@@ -101,16 +102,16 @@ function KeyFormatSelector({
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setManualFormatOverride("org")}
-            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
+            onClick={() => setManualFormatOverride('org')}
+            className='cursor-pointer rounded-sm px-3 py-2 text-sm'
           >
-            <span className="flex w-full items-center justify-between">
-              <span className="flex items-center gap-2">
-                <div className="flex h-4 w-4 items-center justify-center">
-                  {manualFormatOverride === "org" ? (
-                    <Check className="text-primary h-3 w-3" />
+            <span className='flex w-full items-center justify-between'>
+              <span className='flex items-center gap-2'>
+                <div className='flex h-4 w-4 items-center justify-center'>
+                  {manualFormatOverride === 'org' ? (
+                    <Check className='text-primary h-3 w-3' />
                   ) : (
-                    <Building2 className="text-muted-foreground h-3 w-3" />
+                    <Building2 className='text-muted-foreground h-3 w-3' />
                   )}
                 </div>
                 Org format
@@ -118,16 +119,16 @@ function KeyFormatSelector({
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setManualFormatOverride("team")}
-            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
+            onClick={() => setManualFormatOverride('team')}
+            className='cursor-pointer rounded-sm px-3 py-2 text-sm'
           >
-            <span className="flex w-full items-center justify-between">
-              <span className="flex items-center gap-2">
-                <div className="flex h-4 w-4 items-center justify-center">
-                  {manualFormatOverride === "team" ? (
-                    <Check className="text-primary h-3 w-3" />
+            <span className='flex w-full items-center justify-between'>
+              <span className='flex items-center gap-2'>
+                <div className='flex h-4 w-4 items-center justify-center'>
+                  {manualFormatOverride === 'team' ? (
+                    <Check className='text-primary h-3 w-3' />
                   ) : (
-                    <Users className="text-muted-foreground h-3 w-3" />
+                    <Users className='text-muted-foreground h-3 w-3' />
                   )}
                 </div>
                 Team format
@@ -135,16 +136,16 @@ function KeyFormatSelector({
             </span>
           </DropdownMenuItem>
           <DropdownMenuItem
-            onClick={() => setManualFormatOverride("project")}
-            className="cursor-pointer rounded-sm px-3 py-2 text-sm"
+            onClick={() => setManualFormatOverride('project')}
+            className='cursor-pointer rounded-sm px-3 py-2 text-sm'
           >
-            <span className="flex w-full items-center justify-between">
-              <span className="flex items-center gap-2">
-                <div className="flex h-4 w-4 items-center justify-center">
-                  {manualFormatOverride === "project" ? (
-                    <Check className="text-primary h-3 w-3" />
+            <span className='flex w-full items-center justify-between'>
+              <span className='flex items-center gap-2'>
+                <div className='flex h-4 w-4 items-center justify-center'>
+                  {manualFormatOverride === 'project' ? (
+                    <Check className='text-primary h-3 w-3' />
                   ) : (
-                    <FolderOpen className="text-muted-foreground h-3 w-3" />
+                    <FolderOpen className='text-muted-foreground h-3 w-3' />
                   )}
                 </div>
                 Project format
@@ -154,12 +155,12 @@ function KeyFormatSelector({
         </DropdownMenuContent>
       </DropdownMenu>
       {manualFormatOverride && (
-        <span className="flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400">
-          <div className="h-1 w-1 rounded-full bg-orange-500" />
+        <span className='flex items-center gap-1 text-xs text-orange-600 dark:text-orange-400'>
+          <div className='h-1 w-1 rounded-full bg-orange-500' />
           forced
         </span>
       )}
-      <code className="bg-muted flex h-8 items-center overflow-hidden rounded-md px-2.5 font-mono text-sm">
+      <code className='bg-muted flex h-8 items-center overflow-hidden rounded-md px-2.5 font-mono text-sm'>
         {preview}
       </code>
     </div>
@@ -186,29 +187,30 @@ function CreateIssueDialogContent({
   onSuccess,
   defaultStates,
 }: CreateIssueDialogContentProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<string>(
-    defaultStates?.teamId || "",
+    defaultStates?.teamId || ''
   );
   const [selectedProject, setSelectedProject] = useState<string>(
-    defaultStates?.projectId || "",
+    defaultStates?.projectId || ''
   );
   const [selectedState, setSelectedState] = useState<string>(
-    defaultStates?.stateId || "",
+    defaultStates?.stateId || ''
   );
   const [selectedAssignees, setSelectedAssignees] = useState<string[]>(
-    defaultStates?.assigneeIds || [],
+    defaultStates?.assigneeIds || []
   );
   const [hasUserInteractedWithAssignees, setHasUserInteractedWithAssignees] =
     useState(false);
   const [selectedPriority, setSelectedPriority] = useState<string>(
-    defaultStates?.priorityId || "",
+    defaultStates?.priorityId || ''
   );
   const [selectedVisibility, setSelectedVisibility] =
-    useState<VisibilityState>("organization");
+    useState<VisibilityState>('organization');
+  const [selectedParentIssue, setSelectedParentIssue] = useState<string>('');
   const [manualFormatOverride, setManualFormatOverride] = useState<
-    "team" | "project" | "org" | null
+    'team' | 'project' | 'org' | null
   >(null);
 
   // ---------------------------------------------
@@ -229,19 +231,19 @@ function CreateIssueDialogContent({
   const projects = projectsData ? withIds(projectsData) : [];
   const states = useMemo(
     () => (statesData ? withIds(statesData) : []),
-    [statesData],
+    [statesData]
   );
   const members = useMemo(
     () => (membersData ? withIds(membersData) : []),
-    [membersData],
+    [membersData]
   );
   const priorities = useMemo(
     () => (prioritiesData ? withIds(prioritiesData) : []),
-    [prioritiesData],
+    [prioritiesData]
   );
 
   // Auto-infer the format based on selections
-  const getEffectiveFormat = (): "team" | "project" | "org" => {
+  const getEffectiveFormat = (): 'team' | 'project' | 'org' => {
     // Manual override takes precedence
     if (manualFormatOverride) {
       return manualFormatOverride;
@@ -249,12 +251,12 @@ function CreateIssueDialogContent({
 
     // Auto-infer: Project > Team > Org
     if (selectedProject) {
-      return "project";
+      return 'project';
     }
     if (selectedTeam) {
-      return "team";
+      return 'team';
     }
-    return "org";
+    return 'org';
   };
 
   const effectiveFormat = getEffectiveFormat();
@@ -263,7 +265,7 @@ function CreateIssueDialogContent({
   useEffect(() => {
     if (states.length > 0 && !selectedState) {
       const defaultState =
-        states.find((state: StateWithId) => state.type === "todo") || states[0];
+        states.find((state: StateWithId) => state.type === 'todo') || states[0];
       setSelectedState(defaultState.id);
     }
   }, [states, selectedState]);
@@ -311,12 +313,12 @@ function CreateIssueDialogContent({
     if (!title.trim()) return;
 
     // Validate required selections based on effective format
-    if (effectiveFormat === "team" && !selectedTeam) {
-      alert("Please select a team for team-based issue keys");
+    if (effectiveFormat === 'team' && !selectedTeam) {
+      alert('Please select a team for team-based issue keys');
       return;
     }
-    if (effectiveFormat === "project" && !selectedProject) {
-      alert("Please select a project for project-based issue keys");
+    if (effectiveFormat === 'project' && !selectedProject) {
+      alert('Please select a project for project-based issue keys');
       return;
     }
 
@@ -327,40 +329,44 @@ function CreateIssueDialogContent({
         title,
         description,
         projectId: selectedProject
-          ? (selectedProject as Id<"projects">)
+          ? (selectedProject as Id<'projects'>)
           : undefined,
         stateId: selectedState
-          ? (selectedState as Id<"issueStates">)
+          ? (selectedState as Id<'issueStates'>)
           : undefined,
         priorityId: selectedPriority
-          ? (selectedPriority as Id<"issuePriorities">)
+          ? (selectedPriority as Id<'issuePriorities'>)
           : undefined,
         assigneeIds:
           selectedAssignees.length > 0
-            ? selectedAssignees.map((id) => id as Id<"users">)
+            ? selectedAssignees.map(id => id as Id<'users'>)
             : [],
         visibility: selectedVisibility,
+        parentIssueId: selectedParentIssue
+          ? (selectedParentIssue as Id<'issues'>)
+          : undefined,
       },
     })
-      .then((result) => {
+      .then(result => {
         toast.success(`Issue ${result.key} created`);
         onSuccess?.(result.issueId);
         onClose();
 
         // Reset form
-        setTitle("");
-        setDescription("");
-        setSelectedTeam("");
-        setSelectedProject("");
-        setSelectedState("");
-        setSelectedPriority("");
+        setTitle('');
+        setDescription('');
+        setSelectedTeam('');
+        setSelectedProject('');
+        setSelectedState('');
+        setSelectedPriority('');
         setSelectedAssignees([]);
         setHasUserInteractedWithAssignees(false);
-        setSelectedVisibility("organization");
+        setSelectedVisibility('organization');
+        setSelectedParentIssue('');
         setManualFormatOverride(null);
       })
       .catch(() => {
-        toast.error("Failed to create issue");
+        toast.error('Failed to create issue');
       })
       .finally(() => {
         setIsLoading(false);
@@ -371,28 +377,28 @@ function CreateIssueDialogContent({
     const nextNumber = 1; // Placeholder for preview
 
     // Show different examples based on manual override
-    if (manualFormatOverride === "team") {
+    if (manualFormatOverride === 'team') {
       const team = teams.find((t: TeamWithId) => t.id === selectedTeam);
       return team ? `${team.key}-${nextNumber}` : `TEAM-${nextNumber}`;
     }
-    if (manualFormatOverride === "project") {
+    if (manualFormatOverride === 'project') {
       const project = projects.find(
-        (p: ProjectWithId) => p.id === selectedProject,
+        (p: ProjectWithId) => p.id === selectedProject
       );
       return project ? `${project.key}-${nextNumber}` : `PROJ-${nextNumber}`;
     }
-    if (manualFormatOverride === "org") {
+    if (manualFormatOverride === 'org') {
       return `${orgSlug.toUpperCase()}-${nextNumber}`;
     }
 
     // Auto-detect logic (original behavior)
-    if (effectiveFormat === "team" && selectedTeam) {
+    if (effectiveFormat === 'team' && selectedTeam) {
       const team = teams.find((t: TeamWithId) => t.id === selectedTeam);
       return team ? `${team.key}-${nextNumber}` : `TEAM-${nextNumber}`;
     }
-    if (effectiveFormat === "project" && selectedProject) {
+    if (effectiveFormat === 'project' && selectedProject) {
       const project = projects.find(
-        (p: ProjectWithId) => p.id === selectedProject,
+        (p: ProjectWithId) => p.id === selectedProject
       );
       return project ? `${project.key}-${nextNumber}` : `PROJ-${nextNumber}`;
     }
@@ -402,17 +408,17 @@ function CreateIssueDialogContent({
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent showCloseButton={false} className="gap-2 p-2 sm:max-w-2xl">
-        <DialogHeader className="">
-          <DialogTitle className="flex items-center">
-            <div className="text-muted-foreground flex w-full items-center gap-2 text-sm">
+      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
+        <DialogHeader className=''>
+          <DialogTitle className='flex items-center'>
+            <div className='text-muted-foreground flex w-full items-center gap-2 text-sm'>
               {/* Properties Row */}
-              <div className="flex flex-wrap gap-2">
+              <div className='flex flex-wrap gap-2'>
                 <TeamSelector
                   teams={teams}
                   selectedTeam={selectedTeam}
                   onTeamSelect={setSelectedTeam}
-                  displayMode="iconWhenUnselected"
+                  displayMode='iconWhenUnselected'
                 />
 
                 <AssigneeSelector
@@ -420,8 +426,8 @@ function CreateIssueDialogContent({
                   selectedAssignees={selectedAssignees}
                   onAssigneesSelect={handleAssigneesChange}
                   multiple={true}
-                  displayMode="iconWhenUnselected"
-                  currentUserId={currentUser?._id || ""}
+                  displayMode='iconWhenUnselected'
+                  currentUserId={currentUser?._id || ''}
                   canManageAll={true}
                 />
 
@@ -430,9 +436,16 @@ function CreateIssueDialogContent({
                   selectedProject={selectedProject}
                   onProjectSelect={setSelectedProject}
                 />
+
+                <IssueSelector
+                  orgSlug={orgSlug}
+                  selectedIssue={selectedParentIssue}
+                  onIssueSelect={setSelectedParentIssue}
+                  displayMode='iconWhenUnselected'
+                />
               </div>
 
-              <div className="ml-auto flex items-center gap-2">
+              <div className='ml-auto flex items-center gap-2'>
                 <StateSelector
                   states={states}
                   selectedState={selectedState}
@@ -448,24 +461,24 @@ function CreateIssueDialogContent({
                 <VisibilitySelector
                   value={selectedVisibility}
                   onValueChange={setSelectedVisibility}
-                  displayMode="iconOnly"
+                  displayMode='iconOnly'
                 />
               </div>
             </div>
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-2">
+        <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Title and Issue Key Preview */}
-          <div className="flex items-center gap-2">
+          <div className='flex items-center gap-2'>
             <Input
-              placeholder="Issue title"
+              placeholder='Issue title'
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="flex-grow text-base"
+              onChange={e => setTitle(e.target.value)}
+              className='flex-grow text-base'
               autoFocus
             />
-            <div className="flex-shrink-0">
+            <div className='flex-shrink-0'>
               <KeyFormatSelector
                 manualFormatOverride={manualFormatOverride}
                 setManualFormatOverride={setManualFormatOverride}
@@ -476,28 +489,28 @@ function CreateIssueDialogContent({
 
           {/* Description */}
           <Textarea
-            placeholder="Add description..."
+            placeholder='Add description...'
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+            onChange={e => setDescription(e.target.value)}
+            className='border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
           />
         </form>
 
-        <div className="flex w-full flex-row items-center justify-between gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button variant='ghost' size='sm' onClick={onClose}>
             Cancel
           </Button>
           <Button
-            size="sm"
+            size='sm'
             disabled={
               !title.trim() ||
               isLoading ||
-              (effectiveFormat === "team" && !selectedTeam) ||
-              (effectiveFormat === "project" && !selectedProject)
+              (effectiveFormat === 'team' && !selectedTeam) ||
+              (effectiveFormat === 'project' && !selectedProject)
             }
             onClick={handleSubmit}
           >
-            {isLoading ? "Creating…" : "Create issue"}
+            {isLoading ? 'Creating…' : 'Create issue'}
           </Button>
         </div>
       </DialogContent>
@@ -515,7 +528,7 @@ export interface CreateIssueDialogProps {
   /** Optional callback fired after the issue is successfully created */
   onIssueCreated?: () => void;
   /** Visual style of trigger button */
-  variant?: "default" | "floating";
+  variant?: 'default' | 'floating';
   /** Additional classes for the trigger button */
   className?: string;
   /** Object for default values for selectors */
@@ -532,7 +545,7 @@ export interface CreateIssueDialogProps {
 export function CreateIssueDialog({
   orgSlug,
   onIssueCreated,
-  variant = "default",
+  variant = 'default',
   className,
   defaultStates,
 }: CreateIssueDialogProps) {
@@ -544,31 +557,31 @@ export function CreateIssueDialog({
   };
 
   const trigger =
-    variant === "floating" ? (
+    variant === 'floating' ? (
       <PermissionAwareButton
         orgSlug={orgSlug}
         permission={PERMISSIONS.ISSUE_CREATE}
         onClick={() => setIsDialogOpen(true)}
         className={cn(
-          "h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl",
-          className,
+          'h-12 w-12 rounded-full bg-blue-600 text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl',
+          className
         )}
-        size="icon"
+        size='icon'
         fallbackMessage="You don't have permission to create issues"
       >
-        <Plus className="h-5 w-5" />
+        <Plus className='h-5 w-5' />
       </PermissionAwareButton>
     ) : (
       <PermissionAwareButton
         orgSlug={orgSlug}
         permission={PERMISSIONS.ISSUE_CREATE}
-        size="sm"
+        size='sm'
         onClick={() => setIsDialogOpen(true)}
-        className={cn("gap-1 text-xs", className)}
-        variant="outline"
+        className={cn('gap-1 text-xs', className)}
+        variant='outline'
         fallbackMessage="You don't have permission to create issues"
       >
-        <Plus className="size-3" />
+        <Plus className='size-3' />
       </PermissionAwareButton>
     );
 

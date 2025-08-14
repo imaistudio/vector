@@ -29,14 +29,14 @@ This phase implemented Convex Auth with password provider to replace Better-Auth
 **Auth Configuration (`convex/auth.config.js`):**
 
 ```javascript
-import { defineAuth } from "@convex-dev/auth/server";
-import { ConvexAuth } from "@convex-dev/auth";
+import { defineAuth } from '@convex-dev/auth/server';
+import { ConvexAuth } from '@convex-dev/auth';
 
 export default defineAuth({
   providers: [
     ConvexAuth({
-      domain: "localhost:3000",
-      applicationID: "convex",
+      domain: 'localhost:3000',
+      applicationID: 'convex',
     }),
   ],
 });

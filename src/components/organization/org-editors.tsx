@@ -1,21 +1,21 @@
-"use client";
+'use client';
 
-import { useState, useEffect, useRef } from "react";
-import { useMutation, useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Edit, Check, X, Loader2, AlertCircle } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { useState, useEffect, useRef } from 'react';
+import { useMutation, useQuery } from 'convex/react';
+import { api } from '@/lib/convex';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Edit, Check, X, Loader2, AlertCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 // Get the current origin from the browser
 const getUrlOrigin = () => {
-  if (typeof window !== "undefined") {
+  if (typeof window !== 'undefined') {
     return window.location.origin;
   }
-  return "localhost:3000"; // fallback for SSR
+  return 'localhost:3000'; // fallback for SSR
 };
 
 interface EditorProps {
@@ -46,7 +46,7 @@ export function OrgNameEditor({ orgSlug, initialValue }: EditorProps) {
 
   const save = async () => {
     if (!value.trim()) {
-      setError("Organization name cannot be empty");
+      setError('Organization name cannot be empty');
       return;
     }
 
@@ -63,7 +63,7 @@ export function OrgNameEditor({ orgSlug, initialValue }: EditorProps) {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to update organization name";
+          : 'Failed to update organization name';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -77,84 +77,84 @@ export function OrgNameEditor({ orgSlug, initialValue }: EditorProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === 'Enter') {
       e.preventDefault();
       save();
-    } else if (e.key === "Escape") {
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       cancel();
     }
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className='flex items-center gap-2'>
       {editing ? (
         <>
-          <div className="flex-1">
+          <div className='flex-1'>
             <Input
               ref={inputRef}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={e => setValue(e.target.value)}
               onKeyDown={handleKeyDown}
               className={cn(
-                "h-9",
-                error && "border-red-500 focus-visible:ring-red-500",
+                'h-9',
+                error && 'border-red-500 focus-visible:ring-red-500'
               )}
             />
             {error && (
-              <div className="mt-1 flex items-center gap-1 text-xs text-red-600">
-                <AlertCircle className="h-3 w-3" />
+              <div className='mt-1 flex items-center gap-1 text-xs text-red-600'>
+                <AlertCircle className='h-3 w-3' />
                 {error}
               </div>
             )}
           </div>
           <Button
-            size="sm"
+            size='sm'
             onClick={save}
             disabled={isLoading}
-            className="h-9 w-9 p-0"
+            className='h-9 w-9 p-0'
           >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className='h-4 w-4 animate-spin' />
             ) : (
-              <Check className="h-4 w-4" />
+              <Check className='h-4 w-4' />
             )}
           </Button>
           <Button
-            size="sm"
-            variant="ghost"
+            size='sm'
+            variant='ghost'
             onClick={cancel}
             disabled={
               !value.trim() || isLoading || value.trim() === initialValue
             }
-            className="h-9 w-9 p-0"
+            className='h-9 w-9 p-0'
           >
             {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className='h-4 w-4 animate-spin' />
             ) : (
-              <X className="h-4 w-4" />
+              <X className='h-4 w-4' />
             )}
           </Button>
           <Button
-            size="sm"
-            variant="ghost"
+            size='sm'
+            variant='ghost'
             onClick={cancel}
             disabled={isLoading}
-            className="h-9 w-9 p-0"
+            className='h-9 w-9 p-0'
           >
-            <X className="h-4 w-4" />
+            <X className='h-4 w-4' />
           </Button>
         </>
       ) : (
         <>
-          <span className="flex-1 font-medium">{initialValue}</span>
+          <span className='flex-1 font-medium'>{initialValue}</span>
           <Button
-            size="sm"
-            variant="ghost"
+            size='sm'
+            variant='ghost'
             onClick={() => setEditing(true)}
-            className="h-9 w-9 p-0"
+            className='h-9 w-9 p-0'
           >
-            <Edit className="h-4 w-4" />
+            <Edit className='h-4 w-4' />
           </Button>
         </>
       )}
@@ -184,15 +184,15 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
   }, [editing, initialValue]);
 
   const validateSlug = (slug: string): string | null => {
-    if (!slug.trim()) return "Slug cannot be empty";
+    if (!slug.trim()) return 'Slug cannot be empty';
     if (!/^[a-z0-9-]+$/.test(slug)) {
-      return "Slug can only contain lowercase letters, numbers, and hyphens";
+      return 'Slug can only contain lowercase letters, numbers, and hyphens';
     }
-    if (slug.startsWith("-") || slug.endsWith("-")) {
-      return "Slug cannot start or end with a hyphen";
+    if (slug.startsWith('-') || slug.endsWith('-')) {
+      return 'Slug cannot start or end with a hyphen';
     }
-    if (slug.includes("--")) {
-      return "Slug cannot contain consecutive hyphens";
+    if (slug.includes('--')) {
+      return 'Slug cannot contain consecutive hyphens';
     }
     return null;
   };
@@ -226,7 +226,7 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
       const errorMessage =
         error instanceof Error
           ? error.message
-          : "Failed to update organization slug";
+          : 'Failed to update organization slug';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
@@ -242,7 +242,7 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let newValue = e.target.value.toLowerCase();
     // Auto-format: remove invalid characters and clean up hyphens
-    newValue = newValue.replace(/[^a-z0-9-]/g, "").replace(/--+/g, "-");
+    newValue = newValue.replace(/[^a-z0-9-]/g, '').replace(/--+/g, '-');
 
     setValue(newValue);
     if (error) setError(null);
@@ -253,11 +253,11 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
   if (!editing) {
     return (
       <div
-        className="group bg-muted/30 hover:bg-muted/50 flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition-colors"
+        className='group bg-muted/30 hover:bg-muted/50 flex cursor-pointer items-center justify-between rounded-md border px-3 py-2 transition-colors'
         onClick={() => setEditing(true)}
-        title="Click to edit"
+        title='Click to edit'
       >
-        <span className="truncate font-mono text-sm" title={initialValue}>
+        <span className='truncate font-mono text-sm' title={initialValue}>
           {initialValue}
         </span>
       </div>
@@ -265,10 +265,10 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <div className="bg-background flex items-center rounded-md border">
-          <span className="text-muted-foreground px-3 py-2 pr-0 text-sm">
+    <div className='space-y-2'>
+      <div className='flex items-center gap-2'>
+        <div className='bg-background flex items-center rounded-md border'>
+          <span className='text-muted-foreground px-3 py-2 pr-0 text-sm'>
             {urlOrigin}/
           </span>
           <Input
@@ -276,53 +276,53 @@ export function OrgSlugEditor({ orgSlug, initialValue }: EditorProps) {
             value={value}
             onChange={handleInputChange}
             className={cn(
-              "h-9 border-0 pl-1 font-mono shadow-none focus-visible:ring-0",
-              error && "text-destructive",
+              'h-9 border-0 pl-1 font-mono shadow-none focus-visible:ring-0',
+              error && 'text-destructive'
             )}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
                 e.preventDefault();
                 handleSave();
-              } else if (e.key === "Escape") {
+              } else if (e.key === 'Escape') {
                 e.preventDefault();
                 handleCancel();
               }
             }}
             disabled={isLoading}
-            placeholder="my-org"
+            placeholder='my-org'
           />
         </div>
         <Button
-          variant="default"
-          size="sm"
+          variant='default'
+          size='sm'
           onClick={handleSave}
           disabled={!value.trim() || isLoading || value.trim() === initialValue}
-          className="h-9 shrink-0"
+          className='h-9 shrink-0'
         >
           {isLoading ? (
-            <Loader2 className="size-3 animate-spin" />
+            <Loader2 className='size-3 animate-spin' />
           ) : (
-            <Check className="size-3" />
+            <Check className='size-3' />
           )}
         </Button>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           onClick={handleCancel}
           disabled={isLoading}
-          className="h-9 shrink-0"
+          className='h-9 shrink-0'
         >
-          <X className="size-3" />
+          <X className='size-3' />
         </Button>
       </div>
       {error && (
-        <div className="text-destructive flex items-center gap-1 text-xs">
-          <AlertCircle className="size-3" />
+        <div className='text-destructive flex items-center gap-1 text-xs'>
+          <AlertCircle className='size-3' />
           {error}
         </div>
       )}
       {!error && value && value !== initialValue && (
-        <div className="text-muted-foreground text-xs">
+        <div className='text-muted-foreground text-xs'>
           URL will be: {urlOrigin}/{value}
         </div>
       )}
@@ -345,10 +345,10 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const generateUploadUrl = useMutation(
-    api.organizations.generateLogoUploadUrl,
+    api.organizations.generateLogoUploadUrl
   );
   const updateLogoWithStorageId = useMutation(
-    api.organizations.updateLogoWithStorageId,
+    api.organizations.updateLogoWithStorageId
   );
   const getLogoUrl = useQuery(api.organizations.getLogoUrl, { orgSlug });
 
@@ -364,13 +364,13 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
 
       // Step 2: Upload the file directly to Convex storage
       const uploadRes = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
         body: file,
       });
 
       if (!uploadRes.ok) {
-        throw new Error("Upload failed");
+        throw new Error('Upload failed');
       }
 
       const { storageId } = await uploadRes.json();
@@ -384,24 +384,24 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
       setLogoKey(storageId);
     } catch (err) {
       console.error(err);
-      toast.error((err as Error)?.message || "Upload failed");
+      toast.error((err as Error)?.message || 'Upload failed');
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setUploading(false);
     }
   };
 
   return (
-    <div className="flex items-center gap-4">
+    <div className='flex items-center gap-4'>
       {/* Avatar preview */}
       {getLogoUrl ? (
         <img
           src={getLogoUrl}
-          alt="Organization logo"
-          className="size-16 rounded border object-cover"
+          alt='Organization logo'
+          className='size-16 rounded border object-cover'
         />
       ) : (
-        <div className="bg-muted text-muted-foreground flex size-16 items-center justify-center rounded border text-sm">
+        <div className='bg-muted text-muted-foreground flex size-16 items-center justify-center rounded border text-sm'>
           No logo
         </div>
       )}
@@ -409,23 +409,23 @@ export function OrgLogoEditor({ orgSlug, initialValue }: LogoEditorProps) {
       {/* File input & button */}
       <div>
         <Button
-          variant="outline"
-          size="sm"
+          variant='outline'
+          size='sm'
           disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
         >
           {uploading ? (
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2 className='size-4 animate-spin' />
           ) : (
-            <Edit className="size-4" />
+            <Edit className='size-4' />
           )}
-          <span className="ml-2">{logoKey ? "Change" : "Upload"}</span>
+          <span className='ml-2'>{logoKey ? 'Change' : 'Upload'}</span>
         </Button>
         <input
           ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
+          type='file'
+          accept='image/*'
+          className='hidden'
           onChange={handleFileChange}
         />
       </div>

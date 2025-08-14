@@ -9,16 +9,16 @@
 // It is built on top of the core permission engine in `permissions.ts`.
 // ----------------------------------------------------------------------------
 
-import { getAuthUserId } from "@convex-dev/auth/server";
-import type { QueryCtx, MutationCtx } from "./_generated/server";
-import type { Id, Doc } from "./_generated/dataModel";
+import { getAuthUserId } from '@convex-dev/auth/server';
+import type { QueryCtx, MutationCtx } from './_generated/server';
+import type { Id, Doc } from './_generated/dataModel';
 import {
   hasScopedPermission,
   PERMISSIONS,
   type Permission,
   type PermissionScope,
   type VisibilityState,
-} from "./permissions";
+} from './permissions';
 
 // -----------------------------------------------------------------------------
 // Generic Permission Helpers
@@ -31,7 +31,7 @@ import {
 export async function hasPermission(
   ctx: QueryCtx | MutationCtx,
   scope: PermissionScope,
-  permission: Permission,
+  permission: Permission
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) {
@@ -44,9 +44,9 @@ export async function hasPermission(
  * Build a permission scope object from a domain entity.
  */
 export function scopeFromEntity(entity: {
-  organizationId: Id<"organizations">;
-  teamId?: Id<"teams"> | null;
-  projectId?: Id<"projects"> | null;
+  organizationId: Id<'organizations'>;
+  teamId?: Id<'teams'> | null;
+  projectId?: Id<'projects'> | null;
 }): PermissionScope {
   return {
     organizationId: entity.organizationId,
@@ -65,21 +65,21 @@ export function scopeFromEntity(entity: {
  */
 export async function canViewIssue(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
+  issue: Doc<'issues'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   const vis: VisibilityState = (issue.visibility ??
-    "organization") as VisibilityState;
+    'organization') as VisibilityState;
 
-  if (vis === "public") return true;
+  if (vis === 'public') return true;
   if (!userId) return false;
   if (issue.createdBy === userId) return true;
 
   if (issue.teamId) {
     const member = await ctx.db
-      .query("teamMembers")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", issue.teamId!).eq("userId", userId),
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', issue.teamId!).eq('userId', userId)
       )
       .first();
     if (member) return true;
@@ -87,29 +87,29 @@ export async function canViewIssue(
 
   if (issue.projectId) {
     const member = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_user", (q) =>
-        q.eq("projectId", issue.projectId!).eq("userId", userId),
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', issue.projectId!).eq('userId', userId)
       )
       .first();
     if (member) return true;
   }
 
-  if (vis === "private") {
+  if (vis === 'private') {
     const assignee = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue_assignee", (q) =>
-        q.eq("issueId", issue._id).eq("assigneeId", userId),
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', issue._id).eq('assigneeId', userId)
       )
       .first();
     return !!assignee;
   }
 
-  if (vis === "organization") {
+  if (vis === 'organization') {
     const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", issue.organizationId).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', issue.organizationId).eq('userId', userId)
       )
       .first();
     return !!member;
@@ -123,7 +123,7 @@ export async function canViewIssue(
  */
 export async function canEditIssue(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
+  issue: Doc<'issues'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -136,7 +136,7 @@ export async function canEditIssue(
  */
 export async function canDeleteIssue(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
+  issue: Doc<'issues'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -149,7 +149,7 @@ export async function canDeleteIssue(
  */
 export async function canAssignIssue(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
+  issue: Doc<'issues'>
 ): Promise<boolean> {
   return hasPermission(ctx, scopeFromEntity(issue), PERMISSIONS.ISSUE_ASSIGN);
 }
@@ -159,17 +159,17 @@ export async function canAssignIssue(
  */
 export async function canUpdateAssignmentState(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
-  assigneeId: Id<"users">,
+  issue: Doc<'issues'>,
+  assigneeId: Id<'users'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
 
   if (assigneeId === userId) {
     const assignee = await ctx.db
-      .query("issueAssignees")
-      .withIndex("by_issue_assignee", (q) =>
-        q.eq("issueId", issue._id).eq("assigneeId", userId),
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', issue._id).eq('assigneeId', userId)
       )
       .first();
     return !!assignee;
@@ -178,7 +178,7 @@ export async function canUpdateAssignmentState(
   return hasPermission(
     ctx,
     scopeFromEntity(issue),
-    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE,
+    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE
   );
 }
 
@@ -187,12 +187,12 @@ export async function canUpdateAssignmentState(
  */
 export async function canUpdateIssueRelations(
   ctx: QueryCtx | MutationCtx,
-  issue: Doc<"issues">,
+  issue: Doc<'issues'>
 ): Promise<boolean> {
   return hasPermission(
     ctx,
     scopeFromEntity(issue),
-    PERMISSIONS.ISSUE_RELATION_UPDATE,
+    PERMISSIONS.ISSUE_RELATION_UPDATE
   );
 }
 
@@ -205,31 +205,31 @@ export async function canUpdateIssueRelations(
  */
 export async function canViewTeam(
   ctx: QueryCtx | MutationCtx,
-  team: Doc<"teams">,
+  team: Doc<'teams'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   const vis: VisibilityState = (team.visibility ??
-    "organization") as VisibilityState;
+    'organization') as VisibilityState;
 
-  if (vis === "public") return true;
+  if (vis === 'public') return true;
   if (!userId) return false;
   if (team.createdBy === userId) return true;
 
-  if (vis === "private") {
+  if (vis === 'private') {
     const member = await ctx.db
-      .query("teamMembers")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", team._id).eq("userId", userId),
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', team._id).eq('userId', userId)
       )
       .first();
     return !!member;
   }
 
-  if (vis === "organization") {
+  if (vis === 'organization') {
     const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", team.organizationId).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', team.organizationId).eq('userId', userId)
       )
       .first();
     return !!member;
@@ -243,7 +243,7 @@ export async function canViewTeam(
  */
 export async function canEditTeam(
   ctx: QueryCtx | MutationCtx,
-  team: Doc<"teams">,
+  team: Doc<'teams'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -256,7 +256,7 @@ export async function canEditTeam(
  */
 export async function canDeleteTeam(
   ctx: QueryCtx | MutationCtx,
-  team: Doc<"teams">,
+  team: Doc<'teams'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -269,8 +269,8 @@ export async function canDeleteTeam(
  */
 export async function canManageTeamMembers(
   ctx: QueryCtx | MutationCtx,
-  team: Doc<"teams">,
-  action: "add" | "remove" | "update",
+  team: Doc<'teams'>,
+  action: 'add' | 'remove' | 'update'
 ): Promise<boolean> {
   const permissionMap = {
     add: PERMISSIONS.TEAM_MEMBER_ADD,
@@ -289,31 +289,31 @@ export async function canManageTeamMembers(
  */
 export async function canViewProject(
   ctx: QueryCtx | MutationCtx,
-  project: Doc<"projects">,
+  project: Doc<'projects'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   const vis: VisibilityState = (project.visibility ??
-    "organization") as VisibilityState;
+    'organization') as VisibilityState;
 
-  if (vis === "public") return true;
+  if (vis === 'public') return true;
   if (!userId) return false;
   if (project.createdBy === userId) return true;
 
-  if (vis === "private") {
+  if (vis === 'private') {
     const member = await ctx.db
-      .query("projectMembers")
-      .withIndex("by_project_user", (q) =>
-        q.eq("projectId", project._id).eq("userId", userId),
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', project._id).eq('userId', userId)
       )
       .first();
     return !!member;
   }
 
-  if (vis === "organization") {
+  if (vis === 'organization') {
     const member = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", project.organizationId).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', project.organizationId).eq('userId', userId)
       )
       .first();
     return !!member;
@@ -327,7 +327,7 @@ export async function canViewProject(
  */
 export async function canEditProject(
   ctx: QueryCtx | MutationCtx,
-  project: Doc<"projects">,
+  project: Doc<'projects'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -340,7 +340,7 @@ export async function canEditProject(
  */
 export async function canDeleteProject(
   ctx: QueryCtx | MutationCtx,
-  project: Doc<"projects">,
+  project: Doc<'projects'>
 ): Promise<boolean> {
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
@@ -348,7 +348,7 @@ export async function canDeleteProject(
   return hasPermission(
     ctx,
     scopeFromEntity(project),
-    PERMISSIONS.PROJECT_DELETE,
+    PERMISSIONS.PROJECT_DELETE
   );
 }
 
@@ -357,8 +357,8 @@ export async function canDeleteProject(
  */
 export async function canManageProjectMembers(
   ctx: QueryCtx | MutationCtx,
-  project: Doc<"projects">,
-  action: "add" | "remove" | "update",
+  project: Doc<'projects'>,
+  action: 'add' | 'remove' | 'update'
 ): Promise<boolean> {
   const permissionMap = {
     add: PERMISSIONS.PROJECT_MEMBER_ADD,

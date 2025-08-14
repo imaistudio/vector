@@ -1,26 +1,26 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { motion, AnimatePresence } from "motion/react";
-import { MoreHorizontal, Trash2, Circle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from 'next/link';
+import { motion, AnimatePresence } from 'motion/react';
+import { MoreHorizontal, Trash2, Circle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 
-import { formatDateHuman } from "@/lib/date";
-import { StatusSelector } from "./project-selectors";
-import type { Status, Team } from "./project-selectors";
-import { ProjectLeadSelector } from "./project-lead-selector";
-import { getDynamicIcon } from "@/lib/dynamic-icons";
-import { TeamSelector } from "@/components/teams/team-selector";
+import { formatDateHuman } from '@/lib/date';
+import { StatusSelector } from './project-selectors';
+import type { Status, Team } from './project-selectors';
+import { ProjectLeadSelector } from './project-lead-selector';
+import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { TeamSelector } from '@/components/teams/team-selector';
 
 // Permission system
-import { PermissionAware } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import { PermissionAware } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 // Type for project data with all the rich details
 export interface ProjectRowData {
@@ -76,11 +76,11 @@ export function ProjectsTable({
 }: ProjectsTableProps) {
   if (projects.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="mb-4 text-4xl">📁</div>
-          <h3 className="mb-2 text-lg font-semibold">No projects found</h3>
-          <p className="text-muted-foreground mb-6">
+      <div className='flex items-center justify-center py-12'>
+        <div className='text-center'>
+          <div className='mb-4 text-4xl'>📁</div>
+          <h3 className='mb-2 text-lg font-semibold'>No projects found</h3>
+          <p className='text-muted-foreground mb-6'>
             Get started by creating your first project.
           </p>
         </div>
@@ -89,14 +89,14 @@ export function ProjectsTable({
   }
 
   return (
-    <div className="divide-y">
+    <div className='divide-y'>
       <AnimatePresence initial={false}>
-        {projects.map((project) => {
+        {projects.map(project => {
           // Project icon / color
           const ProjectIcon = project.icon
             ? getDynamicIcon(project.icon) || Circle
             : Circle;
-          const projectColor = project.color || "#94a3b8";
+          const projectColor = project.color || '#94a3b8';
 
           return (
             <motion.div
@@ -106,12 +106,12 @@ export function ProjectsTable({
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.2 }}
               key={project.id}
-              className="hover:bg-muted/50 flex items-center gap-2 px-3 py-1.5 transition-colors"
+              className='hover:bg-muted/50 flex items-center gap-2 px-3 py-1.5 transition-colors'
             >
               {/* Project Icon */}
-              <div className="flex-shrink-0">
+              <div className='flex-shrink-0'>
                 <ProjectIcon
-                  className="size-4"
+                  className='size-4'
                   style={{ color: projectColor }}
                 />
               </div>
@@ -119,21 +119,21 @@ export function ProjectsTable({
               {/* Title */}
               <Link
                 href={`/${orgSlug}/projects/${project.key}`}
-                className="hover:text-primary flex min-w-0 flex-1 items-center gap-2 transition-colors"
+                className='hover:text-primary flex min-w-0 flex-1 items-center gap-2 transition-colors'
               >
-                <span className="block truncate text-sm font-medium">
+                <span className='block truncate text-sm font-medium'>
                   {project.name}
                 </span>
-                <div className="bg-muted h-4 w-px" />
+                <div className='bg-muted h-4 w-px' />
                 {project.description && (
-                  <p className="text-muted-foreground max-w-xs truncate text-xs">
+                  <p className='text-muted-foreground max-w-xs truncate text-xs'>
                     {project.description}
                   </p>
                 )}
               </Link>
 
               {/* Date Info - Moved to be first on the right section */}
-              <div className="text-muted-foreground flex flex-col text-xs">
+              <div className='text-muted-foreground flex flex-col text-xs'>
                 {project.startDate && (
                   <span>
                     Start: {formatDateHuman(new Date(project.startDate))}
@@ -155,10 +155,10 @@ export function ProjectsTable({
               >
                 <StatusSelector
                   statuses={statuses}
-                  selectedStatus={project.statusId || ""}
-                  onStatusSelect={(sid) => onStatusChange(project.id, sid)}
-                  displayMode="iconWhenUnselected"
-                  className="border-none bg-transparent p-0 shadow-none"
+                  selectedStatus={project.statusId || ''}
+                  onStatusSelect={sid => onStatusChange(project.id, sid)}
+                  displayMode='iconWhenUnselected'
+                  className='border-none bg-transparent p-0 shadow-none'
                 />
               </PermissionAware>
 
@@ -168,13 +168,13 @@ export function ProjectsTable({
                 permission={PERMISSIONS.PROJECT_EDIT}
                 fallbackMessage="You don't have permission to change project team"
               >
-                <div className="flex-shrink-0">
+                <div className='flex-shrink-0'>
                   <TeamSelector
                     teams={teams}
-                    selectedTeam={project.teamId || ""}
-                    onTeamSelect={(tid) => onTeamChange(project.id, tid)}
-                    displayMode="iconWhenUnselected"
-                    className="border-none bg-transparent p-0 shadow-none"
+                    selectedTeam={project.teamId || ''}
+                    onTeamSelect={tid => onTeamChange(project.id, tid)}
+                    displayMode='iconWhenUnselected'
+                    className='border-none bg-transparent p-0 shadow-none'
                   />
                 </div>
               </PermissionAware>
@@ -188,35 +188,35 @@ export function ProjectsTable({
                 <ProjectLeadSelector
                   orgSlug={orgSlug}
                   projectKey={project.key}
-                  selectedLead={project.leadId || ""}
+                  selectedLead={project.leadId || ''}
                   onLeadSelect={(leadId: string) =>
                     onLeadChange(project.id, leadId)
                   }
-                  displayMode="iconOnly"
-                  className="border-none bg-transparent p-0 shadow-none"
+                  displayMode='iconOnly'
+                  className='border-none bg-transparent p-0 shadow-none'
                 />
               </PermissionAware>
 
               {/* Actions */}
-              <div className="flex-shrink-0">
+              <div className='flex-shrink-0'>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0"
-                      aria-label="Open project actions"
+                      variant='ghost'
+                      size='sm'
+                      className='h-6 w-6 p-0'
+                      aria-label='Open project actions'
                     >
-                      <MoreHorizontal className="size-4" />
+                      <MoreHorizontal className='size-4' />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
+                  <DropdownMenuContent align='end'>
                     <DropdownMenuItem
-                      variant="destructive"
+                      variant='destructive'
                       disabled={deletePending}
                       onClick={() => onDelete(project.id)}
                     >
-                      <Trash2 className="size-4" />
+                      <Trash2 className='size-4' />
                       Delete
                     </DropdownMenuItem>
                   </DropdownMenuContent>

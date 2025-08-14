@@ -101,13 +101,11 @@ This phase maps tRPC routers to Convex functions, implementing CRUD operations f
    ```
 
 2. **Split Existing Files by Function Type:**
-
    - Move query functions to `queries.ts`
    - Move mutation functions to `mutations.ts`
    - Move action functions to `actions.ts`
 
 3. **Update Imports:**
-
    - Update all frontend imports to new file locations
    - Update internal function references
    - Update generated type imports
@@ -189,24 +187,24 @@ export const getOrganizationBySlug = query({
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Unauthorized");
+    if (!userId) throw new Error('Unauthorized');
 
     const organization = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.slug))
       .first();
 
-    if (!organization) throw new Error("Organization not found");
+    if (!organization) throw new Error('Organization not found');
 
     // Check membership
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", organization._id).eq("userId", userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', organization._id).eq('userId', userId)
       )
       .first();
 
-    if (!membership) throw new Error("Access denied");
+    if (!membership) throw new Error('Access denied');
 
     return { organization, membership };
   },
@@ -224,21 +222,21 @@ export const createOrganization = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Unauthorized");
+    if (!userId) throw new Error('Unauthorized');
 
     // Validate input
-    if (!args.name.trim()) throw new Error("Organization name is required");
+    if (!args.name.trim()) throw new Error('Organization name is required');
 
     // Check for existing organization
     const existing = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.slug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.slug))
       .first();
 
-    if (existing) throw new Error("Organization with this slug already exists");
+    if (existing) throw new Error('Organization with this slug already exists');
 
     // Create organization
-    const organizationId = await ctx.db.insert("organizations", {
+    const organizationId = await ctx.db.insert('organizations', {
       name: args.name.trim(),
       slug: args.slug,
       createdAt: Date.now(),
@@ -246,10 +244,10 @@ export const createOrganization = mutation({
     });
 
     // Add user as admin
-    await ctx.db.insert("members", {
+    await ctx.db.insert('members', {
       organizationId,
       userId,
-      role: "admin",
+      role: 'admin',
       joinedAt: Date.now(),
     });
 
@@ -264,9 +262,9 @@ export const createOrganization = mutation({
 // convex/organizations/actions.ts
 export const sendInvitationEmail = action({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     email: v.string(),
-    role: v.union(v.literal("admin"), v.literal("member")),
+    role: v.union(v.literal('admin'), v.literal('member')),
   },
   handler: async (ctx, args) => {
     // Get organization details
@@ -274,13 +272,13 @@ export const sendInvitationEmail = action({
       id: args.organizationId,
     });
 
-    if (!organization) throw new Error("Organization not found");
+    if (!organization) throw new Error('Organization not found');
 
     // Send email (external side effect)
     await sendEmail({
       to: args.email,
       subject: `Invitation to join ${organization.name}`,
-      template: "invitation",
+      template: 'invitation',
       data: { organization, role: args.role },
     });
 
@@ -301,7 +299,7 @@ export const sendInvitationEmail = action({
 ```typescript
 export const listProjects = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     cursor: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
@@ -310,11 +308,11 @@ export const listProjects = query({
     const cursor = args.cursor ? JSON.parse(args.cursor) : null;
 
     let query = ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", args.organizationId),
+      .query('projects')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', args.organizationId)
       )
-      .order("desc");
+      .order('desc');
 
     if (cursor) {
       query = query.paginate(cursor);
@@ -335,30 +333,30 @@ export const listProjects = query({
 ```typescript
 export const searchIssues = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     search: v.optional(v.string()),
-    statusId: v.optional(v.id("issueStates")),
-    priorityId: v.optional(v.id("issuePriorities")),
-    assigneeId: v.optional(v.id("users")),
+    statusId: v.optional(v.id('issueStates')),
+    priorityId: v.optional(v.id('issuePriorities')),
+    assigneeId: v.optional(v.id('users')),
   },
   handler: async (ctx, args) => {
     let query = ctx.db
-      .query("issues")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", args.organizationId),
+      .query('issues')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', args.organizationId)
       );
 
     // Apply filters
     if (args.statusId) {
-      query = query.filter((q) => q.eq(q.field("statusId"), args.statusId));
+      query = query.filter(q => q.eq(q.field('statusId'), args.statusId));
     }
 
     if (args.priorityId) {
-      query = query.filter((q) => q.eq(q.field("priorityId"), args.priorityId));
+      query = query.filter(q => q.eq(q.field('priorityId'), args.priorityId));
     }
 
     if (args.assigneeId) {
-      query = query.filter((q) => q.eq(q.field("assigneeId"), args.assigneeId));
+      query = query.filter(q => q.eq(q.field('assigneeId'), args.assigneeId));
     }
 
     const issues = await query.collect();
@@ -367,9 +365,9 @@ export const searchIssues = query({
     if (args.search) {
       const searchLower = args.search.toLowerCase();
       return issues.filter(
-        (issue) =>
+        issue =>
           issue.title.toLowerCase().includes(searchLower) ||
-          issue.description?.toLowerCase().includes(searchLower),
+          issue.description?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -384,19 +382,19 @@ export const searchIssues = query({
 // convex/_shared/permissions.ts
 export const checkOrganizationAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
+  organizationId: Id<'organizations'>
 ) => {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Unauthorized");
+  if (!userId) throw new Error('Unauthorized');
 
   const membership = await ctx.db
-    .query("members")
-    .withIndex("by_org_user", (q) =>
-      q.eq("organizationId", organizationId).eq("userId", userId),
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', organizationId).eq('userId', userId)
     )
     .first();
 
-  if (!membership) throw new Error("Access denied");
+  if (!membership) throw new Error('Access denied');
 
   return { userId, membership };
 };

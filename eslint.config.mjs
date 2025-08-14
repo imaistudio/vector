@@ -1,7 +1,6 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
-import prettierPlugin from "eslint-plugin-prettier";
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { FlatCompat } from '@eslint/eslintrc';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -11,14 +10,35 @@ const compat = new FlatCompat({
 });
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  ...compat.extends('prettier'),
   {
-    plugins: {
-      prettier: prettierPlugin,
-    },
+    ignores: [
+      '**/node_modules/**',
+      '**/.next/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/.pnpm-store/**',
+      '**/archive/**',
+      '**/convex/_generated/**',
+      '**/*.generated.*',
+      '**/coverage/**',
+      '**/.eslintcache',
+    ],
     rules: {
-      "prettier/prettier": "warn",
-      "@typescript-eslint/no-unused-vars": "warn",
+      // Import rules for unused imports - these are not auto-fixable
+      '@typescript-eslint/no-unused-vars': 'error',
+      // Disable useEffect dependency warnings (manual fixes only)
+      'react-hooks/exhaustive-deps': 'off',
+      // Auto-fixable rules
+      'prefer-const': 'error',
+      'no-var': 'error',
+      'object-shorthand': 'error',
+      'prefer-template': 'error',
+      // Additional auto-fixable rules
+      'no-trailing-spaces': 'error',
+      'eol-last': 'error',
+      'comma-dangle': ['error', 'always-multiline'],
     },
   },
 ];

@@ -19,7 +19,7 @@ The system provides:
 All pages are wrapped with a global error boundary in `src/app/layout.tsx`:
 
 ```tsx
-import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 
 export default function RootLayout({ children }) {
   return (
@@ -47,7 +47,7 @@ export default function RootLayout({ children }) {
 import {
   ErrorBoundary,
   useErrorBoundary,
-} from "@/components/ui/error-boundary";
+} from '@/components/ui/error-boundary';
 
 // Wrap components that might throw errors
 <ErrorBoundary>
@@ -77,8 +77,8 @@ function MyComponent() {
 Automatically disables buttons based on permissions:
 
 ```tsx
-import { PermissionAwareButton } from "@/components/ui/permission-aware";
-import { PERMISSIONS } from "@/convex/_shared/permissions";
+import { PermissionAwareButton } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 <PermissionAwareButton
   orgSlug={orgSlug}
@@ -118,7 +118,7 @@ Wraps form fields with permission checking:
   permission={PERMISSIONS.TEAM_EDIT}
   fallbackMessage="You don't have permission to edit team information"
 >
-  <Input value={teamName} onChange={setTeamName} placeholder="Team name" />
+  <Input value={teamName} onChange={setTeamName} placeholder='Team name' />
 </PermissionAwareField>
 ```
 
@@ -130,7 +130,7 @@ Generic wrapper for any interactive element:
 <PermissionAwareWrapper
   orgSlug={orgSlug}
   permission={PERMISSIONS.ISSUE_DELETE}
-  as="button"
+  as='button'
   onClick={handleDelete}
   fallbackMessage="You don't have permission to delete issues"
 >
@@ -166,7 +166,7 @@ Shows visual permission status indicators:
 Comprehensive hook for handling actions with permission checking and error handling:
 
 ```tsx
-import { useSafeAction } from "@/hooks/use-safe-action";
+import { useSafeAction } from '@/hooks/use-safe-action';
 
 function MyComponent({ orgSlug }) {
   const deleteTeam = useMutation(api.teams.delete);
@@ -174,12 +174,12 @@ function MyComponent({ orgSlug }) {
   const { execute, isLoading, canExecute } = useSafeAction(deleteTeam, {
     orgSlug,
     permission: PERMISSIONS.TEAM_DELETE,
-    loadingMessage: "Deleting team...",
-    successMessage: "Team deleted successfully",
-    errorMessage: "Failed to delete team",
+    loadingMessage: 'Deleting team...',
+    successMessage: 'Team deleted successfully',
+    errorMessage: 'Failed to delete team',
     requireConfirmation: true,
-    confirmationMessage: "Are you sure you want to delete this team?",
-    redirectTo: "/teams",
+    confirmationMessage: 'Are you sure you want to delete this team?',
+    redirectTo: '/teams',
   });
 
   return (
@@ -199,7 +199,7 @@ function MyComponent({ orgSlug }) {
 Specialized hook for form submissions:
 
 ```tsx
-import { useSafeSubmit } from "@/hooks/use-safe-action";
+import { useSafeSubmit } from '@/hooks/use-safe-action';
 
 function TeamForm({ orgSlug }) {
   const createTeam = useMutation(api.teams.create);
@@ -207,15 +207,15 @@ function TeamForm({ orgSlug }) {
   const { submit, isLoading } = useSafeSubmit(createTeam, {
     orgSlug,
     permission: PERMISSIONS.TEAM_CREATE,
-    validateData: (data) => {
-      if (!data.name) return "Team name is required";
+    validateData: data => {
+      if (!data.name) return 'Team name is required';
       return null;
     },
     resetForm: () => setFormData({}),
-    successMessage: "Team created successfully",
+    successMessage: 'Team created successfully',
   });
 
-  const handleSubmit = (e) => {
+  const handleSubmit = e => {
     e.preventDefault();
     submit(formData);
   };
@@ -227,7 +227,7 @@ function TeamForm({ orgSlug }) {
 Specialized hook for delete operations with confirmation:
 
 ```tsx
-import { useSafeDelete } from "@/hooks/use-safe-action";
+import { useSafeDelete } from '@/hooks/use-safe-action';
 
 function TeamActions({ teamId, orgSlug }) {
   const deleteTeam = useMutation(api.teams.delete);
@@ -235,7 +235,7 @@ function TeamActions({ teamId, orgSlug }) {
   const { execute, isLoading, canExecute } = useSafeDelete(deleteTeam, {
     orgSlug,
     permission: PERMISSIONS.TEAM_DELETE,
-    itemName: "team",
+    itemName: 'team',
   });
 
   return (
@@ -243,7 +243,7 @@ function TeamActions({ teamId, orgSlug }) {
       onClick={() => execute(teamId)}
       disabled={!canExecute}
       loading={isLoading}
-      variant="destructive"
+      variant='destructive'
     >
       Delete Team
     </Button>
@@ -288,19 +288,19 @@ function TeamActions({ teamId, orgSlug }) {
 Integrated toast notifications provide immediate feedback:
 
 ```tsx
-import { toast } from "sonner";
+import { toast } from 'sonner';
 
 // Automatic toasts from safe action hooks
 const { execute } = useSafeAction(mutation, {
-  loadingMessage: "Processing...",
-  successMessage: "Action completed",
-  errorMessage: "Action failed",
+  loadingMessage: 'Processing...',
+  successMessage: 'Action completed',
+  errorMessage: 'Action failed',
 });
 
 // Manual toast notifications
-toast.success("Settings saved");
-toast.error("Failed to save settings");
-toast.loading("Saving...");
+toast.success('Settings saved');
+toast.error('Failed to save settings');
+toast.loading('Saving...');
 ```
 
 ## Page-Level Protection
@@ -308,7 +308,7 @@ toast.loading("Saving...");
 ### Using PermissionBoundary
 
 ```tsx
-import { PermissionBoundary } from "@/hooks/use-permission-boundary";
+import { PermissionBoundary } from '@/hooks/use-permission-boundary';
 
 export default function RolesPage() {
   return (
@@ -325,12 +325,12 @@ export default function RolesPage() {
 ### Using useRequirePermission
 
 ```tsx
-import { useRequirePermission } from "@/hooks/use-permission-boundary";
+import { useRequirePermission } from '@/hooks/use-permission-boundary';
 
 export default function MembersPage() {
   const { isLoading } = useRequirePermission(
     orgSlug,
-    PERMISSIONS.ORG_MANAGE_MEMBERS,
+    PERMISSIONS.ORG_MANAGE_MEMBERS
   );
 
   if (isLoading) return <LoadingSpinner />;
@@ -379,9 +379,9 @@ const handleDelete = async () => {
 ```tsx
 // ✅ Good: Comprehensive validation
 const { submit } = useSafeSubmit(createTeam, {
-  validateData: (data) => {
-    if (!data.name?.trim()) return "Name is required";
-    if (data.name.length < 2) return "Name must be at least 2 characters";
+  validateData: data => {
+    if (!data.name?.trim()) return 'Name is required';
+    if (data.name.length < 2) return 'Name must be at least 2 characters';
     return null;
   },
 });
@@ -449,10 +449,10 @@ const handleAction = async () => {
   setIsLoading(true);
   try {
     await mutation();
-    toast.success("Success");
+    toast.success('Success');
   } catch (err) {
     setError(err);
-    toast.error("Failed");
+    toast.error('Failed');
   } finally {
     setIsLoading(false);
   }
@@ -463,8 +463,8 @@ const handleAction = async () => {
 
 ```tsx
 const { execute, isLoading } = useSafeAction(mutation, {
-  successMessage: "Success",
-  errorMessage: "Failed",
+  successMessage: 'Success',
+  errorMessage: 'Failed',
 });
 ```
 
@@ -481,7 +481,7 @@ class ErrorBoundary extends React.Component {
 **After:**
 
 ```tsx
-import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 
 <ErrorBoundary>
   <YourComponent />

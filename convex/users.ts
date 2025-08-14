@@ -1,15 +1,15 @@
-import { query, mutation, action } from "./_generated/server";
-import { v, ConvexError } from "convex/values";
-import { createAccount, getAuthUserId } from "@convex-dev/auth/server";
-import { auth } from "./auth";
-import { api } from "./_generated/api";
+import { query, mutation, action } from './_generated/server';
+import { v, ConvexError } from 'convex/values';
+import { createAccount, getAuthUserId } from '@convex-dev/auth/server';
+import { auth } from './auth';
+import { api } from './_generated/api';
 
 /**
  * Get the current authenticated user
  */
 export const currentUser = query({
   args: {},
-  handler: async (ctx) => {
+  handler: async ctx => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
       return null;
@@ -30,7 +30,7 @@ export const updateProfile = mutation({
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     await ctx.db.patch(userId, {
@@ -46,10 +46,10 @@ export const updateProfile = mutation({
  */
 export const adminExists = query({
   args: {},
-  handler: async (ctx) => {
+  handler: async ctx => {
     const adminUser = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("role"), "admin"))
+      .query('users')
+      .filter(q => q.eq(q.field('role'), 'admin'))
       .first();
 
     return adminUser !== null;
@@ -61,8 +61,8 @@ export const adminExists = query({
  */
 export const hasAnyUsers = query({
   args: {},
-  handler: async (ctx) => {
-    const anyUser = await ctx.db.query("users").first();
+  handler: async ctx => {
+    const anyUser = await ctx.db.query('users').first();
     return anyUser !== null;
   },
 });
@@ -83,12 +83,12 @@ export const bootstrapAdmin = action({
     const existingAdmin = await ctx.runQuery(api.users.adminExists);
 
     if (existingAdmin) {
-      throw new ConvexError("ADMIN_ALREADY_EXISTS");
+      throw new ConvexError('ADMIN_ALREADY_EXISTS');
     }
 
     // Create the admin user using Convex Auth's createAccount
     const { account, user } = await createAccount(ctx, {
-      provider: "password",
+      provider: 'password',
       account: {
         id: args.email, // unique identifier
         secret: args.password, // Convex Auth will hash this automatically
@@ -97,7 +97,7 @@ export const bootstrapAdmin = action({
         email: args.email,
         name: args.name,
         username: args.username,
-        role: "admin", // Set admin role immediately
+        role: 'admin', // Set admin role immediately
       },
     });
 
@@ -110,21 +110,21 @@ export const bootstrapAdmin = action({
  */
 export const getUserActiveOrganization = query({
   args: {
-    sessionActiveOrgId: v.optional(v.id("organizations")),
+    sessionActiveOrgId: v.optional(v.id('organizations')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     // Try session active org first
     if (args.sessionActiveOrgId) {
       const sessionOrgId = args.sessionActiveOrgId;
       const membership = await ctx.db
-        .query("members")
-        .withIndex("by_org_user", (q) =>
-          q.eq("organizationId", sessionOrgId).eq("userId", userId),
+        .query('members')
+        .withIndex('by_org_user', q =>
+          q.eq('organizationId', sessionOrgId).eq('userId', userId)
         )
         .first();
 
@@ -136,8 +136,8 @@ export const getUserActiveOrganization = query({
 
     // Fallback: Get first organization membership
     const firstMembership = await ctx.db
-      .query("members")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .query('members')
+      .withIndex('by_user', q => q.eq('userId', userId))
       .first();
 
     if (firstMembership) {
@@ -155,13 +155,13 @@ export const getUserActiveOrganization = query({
 export const searchUsers = query({
   args: {
     query: v.string(),
-    organizationId: v.optional(v.id("organizations")),
+    organizationId: v.optional(v.id('organizations')),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) {
-      throw new ConvexError("UNAUTHORIZED");
+      throw new ConvexError('UNAUTHORIZED');
     }
 
     const limit = args.limit ?? 10;
@@ -176,42 +176,42 @@ export const searchUsers = query({
       const orgId = args.organizationId;
       // Get org members first
       const members = await ctx.db
-        .query("members")
-        .withIndex("by_organization", (q) => q.eq("organizationId", orgId))
+        .query('members')
+        .withIndex('by_organization', q => q.eq('organizationId', orgId))
         .collect();
 
-      const memberUserIds = members.map((m) => m.userId);
+      const memberUserIds = members.map(m => m.userId);
 
       // Search by name using search index
       const nameResults = await ctx.db
-        .query("users")
-        .withSearchIndex("by_name_email_username", (q) =>
-          q.search("name", searchQuery),
+        .query('users')
+        .withSearchIndex('by_name_email_username', q =>
+          q.search('name', searchQuery)
         )
         .collect();
 
       // Search by exact email match
       const emailResults = await ctx.db
-        .query("users")
-        .withIndex("email", (q) => q.eq("email", searchQuery))
+        .query('users')
+        .withIndex('email', q => q.eq('email', searchQuery))
         .collect();
 
       // Search by exact username match
       const usernameResults = await ctx.db
-        .query("users")
-        .withIndex("by_username", (q) => q.eq("username", searchQuery))
+        .query('users')
+        .withIndex('by_username', q => q.eq('username', searchQuery))
         .collect();
 
       // Combine and filter to org members only
       const allResults = [...nameResults, ...emailResults, ...usernameResults];
       const orgMemberSet = new Set(memberUserIds);
-      const filteredResults = allResults.filter((user) =>
-        orgMemberSet.has(user._id),
+      const filteredResults = allResults.filter(user =>
+        orgMemberSet.has(user._id)
       );
 
       // Remove duplicates and limit results
       const uniqueResults = Array.from(
-        new Map(filteredResults.map((user) => [user._id, user])).values(),
+        new Map(filteredResults.map(user => [user._id, user])).values()
       );
 
       return uniqueResults.slice(0, limit);
@@ -220,25 +220,25 @@ export const searchUsers = query({
     // Global search (for admin users)
     const [nameResults, emailResults, usernameResults] = await Promise.all([
       ctx.db
-        .query("users")
-        .withSearchIndex("by_name_email_username", (q) =>
-          q.search("name", searchQuery),
+        .query('users')
+        .withSearchIndex('by_name_email_username', q =>
+          q.search('name', searchQuery)
         )
         .collect(),
       ctx.db
-        .query("users")
-        .withIndex("email", (q) => q.eq("email", searchQuery))
+        .query('users')
+        .withIndex('email', q => q.eq('email', searchQuery))
         .collect(),
       ctx.db
-        .query("users")
-        .withIndex("by_username", (q) => q.eq("username", searchQuery))
+        .query('users')
+        .withIndex('by_username', q => q.eq('username', searchQuery))
         .collect(),
     ]);
 
     // Combine and deduplicate results
     const allResults = [...nameResults, ...emailResults, ...usernameResults];
     const uniqueResults = Array.from(
-      new Map(allResults.map((user) => [user._id, user])).values(),
+      new Map(allResults.map(user => [user._id, user])).values()
     );
 
     return uniqueResults.slice(0, limit);
@@ -246,7 +246,7 @@ export const searchUsers = query({
 });
 
 export const getCurrentUser = query({
-  handler: async (ctx) => {
+  handler: async ctx => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return null;
@@ -256,27 +256,27 @@ export const getCurrentUser = query({
 });
 
 export const getOrganizations = query({
-  handler: async (ctx) => {
+  handler: async ctx => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return [];
     }
     const memberships = await ctx.db
-      .query("members")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .query('members')
+      .withIndex('by_user', q => q.eq('userId', userId))
       .collect();
 
-    const orgIds = memberships.map((m) => m.organizationId);
+    const orgIds = memberships.map(m => m.organizationId);
     if (orgIds.length === 0) {
       return [];
     }
-    const orgs = await Promise.all(orgIds.map((id) => ctx.db.get(id)));
+    const orgs = await Promise.all(orgIds.map(id => ctx.db.get(id)));
     return orgs.filter(Boolean);
   },
 });
 
 export const getPendingInvitations = query({
-  handler: async (ctx) => {
+  handler: async ctx => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       return [];
@@ -291,16 +291,16 @@ export const getPendingInvitations = query({
     }
 
     const invites = await ctx.db
-      .query("invitations")
-      .withIndex("by_email", (q) => q.eq("email", user.email!))
-      .filter((q) => q.eq(q.field("status"), "pending"))
+      .query('invitations')
+      .withIndex('by_email', q => q.eq('email', user.email!))
+      .filter(q => q.eq(q.field('status'), 'pending'))
       .collect();
 
     const invitesWithOrg = await Promise.all(
-      invites.map(async (invite) => {
+      invites.map(async invite => {
         const organization = await ctx.db.get(invite.organizationId);
         return { ...invite, organization };
-      }),
+      })
     );
     return invitesWithOrg;
   },

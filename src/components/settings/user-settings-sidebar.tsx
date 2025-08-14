@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { User, Mail, Settings, ArrowLeft, type LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { useQuery } from "@/lib/convex";
-import { api } from "@/lib/convex";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { User, Mail, Settings, ArrowLeft, type LucideIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useQuery } from '@/lib/convex';
+import { api } from '@/lib/convex';
 
 interface SettingsNavItem {
   label: string;
@@ -21,22 +21,22 @@ export function UserSettingsSidebar() {
 
   const settingsItems: SettingsNavItem[] = [
     {
-      label: "General",
-      href: "/settings",
+      label: 'General',
+      href: '/settings',
       icon: Settings,
-      description: "Account settings and preferences",
+      description: 'Account settings and preferences',
     },
     {
-      label: "Profile",
-      href: "/settings/profile",
+      label: 'Profile',
+      href: '/settings/profile',
       icon: User,
-      description: "Personal information and preferences",
+      description: 'Personal information and preferences',
     },
     {
-      label: "Invites",
-      href: "/settings/invites",
+      label: 'Invites',
+      href: '/settings/invites',
       icon: Mail,
-      description: "Pending organization invitations",
+      description: 'Pending organization invitations',
     },
   ];
 
@@ -55,51 +55,51 @@ export function UserSettingsSidebar() {
   };
 
   return (
-    <nav className="space-y-1 p-2 pt-0">
+    <nav className='space-y-1 p-2 pt-0'>
       {/* Back Button */}
-      <div className="mb-4">
+      <div className='mb-4'>
         <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground w-full justify-start gap-2 px-3 py-1.5 text-sm font-medium"
+          variant='ghost'
+          size='sm'
+          className='text-muted-foreground hover:text-foreground w-full justify-start gap-2 px-3 py-1.5 text-sm font-medium'
           onClick={handleBackClick}
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className='size-4' />
           <span>
             {userOrgsQuery.data &&
             userOrgsQuery.data.length > 0 &&
             userOrgsQuery.data[0]
               ? `Back to ${userOrgsQuery.data[0].name}`
-              : "Back"}
+              : 'Back'}
           </span>
         </Button>
       </div>
 
-      <div className="pb-2">
-        <h2 className="text-muted-foreground text-xs font-medium tracking-wider uppercase">
+      <div className='pb-2'>
+        <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
           User Settings
         </h2>
       </div>
 
-      {settingsItems.map((item) => {
+      {settingsItems.map(item => {
         const isActive =
           pathname === item.href ||
-          (item.href !== "/settings" && pathname.startsWith(item.href));
+          (item.href !== '/settings' && pathname.startsWith(item.href));
 
         return (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-              "hover:bg-foreground/5 hover:text-foreground",
+              'group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              'hover:bg-foreground/5 hover:text-foreground',
               isActive
-                ? "bg-foreground/5 text-foreground"
-                : "text-muted-foreground",
+                ? 'bg-foreground/5 text-foreground'
+                : 'text-muted-foreground'
             )}
           >
-            <item.icon className="size-4 shrink-0" />
-            <span className="truncate">{item.label}</span>
+            <item.icon className='size-4 shrink-0' />
+            <span className='truncate'>{item.label}</span>
           </Link>
         );
       })}

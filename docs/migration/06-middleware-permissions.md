@@ -42,59 +42,59 @@ This phase ports the permission system to Convex, updating middleware and access
 
 ```typescript
 // convex/_shared/permissions.ts
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { QueryCtx, MutationCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { QueryCtx, MutationCtx } from './_generated/server';
+import { Id } from './_generated/dataModel';
 
 export const checkOrganizationAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
+  organizationId: Id<'organizations'>
 ) => {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Unauthorized");
+  if (!userId) throw new Error('Unauthorized');
 
   const membership = await ctx.db
-    .query("members")
-    .withIndex("by_org_user", (q) =>
-      q.eq("organizationId", organizationId).eq("userId", userId),
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', organizationId).eq('userId', userId)
     )
     .first();
 
-  if (!membership) throw new Error("Access denied");
+  if (!membership) throw new Error('Access denied');
 
   return { userId, membership };
 };
 
 export const checkProjectAccess = async (
   ctx: QueryCtx | MutationCtx,
-  projectId: Id<"projects">,
+  projectId: Id<'projects'>
 ) => {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Unauthorized");
+  if (!userId) throw new Error('Unauthorized');
 
   const project = await ctx.db.get(projectId);
-  if (!project) throw new Error("Project not found");
+  if (!project) throw new Error('Project not found');
 
   const membership = await ctx.db
-    .query("members")
-    .withIndex("by_org_user", (q) =>
-      q.eq("organizationId", project.organizationId).eq("userId", userId),
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', project.organizationId).eq('userId', userId)
     )
     .first();
 
-  if (!membership) throw new Error("Access denied");
+  if (!membership) throw new Error('Access denied');
 
   return { userId, membership, project };
 };
 
 export const checkAdminAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
+  organizationId: Id<'organizations'>
 ) => {
   const { membership } = await checkOrganizationAccess(ctx, organizationId);
 
-  if (membership.role !== "admin") {
-    throw new Error("Admin access required");
+  if (membership.role !== 'admin') {
+    throw new Error('Admin access required');
   }
 
   return { membership };
@@ -102,27 +102,27 @@ export const checkAdminAccess = async (
 
 export const checkCustomPermission = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
-  permission: string,
+  organizationId: Id<'organizations'>,
+  permission: string
 ) => {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error("Unauthorized");
+  if (!userId) throw new Error('Unauthorized');
 
   // Check custom role permissions
   const roleAssignments = await ctx.db
-    .query("orgRoleAssignments")
-    .withIndex("by_user_org", (q) =>
-      q.eq("userId", userId).eq("organizationId", organizationId),
+    .query('orgRoleAssignments')
+    .withIndex('by_user_org', q =>
+      q.eq('userId', userId).eq('organizationId', organizationId)
     )
     .collect();
 
   for (const assignment of roleAssignments) {
     const permissions = await ctx.db
-      .query("orgRolePermissions")
-      .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
+      .query('orgRolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', assignment.roleId))
       .collect();
 
-    if (permissions.some((p) => p.permission === permission)) {
+    if (permissions.some(p => p.permission === permission)) {
       return true;
     }
   }
@@ -149,7 +149,7 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
 };
 
 export const createTRPCMiddleware = <TInput, TOutput>(
-  middleware: MiddlewareFunction<TInput, TOutput>,
+  middleware: MiddlewareFunction<TInput, TOutput>
 ) => {
   return middleware;
 };
@@ -157,7 +157,7 @@ export const createTRPCMiddleware = <TInput, TOutput>(
 export const protectedProcedure = t.procedure.use(
   createTRPCMiddleware(async ({ ctx, next }) => {
     if (!ctx.session?.user) {
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+      throw new TRPCError({ code: 'UNAUTHORIZED' });
     }
     return next({
       ctx: {
@@ -165,7 +165,7 @@ export const protectedProcedure = t.procedure.use(
         user: ctx.session.user,
       },
     });
-  }),
+  })
 );
 ```
 
@@ -175,17 +175,17 @@ export const protectedProcedure = t.procedure.use(
 // Convex permission checking (no middleware needed)
 export const getOrganizationData = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
   },
   handler: async (ctx, args) => {
     // Permission check built into function
     const { userId, membership } = await checkOrganizationAccess(
       ctx,
-      args.organizationId,
+      args.organizationId
     );
 
     const organization = await ctx.db.get(args.organizationId);
-    if (!organization) throw new Error("Organization not found");
+    if (!organization) throw new Error('Organization not found');
 
     return { organization, membership };
   },
@@ -200,7 +200,7 @@ export const getOrganizationData = query({
 // convex/roles/mutations.ts
 export const createRole = mutation({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     description: v.optional(v.string()),
     permissions: v.array(v.string()),
@@ -210,7 +210,7 @@ export const createRole = mutation({
     await checkAdminAccess(ctx, args.organizationId);
 
     // Create role
-    const roleId = await ctx.db.insert("orgRoles", {
+    const roleId = await ctx.db.insert('orgRoles', {
       organizationId: args.organizationId,
       name: args.name,
       description: args.description,
@@ -221,7 +221,7 @@ export const createRole = mutation({
 
     // Add permissions
     for (const permission of args.permissions) {
-      await ctx.db.insert("orgRolePermissions", {
+      await ctx.db.insert('orgRolePermissions', {
         roleId,
         permission,
         createdAt: Date.now(),
@@ -234,9 +234,9 @@ export const createRole = mutation({
 
 export const assignRole = mutation({
   args: {
-    roleId: v.id("orgRoles"),
-    userId: v.id("users"),
-    organizationId: v.id("organizations"),
+    roleId: v.id('orgRoles'),
+    userId: v.id('users'),
+    organizationId: v.id('organizations'),
   },
   handler: async (ctx, args) => {
     // Check admin access
@@ -244,17 +244,17 @@ export const assignRole = mutation({
 
     // Check if user is member
     const membership = await ctx.db
-      .query("members")
-      .withIndex("by_org_user", (q) =>
-        q.eq("organizationId", args.organizationId).eq("userId", args.userId),
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', args.organizationId).eq('userId', args.userId)
       )
       .first();
 
     if (!membership)
-      throw new Error("User is not a member of this organization");
+      throw new Error('User is not a member of this organization');
 
     // Assign role
-    await ctx.db.insert("orgRoleAssignments", {
+    await ctx.db.insert('orgRoleAssignments', {
       roleId: args.roleId,
       userId: args.userId,
       organizationId: args.organizationId,
@@ -274,7 +274,7 @@ export const assignRole = mutation({
 // All queries filter by organization
 export const listProjects = query({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
   },
   handler: async (ctx, args) => {
     // Permission check
@@ -282,9 +282,9 @@ export const listProjects = query({
 
     // Organization-scoped query
     return await ctx.db
-      .query("projects")
-      .withIndex("by_organization", (q) =>
-        q.eq("organizationId", args.organizationId),
+      .query('projects')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', args.organizationId)
       )
       .collect();
   },
@@ -293,7 +293,7 @@ export const listProjects = query({
 // All mutations verify organization access
 export const createProject = mutation({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     name: v.string(),
     key: v.string(),
   },
@@ -302,7 +302,7 @@ export const createProject = mutation({
     await checkOrganizationAccess(ctx, args.organizationId);
 
     // Create project in organization
-    const projectId = await ctx.db.insert("projects", {
+    const projectId = await ctx.db.insert('projects', {
       organizationId: args.organizationId,
       name: args.name,
       key: args.key,

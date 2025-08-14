@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
+import { useAuthActions } from '@convex-dev/auth/react';
+import { useQuery } from 'convex/react';
+import { api } from '@/lib/convex';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,10 +10,10 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import { ChevronsUpDown, LogOut, User, Settings } from "lucide-react";
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
+import { ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
 
 export function UserMenu() {
   const { signOut } = useAuthActions();
@@ -24,42 +24,42 @@ export function UserMenu() {
   }
 
   const handleProfileClick = () => {
-    window.location.href = "/settings/profile";
+    window.location.href = '/settings/profile';
   };
 
   const handleSettingsClick = () => {
-    window.location.href = "/settings";
+    window.location.href = '/settings';
   };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="w-full justify-start gap-2 p-2">
-          <Avatar className="size-8">
+        <Button variant='ghost' className='w-full justify-start gap-2 p-2'>
+          <Avatar className='size-8'>
             {user.image && <AvatarImage src={user.image} alt={user.name} />}
             <AvatarFallback>{user.name?.[0]}</AvatarFallback>
           </Avatar>
-          <div className="flex flex-col items-start">
-            <span className="text-sm font-medium">{user.name}</span>
-            <span className="text-muted-foreground text-xs">{user.email}</span>
+          <div className='flex flex-col items-start'>
+            <span className='text-sm font-medium'>{user.name}</span>
+            <span className='text-muted-foreground text-xs'>{user.email}</span>
           </div>
-          <ChevronsUpDown className="ml-auto size-4" />
+          <ChevronsUpDown className='ml-auto size-4' />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56" align="end" forceMount>
+      <DropdownMenuContent className='w-56' align='end' forceMount>
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleProfileClick}>
-          <User className="mr-2 size-4" />
+          <User className='mr-2 size-4' />
           <span>Profile</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={handleSettingsClick}>
-          <Settings className="mr-2 size-4" />
+          <Settings className='mr-2 size-4' />
           <span>Settings</span>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => signOut()}>
-          <LogOut className="mr-2 size-4" />
+          <LogOut className='mr-2 size-4' />
           <span>Log out</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

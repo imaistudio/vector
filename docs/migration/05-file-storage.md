@@ -44,7 +44,7 @@ This phase migrates from S3 to Convex Storage, updating file upload/download pat
 // convex/actions/files.ts
 export const generateUploadUrl = action({
   args: {
-    organizationId: v.id("organizations"),
+    organizationId: v.id('organizations'),
     fileName: v.string(),
     contentType: v.string(),
   },
@@ -69,14 +69,14 @@ export const generateUploadUrl = action({
 
 export const getFileUrl = action({
   args: {
-    fileId: v.id("files"),
+    fileId: v.id('files'),
   },
   handler: async (ctx, args) => {
     // Get file metadata
     const file = await ctx.runQuery(internal.files.getById, {
       id: args.fileId,
     });
-    if (!file) throw new Error("File not found");
+    if (!file) throw new Error('File not found');
 
     // Check access permissions
     const { userId } = await checkOrganizationAccess(ctx, file.organizationId);
@@ -95,7 +95,7 @@ export const getFileUrl = action({
 // Current S3 patterns
 export const getPresignedUploadUrl = async (
   key: string,
-  contentType: string,
+  contentType: string
 ) => {
   // S3 presigned URL generation
 };
@@ -118,7 +118,7 @@ export const uploadFile = async (file: File, organizationId: string) => {
 
   // Upload to Convex Storage
   await fetch(uploadUrl.url, {
-    method: "POST",
+    method: 'POST',
     body: file,
   });
 
@@ -139,7 +139,7 @@ export const getFileUrl = async (fileId: string) => {
    ```typescript
    export const migrateS3Files = action({
      args: {
-       organizationId: v.id("organizations"),
+       organizationId: v.id('organizations'),
      },
      handler: async (ctx, args) => {
        // Get existing S3 files for organization
@@ -152,7 +152,7 @@ export const getFileUrl = async (fileId: string) => {
          // Upload to Convex Storage
          const uploadUrl = await ctx.storage.generateUploadUrl();
          await fetch(uploadUrl.url, {
-           method: "POST",
+           method: 'POST',
            body: fileData,
          });
 
@@ -201,11 +201,11 @@ export async function GET(request: Request) {
 // New Convex file access
 export const getFileAccess = query({
   args: {
-    fileId: v.id("files"),
+    fileId: v.id('files'),
   },
   handler: async (ctx, args) => {
     const file = await ctx.db.get(args.fileId);
-    if (!file) throw new Error("File not found");
+    if (!file) throw new Error('File not found');
 
     // Check permissions
     const { userId } = await checkOrganizationAccess(ctx, file.organizationId);

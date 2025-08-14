@@ -1,8 +1,8 @@
 // ---- Event payload types ---------------------------------------------------
-import type { InvitePayload } from "./events/invite";
+import type { InvitePayload } from './events/invite';
 
 export interface NotificationPayloadMap {
-  "organization.invite": InvitePayload;
+  'organization.invite': InvitePayload;
   // add new mappings here
 }
 

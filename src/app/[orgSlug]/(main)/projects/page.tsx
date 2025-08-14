@@ -1,4 +1,4 @@
-import { ProjectsPageContent } from "@/components/projects/projects-page-content";
+import { ProjectsPageContent } from '@/components/projects/projects-page-content';
 
 interface ProjectsPageProps {
   params: Promise<{ orgSlug: string }>;

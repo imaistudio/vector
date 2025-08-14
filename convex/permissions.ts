@@ -1,8 +1,8 @@
-import { query, type QueryCtx, type MutationCtx } from "./_generated/server";
-import { getAuthUserId } from "@convex-dev/auth/server";
-import { v, ConvexError } from "convex/values";
-import { Id, Doc } from "./_generated/dataModel";
-import { PERMISSIONS, type Permission } from "./_shared/permissions";
+import { query, type QueryCtx, type MutationCtx } from './_generated/server';
+import { getAuthUserId } from '@convex-dev/auth/server';
+import { v, ConvexError } from 'convex/values';
+import { Id, Doc } from './_generated/dataModel';
+import { PERMISSIONS, type Permission } from './_shared/permissions';
 
 // -----------------------------------------------------------------------------
 // Permission Definitions
@@ -13,16 +13,16 @@ export { PERMISSIONS, type Permission };
 
 // Permission scope context for scoped permission checks
 export interface PermissionScope {
-  organizationId: Id<"organizations">;
-  teamId?: Id<"teams">;
-  projectId?: Id<"projects">;
+  organizationId: Id<'organizations'>;
+  teamId?: Id<'teams'>;
+  projectId?: Id<'projects'>;
 }
 
 // -----------------------------------------------------------------------------
 // Visibility Types
 // -----------------------------------------------------------------------------
 
-export type VisibilityState = "private" | "organization" | "public";
+export type VisibilityState = 'private' | 'organization' | 'public';
 
 // -----------------------------------------------------------------------------
 // Permission Resolution Logic (Internal)
@@ -37,7 +37,7 @@ export type VisibilityState = "private" | "organization" | "public";
  */
 function permissionMatches(
   userPermission: string,
-  requiredPermission: string,
+  requiredPermission: string
 ): boolean {
   // Exact match
   if (userPermission === requiredPermission) {
@@ -50,7 +50,7 @@ function permissionMatches(
   }
 
   // Scoped wildcards (e.g., 'issue:*' matches 'issue:create')
-  if (userPermission.endsWith(":*")) {
+  if (userPermission.endsWith(':*')) {
     const prefix = userPermission.slice(0, -1); // Remove '*'
     return requiredPermission.startsWith(prefix);
   }
@@ -82,14 +82,14 @@ function getDefaultMemberPermissions(): Permission[] {
 export async function hasScopedPermission(
   ctx: QueryCtx | MutationCtx,
   scope: PermissionScope,
-  userId: Id<"users">,
-  requiredPermission: Permission,
+  userId: Id<'users'>,
+  requiredPermission: Permission
 ): Promise<boolean> {
   // 1. Check for organization membership
   const member = await ctx.db
-    .query("members")
-    .withIndex("by_org_user", (q) =>
-      q.eq("organizationId", scope.organizationId).eq("userId", userId),
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', scope.organizationId).eq('userId', userId)
     )
     .first();
 
@@ -98,33 +98,31 @@ export async function hasScopedPermission(
   }
 
   // 2. Grant all permissions to owners and admins
-  if (member.role === "owner" || member.role === "admin") {
+  if (member.role === 'owner' || member.role === 'admin') {
     return true;
   }
 
   // 3. Check default member permissions
   const defaultPermissions = getDefaultMemberPermissions();
   if (
-    defaultPermissions.some((perm) =>
-      permissionMatches(perm, requiredPermission),
-    )
+    defaultPermissions.some(perm => permissionMatches(perm, requiredPermission))
   ) {
     return true;
   }
 
   // 4. Check organization custom roles
   const orgRoleAssignments = await ctx.db
-    .query("orgRoleAssignments")
-    .withIndex("by_organization", (q) =>
-      q.eq("organizationId", scope.organizationId),
+    .query('orgRoleAssignments')
+    .withIndex('by_organization', q =>
+      q.eq('organizationId', scope.organizationId)
     )
-    .filter((q) => q.eq(q.field("userId"), userId))
+    .filter(q => q.eq(q.field('userId'), userId))
     .collect();
 
   for (const assignment of orgRoleAssignments) {
     const rolePermissions = await ctx.db
-      .query("orgRolePermissions")
-      .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
+      .query('orgRolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', assignment.roleId))
       .collect();
 
     for (const rolePerm of rolePermissions) {
@@ -137,15 +135,15 @@ export async function hasScopedPermission(
   // 5. Check team-scoped roles if teamId is provided
   if (scope.teamId) {
     const teamRoleAssignments = await ctx.db
-      .query("teamRoleAssignments")
-      .withIndex("by_team", (q) => q.eq("teamId", scope.teamId!))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .query('teamRoleAssignments')
+      .withIndex('by_team', q => q.eq('teamId', scope.teamId!))
+      .filter(q => q.eq(q.field('userId'), userId))
       .collect();
 
     for (const assignment of teamRoleAssignments) {
       const rolePermissions = await ctx.db
-        .query("teamRolePermissions")
-        .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
+        .query('teamRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', assignment.roleId))
         .collect();
 
       for (const rolePerm of rolePermissions) {
@@ -159,15 +157,15 @@ export async function hasScopedPermission(
   // 6. Check project-scoped roles if projectId is provided
   if (scope.projectId) {
     const projectRoleAssignments = await ctx.db
-      .query("projectRoleAssignments")
-      .withIndex("by_project", (q) => q.eq("projectId", scope.projectId!))
-      .filter((q) => q.eq(q.field("userId"), userId))
+      .query('projectRoleAssignments')
+      .withIndex('by_project', q => q.eq('projectId', scope.projectId!))
+      .filter(q => q.eq(q.field('userId'), userId))
       .collect();
 
     for (const assignment of projectRoleAssignments) {
       const rolePermissions = await ctx.db
-        .query("projectRolePermissions")
-        .withIndex("by_role", (q) => q.eq("roleId", assignment.roleId))
+        .query('projectRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', assignment.roleId))
         .collect();
 
       for (const rolePerm of rolePermissions) {
@@ -188,15 +186,15 @@ export async function hasScopedPermission(
  */
 export async function hasPermission(
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
-  userId: Id<"users">,
-  requiredPermission: Permission,
+  organizationId: Id<'organizations'>,
+  userId: Id<'users'>,
+  requiredPermission: Permission
 ): Promise<boolean> {
   return hasScopedPermission(
     ctx,
     { organizationId },
     userId,
-    requiredPermission,
+    requiredPermission
   );
 }
 
@@ -210,23 +208,23 @@ export async function hasPermission(
  */
 export async function requirePermission(
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<"organizations">,
-  requiredPermission: Permission,
+  organizationId: Id<'organizations'>,
+  requiredPermission: Permission
 ) {
   const userId = await getAuthUserId(ctx);
   if (!userId) {
-    throw new ConvexError("UNAUTHORIZED");
+    throw new ConvexError('UNAUTHORIZED');
   }
 
   const hasAccess = await hasPermission(
     ctx,
     organizationId,
     userId,
-    requiredPermission,
+    requiredPermission
   );
 
   if (!hasAccess) {
-    throw new ConvexError("FORBIDDEN");
+    throw new ConvexError('FORBIDDEN');
   }
 }
 
@@ -240,9 +238,9 @@ export async function requirePermission(
 export const has = query({
   args: {
     orgSlug: v.string(),
-    permission: v.union(...Object.values(PERMISSIONS).map((p) => v.literal(p))),
-    teamId: v.optional(v.id("teams")),
-    projectId: v.optional(v.id("projects")),
+    permission: v.union(...Object.values(PERMISSIONS).map(p => v.literal(p))),
+    teamId: v.optional(v.id('teams')),
+    projectId: v.optional(v.id('projects')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -251,8 +249,8 @@ export const has = query({
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
@@ -276,10 +274,10 @@ export const hasMultiple = query({
   args: {
     orgSlug: v.string(),
     permissions: v.array(
-      v.union(...Object.values(PERMISSIONS).map((p) => v.literal(p))),
+      v.union(...Object.values(PERMISSIONS).map(p => v.literal(p)))
     ),
-    teamId: v.optional(v.id("teams")),
-    projectId: v.optional(v.id("projects")),
+    teamId: v.optional(v.id('teams')),
+    projectId: v.optional(v.id('projects')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -293,8 +291,8 @@ export const hasMultiple = query({
     }
 
     const org = await ctx.db
-      .query("organizations")
-      .withIndex("by_slug", (q) => q.eq("slug", args.orgSlug))
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
       .first();
 
     if (!org) {
@@ -315,7 +313,7 @@ export const hasMultiple = query({
         ctx,
         scope,
         userId,
-        permission,
+        permission
       );
     }
 

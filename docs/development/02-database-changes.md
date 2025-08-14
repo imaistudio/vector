@@ -9,11 +9,11 @@ This guide explains how to make changes to the database schema using Drizzle ORM
 
   ```typescript
   // src/db/schema/index.ts
-  export * from "./users-and-auth";
-  export * from "./projects";
-  export * from "./teams";
+  export * from './users-and-auth';
+  export * from './projects';
+  export * from './teams';
   // ...
-  export * from "./blog"; // Add your new schema here
+  export * from './blog'; // Add your new schema here
   ```
 
 ## Generating Migrations

@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
 import {
   OrgSettingsSidebar,
   OrgOptionsDropdown,
-} from "@/components/organization";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex";
-import { useParams } from "next/navigation";
-import { Doc } from "@/convex/_generated/dataModel";
+} from '@/components/organization';
+import { useQuery } from 'convex/react';
+import { api } from '@/lib/convex';
+import { useParams } from 'next/navigation';
+import { Doc } from '@/convex/_generated/dataModel';
 
 interface OrgSettingsLayoutProps {
   children: React.ReactNode;
@@ -22,38 +22,37 @@ export default function OrgSettingsLayout({
   const members = useQuery(api.organizations.listMembersWithRoles, { orgSlug });
   const organization = useQuery(api.organizations.getBySlug, { orgSlug });
   const userOrganizations = useQuery(api.users.getOrganizations);
-  const userRole =
-    members?.find((m) => m.userId === user?._id)?.role || "member";
+  const userRole = members?.find(m => m.userId === user?._id)?.role || 'member';
 
   const organizations =
     userOrganizations?.filter(
-      (org): org is Doc<"organizations"> => org !== null,
+      (org): org is Doc<'organizations'> => org !== null
     ) || [];
 
   return (
-    <div className="bg-secondary flex h-screen">
+    <div className='bg-secondary flex h-screen'>
       {/* Settings Sidebar */}
-      <aside className="hidden w-56 lg:block">
-        <div className="flex h-full flex-col">
+      <aside className='hidden w-56 lg:block'>
+        <div className='flex h-full flex-col'>
           {/* Organization Options Dropdown */}
-          <div className="p-2">
+          <div className='p-2'>
             <OrgOptionsDropdown
               currentOrgSlug={orgSlug}
-              currentOrgName={organization?.name ?? "Organization"}
+              currentOrgName={organization?.name ?? 'Organization'}
               currentOrgLogo={organization?.logo}
               organizations={organizations}
             />
           </div>
 
           {/* Settings Navigation */}
-          <div className="flex-1 overflow-y-auto">
+          <div className='flex-1 overflow-y-auto'>
             <OrgSettingsSidebar orgSlug={orgSlug} userRole={userRole} />
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border">
+      <main className='bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
         {children}
       </main>
     </div>
