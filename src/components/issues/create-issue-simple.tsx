@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -136,7 +137,7 @@ export function CreateIssueSimple({
       setSelectedPriority('');
     } catch (error) {
       console.error('Failed to create issue:', error);
-      alert('Failed to create issue. Please try again.');
+      toast.error('Failed to create issue. Please try again.');
     } finally {
       setIsLoading(false);
     }

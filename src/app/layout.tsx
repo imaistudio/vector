@@ -1,11 +1,14 @@
 import type { Metadata } from 'next';
-import { Urbanist, Poppins } from 'next/font/google';
+import { Urbanist, Poppins, Geist } from 'next/font/google';
 import './globals.css';
 import { TopLoaderProvider } from '@/providers/top-loader-provider';
 import { ConvexAuthProvider } from '@/providers/convex-auth-provider';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
 import { getToken } from '@/lib/auth-server';
+import { cn } from '@/lib/utils';
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 const urbanist = Urbanist({
   variable: '--font-title',
@@ -29,7 +32,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en'>
+    <html lang='en' className={cn('font-sans', geist.variable)}>
       <body className={`${urbanist.variable} ${poppins.variable} antialiased`}>
         <TopLoaderProvider />
         <ErrorBoundary>

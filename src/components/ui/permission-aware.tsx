@@ -65,7 +65,7 @@ interface BasePermissionProps {
 // Component-specific interfaces
 interface PermissionAwareButtonProps
   extends BasePermissionProps,
-    React.ComponentProps<typeof Button> {
+    Omit<React.ComponentProps<typeof Button>, 'className'> {
   children: React.ReactNode;
   onClick?: () => void;
 }

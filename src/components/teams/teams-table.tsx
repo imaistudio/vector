@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatDateHuman } from '@/lib/date';
 import { useMutation } from 'convex/react';
+import { useConfirm } from '@/hooks/use-confirm';
 import { api } from '@/lib/convex';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
 import { IconPicker } from '@/components/ui/icon-picker';
@@ -54,6 +55,7 @@ export function TeamsTable({
   deletePending = false,
 }: TeamsTableProps) {
   const updateIconMutation = useMutation(api.teams.mutations.update);
+  const [confirm, ConfirmDialog] = useConfirm();
 
   const handleIconChange = (teamId: string, iconName: string | null) => {
     void updateIconMutation({
@@ -197,14 +199,15 @@ export function TeamsTable({
                       <DropdownMenuItem
                         variant='destructive'
                         disabled={deletePending}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              'Delete this team? This action cannot be undone.',
-                            )
-                          ) {
-                            onDelete(team.id);
-                          }
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: 'Delete team',
+                            description:
+                              'This will permanently delete the team and cannot be undone.',
+                            confirmLabel: 'Delete',
+                            variant: 'destructive',
+                          });
+                          if (ok) onDelete(team.id);
                         }}
                       >
                         <Trash2 className='mr-2 h-4 w-4' />
@@ -223,6 +226,7 @@ export function TeamsTable({
           );
         })}
       </AnimatePresence>
+      <ConfirmDialog />
     </div>
   );
 }

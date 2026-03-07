@@ -14,7 +14,6 @@ import {
   Plus,
   MoreHorizontal,
   Trash2,
-  ChevronsUpDown,
   Target,
   FolderOpen,
 } from 'lucide-react';
@@ -53,7 +52,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
@@ -73,22 +71,23 @@ import {
 
 import { Id } from '@/convex/_generated/dataModel';
 import { FunctionReturnType } from 'convex/server';
+import { useConfirm } from '@/hooks/use-confirm';
 
 // Add Member Dialog
 function AddMemberDialog({
   orgSlug,
   teamId,
+  existingMemberIds,
   onClose,
   onSuccess,
 }: {
   orgSlug: string;
   teamId: Id<'teams'>;
+  existingMemberIds: Set<string>;
   onClose: () => void;
   onSuccess?: () => void;
 }) {
-  const [selectedMember, setSelectedMember] = useState<string>('');
-  const [memberComboboxOpen, setMemberComboboxOpen] = useState(false);
-  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [addingUserId, setAddingUserId] = useState<string | null>(null);
 
   const orgMembersQuery = useQuery(api.organizations.queries.listMembers, {
     orgSlug,
@@ -96,15 +95,16 @@ function AddMemberDialog({
   const orgMembers = orgMembersQuery.data ?? [];
   const addMemberMutation = useMutation(api.teams.mutations.addMember);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedMember) return;
+  const availableMembers = orgMembers.filter(
+    m => !existingMemberIds.has(m.userId),
+  );
 
-    setIsAddingMember(true);
+  const handleAdd = async (userId: string) => {
+    setAddingUserId(userId);
     try {
       await addMemberMutation({
         teamId,
-        userId: selectedMember as Id<'users'>,
+        userId: userId as Id<'users'>,
         role: 'member',
       });
       onSuccess?.();
@@ -116,90 +116,54 @@ function AddMemberDialog({
         error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Failed to add member: ${errorMessage}`);
     } finally {
-      setIsAddingMember(false);
+      setAddingUserId(null);
     }
   };
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogHeader className='sr-only'>
-        <DialogTitle>Add team member</DialogTitle>
-      </DialogHeader>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
-        <form onSubmit={handleSubmit} className='space-y-2'>
-          {/* Member Selection */}
-          <div className='relative'>
-            <Popover
-              open={memberComboboxOpen}
-              onOpenChange={setMemberComboboxOpen}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant='outline'
-                  role='combobox'
-                  aria-expanded={memberComboboxOpen}
-                  className='h-9 w-full justify-between pr-20 text-base'
+      <DialogContent showCloseButton={false} className='gap-0 p-0 sm:max-w-sm'>
+        <DialogHeader className='sr-only'>
+          <DialogTitle>Add team member</DialogTitle>
+        </DialogHeader>
+        <Command className='rounded-lg'>
+          <CommandInput placeholder='Search members...' className='h-9' />
+          <CommandList className='max-h-[300px]'>
+            <CommandEmpty>No members available to add.</CommandEmpty>
+            <CommandGroup>
+              {availableMembers.map(member => (
+                <CommandItem
+                  key={member.userId}
+                  value={`${member.user?.name ?? ''} ${member.user?.email ?? ''}`}
+                  onSelect={() => handleAdd(member.userId)}
+                  disabled={addingUserId !== null}
+                  className='flex items-center gap-2 px-3 py-2'
                 >
-                  {selectedMember
-                    ? orgMembers.find(
-                        member => member.userId === selectedMember,
-                      )?.user?.name
-                    : 'Select member...'}
-                  <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className='max-h-[200px] w-[var(--radix-popover-trigger-width)] p-0'>
-                <Command>
-                  <CommandInput
-                    placeholder='Search member...'
-                    className='h-9'
-                  />
-                  <CommandList>
-                    <CommandEmpty>No member found.</CommandEmpty>
-                    <CommandGroup>
-                      {orgMembers.map(member => (
-                        <CommandItem
-                          key={member.userId}
-                          value={member.user?.name ?? ''}
-                          onSelect={() => {
-                            setSelectedMember(member.userId);
-                            setMemberComboboxOpen(false);
-                          }}
-                        >
-                          <Check
-                            className={cn(
-                              'mr-2 h-4 w-4',
-                              selectedMember === member.userId
-                                ? 'opacity-100'
-                                : 'opacity-0',
-                            )}
-                          />
-                          {member.user?.name}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
-              Member
-            </span>
-          </div>
-        </form>
-
-        <div className='flex w-full flex-row items-center justify-between gap-2'>
-          <Button variant='ghost' size='sm' onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            size='sm'
-            disabled={!selectedMember || isAddingMember}
-            onClick={handleSubmit}
-          >
-            {isAddingMember ? 'Adding…' : 'Add member'}
-          </Button>
-        </div>
+                  <Avatar className='size-6'>
+                    <AvatarFallback className='text-xs'>
+                      {(member.user?.name ?? member.user?.email ?? '?')
+                        .charAt(0)
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className='min-w-0 flex-1'>
+                    <div className='truncate text-sm font-medium'>
+                      {member.user?.name ?? 'Unknown'}
+                    </div>
+                    <div className='text-muted-foreground truncate text-xs'>
+                      {member.user?.email}
+                    </div>
+                  </div>
+                  {addingUserId === member.userId && (
+                    <span className='text-muted-foreground text-xs'>
+                      Adding...
+                    </span>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </DialogContent>
     </Dialog>
   );
@@ -217,6 +181,7 @@ function MembersList({
   removePending?: boolean;
   canEdit: boolean;
 }) {
+  const [confirmRemove, ConfirmRemoveDialog] = useConfirm();
   const getInitials = (name?: string, email?: string): string => {
     const displayName = name || email;
     if (!displayName) return '?';
@@ -295,10 +260,15 @@ function MembersList({
                     <DropdownMenuItem
                       variant='destructive'
                       disabled={removePending}
-                      onClick={() => {
-                        if (confirm('Remove this member from the team?')) {
-                          onRemoveMember(member._id);
-                        }
+                      onClick={async () => {
+                        const ok = await confirmRemove({
+                          title: 'Remove member',
+                          description:
+                            'Remove this member from the team? They will lose access to team resources.',
+                          confirmLabel: 'Remove',
+                          variant: 'destructive',
+                        });
+                        if (ok) onRemoveMember(member._id);
                       }}
                     >
                       <Trash2 className='mr-2 h-4 w-4' />
@@ -311,6 +281,7 @@ function MembersList({
           </motion.div>
         ))}
       </AnimatePresence>
+      <ConfirmRemoveDialog />
     </div>
   );
 }
@@ -345,6 +316,10 @@ export default function TeamViewPage() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUpdatingIssues, setIsUpdatingIssues] = useState(false);
   const [isUpdatingProjects, setIsUpdatingProjects] = useState(false);
+  const [initializedTeamId, setInitializedTeamId] = useState<string | null>(
+    null,
+  );
+  const [confirm, ConfirmDialog] = useConfirm();
 
   // Check user permissions for team management
   const userQuery = useQuery(api.users.currentUser);
@@ -550,14 +525,13 @@ export default function TeamViewPage() {
 
   const canEdit = !!(user && team && (team.leadId === user._id || canEditTeam));
 
-  // Initialize editing values when team loads
-  if (team) {
-    if (nameValue !== team.name) setNameValue(team.name);
-    if (descriptionValue !== (team.description || ''))
-      setDescriptionValue(team.description || '');
-    if (keyValue !== team.key) setKeyValue(team.key);
-    if (iconValue !== (team.icon || null)) setIconValue(team.icon || null);
-    if (colorValue !== (team.color || null)) setColorValue(team.color || null);
+  if (team && team._id !== initializedTeamId) {
+    setInitializedTeamId(team._id);
+    setNameValue(team.name);
+    setDescriptionValue(team.description || '');
+    setKeyValue(team.key);
+    setIconValue(team.icon || null);
+    setColorValue(team.color || null);
   }
 
   if (!user) return null;
@@ -697,7 +671,14 @@ export default function TeamViewPage() {
   };
 
   const handleIssueDelete = async (issueId: string) => {
-    if (!confirm('Delete this issue? This action cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete issue',
+      description:
+        'This will permanently delete the issue and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     setIsUpdatingIssues(true);
     await deleteMutation({ issueId: issueId as Id<'issues'> });
     setIsUpdatingIssues(false);
@@ -735,7 +716,14 @@ export default function TeamViewPage() {
   };
 
   const handleProjectDelete = async (projectKey: string) => {
-    if (!confirm('Delete this project? This cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete project',
+      description:
+        'This will permanently delete the project and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     setIsUpdatingProjects(true);
     await deleteProjectMutation({
       projectId: projectKey as Id<'projects'>,
@@ -1255,13 +1243,12 @@ export default function TeamViewPage() {
       {showAddMemberDialog && (
         <AddMemberDialog
           orgSlug={orgSlug}
-          teamId={team?._id}
+          teamId={team._id}
+          existingMemberIds={new Set(teamMembers.map(m => m.userId))}
           onClose={() => setShowAddMemberDialog(false)}
-          onSuccess={() => {
-            // No need to refetch here, useQuery will handle re-renders
-          }}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }

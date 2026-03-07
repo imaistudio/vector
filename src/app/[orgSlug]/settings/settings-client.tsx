@@ -34,7 +34,7 @@ export default function OrgSettingsPageClient({
 
   const header = (
     <div className='border-b'>
-      <div className='flex items-center p-1'>
+      <div className='flex items-center p-1 pl-9 lg:pl-1'>
         <span className='flex items-center gap-1.5 px-3 text-xs font-medium'>
           <Building className='size-3.5' />
           Organization

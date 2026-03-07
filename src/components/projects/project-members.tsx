@@ -12,11 +12,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from '@/components/ui/popover';
-import {
   Command,
   CommandInput,
   CommandList,
@@ -24,16 +19,8 @@ import {
   CommandGroup,
   CommandItem,
 } from '@/components/ui/command';
-import {
-  Check,
-  ChevronsUpDown,
-  MoreHorizontal,
-  Trash2,
-  Users,
-  Plus,
-} from 'lucide-react';
+import { MoreHorizontal, Trash2, Users, Plus } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   DropdownMenu,
@@ -44,6 +31,7 @@ import {
 
 import { FunctionReturnType } from 'convex/server';
 import { Id } from '@/convex/_generated/dataModel';
+import { useConfirm } from '@/hooks/use-confirm';
 
 /**
  * Section component that renders the list of project members and allows adding/removing members.
@@ -59,6 +47,7 @@ export function ProjectMembersSection({
   canEdit?: boolean;
 }) {
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
+  const [confirm, ConfirmDialog] = useConfirm();
 
   const project = useQuery(api.projects.queries.getByKey, {
     orgSlug,
@@ -81,8 +70,15 @@ export function ProjectMembersSection({
 
   const removeMemberMutation = useMutation(api.projects.mutations.removeMember);
 
-  const handleRemoveMember = (membershipId: Id<'projectMembers'>) => {
-    if (!confirm('Remove this member from the project?')) return;
+  const handleRemoveMember = async (membershipId: Id<'projectMembers'>) => {
+    const ok = await confirm({
+      title: 'Remove member',
+      description:
+        'Remove this member from the project? They will lose access to project resources.',
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     void removeMemberMutation({ membershipId });
   };
 
@@ -202,9 +198,11 @@ export function ProjectMembersSection({
         <AddMemberDialog
           orgSlug={orgSlug}
           projectKey={projectKey}
+          existingMemberIds={new Set(members.map(m => m.userId))}
           onClose={() => setShowAddMemberDialog(false)}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }
@@ -215,15 +213,15 @@ export function ProjectMembersSection({
 function AddMemberDialog({
   orgSlug,
   projectKey,
+  existingMemberIds,
   onClose,
 }: {
   orgSlug: string;
   projectKey: string;
+  existingMemberIds: Set<string>;
   onClose: () => void;
 }) {
-  const [selectedMember, setSelectedMember] = useState<string>('');
-  const [memberComboboxOpen, setMemberComboboxOpen] = useState(false);
-  const [isAddingMember, setIsAddingMember] = useState(false);
+  const [addingUserId, setAddingUserId] = useState<string | null>(null);
 
   const orgMembers =
     useQuery(api.organizations.queries.listMembers, {
@@ -236,148 +234,71 @@ function AddMemberDialog({
   });
   const projectId = project?._id;
 
-  // Fetch current project members to filter them out
-  const projectMembers =
-    useQuery(
-      api.projects.queries.listMembers,
-      projectId ? { projectId } : 'skip',
-    ) ?? [];
-
   const addMemberMutation = useMutation(api.projects.mutations.addMember);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedMember) return;
+  const availableMembers = orgMembers.filter(
+    m => !existingMemberIds.has(m.userId),
+  );
 
-    setIsAddingMember(true);
+  const handleAdd = async (userId: string) => {
+    if (!projectId) return;
+    setAddingUserId(userId);
     try {
       await addMemberMutation({
-        projectId: projectId!,
-        userId: selectedMember as Id<'users'>,
+        projectId,
+        userId: userId as Id<'users'>,
         role: 'member',
       });
       onClose();
     } finally {
-      setIsAddingMember(false);
+      setAddingUserId(null);
     }
   };
 
   return (
     <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogHeader className='sr-only'>
-        <DialogTitle>Add project member</DialogTitle>
-      </DialogHeader>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
-        <form onSubmit={handleSubmit} className='space-y-2'>
-          {/* Member Selection */}
-          <div className='relative'>
-            <Popover
-              open={memberComboboxOpen}
-              onOpenChange={setMemberComboboxOpen}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant='outline'
-                  role='combobox'
-                  aria-expanded={memberComboboxOpen}
-                  className='h-9 w-full justify-between pr-20 text-base'
+      <DialogContent showCloseButton={false} className='gap-0 p-0 sm:max-w-sm'>
+        <DialogHeader className='sr-only'>
+          <DialogTitle>Add project member</DialogTitle>
+        </DialogHeader>
+        <Command className='rounded-lg'>
+          <CommandInput placeholder='Search members...' className='h-9' />
+          <CommandList className='max-h-[300px]'>
+            <CommandEmpty>No members available to add.</CommandEmpty>
+            <CommandGroup>
+              {availableMembers.map(member => (
+                <CommandItem
+                  key={member.userId}
+                  value={`${member.user?.name ?? ''} ${member.user?.email ?? ''}`}
+                  onSelect={() => handleAdd(member.userId)}
+                  disabled={addingUserId !== null}
+                  className='flex items-center gap-2 px-3 py-2'
                 >
-                  {selectedMember
-                    ? orgMembers.find(m => m.userId === selectedMember)?.user
-                        ?.name
-                    : 'Select member...'}
-                  <ChevronsUpDown className='ml-2 h-4 w-4 shrink-0 opacity-50' />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className='max-h-[200px] w-[var(--radix-popover-trigger-width)] p-0'>
-                <Command>
-                  <CommandInput
-                    placeholder='Search member...'
-                    className='h-9'
-                  />
-                  <CommandList>
-                    <CommandEmpty>
-                      {orgMembers.filter(
-                        member =>
-                          !projectMembers.some(
-                            projectMember =>
-                              projectMember.userId === member.userId,
-                          ),
-                      ).length === 0
-                        ? 'All organization members are already in this project'
-                        : 'No member found'}
-                    </CommandEmpty>
-                    <CommandGroup>
-                      {orgMembers
-                        .filter(
-                          member =>
-                            !projectMembers.some(
-                              projectMember =>
-                                projectMember.userId === member.userId,
-                            ),
-                        )
-                        .map(member => (
-                          <CommandItem
-                            key={member.userId}
-                            value={member.user?.name ?? ''}
-                            onSelect={() => {
-                              setSelectedMember(member.userId);
-                              setMemberComboboxOpen(false);
-                            }}
-                          >
-                            <Check
-                              className={cn(
-                                'mr-2 h-4 w-4',
-                                selectedMember === member.userId
-                                  ? 'opacity-100'
-                                  : 'opacity-0',
-                              )}
-                            />
-                            {member.user?.name}
-                          </CommandItem>
-                        ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
-              Member
-            </span>
-          </div>
-        </form>
-
-        <div className='flex w-full flex-row items-center justify-between gap-2'>
-          <Button variant='ghost' size='sm' onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            size='sm'
-            disabled={
-              !selectedMember ||
-              isAddingMember ||
-              orgMembers.filter(
-                member =>
-                  !projectMembers.some(
-                    projectMember => projectMember.userId === member.userId,
-                  ),
-              ).length === 0
-            }
-            onClick={handleSubmit}
-            title={
-              orgMembers.filter(
-                member =>
-                  !projectMembers.some(
-                    projectMember => projectMember.userId === member.userId,
-                  ),
-              ).length === 0
-                ? 'All organization members are already in this project'
-                : ''
-            }
-          >
-            {isAddingMember ? 'Adding…' : 'Add member'}
-          </Button>
-        </div>
+                  <Avatar className='size-6'>
+                    <AvatarFallback className='text-xs'>
+                      {(member.user?.name ?? member.user?.email ?? '?')
+                        .charAt(0)
+                        .toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className='min-w-0 flex-1'>
+                    <div className='truncate text-sm font-medium'>
+                      {member.user?.name ?? 'Unknown'}
+                    </div>
+                    <div className='text-muted-foreground truncate text-xs'>
+                      {member.user?.email}
+                    </div>
+                  </div>
+                  {addingUserId === member.userId && (
+                    <span className='text-muted-foreground text-xs'>
+                      Adding...
+                    </span>
+                  )}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
       </DialogContent>
     </Dialog>
   );

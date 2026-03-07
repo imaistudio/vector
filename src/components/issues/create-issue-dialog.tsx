@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { PermissionAwareButton } from '@/components/ui/permission-aware';
@@ -270,42 +270,29 @@ function CreateIssueDialogContent({
 
   const effectiveFormat = getEffectiveFormat();
 
-  // Auto-select the first "todo" state as default
-  useEffect(() => {
-    if (states.length > 0 && !selectedState) {
-      const defaultState =
-        states.find((state: StateWithId) => state.type === 'todo') || states[0];
-      setSelectedState(defaultState.id);
-    }
-  }, [states, selectedState]);
+  // Auto-select defaults once async data loads (render-time initialization)
+  if (states.length > 0 && !selectedState) {
+    const defaultState =
+      states.find((state: StateWithId) => state.type === 'todo') || states[0];
+    setSelectedState(defaultState.id);
+  }
 
-  // Auto-select default priority (weight === 0) once priorities load
-  useEffect(() => {
-    if (priorities.length > 0 && !selectedPriority) {
-      const defaultPriority =
-        priorities.find((p: PriorityWithId) => p.weight === 0) || priorities[0];
-      if (defaultPriority) {
-        setSelectedPriority(defaultPriority.id);
-      }
+  if (priorities.length > 0 && !selectedPriority) {
+    const defaultPriority =
+      priorities.find((p: PriorityWithId) => p.weight === 0) || priorities[0];
+    if (defaultPriority) {
+      setSelectedPriority(defaultPriority.id);
     }
-  }, [priorities, selectedPriority]);
+  }
 
-  // Auto-select current user as default assignee only if user hasn't interacted with assignees
-  useEffect(() => {
-    if (
-      currentUser &&
-      selectedAssignees.length === 0 &&
-      !defaultStates?.assigneeIds &&
-      !hasUserInteractedWithAssignees
-    ) {
-      setSelectedAssignees([currentUser._id]);
-    }
-  }, [
-    currentUser,
-    selectedAssignees.length,
-    defaultStates?.assigneeIds,
-    hasUserInteractedWithAssignees,
-  ]);
+  if (
+    currentUser &&
+    selectedAssignees.length === 0 &&
+    !defaultStates?.assigneeIds &&
+    !hasUserInteractedWithAssignees
+  ) {
+    setSelectedAssignees([currentUser._id]);
+  }
 
   // Wrapper function to track user interaction with assignees
   const handleAssigneesChange = (assignees: string[]) => {
@@ -323,11 +310,11 @@ function CreateIssueDialogContent({
 
     // Validate required selections based on effective format
     if (effectiveFormat === 'team' && !selectedTeam) {
-      alert('Please select a team for team-based issue keys');
+      toast.error('Please select a team for team-based issue keys');
       return;
     }
     if (effectiveFormat === 'project' && !selectedProject) {
-      alert('Please select a project for project-based issue keys');
+      toast.error('Please select a project for project-based issue keys');
       return;
     }
 
