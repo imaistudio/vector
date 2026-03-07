@@ -1,12 +1,12 @@
 # Local Setup
 
-This guide will walk you through setting up the AIKP project for local development.
+This guide walks through the current local development setup for Vector.
 
 ## Prerequisites
 
-- Node.js (v20.x or later)
-- pnpm
-- Docker
+- Node.js `24.x`
+- `pnpm`
+- A local Convex development deployment
 
 ## Installation
 
@@ -24,28 +24,21 @@ This guide will walk you through setting up the AIKP project for local developme
     cp sample.env .env.local
     ```
 
-    You will need to update the values in `.env.local` as needed. See [Environment Variables](./02-environment-variables.md) for more details.
+    Update the values in `.env.local` for your local environment. See [Environment Variables](./02-environment-variables.md) for details.
 
-3.  **Start the database**
+3.  **Start Convex**
 
-    The project uses a PostgreSQL database running in a Docker container.
-
-    ```bash
-    pnpm dlx --yes docker compose -f docker-compose.dev.yml up -d
-    ```
-
-    This will start a Postgres container in the background.
-
-4.  **Run database migrations**
-
-    After setting up the database, you need to apply the database schema.
+    Run the local Convex backend in a separate terminal:
 
     ```bash
-    pnpm run db:generate
-    pnpm run db:push
+    pnpm run convex:dev
     ```
 
-5.  **Start the development server**
+    This handles local Convex development and keeps generated files up to date.
+
+4.  **Start Next.js**
+
+    In another terminal, start the app:
 
     ```bash
     pnpm dev
@@ -53,15 +46,14 @@ This guide will walk you through setting up the AIKP project for local developme
 
     The application will be available at [http://localhost:3000](http://localhost:3000).
 
+5.  **Bootstrap the first admin**
+
+    On a fresh local instance, open [http://localhost:3000/setup-admin](http://localhost:3000/setup-admin) to create the initial administrator account.
+
 ---
 
-## Deployment
+## Notes
 
-The app is optimised for **Vercel**:
-
-1.  Create a new project, set root to repo root (monolithic).
-2.  Install Postgres add-on or point `DATABASE_URL` to external DB.
-3.  Set env vars.
-4.  Build & deploy.
-
-_Docker_ deployments are also possible – set `output: "standalone"` in `next.config.ts` and build a container.
+- `pnpm run project:setup` is available as a lightweight bootstrap helper for dependencies and Git hooks.
+- If you change Convex functions or schema, keep `pnpm run convex:dev` running so generated bindings stay current.
+- Optional SMTP settings can be left unset during local development.

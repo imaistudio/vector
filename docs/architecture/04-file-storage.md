@@ -1,29 +1,17 @@
 # File Storage and Access Control
 
-Files, such as organization logos, are stored privately in an S3-compatible object storage service (MinIO for local development, AWS S3 or R2 in production).
+Vector stores uploaded assets, such as organization logos, in Convex storage and references them by storage ID in application records.
 
 ## Access Control Mechanism
 
-Access to these files is controlled at the organization level to ensure data privacy and security.
+The current file flow is simple and centered around Convex:
 
-1.  **Private Uploads**: All files are uploaded with `ACL: "private"`, meaning they are not publicly accessible by default.
-2.  **Key Storage**: The database only stores the object key (e.g., `org-logos/<orgId>/logo.png`), not the full URL.
-3.  **Presigned URLs**: File access is provided through a dedicated API endpoint (`/api/files/<key>`). This endpoint:
-    1.  Authenticates the user making the request.
-    2.  Verifies that the user is a member of the organization that owns the file.
-    3.  Generates a temporary, presigned URL with a short expiration time (e.g., 1 hour).
-    4.  Redirects the user to the presigned URL.
+1. **Upload URL generation**: The frontend requests an upload URL from Convex before sending the file.
+2. **Storage ID persistence**: The returned Convex storage ID is saved on the owning record, such as an organization.
+3. **Temporary URL resolution**: Reads go through a Next.js API route at `/api/files/<storageId>`, which asks Convex for a temporary file URL and redirects the browser.
 
-This approach ensures that only authenticated and authorized users can access organization-specific files, while keeping the storage implementation details abstracted from the frontend.
+This keeps storage concerns out of the UI layer and lets the application use stable storage IDs instead of hard-coding provider-specific URLs.
 
-## Local S3 Storage (MinIO)
+## Local Development
 
-A MinIO container is included in `docker-compose.dev.yml` for local development.
-
-- **Endpoint**: `http://localhost:9000`
-- **Console**: `http://localhost:9001`
-- **Access Key**: `minioadmin`
-- **Secret Key**: `minioadmin`
-- **Bucket**: `aikp-local` (pre-created and private)
-
-To use the local file storage, you must configure the appropriate [environment variables](./../getting-started/02-environment-variables.md).
+Keep `pnpm run convex:dev` running while working locally so storage APIs and generated bindings stay in sync. For broader runtime configuration, see [Environment Variables](./../getting-started/02-environment-variables.md).

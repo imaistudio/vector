@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { exit, platform } from 'node:process';
 
 function run(cmd: string, args: string[]) {
@@ -16,21 +17,22 @@ function run(cmd: string, args: string[]) {
 }
 
 console.log(
-  '\n🛠️  Starting AIKP project setup\n----------------------------------'
+  '\n🛠️  Starting Vector project setup\n----------------------------------',
 );
 
 // 1) Install deps
 run('pnpm', ['install']);
 
-// 2) Start (or ensure) Postgres container
-run('docker', ['compose', '-f', 'docker-compose.dev-postgres.yml', 'up', '-d']);
-
-// 3) Push migrations to the database
-run('pnpm', ['run', 'db:push']);
-
-// 4) Prepare Husky hooks & other post-install tasks
+// 2) Prepare Husky hooks & other post-install tasks
 run('pnpm', ['run', 'prepare']);
 
-console.log(
-  "\n✅  Project setup complete! You can now run 'pnpm dev' to start the app.\n"
-);
+const envStatus = existsSync('.env.local')
+  ? '.env.local already exists.'
+  : 'Create one with: cp sample.env .env.local';
+
+console.log('\n✅  Project setup complete.\n');
+console.log('Next steps:');
+console.log(`- ${envStatus}`);
+console.log('- Update your local auth and Convex environment variables.');
+console.log('- Start Convex: pnpm run convex:dev');
+console.log('- Start Next.js: pnpm run dev\n');
