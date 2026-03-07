@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Save, X, Plus, FolderOpen } from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
@@ -32,6 +32,7 @@ import {
   VisibilitySelector,
   type VisibilityState,
 } from '@/components/ui/visibility-selector';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 
 interface ProjectViewClientProps {
   params: { orgSlug: string; projectKey: string };
@@ -54,8 +55,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   const [editingDescription, setEditingDescription] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [descriptionValue, setDescriptionValue] = useState('');
-  const [iconValue, setIconValue] = useState<string | null>(null);
-  const [colorValue, setColorValue] = useState<string | null>(null);
 
   const user = useQuery(api.users.currentUser);
 
@@ -64,12 +63,22 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     projectKey: params.projectKey,
   });
 
+  const projectId = project?._id;
+  const [displayIcon, setOptimisticIcon] = useOptimisticValue(
+    project?.icon ?? '',
+  );
+  const [displayColor, setOptimisticColor] = useOptimisticValue(
+    project?.color ?? '',
+  );
+  const iconValue = displayIcon || null;
+  const colorValue = displayColor || null;
+
   // Use useMemo to stabilize the scope object and prevent hook rerenders
   const permissionScope = useMemo(() => {
-    return project?._id
-      ? { orgSlug: params.orgSlug, projectId: project._id }
+    return projectId
+      ? { orgSlug: params.orgSlug, projectId }
       : { orgSlug: params.orgSlug };
-  }, [params.orgSlug, project?._id]);
+  }, [params.orgSlug, projectId]);
 
   const { isAllowed: canEditProject } = usePermissionCheck(
     params.orgSlug,
@@ -143,7 +152,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
   const handleIconChange = (iconName: string | null) => {
     if (!project) return;
-    setIconValue(iconName);
+    setOptimisticIcon(iconName || '');
     void updateMutation({
       projectId: project._id,
       data: { icon: iconName || undefined },
@@ -152,7 +161,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
   const handleColorChange = (color: string) => {
     if (!project) return;
-    setColorValue(color);
+    setOptimisticColor(color);
     void updateMutation({
       projectId: project._id,
       data: { color },
@@ -166,13 +175,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
       visibility,
     });
   };
-
-  useEffect(() => {
-    if (project) {
-      setIconValue(project.icon || null);
-      setColorValue(project.color || null);
-    }
-  }, [project]);
 
   if (!project) {
     return (
@@ -192,14 +194,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
         </div>
       </div>
     );
-  }
-
-  // Initialize editing values when starting to edit
-  if (editingTitle && titleValue === '') {
-    setTitleValue(project.name);
-  }
-  if (editingDescription && descriptionValue === '') {
-    setDescriptionValue(project.description || '');
   }
 
   return (
@@ -487,7 +481,11 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                     'transition-colors',
                     canEdit && 'hover:text-muted-foreground cursor-pointer',
                   )}
-                  onClick={() => canEdit && setEditingTitle(true)}
+                  onClick={() => {
+                    if (!canEdit) return;
+                    setTitleValue(project.name);
+                    setEditingTitle(true);
+                  }}
                 >
                   {project.name}
                 </span>
@@ -536,14 +534,21 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                       'prose prose-sm text-muted-foreground max-w-none transition-colors',
                       canEdit && 'hover:text-foreground cursor-pointer',
                     )}
-                    onClick={() => canEdit && setEditingDescription(true)}
+                    onClick={() => {
+                      if (!canEdit) return;
+                      setDescriptionValue(project.description || '');
+                      setEditingDescription(true);
+                    }}
                   >
                     <p className='whitespace-pre-wrap'>{project.description}</p>
                   </div>
                 ) : canEdit ? (
                   <button
                     className='text-muted-foreground hover:text-foreground border-muted-foreground/20 hover:border-muted-foreground/40 w-full rounded-lg border-2 border-dashed bg-transparent p-4 text-left text-base'
-                    onClick={() => setEditingDescription(true)}
+                    onClick={() => {
+                      setDescriptionValue(project.description || '');
+                      setEditingDescription(true);
+                    }}
                   >
                     Add a description...
                   </button>
