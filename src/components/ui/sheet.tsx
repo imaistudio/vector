@@ -5,6 +5,7 @@ import { Dialog as SheetPrimitive } from '@base-ui/react/dialog';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { resolveRenderNativeButton } from '@/components/ui/base-ui-trigger-utils';
 import { XIcon } from 'lucide-react';
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
@@ -14,22 +15,25 @@ function Sheet({ ...props }: SheetPrimitive.Root.Props) {
 function SheetTrigger({
   asChild,
   children,
+  nativeButton,
   ...props
 }: SheetPrimitive.Trigger.Props & { asChild?: boolean }) {
   if (asChild && React.isValidElement(children)) {
-    const isNativeButton =
-      typeof children.type === 'string' && children.type === 'button';
     return (
       <SheetPrimitive.Trigger
         data-slot='sheet-trigger'
         render={children}
-        nativeButton={isNativeButton}
+        nativeButton={resolveRenderNativeButton(children, nativeButton)}
         {...props}
       />
     );
   }
   return (
-    <SheetPrimitive.Trigger data-slot='sheet-trigger' {...props}>
+    <SheetPrimitive.Trigger
+      data-slot='sheet-trigger'
+      nativeButton={nativeButton}
+      {...props}
+    >
       {children}
     </SheetPrimitive.Trigger>
   );

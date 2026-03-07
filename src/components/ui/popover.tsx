@@ -4,6 +4,7 @@ import * as React from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 
 import { cn } from '@/lib/utils';
+import { resolveRenderNativeButton } from '@/components/ui/base-ui-trigger-utils';
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot='popover' {...props} />;
@@ -12,22 +13,25 @@ function Popover({ ...props }: PopoverPrimitive.Root.Props) {
 function PopoverTrigger({
   asChild,
   children,
+  nativeButton,
   ...props
 }: PopoverPrimitive.Trigger.Props & { asChild?: boolean }) {
   if (asChild && React.isValidElement(children)) {
-    const isNativeButton =
-      typeof children.type === 'string' && children.type === 'button';
     return (
       <PopoverPrimitive.Trigger
         data-slot='popover-trigger'
         render={children}
-        nativeButton={isNativeButton}
+        nativeButton={resolveRenderNativeButton(children, nativeButton)}
         {...props}
       />
     );
   }
   return (
-    <PopoverPrimitive.Trigger data-slot='popover-trigger' {...props}>
+    <PopoverPrimitive.Trigger
+      data-slot='popover-trigger'
+      nativeButton={nativeButton}
+      {...props}
+    >
       {children}
     </PopoverPrimitive.Trigger>
   );

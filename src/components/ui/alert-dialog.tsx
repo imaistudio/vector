@@ -5,6 +5,7 @@ import { AlertDialog as AlertDialogPrimitive } from '@base-ui/react/alert-dialog
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { resolveRenderNativeButton } from '@/components/ui/base-ui-trigger-utils';
 
 function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
   return <AlertDialogPrimitive.Root data-slot='alert-dialog' {...props} />;
@@ -13,22 +14,25 @@ function AlertDialog({ ...props }: AlertDialogPrimitive.Root.Props) {
 function AlertDialogTrigger({
   asChild,
   children,
+  nativeButton,
   ...props
 }: AlertDialogPrimitive.Trigger.Props & { asChild?: boolean }) {
   if (asChild && React.isValidElement(children)) {
-    const isNativeButton =
-      typeof children.type === 'string' && children.type === 'button';
     return (
       <AlertDialogPrimitive.Trigger
         data-slot='alert-dialog-trigger'
         render={children}
-        nativeButton={isNativeButton}
+        nativeButton={resolveRenderNativeButton(children, nativeButton)}
         {...props}
       />
     );
   }
   return (
-    <AlertDialogPrimitive.Trigger data-slot='alert-dialog-trigger' {...props}>
+    <AlertDialogPrimitive.Trigger
+      data-slot='alert-dialog-trigger'
+      nativeButton={nativeButton}
+      {...props}
+    >
       {children}
     </AlertDialogPrimitive.Trigger>
   );

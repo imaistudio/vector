@@ -5,6 +5,7 @@ import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon, CheckIcon } from 'lucide-react';
+import { resolveRenderNativeButton } from '@/components/ui/base-ui-trigger-utils';
 
 function DropdownMenu({ ...props }: MenuPrimitive.Root.Props) {
   return <MenuPrimitive.Root data-slot='dropdown-menu' {...props} />;
@@ -17,22 +18,25 @@ function DropdownMenuPortal({ ...props }: MenuPrimitive.Portal.Props) {
 function DropdownMenuTrigger({
   asChild,
   children,
+  nativeButton,
   ...props
 }: MenuPrimitive.Trigger.Props & { asChild?: boolean }) {
   if (asChild && React.isValidElement(children)) {
-    const isNativeButton =
-      typeof children.type === 'string' && children.type === 'button';
     return (
       <MenuPrimitive.Trigger
         data-slot='dropdown-menu-trigger'
         render={children}
-        nativeButton={isNativeButton}
+        nativeButton={resolveRenderNativeButton(children, nativeButton)}
         {...props}
       />
     );
   }
   return (
-    <MenuPrimitive.Trigger data-slot='dropdown-menu-trigger' {...props}>
+    <MenuPrimitive.Trigger
+      data-slot='dropdown-menu-trigger'
+      nativeButton={nativeButton}
+      {...props}
+    >
       {children}
     </MenuPrimitive.Trigger>
   );
