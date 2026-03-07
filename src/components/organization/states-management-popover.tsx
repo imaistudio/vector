@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { IconPicker } from '@/components/ui/icon-picker';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
 import { Id } from '@/convex/_generated/dataModel';
+import { useConfirm } from '@/hooks/use-confirm';
 
 interface StateData {
   id?: Id<'issueStates'> | Id<'projectStatuses'>;
@@ -207,6 +208,7 @@ export function StatesManagementPopover({
   orgSlug,
   children,
 }: StatesManagementPopoverProps) {
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
   const deleteIssueState = useMutation(
     api.organizations.mutations.deleteIssueState,
   );
@@ -248,10 +250,13 @@ export function StatesManagementPopover({
 
   const handleDelete = async () => {
     if (!state?.id || !orgSlug) return;
-    if (
-      !confirm('Are you sure you want to delete this? This cannot be undone.')
-    )
-      return;
+    const ok = await confirmDelete({
+      title: `Delete ${type === 'issue' ? 'state' : 'status'}`,
+      description: 'This will permanently delete it and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     setIsDeleting(true);
     try {
@@ -359,6 +364,7 @@ export function StatesManagementPopover({
           </form>
         </div>
       </PopoverContent>
+      <ConfirmDeleteDialog />
     </Popover>
   );
 }

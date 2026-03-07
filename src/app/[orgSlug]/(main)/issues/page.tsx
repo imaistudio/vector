@@ -17,6 +17,7 @@ import { ISSUE_STATE_DEFAULTS } from '@/lib/defaults';
 import type { Id } from '@/convex/_generated/dataModel';
 import { PermissionAware } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { useConfirm } from '@/hooks/use-confirm';
 
 type StateType = (typeof ISSUE_STATE_DEFAULTS)[number]['type'];
 type FilterType = 'all' | StateType;
@@ -58,6 +59,7 @@ export default function IssuesPage() {
   const [isUpdatingAssignmentStates, setIsUpdatingAssignmentStates] =
     useState(false);
 
+  const [confirm, ConfirmDialog] = useConfirm();
   const deleteMutation = useMutation(api.issues.mutations.deleteIssue);
   const changePriorityMutation = useMutation(
     api.issues.mutations.changePriority,
@@ -145,7 +147,14 @@ export default function IssuesPage() {
   };
 
   const handleDelete = async (issueId: string) => {
-    if (!confirm('Delete this issue? This action cannot be undone.')) return;
+    const ok = await confirm({
+      title: 'Delete issue',
+      description:
+        'This will permanently delete the issue and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
     setIsDeleting(true);
     try {
       await deleteMutation({ issueId: issueId as Id<'issues'> });
@@ -296,6 +305,7 @@ export default function IssuesPage() {
           </Button>
         </div>
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

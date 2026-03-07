@@ -127,7 +127,7 @@ function CreateTeamDialogContent({
               </span>
             </div>
 
-            <Tooltip delayDuration={0}>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <div>
                   <LeadSelector
@@ -143,7 +143,7 @@ function CreateTeamDialogContent({
               </TooltipContent>
             </Tooltip>
 
-            <Tooltip delayDuration={0}>
+            <Tooltip>
               <TooltipTrigger asChild>
                 <div>
                   <VisibilitySelector

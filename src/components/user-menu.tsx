@@ -39,7 +39,7 @@ export function UserMenu() {
           <ChevronsUpDown className='text-muted-foreground ml-auto size-3.5' />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className='w-48' align='end' forceMount>
+      <DropdownMenuContent className='w-48' align='end'>
         <DropdownMenuLabel className='pb-0 text-xs font-normal'>
           <span className='text-muted-foreground'>{user.email}</span>
         </DropdownMenuLabel>

@@ -21,7 +21,7 @@ export default function RolesSettingsPage({}: RolesSettingsPageProps) {
     >
       <div className='bg-background h-full'>
         <div className='border-b'>
-          <div className='flex items-center p-1'>
+          <div className='flex items-center p-1 pl-9 lg:pl-1'>
             <span className='flex items-center gap-1.5 px-3 text-xs font-medium'>
               <Shield className='size-3.5' />
               Roles & Permissions

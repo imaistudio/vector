@@ -1114,13 +1114,7 @@ export function MultiAssigneeSelector({
           </div>
         )}
       </PopoverTrigger>
-      <PopoverContent
-        className='w-80 p-0'
-        align='end'
-        onOpenAutoFocus={e => {
-          if (isLoading) e.preventDefault();
-        }}
-      >
+      <PopoverContent className='w-80 p-0' align='end'>
         <Command>
           <CommandInput
             placeholder='Search members…'

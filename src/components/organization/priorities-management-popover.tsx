@@ -15,6 +15,7 @@ import { IconPicker } from '@/components/ui/icon-picker';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
 import { Label } from '../ui/label';
 import type { Id } from '../../../convex/_generated/dataModel';
+import { useConfirm } from '@/hooks/use-confirm';
 
 interface PriorityData {
   id?: string;
@@ -105,6 +106,7 @@ export function PrioritiesManagementPopover({
   const deleteMutation = useMutation(
     api.organizations.mutations.deleteIssuePriority,
   );
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
 
   const [name, setName] = useState(priority?.name || '');
   const [color, setColor] = useState(priority?.color || DEFAULT_COLORS[0]);
@@ -133,12 +135,14 @@ export function PrioritiesManagementPopover({
 
   const handleDelete = async () => {
     if (!priority?.id || !orgSlug) return;
-    if (
-      !confirm(
-        'Are you sure you want to delete this priority? This cannot be undone.',
-      )
-    )
-      return;
+    const ok = await confirmDelete({
+      title: 'Delete priority',
+      description:
+        'This will permanently delete the priority and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     setIsDeleting(true);
     try {
@@ -244,6 +248,7 @@ export function PrioritiesManagementPopover({
           </form>
         </div>
       </PopoverContent>
+      <ConfirmDeleteDialog />
     </Popover>
   );
 }

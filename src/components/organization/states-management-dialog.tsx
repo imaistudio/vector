@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { IconPicker } from '@/components/ui/icon-picker';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
 import { Id } from '@/convex/_generated/dataModel';
+import { useConfirm } from '@/hooks/use-confirm';
 
 interface StateData {
   id?: Id<'issueStates'> | Id<'projectStatuses'>;
@@ -225,6 +226,7 @@ export function StatesManagementDialog({
   const deleteProjectStatus = useMutation(
     api.organizations.mutations.deleteProjectStatus,
   );
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
 
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -260,10 +262,13 @@ export function StatesManagementDialog({
 
   const handleDelete = async () => {
     if (!state?.id || !orgSlug) return;
-    if (
-      !confirm('Are you sure you want to delete this? This cannot be undone.')
-    )
-      return;
+    const ok = await confirmDelete({
+      title: `Delete ${type === 'issue' ? 'state' : 'status'}`,
+      description: 'This will permanently delete it and cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
 
     setIsDeleting(true);
     try {
@@ -364,6 +369,7 @@ export function StatesManagementDialog({
           </div>
         </div>
       </DialogContent>
+      <ConfirmDeleteDialog />
     </Dialog>
   );
 }

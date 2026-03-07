@@ -1,17 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Plus, Shield, Users, Crown, Settings, UserCheck } from 'lucide-react';
+import { Plus, Shield, Crown, Settings, UserCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { useQuery } from 'convex/react';
 import { api } from '@/lib/convex';
 import { CreateRoleDialog } from './create-role-dialog';
@@ -20,11 +11,52 @@ import { AssignRoleDialog } from './assign-role-dialog';
 import { CustomRolesTable } from './custom-roles-table';
 import { useScopedPermission } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { useConfirm } from '@/hooks/use-confirm';
 import type { OrganizationRoleId } from '@/lib/organization-role-types';
 
 interface RolesPageContentProps {
   orgSlug: string;
 }
+
+const BUILT_IN_ROLES = [
+  {
+    key: 'owner',
+    name: 'Owner',
+    description: 'Complete control over the organization',
+    icon: Crown,
+    color: 'text-amber-600',
+    permissions: ['All permissions'],
+  },
+  {
+    key: 'admin',
+    name: 'Admin',
+    description: 'Full management except billing and deletion',
+    icon: Settings,
+    color: 'text-blue-600',
+    permissions: [
+      'Manage Settings',
+      'Manage Members',
+      'Manage Roles',
+      'Teams',
+      'Projects',
+      'Issues',
+    ],
+  },
+  {
+    key: 'member',
+    name: 'Member',
+    description: 'View and contribute to projects and issues',
+    icon: UserCheck,
+    color: 'text-green-600',
+    permissions: [
+      'View Org',
+      'Create Issues',
+      'View Issues',
+      'View Teams',
+      'View Projects',
+    ],
+  },
+] as const;
 
 export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -34,25 +66,13 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
   const [assigningRole, setAssigningRole] = useState<OrganizationRoleId | null>(
     null,
   );
+  const [confirm, ConfirmDialog] = useConfirm();
 
-  const { hasPermission: canCreateRoles } = useScopedPermission(
-    { orgSlug },
-    PERMISSIONS.ORG_MANAGE_ROLES,
-  );
-  const { hasPermission: canUpdateRoles } = useScopedPermission(
-    { orgSlug },
-    PERMISSIONS.ORG_MANAGE_ROLES,
-  );
-  const { hasPermission: canDeleteRoles } = useScopedPermission(
-    { orgSlug },
-    PERMISSIONS.ORG_MANAGE_ROLES,
-  );
-  const { hasPermission: canAssignRoles } = useScopedPermission(
+  const { hasPermission: canManageRoles } = useScopedPermission(
     { orgSlug },
     PERMISSIONS.ORG_MANAGE_ROLES,
   );
 
-  // Fetch members to compute real counts for system roles
   const membersQuery = useQuery(api.organizations.queries.listMembers, {
     orgSlug,
   });
@@ -79,182 +99,99 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
   }, [roleDocsQuery]);
 
   const handleDeleteRole = async (roleId: OrganizationRoleId) => {
-    if (confirm('Are you sure you want to delete this role?')) {
-      try {
-        // Placeholder - implement when custom org roles are added
-        console.log('Delete role:', roleId);
-      } catch (error) {
-        console.error('Failed to delete role:', error);
-      }
+    const ok = await confirm({
+      title: 'Delete role',
+      description:
+        'This will permanently delete the role and remove it from all members.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+    try {
+      console.log('Delete role:', roleId);
+    } catch (error) {
+      console.error('Failed to delete role:', error);
     }
   };
 
-  // Built-in roles for display with new permission system
-  const builtInRoles = [
-    {
-      name: 'Owner',
-      description:
-        'Complete control over the organization including billing, deletion, and member management',
-      system: true,
-      icon: Crown,
-      color: 'text-amber-600',
-      bgColor: 'bg-amber-50',
-      borderColor: 'border-amber-200',
-      permissions: ['All permissions'],
-      memberCount: roleCounts.owner.toString(),
-    },
-    {
-      name: 'Admin',
-      description:
-        'Full management capabilities except billing and organization deletion',
-      system: true,
-      icon: Settings,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200',
-      permissions: [
-        'Manage Organization Settings',
-        'Manage Members',
-        'Manage Roles',
-        'Create Teams',
-        'Create Projects',
-        'Manage Issues',
-      ],
-      memberCount: roleCounts.admin.toString(),
-    },
-    {
-      name: 'Member',
-      description:
-        'Standard access to view and contribute to projects and issues',
-      system: true,
-      icon: UserCheck,
-      color: 'text-green-600',
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200',
-      permissions: [
-        'View Organization',
-        'Create Issues',
-        'View Issues',
-        'View Teams',
-        'View Projects',
-      ],
-      memberCount: roleCounts.member.toString(),
-    },
-  ];
-
   return (
-    <div className='space-y-8'>
+    <div className='space-y-6'>
       {/* Built-in Roles */}
-      <div className='space-y-4'>
-        <div className='flex items-center justify-between'>
-          <div>
-            <h2 className='text-lg font-medium'>Default Roles</h2>
-            <p className='text-muted-foreground text-sm'>
-              System roles that are automatically available to all organizations
-            </p>
-          </div>
-          <Badge variant='outline' className='bg-gray-50'>
-            <Shield className='mr-1 size-3' />
-            System Managed
-          </Badge>
-        </div>
-
-        <div className='grid gap-4 lg:grid-cols-3'>
-          {builtInRoles.map(role => {
+      <div>
+        <h3 className='mb-2 text-sm font-semibold'>Default Roles</h3>
+        <div className='divide-y'>
+          {BUILT_IN_ROLES.map(role => {
             const IconComponent = role.icon;
             return (
-              <Card
-                key={role.name}
-                className={`${role.bgColor} ${role.borderColor} border-2`}
-              >
-                <CardHeader className='pb-3'>
-                  <div className='flex items-center justify-between'>
-                    <div className='flex items-center gap-2'>
-                      <IconComponent className={`size-5 ${role.color}`} />
-                      <CardTitle className='text-base'>{role.name}</CardTitle>
-                    </div>
-                    <div className='flex items-center gap-1'>
-                      <Users className='text-muted-foreground size-3' />
-                      <span className='text-muted-foreground text-xs'>
-                        {role.memberCount}
-                      </span>
-                    </div>
+              <div key={role.key} className='flex items-center gap-3 px-3 py-2'>
+                <IconComponent
+                  className={`size-4 flex-shrink-0 ${role.color}`}
+                />
+                <div className='min-w-0 flex-1'>
+                  <div className='truncate text-sm font-medium'>
+                    {role.name}
                   </div>
-                  <CardDescription className='text-xs'>
+                  <div className='text-muted-foreground truncate text-xs'>
                     {role.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className='pt-0'>
-                  <div className='space-y-2'>
-                    <div className='text-muted-foreground text-xs font-medium'>
-                      Key Permissions
-                    </div>
-                    <div className='space-y-1'>
-                      {role.permissions.map((permission: string) => (
-                        <div
-                          key={permission}
-                          className='flex items-center gap-2'
-                        >
-                          <div className='size-1 rounded-full bg-current opacity-60' />
-                          <span className='text-xs'>{permission}</span>
-                        </div>
-                      ))}
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+                <div className='text-muted-foreground flex flex-shrink-0 items-center gap-3'>
+                  <span className='hidden text-xs sm:inline'>
+                    {role.permissions.join(' · ')}
+                  </span>
+                  <span className='flex items-center gap-1 text-xs'>
+                    <Users className='size-3' />
+                    {roleCounts[role.key]}
+                  </span>
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
 
-      <Separator />
-
       {/* Custom Roles */}
-      <div className='space-y-4'>
-        <div className='flex items-center justify-between'>
-          <div>
-            <h2 className='text-lg font-medium'>Custom Roles</h2>
-            <p className='text-muted-foreground text-sm'>
-              Create specialized roles with specific permissions for your team
-            </p>
-          </div>
-          {canCreateRoles && (
-            <Button onClick={() => setShowCreateDialog(true)}>
-              <Plus className='mr-2 size-4' />
-              Create Custom Role
+      <div>
+        <div className='mb-2 flex items-center justify-between'>
+          <h3 className='text-sm font-semibold'>Custom Roles</h3>
+          {canManageRoles && (
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => setShowCreateDialog(true)}
+            >
+              <Plus className='mr-1 size-3' />
+              Create Role
             </Button>
           )}
         </div>
 
         {roles.length === 0 ? (
-          <Card className='border-dashed'>
-            <CardContent className='flex flex-col items-center justify-center py-12'>
-              <div className='bg-muted mb-4 rounded-full p-3'>
-                <Shield className='text-muted-foreground size-6' />
-              </div>
-              <h3 className='mb-2 text-lg font-medium'>No custom roles yet</h3>
-              <p className='text-muted-foreground mb-6 max-w-md text-center text-sm'>
-                Custom roles let you create specific permission sets for
-                different types of users in your organization.
+          <div className='flex items-center justify-center py-8'>
+            <div className='text-center'>
+              <Shield className='text-muted-foreground mx-auto mb-2 size-5' />
+              <p className='text-muted-foreground text-sm'>
+                No custom roles yet
               </p>
-              {canCreateRoles && (
+              {canManageRoles && (
                 <Button
+                  variant='ghost'
+                  size='sm'
+                  className='mt-2'
                   onClick={() => setShowCreateDialog(true)}
-                  variant='outline'
                 >
-                  <Plus className='mr-2 size-4' />
-                  Create Your First Custom Role
+                  <Plus className='mr-1 size-3' />
+                  Create your first role
                 </Button>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ) : (
           <CustomRolesTable
             roles={roles}
-            canAssign={canAssignRoles}
-            canEdit={canUpdateRoles}
-            canDelete={canDeleteRoles}
+            canAssign={canManageRoles}
+            canEdit={canManageRoles}
+            canDelete={canManageRoles}
             onAssign={id => setAssigningRole(id)}
             onEdit={id => setEditingRole(id)}
             onDelete={id => handleDeleteRole(id)}
@@ -267,9 +204,7 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
         <CreateRoleDialog
           orgSlug={orgSlug}
           onClose={() => setShowCreateDialog(false)}
-          onSuccess={() => {
-            setShowCreateDialog(false);
-          }}
+          onSuccess={() => setShowCreateDialog(false)}
         />
       )}
 
@@ -278,9 +213,7 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
           orgSlug={orgSlug}
           roleId={editingRole}
           onClose={() => setEditingRole(null)}
-          onSuccess={() => {
-            setEditingRole(null);
-          }}
+          onSuccess={() => setEditingRole(null)}
         />
       )}
 
@@ -289,11 +222,10 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
           orgSlug={orgSlug}
           roleId={assigningRole}
           onClose={() => setAssigningRole(null)}
-          onSuccess={() => {
-            setAssigningRole(null);
-          }}
+          onSuccess={() => setAssigningRole(null)}
         />
       )}
+      <ConfirmDialog />
     </div>
   );
 }
