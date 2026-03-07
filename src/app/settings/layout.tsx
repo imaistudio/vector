@@ -7,6 +7,7 @@ import { api } from '@/lib/convex';
 import { UserSettingsSidebar } from '@/components/settings/user-settings-sidebar';
 import { UserMenu } from '@/components/user-menu';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Menu } from 'lucide-react';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 
@@ -38,26 +39,38 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
           <div className='flex h-full flex-col'>
             <div className='flex-1 overflow-y-auto'>
               <div className='space-y-4 p-2 pt-0'>
-                <div className='space-y-1'>
-                  <div className='flex h-8 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium'>
-                    <span>Loading...</span>
-                  </div>
+                <div className='space-y-2'>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className='flex h-8 items-center gap-2 rounded-md px-2 py-1'
+                    >
+                      <Skeleton className='size-4 rounded' />
+                      <Skeleton className='h-4 w-24' />
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
             <div className='border-border border-t p-2'>
               <div className='flex w-full justify-start gap-2 p-2'>
-                <div className='bg-muted size-8 rounded-full'></div>
-                <div className='flex flex-col items-start'>
-                  <span className='text-sm font-medium'>Loading...</span>
+                <Skeleton className='size-8 rounded-full' />
+                <div className='flex flex-col items-start gap-1'>
+                  <Skeleton className='h-3.5 w-20' />
+                  <Skeleton className='h-3 w-28' />
                 </div>
               </div>
             </div>
           </div>
         </aside>
         <main className='bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
-          <div className='flex h-full items-center justify-center'>
-            <div className='text-lg font-medium'>Loading...</div>
+          <div className='space-y-3 p-3'>
+            <Skeleton className='h-4 w-32' />
+            <div className='space-y-2'>
+              <Skeleton className='h-10 w-full' />
+              <Skeleton className='h-10 w-full' />
+              <Skeleton className='h-10 w-full' />
+            </div>
           </div>
         </main>
       </div>

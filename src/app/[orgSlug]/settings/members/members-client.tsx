@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog,
   DialogContent,
@@ -57,7 +58,43 @@ export default function MembersSettingsPageClient({
   };
 
   if (!members) {
-    return <div>Loading...</div>;
+    return (
+      <div className='space-y-4'>
+        <div className='flex items-center justify-between'>
+          <div className='space-y-1'>
+            <Skeleton className='h-8 w-32' />
+            <Skeleton className='h-4 w-64' />
+          </div>
+        </div>
+        <div className='rounded-md border'>
+          <div className='border-b px-4 py-3'>
+            <div className='flex gap-4'>
+              <Skeleton className='h-4 flex-[2]' />
+              <Skeleton className='h-4 flex-1' />
+              <Skeleton className='h-4 w-[100px]' />
+            </div>
+          </div>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className='flex items-center gap-4 border-b px-4 py-3 last:border-0'
+            >
+              <div className='flex flex-[2] items-center gap-2'>
+                <Skeleton className='size-8 rounded-full' />
+                <div className='space-y-1'>
+                  <Skeleton className='h-4 w-28' />
+                  <Skeleton className='h-3 w-40' />
+                </div>
+              </div>
+              <div className='flex flex-1 gap-1'>
+                <Skeleton className='h-5 w-14 rounded-full' />
+              </div>
+              <Skeleton className='size-8 rounded-md' />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

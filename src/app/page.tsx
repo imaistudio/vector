@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { useEffect } from 'react';
 import { useQuery } from '@/lib/convex';
 import { api } from '@/lib/convex';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // --- Post-login redirect logic -----------------------------------------------------------
 export default function Home() {
@@ -35,7 +36,10 @@ export default function Home() {
 
   return (
     <div className='flex h-screen w-full items-center justify-center'>
-      <div className='text-2xl font-semibold'>Loading...</div>
+      <div className='flex flex-col items-center gap-3'>
+        <Skeleton className='size-10 rounded-lg' />
+        <Skeleton className='h-4 w-32' />
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 import { useQuery } from '@/lib/convex';
 import { api } from '@/lib/convex';
 import { User } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const header = (
   <div className='border-b'>
@@ -37,7 +38,21 @@ export default function ProfilePage() {
     return (
       <div className='bg-background h-full'>
         {header}
-        <div className='text-muted-foreground p-3 text-sm'>Loading...</div>
+        <div className='space-y-4 p-3'>
+          <div className='space-y-2'>
+            <Skeleton className='h-4 w-16' />
+            <Skeleton className='h-10 w-full max-w-md' />
+          </div>
+          <div className='space-y-2'>
+            <Skeleton className='h-4 w-20' />
+            <Skeleton className='h-10 w-full max-w-md' />
+          </div>
+          <div className='space-y-2'>
+            <Skeleton className='h-4 w-12' />
+            <Skeleton className='h-10 w-full max-w-md' />
+          </div>
+          <Skeleton className='h-9 w-20' />
+        </div>
       </div>
     );
   }

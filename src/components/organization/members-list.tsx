@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Plus, Mail, Trash2, MoreHorizontal, Send } from 'lucide-react';
 import { OrgRoleBadge } from '@/components/organization/role-badge';
 import { RoleSelector } from '@/components/organization/role-selector';
@@ -66,8 +67,24 @@ export function MembersList({ orgSlug }: { orgSlug: string }) {
 
   if (members === undefined || currentUser === undefined) {
     return (
-      <div className='flex items-center justify-center py-12'>
-        <div className='text-muted-foreground text-sm'>Loading members...</div>
+      <div className='space-y-6'>
+        <div className='mb-4 flex items-center justify-between'>
+          <Skeleton className='h-5 w-24' />
+          <Skeleton className='h-8 w-20 rounded-md' />
+        </div>
+        <div className='divide-y'>
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className='flex items-center gap-3 px-3 py-2'>
+              <Skeleton className='size-6 rounded-full' />
+              <div className='min-w-0 flex-1 space-y-1'>
+                <Skeleton className='h-4 w-28' />
+                <Skeleton className='h-3 w-40' />
+              </div>
+              <Skeleton className='h-5 w-14 rounded-full' />
+              <Skeleton className='h-3 w-16' />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

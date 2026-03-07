@@ -3,6 +3,7 @@
 import { useQuery } from '@/lib/convex';
 import { api } from '@/lib/convex';
 import { User, Mail, Settings } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 
 export default function SettingsPage() {
@@ -19,7 +20,20 @@ export default function SettingsPage() {
             </span>
           </div>
         </div>
-        <div className='text-muted-foreground p-3 text-sm'>Loading...</div>
+        <div className='space-y-2 p-3'>
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div
+              key={i}
+              className='flex items-center gap-3 rounded-md border px-3 py-2.5'
+            >
+              <Skeleton className='size-4 rounded' />
+              <div className='space-y-1'>
+                <Skeleton className='h-4 w-24' />
+                <Skeleton className='h-3 w-48' />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

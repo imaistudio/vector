@@ -16,6 +16,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { extractAuthErrorMessage } from '@/lib/auth-error-handler';
 import { authClient } from '@/lib/auth-client';
@@ -190,9 +191,20 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <div className='flex min-h-dvh flex-col items-center justify-center gap-2'>
-          <Loader2 className='text-muted-foreground h-5 w-5 animate-spin' />
-          <span className='text-muted-foreground text-sm'>Loading...</span>
+        <div className='flex min-h-dvh items-center justify-center px-4'>
+          <div className='w-full max-w-sm space-y-6'>
+            <div className='flex flex-col items-center gap-2'>
+              <Skeleton className='h-7 w-48' />
+              <Skeleton className='h-4 w-36' />
+            </div>
+            <div className='space-y-3'>
+              <Skeleton className='h-10 w-full rounded-md' />
+              <Skeleton className='h-10 w-full rounded-md' />
+              <Skeleton className='h-10 w-full rounded-md' />
+              <Skeleton className='h-10 w-full rounded-md' />
+            </div>
+            <Skeleton className='mx-auto h-4 w-48' />
+          </div>
         </div>
       }
     >

@@ -4,6 +4,7 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
@@ -49,7 +50,22 @@ export default function InvitesPage() {
     return (
       <div className='bg-background h-full'>
         {header}
-        <div className='text-muted-foreground p-3 text-sm'>Loading...</div>
+        <div className='divide-y'>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className='flex items-center gap-3 px-3 py-2'>
+              <div className='min-w-0 flex-1 space-y-1'>
+                <Skeleton className='h-4 w-36' />
+                <Skeleton className='h-3 w-24' />
+              </div>
+              <Skeleton className='h-5 w-14 rounded-full' />
+              <Skeleton className='h-3 w-16' />
+              <div className='flex gap-1'>
+                <Skeleton className='h-6 w-16 rounded-md' />
+                <Skeleton className='h-6 w-16 rounded-md' />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
