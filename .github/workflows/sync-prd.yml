@@ -1,0 +1,163 @@
+name: Sync to Vector PRD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync-prd:
+    if: github.repository == 'xrehpicx/vector'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure git defaults
+        run: |
+          git config --global user.name "imaistudio-bot"
+          git config --global user.email "infra@imai.studio"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Push sync branch to target repository
+        id: push_branch
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.IMAISTUDIO_PAT }}" ]; then
+            echo "IMAISTUDIO_PAT secret is required for sync workflow."
+            exit 1
+          fi
+          TARGET_OWNER="imaistudio"
+          TARGET_REPO="vector"
+          echo "Target repository: ${TARGET_OWNER}/${TARGET_REPO}"
+          SHORT_SHA=${GITHUB_SHA::7}
+          BRANCH="sync-main-${SHORT_SHA}-${GITHUB_RUN_ID}"
+          echo "Creating branch: ${BRANCH}"
+          echo "Preflight: checking API access to target repo..."
+          code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.IMAISTUDIO_PAT }}" \
+            "https://api.github.com/repos/${TARGET_OWNER}/${TARGET_REPO}")
+          echo "GET /repos/${TARGET_OWNER}/${TARGET_REPO} -> ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "Cannot access target repository with provided token (HTTP ${code})."
+            echo "Ensure: repo is selected in PAT repo access, user has repo access, and SSO is authorized."
+            exit 1
+          fi
+          echo "Configuring git credential helper..."
+          git config --global credential.helper store
+          echo "https://imaistudio:${{ secrets.IMAISTUDIO_PAT }}@github.com/imaistudio/vector" > ~/.git-credentials
+          chmod 600 ~/.git-credentials
+          git config --global credential.https://github.com.username imaistudio
+          git remote remove target 2>/dev/null || true
+          git remote add target "https://github.com/${TARGET_OWNER}/${TARGET_REPO}.git"
+          echo "Attempting to push to target repository..."
+          if ! GIT_TERMINAL_PROMPT=0 git push target HEAD:refs/heads/${BRANCH} --force; then
+            echo "Stored credential failed; retrying with explicit Authorization header..."
+            BASIC=$(printf "%s" "imaistudio:${{ secrets.IMAISTUDIO_PAT }}" | base64 | tr -d '\n')
+            git -c http.https://github.com/.extraheader="Authorization: Basic ${BASIC}" push target HEAD:refs/heads/${BRANCH} --force
+          fi
+          echo "branch=${BRANCH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create or update pull request
+        id: create_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.IMAISTUDIO_PAT }}
+          script: |
+            const owner = 'imaistudio';
+            const repo = 'vector';
+            const branch = '${{ steps.push_branch.outputs.branch }}';
+            if (!branch) {
+              core.setFailed('Missing branch name from sync step.');
+              return;
+            }
+            const headRef = `${owner}:${branch}`;
+            const title = `Sync ${process.env.GITHUB_SHA.slice(0, 7)} from xrehpicx/vector`;
+            const body = [
+              `Automated sync triggered by commit ${process.env.GITHUB_SHA}.`,
+              '',
+              `Source repository: ${process.env.GITHUB_REPOSITORY}`,
+              `Workflow run: ${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`
+            ].join('\n');
+            const { data: existing } = await github.rest.pulls.list({
+              owner,
+              repo,
+              head: headRef,
+              state: 'open'
+            });
+            let prNumber;
+            if (existing.length > 0) {
+              prNumber = existing[0].number;
+              core.info(`Reusing existing pull request #${prNumber}`);
+            } else {
+              const { data: pr } = await github.rest.pulls.create({
+                owner,
+                repo,
+                head: branch,
+                base: 'main',
+                title,
+                body
+              });
+              prNumber = pr.number;
+              core.info(`Created pull request #${prNumber}`);
+            }
+            core.setOutput('pr_number', String(prNumber));
+
+      - name: Merge pull request
+        id: merge_pr
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.IMAISTUDIO_PAT }}
+          script: |
+            const owner = 'imaistudio';
+            const repo = 'vector';
+            const prNumber = Number('${{ steps.create_pr.outputs.pr_number }}');
+            if (!prNumber) {
+              core.setFailed('No pull request number to merge.');
+              return;
+            }
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            if (pr.data.merged) {
+              core.info(`Pull request #${prNumber} already merged.`);
+              core.setOutput('merged', 'true');
+              return;
+            }
+            if (pr.data.state !== 'open') {
+              core.setFailed(`Pull request #${prNumber} is ${pr.data.state} and cannot be merged.`);
+              return;
+            }
+            const mergeResponse = await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: prNumber,
+              merge_method: 'merge'
+            });
+            if (!mergeResponse.data.merged) {
+              core.setFailed(`Failed to merge pull request #${prNumber}.`);
+              return;
+            }
+            core.info(`Merged pull request #${prNumber} into ${pr.data.base.ref}.`);
+            core.setOutput('merged', 'true');
+
+      - name: Delete sync branch
+        if: steps.merge_pr.outputs.merged == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.IMAISTUDIO_PAT }}
+          script: |
+            const owner = 'imaistudio';
+            const repo = 'vector';
+            const branch = '${{ steps.push_branch.outputs.branch }}';
+            if (!branch) {
+              core.warning('No branch name provided for cleanup.');
+              return;
+            }
+            await github.rest.git.deleteRef({
+              owner,
+              repo,
+              ref: `heads/${branch}`
+            });
+            core.info(`Deleted remote branch ${branch}.`);
