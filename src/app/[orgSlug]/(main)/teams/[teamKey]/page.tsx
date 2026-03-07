@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { IssuesTable } from '@/components/issues/issues-table';
 import { ProjectsTable } from '@/components/projects/projects-table';
+import { TeamActivityFeed } from '@/components/activity/team-activity-feed';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -1094,7 +1095,7 @@ export default function TeamViewPage() {
 
             {/* Team Content Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className='grid w-full grid-cols-3'>
+              <TabsList className='grid w-full grid-cols-4'>
                 <TabsTrigger asChild value='members'>
                   <div className='flex items-center gap-2'>
                     Members ({teamMembers.length})
@@ -1132,6 +1133,9 @@ export default function TeamViewPage() {
                       />
                     )}
                   </div>
+                </TabsTrigger>
+                <TabsTrigger asChild value='activity'>
+                  <div className='flex items-center gap-2'>Activity</div>
                 </TabsTrigger>
               </TabsList>
 
@@ -1233,6 +1237,12 @@ export default function TeamViewPage() {
                     </div>
                   )}
                 </div>
+              </TabsContent>
+
+              <TabsContent value='activity'>
+                {team?._id ? (
+                  <TeamActivityFeed orgSlug={orgSlug} teamId={team._id} />
+                ) : null}
               </TabsContent>
             </Tabs>
           </div>

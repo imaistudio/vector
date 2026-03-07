@@ -1,5 +1,6 @@
-import { mutation } from '../_generated/server';
+import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
+import type { Doc, Id } from '../_generated/dataModel';
 import { getAuthUserId } from '../authUtils';
 import { requirePermission, PERMISSIONS } from '../permissions/utils';
 import {
@@ -10,6 +11,45 @@ import {
   canUpdateAssignmentState,
   canUpdateIssueRelations,
 } from '../access';
+import {
+  getCommentPreview,
+  getUserDisplayName,
+  getVisibilityLabel,
+  recordActivity,
+  resolveIssueScope,
+  snapshotForIssue,
+} from '../activities/lib';
+
+function priorityLabel(
+  priority: Doc<'issuePriorities'> | null | undefined,
+): string | undefined {
+  return priority?.name;
+}
+
+function stateLabel(
+  state: Doc<'issueStates'> | null | undefined,
+): string | undefined {
+  return state?.name;
+}
+
+function projectLabel(
+  project: Doc<'projects'> | null | undefined,
+): string | undefined {
+  return project?.name;
+}
+
+function teamLabel(team: Doc<'teams'> | null | undefined): string | undefined {
+  return team?.name;
+}
+
+async function getUserNames(ctx: MutationCtx, userIds: readonly Id<'users'>[]) {
+  const users = await Promise.all(
+    userIds.map(userId => ctx.db.get('users', userId)),
+  );
+  return users
+    .map(user => getUserDisplayName(user, 'Unknown user'))
+    .filter(Boolean);
+}
 
 export const create = mutation({
   args: {
@@ -117,18 +157,6 @@ export const create = mutation({
       parentIssueId: args.data.parentIssueId,
     });
 
-    if (args.data.parentIssueId) {
-      await ctx.db.insert('issueActivities', {
-        issueId: args.data.parentIssueId,
-        actorId: userId,
-        type: 'sub_issue_created',
-        payload: {
-          subIssueId: issueId,
-          subIssueKey: issueKey,
-        },
-      });
-    }
-
     const assigneeStateId =
       args.data.stateId ||
       (
@@ -168,6 +196,34 @@ export const create = mutation({
       }
     }
 
+    const createdIssue = await ctx.db.get('issues', issueId);
+    if (createdIssue) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(createdIssue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_created',
+        snapshot: snapshotForIssue(createdIssue),
+      });
+    }
+
+    if (parentIssue) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(parentIssue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_sub_issue_created',
+        details: {
+          toId: String(issueId),
+          toLabel: issueKey,
+        },
+        snapshot: {
+          entityKey: issueKey,
+          entityName: args.data.title.trim(),
+        },
+      });
+    }
+
     return { issueId, key: issueKey } as const;
   },
 });
@@ -183,6 +239,11 @@ export const update = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) {
       throw new ConvexError('ISSUE_NOT_FOUND');
@@ -208,7 +269,70 @@ export const update = mutation({
       }
     }
 
+    const previousPriority = issue.priorityId
+      ? await ctx.db.get('issuePriorities', issue.priorityId)
+      : null;
     await ctx.db.patch('issues', issue._id, { ...args.data });
+
+    const snapshot = snapshotForIssue({
+      ...issue,
+      title: args.data.title ?? issue.title,
+    });
+
+    if (args.data.title !== undefined && args.data.title !== issue.title) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_title_changed',
+        details: {
+          field: 'title',
+          fromLabel: issue.title,
+          toLabel: args.data.title,
+        },
+        snapshot,
+      });
+    }
+
+    if (
+      args.data.description !== undefined &&
+      args.data.description !== issue.description
+    ) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_description_changed',
+        details: {
+          field: 'description',
+        },
+        snapshot,
+      });
+    }
+
+    if (
+      args.data.priorityId !== undefined &&
+      args.data.priorityId !== issue.priorityId
+    ) {
+      const nextPriority = args.data.priorityId
+        ? await ctx.db.get('issuePriorities', args.data.priorityId)
+        : null;
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_priority_changed',
+        details: {
+          field: 'priority',
+          fromId: issue.priorityId ? String(issue.priorityId) : undefined,
+          fromLabel: priorityLabel(previousPriority),
+          toId: args.data.priorityId ? String(args.data.priorityId) : undefined,
+          toLabel: priorityLabel(nextPriority),
+        },
+        snapshot,
+      });
+    }
+
     return { success: true } as const;
   },
 });
@@ -238,6 +362,18 @@ export const addComment = mutation({
       authorId: userId,
       body: args.body,
       deleted: false,
+    });
+
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: userId,
+      entityType: 'issue',
+      eventType: 'issue_comment_added',
+      details: {
+        commentId,
+        commentPreview: getCommentPreview(args.body),
+      },
+      snapshot: snapshotForIssue(issue),
     });
 
     return { commentId } as const;
@@ -297,6 +433,11 @@ export const addAssignee = mutation({
     stateId: v.optional(v.id('issueStates')),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) {
       throw new ConvexError('ISSUE_NOT_FOUND');
@@ -340,6 +481,20 @@ export const addAssignee = mutation({
       stateId,
     });
 
+    const assignee = await ctx.db.get('users', args.assigneeId);
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: userId,
+      entityType: 'issue',
+      eventType: 'issue_assignees_changed',
+      subjectUserId: args.assigneeId,
+      details: {
+        addedUserNames: [getUserDisplayName(assignee, 'Unknown user')],
+        removedUserNames: [],
+      },
+      snapshot: snapshotForIssue(issue),
+    });
+
     return { assignmentId } as const;
   },
 });
@@ -350,6 +505,11 @@ export const changeAssignmentState = mutation({
     stateId: v.id('issueStates'),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const assignment = await ctx.db.get('issueAssignees', args.assignmentId);
     if (!assignment || !assignment.assigneeId) {
       throw new ConvexError('ASSIGNMENT_NOT_FOUND');
@@ -364,9 +524,31 @@ export const changeAssignmentState = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const previousState = await ctx.db.get('issueStates', assignment.stateId);
     await ctx.db.patch('issueAssignees', args.assignmentId, {
       stateId: args.stateId,
     });
+
+    if (args.stateId !== assignment.stateId) {
+      const nextState = await ctx.db.get('issueStates', args.stateId);
+      const assignee = await ctx.db.get('users', assignment.assigneeId);
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_assignment_state_changed',
+        subjectUserId: assignment.assigneeId,
+        details: {
+          field: 'assignment_state',
+          fromId: assignment.stateId,
+          fromLabel: stateLabel(previousState),
+          toId: args.stateId,
+          toLabel: stateLabel(nextState),
+          subjectUserName: getUserDisplayName(assignee, 'Unknown user'),
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
 
     return { success: true } as const;
   },
@@ -378,6 +560,11 @@ export const updateAssignmentAssignee = mutation({
     assigneeId: v.id('users'),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const assignment = await ctx.db.get('issueAssignees', args.assignmentId);
     if (!assignment) {
       throw new ConvexError('ASSIGNMENT_NOT_FOUND');
@@ -403,9 +590,30 @@ export const updateAssignmentAssignee = mutation({
       throw new ConvexError('USER_ALREADY_ASSIGNED');
     }
 
+    const previousAssignee = assignment.assigneeId
+      ? await ctx.db.get('users', assignment.assigneeId)
+      : null;
     await ctx.db.patch('issueAssignees', args.assignmentId, {
       assigneeId: args.assigneeId,
     });
+
+    if (assignment.assigneeId !== args.assigneeId) {
+      const nextAssignee = await ctx.db.get('users', args.assigneeId);
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_assignees_changed',
+        subjectUserId: args.assigneeId,
+        details: {
+          addedUserNames: [getUserDisplayName(nextAssignee, 'Unknown user')],
+          removedUserNames: previousAssignee
+            ? [getUserDisplayName(previousAssignee, 'Unknown user')]
+            : [],
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
 
     return { success: true } as const;
   },
@@ -416,6 +624,11 @@ export const deleteAssignment = mutation({
     assignmentId: v.id('issueAssignees'),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const assignment = await ctx.db.get('issueAssignees', args.assignmentId);
     if (!assignment) {
       throw new ConvexError('ASSIGNMENT_NOT_FOUND');
@@ -430,7 +643,26 @@ export const deleteAssignment = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const removedAssignee = assignment.assigneeId
+      ? await ctx.db.get('users', assignment.assigneeId)
+      : null;
     await ctx.db.delete('issueAssignees', args.assignmentId);
+
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: userId,
+      entityType: 'issue',
+      eventType: 'issue_assignees_changed',
+      subjectUserId: assignment.assigneeId ?? undefined,
+      details: {
+        addedUserNames: [],
+        removedUserNames: removedAssignee
+          ? [getUserDisplayName(removedAssignee, 'Unknown user')]
+          : [],
+      },
+      snapshot: snapshotForIssue(issue),
+    });
+
     return { success: true } as const;
   },
 });
@@ -455,14 +687,28 @@ export const changePriority = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const previousPriority = issue.priorityId
+      ? await ctx.db.get('issuePriorities', issue.priorityId)
+      : null;
     await ctx.db.patch('issues', args.issueId, { priorityId: args.priorityId });
 
-    await ctx.db.insert('activities', {
-      issueId: args.issueId,
-      actorId: userId,
-      type: 'priority_changed',
-      payload: { priorityId: args.priorityId },
-    });
+    if (args.priorityId !== issue.priorityId) {
+      const nextPriority = await ctx.db.get('issuePriorities', args.priorityId);
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_priority_changed',
+        details: {
+          field: 'priority',
+          fromId: issue.priorityId,
+          fromLabel: priorityLabel(previousPriority),
+          toId: args.priorityId,
+          toLabel: priorityLabel(nextPriority),
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
   },
 });
 
@@ -472,6 +718,11 @@ export const updateAssignees = mutation({
     assigneeIds: v.array(v.id('users')),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) {
       throw new ConvexError('ISSUE_NOT_FOUND');
@@ -505,6 +756,10 @@ export const updateAssignees = mutation({
       stateId = defaultState._id;
     }
 
+    const previousAssigneeIds = existingAssignments
+      .map(assignment => assignment.assigneeId)
+      .filter((id): id is Id<'users'> => Boolean(id));
+
     for (const assignment of existingAssignments) {
       await ctx.db.delete('issueAssignees', assignment._id);
     }
@@ -516,6 +771,28 @@ export const updateAssignees = mutation({
         stateId,
       });
     }
+
+    const addedUserIds = args.assigneeIds.filter(
+      id => !previousAssigneeIds.includes(id),
+    );
+    const removedUserIds = previousAssigneeIds.filter(
+      id => !args.assigneeIds.includes(id),
+    );
+
+    if (addedUserIds.length > 0 || removedUserIds.length > 0) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_assignees_changed',
+        details: {
+          field: 'assignees',
+          addedUserNames: await getUserNames(ctx, addedUserIds),
+          removedUserNames: await getUserNames(ctx, removedUserIds),
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
   },
 });
 
@@ -525,6 +802,11 @@ export const changeTeam = mutation({
     teamId: v.union(v.id('teams'), v.null()),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) {
       throw new ConvexError('ISSUE_NOT_FOUND');
@@ -534,9 +816,83 @@ export const changeTeam = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const previousTeam = issue.teamId
+      ? await ctx.db.get('teams', issue.teamId)
+      : null;
     await ctx.db.patch('issues', args.issueId, {
       teamId: args.teamId ?? undefined,
     });
+
+    if (args.teamId !== issue.teamId) {
+      const nextTeam = args.teamId
+        ? await ctx.db.get('teams', args.teamId)
+        : null;
+      const snapshot = snapshotForIssue(issue);
+
+      await recordActivity(ctx, {
+        scope: {
+          organizationId: issue.organizationId,
+          teamId: args.teamId ?? undefined,
+          projectId: issue.projectId ?? undefined,
+          issueId: issue._id,
+        },
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_team_changed',
+        details: {
+          field: 'team',
+          fromId: issue.teamId,
+          fromLabel: teamLabel(previousTeam),
+          toId: args.teamId,
+          toLabel: teamLabel(nextTeam),
+        },
+        snapshot,
+      });
+
+      if (issue.teamId) {
+        await recordActivity(ctx, {
+          scope: {
+            organizationId: issue.organizationId,
+            teamId: issue.teamId,
+            projectId: issue.projectId ?? undefined,
+            issueId: issue._id,
+          },
+          actorId: userId,
+          entityType: 'issue',
+          eventType: 'issue_team_removed',
+          details: {
+            field: 'team',
+            fromId: issue.teamId,
+            fromLabel: teamLabel(previousTeam),
+            toId: args.teamId,
+            toLabel: teamLabel(nextTeam),
+          },
+          snapshot,
+        });
+      }
+
+      if (args.teamId) {
+        await recordActivity(ctx, {
+          scope: {
+            organizationId: issue.organizationId,
+            teamId: args.teamId,
+            projectId: issue.projectId ?? undefined,
+            issueId: issue._id,
+          },
+          actorId: userId,
+          entityType: 'issue',
+          eventType: 'issue_team_added',
+          details: {
+            field: 'team',
+            fromId: issue.teamId,
+            fromLabel: teamLabel(previousTeam),
+            toId: args.teamId,
+            toLabel: teamLabel(nextTeam),
+          },
+          snapshot,
+        });
+      }
+    }
   },
 });
 
@@ -546,6 +902,11 @@ export const changeProject = mutation({
     projectId: v.union(v.id('projects'), v.null()),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) {
       throw new ConvexError('ISSUE_NOT_FOUND');
@@ -555,9 +916,83 @@ export const changeProject = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const previousProject = issue.projectId
+      ? await ctx.db.get('projects', issue.projectId)
+      : null;
     await ctx.db.patch('issues', args.issueId, {
       projectId: args.projectId ?? undefined,
     });
+
+    if (args.projectId !== issue.projectId) {
+      const nextProject = args.projectId
+        ? await ctx.db.get('projects', args.projectId)
+        : null;
+      const snapshot = snapshotForIssue(issue);
+
+      await recordActivity(ctx, {
+        scope: {
+          organizationId: issue.organizationId,
+          teamId: issue.teamId ?? undefined,
+          projectId: args.projectId ?? undefined,
+          issueId: issue._id,
+        },
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_project_changed',
+        details: {
+          field: 'project',
+          fromId: issue.projectId,
+          fromLabel: projectLabel(previousProject),
+          toId: args.projectId,
+          toLabel: projectLabel(nextProject),
+        },
+        snapshot,
+      });
+
+      if (issue.projectId) {
+        await recordActivity(ctx, {
+          scope: {
+            organizationId: issue.organizationId,
+            teamId: issue.teamId ?? undefined,
+            projectId: issue.projectId,
+            issueId: issue._id,
+          },
+          actorId: userId,
+          entityType: 'issue',
+          eventType: 'issue_project_removed',
+          details: {
+            field: 'project',
+            fromId: issue.projectId,
+            fromLabel: projectLabel(previousProject),
+            toId: args.projectId,
+            toLabel: projectLabel(nextProject),
+          },
+          snapshot,
+        });
+      }
+
+      if (args.projectId) {
+        await recordActivity(ctx, {
+          scope: {
+            organizationId: issue.organizationId,
+            teamId: issue.teamId ?? undefined,
+            projectId: args.projectId,
+            issueId: issue._id,
+          },
+          actorId: userId,
+          entityType: 'issue',
+          eventType: 'issue_project_added',
+          details: {
+            field: 'project',
+            fromId: issue.projectId,
+            fromLabel: projectLabel(previousProject),
+            toId: args.projectId,
+            toLabel: projectLabel(nextProject),
+          },
+          snapshot,
+        });
+      }
+    }
   },
 });
 
@@ -583,12 +1018,23 @@ export const updateTitle = mutation({
 
     await ctx.db.patch('issues', args.issueId, { title: args.title });
 
-    await ctx.db.insert('activities', {
-      issueId: args.issueId,
-      actorId: userId,
-      type: 'title_changed',
-      payload: { title: args.title },
-    });
+    if (args.title !== issue.title) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_title_changed',
+        details: {
+          field: 'title',
+          fromLabel: issue.title,
+          toLabel: args.title,
+        },
+        snapshot: snapshotForIssue({
+          ...issue,
+          title: args.title,
+        }),
+      });
+    }
   },
 });
 
@@ -616,11 +1062,18 @@ export const updateDescription = mutation({
       description: args.description ?? undefined,
     });
 
-    await ctx.db.insert('activities', {
-      issueId: args.issueId,
-      actorId: userId,
-      type: 'description_changed',
-    });
+    if (args.description !== issue.description) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_description_changed',
+        details: {
+          field: 'description',
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
   },
 });
 
@@ -647,13 +1100,6 @@ export const updateEstimatedTimes = mutation({
     await ctx.db.patch('issues', args.issueId, {
       estimatedTimes: args.estimatedTimes ?? undefined,
     });
-
-    await ctx.db.insert('activities', {
-      issueId: args.issueId,
-      actorId: userId,
-      type: 'estimated_times_changed',
-      payload: { estimatedTimes: args.estimatedTimes },
-    });
   },
 });
 
@@ -667,6 +1113,11 @@ export const changeVisibility = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
 
@@ -677,6 +1128,21 @@ export const changeVisibility = mutation({
     await ctx.db.patch('issues', args.issueId, {
       visibility: args.visibility,
     });
+
+    if (args.visibility !== issue.visibility) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: userId,
+        entityType: 'issue',
+        eventType: 'issue_visibility_changed',
+        details: {
+          field: 'visibility',
+          fromLabel: getVisibilityLabel(issue.visibility),
+          toLabel: getVisibilityLabel(args.visibility),
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
 
     return { success: true } as const;
   },

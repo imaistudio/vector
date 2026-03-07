@@ -1,6 +1,12 @@
 import { ConvexError } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import type { ActivityEventType } from '../_shared/activity';
 import { PERMISSION_VALUES, type Permission } from '../_shared/permissions';
+import {
+  recordActivity,
+  resolveIssueScope,
+  snapshotForIssue,
+} from '../activities/lib';
 import {
   createDefaultProjectRoles,
   createDefaultTeamRoles,
@@ -294,3 +300,119 @@ export const migrateUnifiedRoles = internalMutation({
 export const migrateDefaultRoles = migrateUnifiedRoles;
 export const migrateTeamMembers = migrateUnifiedRoles;
 export const migrateProjectMembers = migrateUnifiedRoles;
+
+function mapLegacyIssueActivityType(type: string): ActivityEventType | null {
+  switch (type) {
+    case 'status_changed':
+      return 'issue_assignment_state_changed';
+    case 'priority_changed':
+      return 'issue_priority_changed';
+    case 'assignee_changed':
+      return 'issue_assignees_changed';
+    case 'comment_added':
+      return 'issue_comment_added';
+    case 'title_changed':
+      return 'issue_title_changed';
+    case 'description_changed':
+      return 'issue_description_changed';
+    case 'created':
+      return 'issue_created';
+    case 'sub_issue_created':
+      return 'issue_sub_issue_created';
+    default:
+      return null;
+  }
+}
+
+export const backfillActivityEvents = internalMutation({
+  args: {},
+  handler: async ctx => {
+    const existingEvents = await ctx.db.query('activityEvents').first();
+    if (existingEvents) {
+      return {
+        success: true,
+        inserted: 0,
+      };
+    }
+
+    const legacyIssueActivities = await ctx.db
+      .query('issueActivities')
+      .collect();
+    let inserted = 0;
+
+    for (const activity of legacyIssueActivities) {
+      const eventType = mapLegacyIssueActivityType(activity.type);
+      if (!eventType) {
+        continue;
+      }
+
+      const issue = await ctx.db.get('issues', activity.issueId);
+      if (!issue) {
+        continue;
+      }
+
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: activity.actorId,
+        entityType: 'issue',
+        eventType,
+        details:
+          activity.type === 'sub_issue_created'
+            ? {
+                toId:
+                  typeof activity.payload?.subIssueId === 'string'
+                    ? activity.payload.subIssueId
+                    : undefined,
+                toLabel:
+                  typeof activity.payload?.subIssueKey === 'string'
+                    ? activity.payload.subIssueKey
+                    : undefined,
+              }
+            : undefined,
+        snapshot: snapshotForIssue(issue),
+      });
+      inserted += 1;
+    }
+
+    const legacyActivities = await ctx.db.query('activities').collect();
+    for (const activity of legacyActivities) {
+      const eventType = mapLegacyIssueActivityType(activity.type);
+      if (!eventType || eventType === 'issue_sub_issue_created') {
+        continue;
+      }
+
+      const issue = await ctx.db.get('issues', activity.issueId);
+      if (!issue) {
+        continue;
+      }
+
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: activity.actorId,
+        entityType: 'issue',
+        eventType,
+        details:
+          eventType === 'issue_title_changed' &&
+          typeof activity.payload?.title === 'string'
+            ? {
+                field: 'title',
+                toLabel: activity.payload.title,
+              }
+            : eventType === 'issue_priority_changed' &&
+                typeof activity.payload?.priorityId === 'string'
+              ? {
+                  field: 'priority',
+                  toId: activity.payload.priorityId,
+                }
+              : undefined,
+        snapshot: snapshotForIssue(issue),
+      });
+      inserted += 1;
+    }
+
+    return {
+      success: true,
+      inserted,
+    };
+  },
+});

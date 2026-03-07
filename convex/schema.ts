@@ -1,5 +1,11 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import {
+  activityDetailsValidator,
+  activityEntityTypeValidator,
+  activityEventTypeValidator,
+  activitySnapshotValidator,
+} from './_shared/activity';
 import { PERMISSION_VALUES, SYSTEM_ROLE_KEYS } from './_shared/permissions';
 
 const permissionValidator = v.union(
@@ -451,4 +457,22 @@ export default defineSchema({
     type: v.string(),
     payload: v.optional(v.any()),
   }).index('by_issue', ['issueId']),
+
+  activityEvents: defineTable({
+    organizationId: v.id('organizations'),
+    teamId: v.optional(v.id('teams')),
+    projectId: v.optional(v.id('projects')),
+    issueId: v.optional(v.id('issues')),
+    entityType: activityEntityTypeValidator,
+    eventType: activityEventTypeValidator,
+    actorId: v.id('users'),
+    subjectUserId: v.optional(v.id('users')),
+    details: activityDetailsValidator,
+    snapshot: activitySnapshotValidator,
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_team', ['teamId'])
+    .index('by_project', ['projectId'])
+    .index('by_issue', ['issueId'])
+    .index('by_actor', ['actorId']),
 });

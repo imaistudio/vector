@@ -13,6 +13,7 @@ import { StatusSelector } from '@/components/projects/project-selectors';
 import { ProjectLeadSelector } from '@/components/projects/project-lead-selector';
 import { TeamSelector } from '@/components/teams/team-selector';
 import { ProjectMembersSection } from '@/components/projects/project-members';
+import { ProjectActivityFeed } from '@/components/activity/project-activity-feed';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import {
   usePermissionCheck,
@@ -649,12 +650,14 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
           {/* Project Details */}
           <div className='space-y-6'>
-            {/* Activity Feed placeholder */}
             <div>
               <h2 className='mb-2 text-sm font-semibold'>Activity</h2>
-              <div className='text-muted-foreground rounded-lg border p-8 text-center'>
-                Activity feed coming soon...
-              </div>
+              {projectId ? (
+                <ProjectActivityFeed
+                  orgSlug={params.orgSlug}
+                  projectId={projectId}
+                />
+              ) : null}
             </div>
 
             {/* Members */}

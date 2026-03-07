@@ -1,8 +1,13 @@
 import { mutation, type MutationCtx } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { getOrganizationBySlug, requireAuthUser } from '../authz';
 import { canDeleteTeam, canEditTeam, canManageTeamMembers } from '../access';
+import {
+  recordActivity,
+  resolveTeamScope,
+  snapshotForTeam,
+} from '../activities/lib';
 import { PERMISSIONS, requirePermission } from '../permissions/utils';
 import { syncTeamRoleAssignment } from '../roles';
 
@@ -17,6 +22,13 @@ async function requireTeamEditAccess(ctx: MutationCtx, teamId: Id<'teams'>) {
   }
 
   return team;
+}
+
+function userLabel(user: Doc<'users'> | null | undefined): string | undefined {
+  if (!user) {
+    return undefined;
+  }
+  return user.name ?? user.email ?? user.username ?? undefined;
 }
 
 export const create = mutation({
@@ -113,6 +125,17 @@ export const create = mutation({
       await syncTeamRoleAssignment(ctx, teamId, args.data.leadId, 'lead');
     }
 
+    const createdTeam = await ctx.db.get('teams', teamId);
+    if (createdTeam) {
+      await recordActivity(ctx, {
+        scope: resolveTeamScope(createdTeam),
+        entityType: 'team',
+        eventType: 'team_created',
+        actorId: userId,
+        snapshot: snapshotForTeam(createdTeam),
+      });
+    }
+
     return { teamId };
   },
 });
@@ -129,7 +152,11 @@ export const update = mutation({
     }),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
     const team = await requireTeamEditAccess(ctx, args.teamId);
+    const previousLead = team.leadId
+      ? await ctx.db.get('users', team.leadId)
+      : null;
 
     if (args.data.leadId) {
       const leadMembership = await ctx.db
@@ -165,6 +192,63 @@ export const update = mutation({
       await syncTeamRoleAssignment(ctx, team._id, args.data.leadId, 'lead');
     }
 
+    const snapshot = snapshotForTeam({
+      ...team,
+      name: args.data.name ?? team.name,
+    });
+
+    if (args.data.name !== undefined && args.data.name !== team.name) {
+      await recordActivity(ctx, {
+        scope: resolveTeamScope(team),
+        entityType: 'team',
+        eventType: 'team_name_changed',
+        actorId: userId,
+        details: {
+          field: 'name',
+          fromLabel: team.name,
+          toLabel: args.data.name,
+        },
+        snapshot,
+      });
+    }
+
+    if (
+      args.data.description !== undefined &&
+      args.data.description !== team.description
+    ) {
+      await recordActivity(ctx, {
+        scope: resolveTeamScope(team),
+        entityType: 'team',
+        eventType: 'team_description_changed',
+        actorId: userId,
+        details: {
+          field: 'description',
+        },
+        snapshot,
+      });
+    }
+
+    if (args.data.leadId !== undefined && args.data.leadId !== team.leadId) {
+      const nextLead = args.data.leadId
+        ? await ctx.db.get('users', args.data.leadId)
+        : null;
+      await recordActivity(ctx, {
+        scope: resolveTeamScope(team),
+        entityType: 'team',
+        eventType: 'team_lead_changed',
+        actorId: userId,
+        subjectUserId: args.data.leadId ?? undefined,
+        details: {
+          field: 'lead',
+          fromId: team.leadId,
+          fromLabel: userLabel(previousLead),
+          toId: args.data.leadId,
+          toLabel: userLabel(nextLead),
+        },
+        snapshot,
+      });
+    }
+
     return { success: true };
   },
 });
@@ -176,6 +260,7 @@ export const addMember = mutation({
     role: v.union(v.literal('lead'), v.literal('member')),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
     const team = await ctx.db.get('teams', args.teamId);
     if (!team) {
       throw new ConvexError('TEAM_NOT_FOUND');
@@ -213,6 +298,19 @@ export const addMember = mutation({
     });
     await syncTeamRoleAssignment(ctx, team._id, args.userId, args.role);
 
+    await recordActivity(ctx, {
+      scope: resolveTeamScope(team),
+      entityType: 'team',
+      eventType: 'team_member_added',
+      actorId: userId,
+      subjectUserId: args.userId,
+      details: {
+        field: 'role',
+        toLabel: args.role,
+      },
+      snapshot: snapshotForTeam(team),
+    });
+
     return { membershipId };
   },
 });
@@ -222,6 +320,7 @@ export const removeMember = mutation({
     membershipId: v.id('teamMembers'),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
     const membership = await ctx.db.get('teamMembers', args.membershipId);
     if (!membership) {
       throw new ConvexError('TEAM_MEMBERSHIP_NOT_FOUND');
@@ -257,6 +356,19 @@ export const removeMember = mutation({
     }
 
     await ctx.db.delete('teamMembers', args.membershipId);
+
+    await recordActivity(ctx, {
+      scope: resolveTeamScope(team),
+      entityType: 'team',
+      eventType: 'team_member_removed',
+      actorId: userId,
+      subjectUserId: membership.userId,
+      details: {
+        field: 'role',
+        fromLabel: membership.role,
+      },
+      snapshot: snapshotForTeam(team),
+    });
 
     return { success: true };
   },
@@ -316,11 +428,28 @@ export const changeVisibility = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
     const team = await requireTeamEditAccess(ctx, args.teamId);
+    const previousVisibility = team.visibility;
 
     await ctx.db.patch('teams', team._id, {
       visibility: args.visibility,
     });
+
+    if (args.visibility !== previousVisibility) {
+      await recordActivity(ctx, {
+        scope: resolveTeamScope(team),
+        entityType: 'team',
+        eventType: 'team_visibility_changed',
+        actorId: userId,
+        details: {
+          field: 'visibility',
+          fromLabel: previousVisibility,
+          toLabel: args.visibility,
+        },
+        snapshot: snapshotForTeam(team),
+      });
+    }
 
     return { success: true };
   },

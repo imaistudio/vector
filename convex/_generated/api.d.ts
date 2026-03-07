@@ -8,11 +8,14 @@
  * @module
  */
 
+import type * as _shared_activity from "../_shared/activity.js";
 import type * as _shared_auth from "../_shared/auth.js";
 import type * as _shared_pagination from "../_shared/pagination.js";
 import type * as _shared_permissions from "../_shared/permissions.js";
 import type * as _shared_validation from "../_shared/validation.js";
 import type * as access from "../access.js";
+import type * as activities_lib from "../activities/lib.js";
+import type * as activities_queries from "../activities/queries.js";
 import type * as auth from "../auth.js";
 import type * as authUtils from "../authUtils.js";
 import type * as authz from "../authz.js";
@@ -38,11 +41,14 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "_shared/activity": typeof _shared_activity;
   "_shared/auth": typeof _shared_auth;
   "_shared/pagination": typeof _shared_pagination;
   "_shared/permissions": typeof _shared_permissions;
   "_shared/validation": typeof _shared_validation;
   access: typeof access;
+  "activities/lib": typeof activities_lib;
+  "activities/queries": typeof activities_queries;
   auth: typeof auth;
   authUtils: typeof authUtils;
   authz: typeof authz;

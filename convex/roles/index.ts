@@ -16,6 +16,13 @@ import {
 } from '../authz';
 import { canViewProject, canViewTeam } from '../access';
 import {
+  recordActivity,
+  resolveProjectScope,
+  resolveTeamScope,
+  snapshotForProject,
+  snapshotForTeam,
+} from '../activities/lib';
+import {
   PERMISSIONS,
   PROJECT_SYSTEM_ROLE_PERMISSIONS,
   SYSTEM_ROLE_KEYS,
@@ -670,7 +677,7 @@ export const assignUserToTeamRole = mutation({
     roleId: v.id('roles'),
   },
   handler: async (ctx, args) => {
-    await requireAuthUser(ctx);
+    const actorId = await requireAuthUser(ctx);
 
     const team = await ctx.db.get('teams', args.teamId);
     if (!team) {
@@ -683,7 +690,29 @@ export const assignUserToTeamRole = mutation({
       PERMISSIONS.TEAM_MEMBER_ADD,
     );
 
-    return assignTeamRole(ctx, args.teamId, args.userId, args.roleId);
+    const assignmentId = await assignTeamRole(
+      ctx,
+      args.teamId,
+      args.userId,
+      args.roleId,
+    );
+    const role = await ctx.db.get('roles', args.roleId);
+
+    await recordActivity(ctx, {
+      scope: resolveTeamScope(team),
+      actorId,
+      entityType: 'team',
+      eventType: 'team_role_assigned',
+      subjectUserId: args.userId,
+      details: {
+        field: 'role',
+        roleKey: role?.key,
+        roleName: role?.name,
+      },
+      snapshot: snapshotForTeam(team),
+    });
+
+    return assignmentId;
   },
 });
 
@@ -694,7 +723,7 @@ export const assignUserToProjectRole = mutation({
     roleId: v.id('roles'),
   },
   handler: async (ctx, args) => {
-    await requireAuthUser(ctx);
+    const actorId = await requireAuthUser(ctx);
 
     const project = await ctx.db.get('projects', args.projectId);
     if (!project) {
@@ -707,7 +736,29 @@ export const assignUserToProjectRole = mutation({
       PERMISSIONS.PROJECT_MEMBER_ADD,
     );
 
-    return assignProjectRole(ctx, args.projectId, args.userId, args.roleId);
+    const assignmentId = await assignProjectRole(
+      ctx,
+      args.projectId,
+      args.userId,
+      args.roleId,
+    );
+    const role = await ctx.db.get('roles', args.roleId);
+
+    await recordActivity(ctx, {
+      scope: resolveProjectScope(project),
+      actorId,
+      entityType: 'project',
+      eventType: 'project_role_assigned',
+      subjectUserId: args.userId,
+      details: {
+        field: 'role',
+        roleKey: role?.key,
+        roleName: role?.name,
+      },
+      snapshot: snapshotForProject(project),
+    });
+
+    return assignmentId;
   },
 });
 
