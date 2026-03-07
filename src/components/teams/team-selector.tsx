@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 // UI primitives
 import { Button } from '@/components/ui/button';
 import {
@@ -19,7 +20,7 @@ import {
 
 // Utils
 import { cn } from '@/lib/utils';
-import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { getDynamicIcon, DynamicIcon } from '@/lib/dynamic-icons';
 
 // Icons
 import { Check, Circle, Users } from 'lucide-react';
@@ -131,18 +132,16 @@ export function TeamSelector({
 }: TeamSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayTeam, setOptimisticTeam] = useOptimisticValue(selectedTeam);
 
-  const hasSelection = selectedTeam !== '';
+  const hasSelection = displayTeam !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   // Get selected team data
-  const selectedTeamObj = teams.find(t => getTeamId(t) === selectedTeam);
+  const selectedTeamObj = teams.find(t => getTeamId(t) === displayTeam);
   const currentColor = selectedTeamObj?.color || '#94a3b8'; // Default grey
   const currentName = selectedTeamObj?.name || 'Team';
   const currentIconName = selectedTeamObj?.icon;
-  const CurrentIcon = currentIconName
-    ? getDynamicIcon(currentIconName) || Users
-    : Users;
 
   const DefaultBtn = (
     <Button
@@ -151,15 +150,13 @@ export function TeamSelector({
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
       {showIcon &&
-        (selectedTeam ? (
-          CurrentIcon ? (
-            <CurrentIcon className='h-3 w-3' style={{ color: currentColor }} />
-          ) : (
-            <div
-              className='h-2 w-2 rounded-full'
-              style={{ backgroundColor: currentColor }}
-            />
-          )
+        (displayTeam ? (
+          <DynamicIcon
+            name={currentIconName}
+            fallback={Users}
+            className='h-3 w-3'
+            style={{ color: currentColor }}
+          />
         ) : (
           <Users className='h-3 w-3' />
         ))}
@@ -180,6 +177,7 @@ export function TeamSelector({
                 value=''
                 onSelect={() => {
                   if (!viewOnly) {
+                    setOptimisticTeam('');
                     onTeamSelect('');
                     setOpen(false);
                   }
@@ -189,7 +187,7 @@ export function TeamSelector({
                 <Check
                   className={cn(
                     'mr-2 h-4 w-4',
-                    selectedTeam === '' ? 'opacity-100' : 'opacity-0',
+                    displayTeam === '' ? 'opacity-100' : 'opacity-0',
                   )}
                 />
                 None
@@ -210,6 +208,7 @@ export function TeamSelector({
                     value={team.name}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticTeam(teamId);
                         onTeamSelect(teamId);
                         setOpen(false);
                       }
@@ -219,7 +218,7 @@ export function TeamSelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        selectedTeam === teamId ? 'opacity-100' : 'opacity-0',
+                        displayTeam === teamId ? 'opacity-100' : 'opacity-0',
                       )}
                     />
                     <Icon

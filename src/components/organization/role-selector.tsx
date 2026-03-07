@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { OrgRoleBadge } from '@/components/organization/role-badge';
 import { useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
@@ -47,13 +48,15 @@ export function RoleSelector({
 }: RoleSelectorProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [displayRole, setOptimisticRole] = useOptimisticValue(currentRole);
   const router = useRouter();
   const mutation = useMutation(api.organizations.mutations.updateMemberRole);
 
   const handleSelect = async (role: RoleValue) => {
-    if (role === currentRole) return;
+    if (role === displayRole) return;
 
     try {
+      setOptimisticRole(role);
       setIsLoading(true);
       await mutation({
         orgSlug,
@@ -76,7 +79,7 @@ export function RoleSelector({
           disabled={disabled || isLoading}
           className={cn('cursor-pointer', className)}
         >
-          <OrgRoleBadge role={currentRole} />
+          <OrgRoleBadge role={displayRole} />
         </button>
       </PopoverTrigger>
       <PopoverContent className='w-48 p-0' align='start'>
@@ -94,7 +97,7 @@ export function RoleSelector({
                   <Check
                     className={cn(
                       'mr-2 h-4 w-4',
-                      currentRole === opt.value ? 'opacity-100' : 'opacity-0',
+                      displayRole === opt.value ? 'opacity-100' : 'opacity-0',
                     )}
                   />
                   {opt.label}

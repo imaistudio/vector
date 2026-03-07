@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -72,6 +73,7 @@ export function ProjectLeadSelector({
   align = 'start',
 }: ProjectLeadSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [displayLead, setOptimisticLead] = useOptimisticValue(selectedLead);
 
   const { viewOnly } = useAccess();
   const currentUser = useQuery(api.users.getCurrentUser);
@@ -125,9 +127,9 @@ export function ProjectLeadSelector({
     return nameA.localeCompare(nameB);
   });
 
-  const selectedLeadObj = sortedMembers.find(m => m.userId === selectedLead);
+  const selectedLeadObj = sortedMembers.find(m => m.userId === displayLead);
 
-  const hasSelection = selectedLead !== '';
+  const hasSelection = displayLead !== '';
   const showIcon =
     displayMode === 'iconOnly' ||
     (displayMode === 'iconWhenUnselected' && !hasSelection);
@@ -136,7 +138,7 @@ export function ProjectLeadSelector({
     (displayMode === 'iconWhenUnselected' && hasSelection);
 
   const defaultTrigger =
-    selectedLead && selectedLeadObj ? (
+    displayLead && selectedLeadObj ? (
       <Button
         variant='outline'
         size='sm'
@@ -204,6 +206,7 @@ export function ProjectLeadSelector({
                 value=''
                 onSelect={() => {
                   if (!viewOnly) {
+                    setOptimisticLead('');
                     onLeadSelect('');
                     setOpen(false);
                   }
@@ -213,7 +216,7 @@ export function ProjectLeadSelector({
                 <Check
                   className={cn(
                     'mr-2 h-4 w-4',
-                    selectedLead === '' ? 'opacity-100' : 'opacity-0',
+                    displayLead === '' ? 'opacity-100' : 'opacity-0',
                   )}
                 />
                 No lead
@@ -233,6 +236,7 @@ export function ProjectLeadSelector({
                   }
                   onSelect={() => {
                     if (!viewOnly) {
+                      setOptimisticLead(member.userId);
                       onLeadSelect(member.userId);
                       setOpen(false);
                     }
@@ -242,7 +246,7 @@ export function ProjectLeadSelector({
                   <Check
                     className={cn(
                       'mr-2 h-4 w-4',
-                      selectedLead === member.userId
+                      displayLead === member.userId
                         ? 'opacity-100'
                         : 'opacity-0',
                     )}

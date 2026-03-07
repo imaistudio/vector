@@ -51,6 +51,11 @@
       "sourceType": "github",
       "computedHash": "b53e061304bb81d037c6dd4e38762d27a596523bcbeab43c58e0b05140449802"
     },
+    "shadcn": {
+      "source": "shadcn/ui",
+      "sourceType": "github",
+      "computedHash": "91c02eb706f046fb9d6a061efbb96496e4be751b5b14c283cf82baaa50f3a985"
+    },
     "tailwind-design-system": {
       "source": "wshobson/agents",
       "sourceType": "github",

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -25,7 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Users, User, Circle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { getDynamicIcon, DynamicIcon } from '@/lib/dynamic-icons';
 
 import { useAccess } from '@/components/ui/permission-aware';
 
@@ -110,18 +111,17 @@ export function StatusSelector({
 }: StatusSelectorProps) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayStatus, setOptimisticStatus] =
+    useOptimisticValue(selectedStatus);
 
-  const hasSelection = selectedStatus !== '';
+  const hasSelection = displayStatus !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   // Get selected status data
-  const selectedStatusObj = statuses.find(s => s._id === selectedStatus);
+  const selectedStatusObj = statuses.find(s => s._id === displayStatus);
   const currentColor = selectedStatusObj?.color || '#94a3b8'; // Default grey
   const currentName = selectedStatusObj?.name || 'Status';
   const currentIconName = selectedStatusObj?.icon;
-  const CurrentIcon = currentIconName
-    ? getDynamicIcon(currentIconName) || Circle
-    : Circle;
 
   const DefaultBtn = (
     <Button
@@ -130,15 +130,13 @@ export function StatusSelector({
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
       {showIcon &&
-        (selectedStatus ? (
-          CurrentIcon ? (
-            <CurrentIcon className='h-3 w-3' style={{ color: currentColor }} />
-          ) : (
-            <div
-              className='h-2 w-2 rounded-full'
-              style={{ backgroundColor: currentColor }}
-            />
-          )
+        (displayStatus ? (
+          <DynamicIcon
+            name={currentIconName}
+            fallback={Circle}
+            className='h-3 w-3'
+            style={{ color: currentColor }}
+          />
         ) : (
           <Circle className='h-3 w-3' />
         ))}
@@ -165,6 +163,7 @@ export function StatusSelector({
                     value={status.name}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticStatus(status._id);
                         onStatusSelect(status._id);
                         setOpen(false);
                       }
@@ -174,7 +173,7 @@ export function StatusSelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        selectedStatus === status._id
+                        displayStatus === status._id
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}

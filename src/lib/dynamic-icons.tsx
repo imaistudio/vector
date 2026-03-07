@@ -187,17 +187,15 @@ interface DynamicIconProps {
   fallback?: React.ComponentType<React.SVGProps<SVGSVGElement>>;
 }
 
+/* eslint-disable react-hooks/static-components -- Icons are module-level imports, not created during render */
 export function DynamicIcon({
   name,
   className,
   style,
   fallback: Fallback = Circle,
 }: DynamicIconProps) {
-  const IconComponent = getDynamicIcon(name);
-
-  if (!IconComponent) {
-    return <Fallback className={className} style={style} />;
-  }
+  const IconComponent = getDynamicIcon(name) || Fallback;
 
   return <IconComponent className={className} style={style} />;
 }
+/* eslint-enable react-hooks/static-components */

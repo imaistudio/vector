@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 
 // UI primitives
 import { Button } from '@/components/ui/button';
@@ -34,7 +35,7 @@ import {
 
 // Utils & helpers
 import { cn } from '@/lib/utils';
-import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { getDynamicIcon, DynamicIcon } from '@/lib/dynamic-icons';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { FunctionReturnType } from 'convex/server';
@@ -135,20 +136,19 @@ export function ProjectSelector({
 }: ProjectSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayProject, setOptimisticProject] =
+    useOptimisticValue(selectedProject);
 
   // Always render selector even when no projects to make the control discoverable.
 
-  const hasSelection = selectedProject !== '';
+  const hasSelection = displayProject !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   // Get selected project data
-  const selectedProjectObj = projects.find(p => p._id === selectedProject);
+  const selectedProjectObj = projects.find(p => p._id === displayProject);
   const currentColor = selectedProjectObj?.color || '#94a3b8'; // Default grey
   const currentName = selectedProjectObj?.name || 'Project';
   const currentIconName = selectedProjectObj?.icon;
-  const CurrentIcon = currentIconName
-    ? getDynamicIcon(currentIconName) || FolderOpen
-    : FolderOpen;
 
   const DefaultBtn = (
     <Button
@@ -157,15 +157,13 @@ export function ProjectSelector({
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
       {showIcon &&
-        (selectedProject ? (
-          CurrentIcon ? (
-            <CurrentIcon className='h-3 w-3' style={{ color: currentColor }} />
-          ) : (
-            <div
-              className='h-2 w-2 rounded-full'
-              style={{ backgroundColor: currentColor }}
-            />
-          )
+        (displayProject ? (
+          <DynamicIcon
+            name={currentIconName}
+            fallback={FolderOpen}
+            className='h-3 w-3'
+            style={{ color: currentColor }}
+          />
         ) : (
           <FolderOpen className='h-3 w-3' />
         ))}
@@ -186,6 +184,7 @@ export function ProjectSelector({
                 value=''
                 onSelect={() => {
                   if (!viewOnly) {
+                    setOptimisticProject('');
                     onProjectSelect('');
                     setOpen(false);
                   }
@@ -195,7 +194,7 @@ export function ProjectSelector({
                 <Check
                   className={cn(
                     'mr-2 h-4 w-4',
-                    selectedProject === '' ? 'opacity-100' : 'opacity-0',
+                    displayProject === '' ? 'opacity-100' : 'opacity-0',
                   )}
                 />
                 None
@@ -215,6 +214,7 @@ export function ProjectSelector({
                     value={project.name}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticProject(project._id);
                         onProjectSelect(project._id);
                         setOpen(false);
                       }
@@ -224,7 +224,7 @@ export function ProjectSelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        selectedProject === project._id
+                        displayProject === project._id
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}
@@ -273,6 +273,7 @@ export function StateSelector({
 }: StateSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayState, setOptimisticState] = useOptimisticValue(selectedState);
 
   // Transform states from API into combobox-friendly structure
   const stateOptions = states.map(s => ({
@@ -283,7 +284,7 @@ export function StateSelector({
 
   // Helper: currently selected state data
   const getSelectedStateData = () => {
-    if (!selectedState) {
+    if (!displayState) {
       const defaultState = states.find(s => s.type === 'todo') || states[0];
       return {
         color: defaultState?.color || '#94a3b8',
@@ -291,7 +292,7 @@ export function StateSelector({
         icon: defaultState?.icon,
       };
     }
-    const state = states.find(s => s._id === selectedState);
+    const state = states.find(s => s._id === displayState);
     return {
       color: state?.color || '#94a3b8',
       name: state?.name || 'Select state...',
@@ -300,11 +301,8 @@ export function StateSelector({
   };
 
   const selectedStateData = getSelectedStateData();
-  const SelectedStateIcon = selectedStateData.icon
-    ? getDynamicIcon(selectedStateData.icon)
-    : null;
 
-  const hasSelection = selectedState !== '';
+  const hasSelection = displayState !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   const DefaultBtn = (
@@ -313,18 +311,13 @@ export function StateSelector({
       size='sm'
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
-      {showIcon &&
-        (SelectedStateIcon ? (
-          <SelectedStateIcon
-            className='h-3 w-3'
-            style={{ color: selectedStateData.color }}
-          />
-        ) : (
-          <div
-            className='h-2 w-2 rounded-full'
-            style={{ backgroundColor: selectedStateData.color }}
-          />
-        ))}
+      {showIcon && (
+        <DynamicIcon
+          name={selectedStateData.icon}
+          className='h-3 w-3'
+          style={{ color: selectedStateData.color }}
+        />
+      )}
       {showLabel && selectedStateData.name}
     </Button>
   );
@@ -350,6 +343,7 @@ export function StateSelector({
                     value={state.label}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticState(state.value);
                         onStateSelect(state.value);
                         setOpen(false);
                       }
@@ -359,7 +353,7 @@ export function StateSelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        selectedState === state.value
+                        displayState === state.value
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}
@@ -415,17 +409,18 @@ export function PrioritySelector({
 }: PrioritySelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayPriority, setOptimisticPriority] =
+    useOptimisticValue(selectedPriority);
 
   if (priorities.length === 0) return null;
 
-  const hasSelection = selectedPriority !== '';
+  const hasSelection = displayPriority !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
-  const current = priorities.find(p => p._id === selectedPriority);
+  const current = priorities.find(p => p._id === displayPriority);
   const currentColor = current?.color || '#94a3b8';
   const currentName = current?.name || 'Priority';
   const currentIconName = current?.icon;
-  const CurrentIcon = currentIconName ? getDynamicIcon(currentIconName) : null;
 
   const DefaultBtn = (
     <Button
@@ -433,15 +428,13 @@ export function PrioritySelector({
       size='sm'
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
     >
-      {showIcon &&
-        (CurrentIcon ? (
-          <CurrentIcon className='h-3 w-3' style={{ color: currentColor }} />
-        ) : (
-          <div
-            className='h-2 w-2 rounded-full'
-            style={{ backgroundColor: currentColor }}
-          />
-        ))}
+      {showIcon && (
+        <DynamicIcon
+          name={currentIconName}
+          className='h-3 w-3'
+          style={{ color: currentColor }}
+        />
+      )}
       {showLabel && currentName}
     </Button>
   );
@@ -456,16 +449,13 @@ export function PrioritySelector({
             <CommandEmpty>No priority found.</CommandEmpty>
             <CommandGroup>
               {priorities.map(priority => {
-                const PriorityIcon = priority.icon
-                  ? getDynamicIcon(priority.icon)
-                  : null;
-
                 return (
                   <CommandItem
                     key={priority._id}
                     value={priority.name}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticPriority(priority._id);
                         onPrioritySelect(priority._id);
                         setOpen(false);
                       }
@@ -475,22 +465,16 @@ export function PrioritySelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        selectedPriority === priority._id
+                        displayPriority === priority._id
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}
                     />
-                    {PriorityIcon ? (
-                      <PriorityIcon
-                        className='mr-2 h-3 w-3'
-                        style={{ color: priority.color || '#94a3b8' }}
-                      />
-                    ) : (
-                      <div
-                        className='mr-2 h-2 w-2 rounded-full'
-                        style={{ backgroundColor: priority.color || '#94a3b8' }}
-                      />
-                    )}
+                    <DynamicIcon
+                      name={priority.icon}
+                      className='mr-2 h-3 w-3'
+                      style={{ color: priority.color || '#94a3b8' }}
+                    />
                     {priority.name}
                     {viewOnly && (
                       <span className='text-muted-foreground ml-auto text-xs'>

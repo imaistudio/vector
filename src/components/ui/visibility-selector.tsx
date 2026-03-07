@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -124,13 +125,14 @@ export function VisibilitySelector({
 }: VisibilitySelectorProps) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const [displayValue, setOptimisticValue] = useOptimisticValue(value);
 
-  const hasSelection = Boolean(value);
+  const hasSelection = Boolean(displayValue);
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   // Get selected visibility data
   const selectedOption = VISIBILITY_OPTIONS.find(
-    option => option.value === value,
+    option => option.value === displayValue,
   );
   const currentColor = selectedOption?.color || '#3b82f6';
   const currentName = selectedOption?.label || 'Organization';
@@ -172,6 +174,7 @@ export function VisibilitySelector({
                     value={option.label}
                     onSelect={() => {
                       if (!viewOnly) {
+                        setOptimisticValue(option.value);
                         onValueChange(option.value);
                         setOpen(false);
                       }
@@ -182,7 +185,9 @@ export function VisibilitySelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        value === option.value ? 'opacity-100' : 'opacity-0',
+                        displayValue === option.value
+                          ? 'opacity-100'
+                          : 'opacity-0',
                       )}
                     />
                     <ColoredIcon
