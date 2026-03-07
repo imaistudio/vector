@@ -25,7 +25,16 @@ const getBaseUrl = () =>
   process.env.NEXT_PUBLIC_SITE_URL ||
   'http://localhost:3000';
 
-const getTrustedOrigins = () => [getBaseUrl()];
+const getTrustedOrigins = () => {
+  const configuredOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
+  return Array.from(
+    new Set([getBaseUrl(), 'https://vector.imai.studio', ...configuredOrigins]),
+  );
+};
 
 const authFunctions: AuthFunctions = internal.auth;
 
