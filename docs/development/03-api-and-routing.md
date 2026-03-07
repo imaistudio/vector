@@ -21,4 +21,4 @@ This document covers conventions for creating tRPC routers and API endpoints.
   - Example: `/<orgId>/dashboard`, `/<orgId>/projects/[projectId]`
 - **Global Routes**: Routes that are not specific to an organization (e.g., user profile settings, authentication pages) should live outside of the `/[orgId]/` segment.
   - Example: `/settings/profile`, `/auth/login`
-- **Middleware**: The `src/middleware.ts` file contains logic to protect organization-scoped routes and redirect unauthenticated users to the login page.
+- **Proxy**: The `src/proxy.ts` file contains logic to protect organization-scoped routes and redirect unauthenticated users to the login page.

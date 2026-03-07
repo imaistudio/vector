@@ -40,7 +40,7 @@ We decided to implement a full-stack vertical slice for project management featu
 
 - **Convention**: `/<orgId>/...` for organization-scoped pages.
 - **Layout**: A shared layout at `src/app/[orgId]/layout.tsx` provides a consistent sidebar and organization switcher.
-- **Middleware**: `src/middleware.ts` protects all organization-scoped routes.
+- **Proxy**: `src/proxy.ts` protects all organization-scoped routes.
 
 ### 5. UX Flow
 

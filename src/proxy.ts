@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export default function middleware() {
+export default function proxy() {
   return NextResponse.next();
 }
 
