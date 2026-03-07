@@ -1,7 +1,7 @@
 import { OrgSetupForm } from '@/components/organization';
 
 export default async function OrgSetupPage() {
-  // This page is for first-time setup only. A check in a layout or middleware
+  // This page is for first-time setup only. A check in a layout or proxy
   // would be more robust. Since we can't know the user's organizations without
   // authentication on the server, we'll rely on client-side redirects from
   // the main page to handle users who already have organizations.
