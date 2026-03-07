@@ -2,6 +2,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { usePermission } from './use-permissions';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { Permission } from '@/convex/_shared/permissions';
 
 /**
@@ -53,7 +54,10 @@ export function PermissionBoundary({
     return (
       loadingComponent || (
         <div className='flex h-screen w-full items-center justify-center'>
-          <div className='text-2xl font-semibold'>Loading...</div>
+          <div className='flex flex-col items-center gap-3'>
+            <Skeleton className='size-10 rounded-lg' />
+            <Skeleton className='h-4 w-32' />
+          </div>
         </div>
       )
     );

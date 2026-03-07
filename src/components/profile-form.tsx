@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useFormSubmission } from '@/hooks/use-error-handling';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const profileFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -45,7 +46,18 @@ export function ProfileForm() {
   }
 
   if (!user) {
-    return <div>Loading...</div>;
+    return (
+      <div className='space-y-6'>
+        <div className='grid gap-6 sm:grid-cols-2'>
+          <div className='space-y-2'>
+            <Skeleton className='h-4 w-20' />
+            <Skeleton className='h-10 w-full' />
+            <Skeleton className='h-3 w-56' />
+          </div>
+        </div>
+        <Skeleton className='h-9 w-28' />
+      </div>
+    );
   }
 
   return (

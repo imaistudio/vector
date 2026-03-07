@@ -13,7 +13,9 @@ export default function TestAuthPage() {
       <h1 className='mb-6 text-2xl font-bold'>Convex Auth Test</h1>
 
       <AuthLoading>
-        <div>Loading authentication state...</div>
+        <div className='text-muted-foreground animate-pulse text-sm'>
+          Checking authentication...
+        </div>
       </AuthLoading>
 
       <Unauthenticated>
@@ -122,7 +124,14 @@ function UserProfile() {
   const user = useQuery(api.users.currentUser);
 
   if (!user) {
-    return <div>Loading user data...</div>;
+    return (
+      <div className='max-w-md animate-pulse space-y-3'>
+        <div className='bg-muted h-6 w-32 rounded' />
+        <div className='bg-muted h-4 w-48 rounded' />
+        <div className='bg-muted h-4 w-56 rounded' />
+        <div className='bg-muted h-4 w-40 rounded' />
+      </div>
+    );
   }
 
   return (

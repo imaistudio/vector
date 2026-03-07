@@ -18,6 +18,7 @@ import {
   Target,
   FolderOpen,
 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { IconPicker } from '@/components/ui/icon-picker';
 import { notFound } from 'next/navigation';
 import { formatDateHuman } from '@/lib/date';
@@ -411,7 +412,7 @@ export default function TeamViewPage() {
   // Moved ABOVE any conditional early returns to keep hook order consistent
   const permissionScope = useMemo(() => {
     return team?._id ? { orgSlug, teamId: team._id } : { orgSlug };
-  }, [orgSlug, team?._id]);
+  }, [orgSlug, team]);
 
   const { isAllowed: canEditTeam } = usePermissionCheck(
     orgSlug,
@@ -472,7 +473,69 @@ export default function TeamViewPage() {
 
   // Show loading state
   if (isLoading) {
-    return <div>Loading...</div>;
+    return (
+      <div className='bg-background h-full overflow-y-auto'>
+        <div className='h-full'>
+          {/* Header Skeleton */}
+          <div className='flex items-center justify-between border-b px-2'>
+            <div className='flex h-8 items-center gap-2'>
+              <Skeleton className='h-4 w-12' />
+              <span className='text-muted-foreground text-sm'>/</span>
+              <Skeleton className='h-4 w-16' />
+            </div>
+            <div className='flex items-center gap-2'>
+              <Skeleton className='h-6 w-16 rounded-full' />
+            </div>
+          </div>
+
+          {/* Main Content Skeleton */}
+          <div className='mx-auto max-w-5xl px-4 py-4'>
+            <div className='mb-2 max-w-4xl space-y-2'>
+              <div className='flex items-center gap-2'>
+                <Skeleton className='h-3 w-16' />
+                <span className='text-muted-foreground'>•</span>
+                <Skeleton className='h-3 w-24' />
+              </div>
+              <Skeleton className='h-9 w-1/2' />
+              <Skeleton className='h-4 w-3/4' />
+            </div>
+
+            {/* Members Skeleton */}
+            <div className='mt-6 space-y-3'>
+              <div className='flex items-center justify-between'>
+                <Skeleton className='h-5 w-24' />
+                <Skeleton className='h-8 w-20 rounded-md' />
+              </div>
+              <div className='divide-y rounded-lg border'>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className='flex items-center gap-3 px-3 py-2'>
+                    <Skeleton className='size-6 rounded-full' />
+                    <div className='flex-1 space-y-1'>
+                      <Skeleton className='h-4 w-28' />
+                      <Skeleton className='h-3 w-40' />
+                    </div>
+                    <Skeleton className='h-5 w-14 rounded-full' />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Tabs Skeleton */}
+            <div className='mt-6'>
+              <div className='flex gap-2 border-b pb-2'>
+                <Skeleton className='h-7 w-20' />
+                <Skeleton className='h-7 w-20' />
+              </div>
+              <div className='mt-4 space-y-2'>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className='h-10 w-full' />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Show error state
@@ -497,7 +560,7 @@ export default function TeamViewPage() {
     if (colorValue !== (team.color || null)) setColorValue(team.color || null);
   }
 
-  if (!user) return <div>Loading...</div>; // Or a proper loading state
+  if (!user) return null;
 
   const handleNameSave = async () => {
     if (!nameValue.trim() || !team) return;

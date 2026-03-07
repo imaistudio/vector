@@ -229,7 +229,7 @@ export function PermissionGate({
   scope,
   children,
   fallback = null,
-  loading = <div>Loading...</div>,
+  loading = null,
 }: PermissionGateProps) {
   const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
   const orgResult = usePermission(orgSlug, permission);
