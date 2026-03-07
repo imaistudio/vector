@@ -1,7 +1,24 @@
 {
-  "name": "aikp",
+  "name": "vector",
   "version": "0.1.0",
+  "description": "Open source project management platform built with Next.js and Convex.",
   "private": true,
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xrehpicx/vector.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xrehpicx/vector/issues"
+  },
+  "homepage": "https://github.com/xrehpicx/vector#readme",
+  "keywords": [
+    "project-management",
+    "issue-tracking",
+    "nextjs",
+    "convex",
+    "typescript"
+  ],
   "engines": {
     "node": "24.x"
   },
