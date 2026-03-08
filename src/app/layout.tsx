@@ -5,6 +5,7 @@ import { TopLoaderProvider } from '@/providers/top-loader-provider';
 import { ConvexAuthProvider } from '@/providers/convex-auth-provider';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { Toaster } from '@/components/ui/sonner';
+import { NotificationClientBootstrap } from '@/components/notifications/notification-client-bootstrap';
 import { getToken } from '@/lib/auth-server';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,7 @@ const poppins = Poppins({
 export const metadata: Metadata = {
   title: 'Vector',
   description: 'Project management platform',
+  manifest: '/manifest.webmanifest',
 };
 
 export default async function RootLayout({
@@ -37,6 +39,7 @@ export default async function RootLayout({
         <TopLoaderProvider />
         <ErrorBoundary>
           <ConvexAuthProvider initialToken={await getToken()}>
+            <NotificationClientBootstrap />
             {children}
             <Toaster />
           </ConvexAuthProvider>

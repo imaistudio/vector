@@ -7,6 +7,13 @@ import {
   activitySnapshotValidator,
 } from './_shared/activity';
 import { PERMISSION_VALUES, SYSTEM_ROLE_KEYS } from './_shared/permissions';
+import {
+  notificationCategoryValidator,
+  notificationChannelValidator,
+  notificationDeliveryStatusValidator,
+  notificationEventTypeValidator,
+  notificationPayloadValidator,
+} from './notifications/shared';
 
 const permissionValidator = v.union(
   ...PERMISSION_VALUES.map(permission => v.literal(permission)),
@@ -475,4 +482,89 @@ export default defineSchema({
     .index('by_project', ['projectId'])
     .index('by_issue', ['issueId'])
     .index('by_actor', ['actorId']),
+
+  notificationEvents: defineTable({
+    type: notificationEventTypeValidator,
+    category: notificationCategoryValidator,
+    organizationId: v.optional(v.id('organizations')),
+    actorId: v.optional(v.id('users')),
+    issueId: v.optional(v.id('issues')),
+    projectId: v.optional(v.id('projects')),
+    teamId: v.optional(v.id('teams')),
+    invitationId: v.optional(v.id('invitations')),
+    payload: notificationPayloadValidator,
+    dedupeKey: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_type', ['type'])
+    .index('by_category', ['category'])
+    .index('by_organization', ['organizationId'])
+    .index('by_issue', ['issueId'])
+    .index('by_actor', ['actorId'])
+    .index('by_dedupe_key', ['dedupeKey']),
+
+  notificationRecipients: defineTable({
+    eventId: v.id('notificationEvents'),
+    userId: v.optional(v.id('users')),
+    email: v.optional(v.string()),
+    category: notificationCategoryValidator,
+    eventType: notificationEventTypeValidator,
+    organizationId: v.optional(v.id('organizations')),
+    title: v.string(),
+    body: v.string(),
+    href: v.optional(v.string()),
+    actorId: v.optional(v.id('users')),
+    actorName: v.optional(v.string()),
+    actorImage: v.optional(v.string()),
+    isRead: v.boolean(),
+    readAt: v.optional(v.number()),
+    isArchived: v.boolean(),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index('by_event', ['eventId'])
+    .index('by_user', ['userId'])
+    .index('by_user_read', ['userId', 'isRead'])
+    .index('by_user_archived', ['userId', 'isArchived'])
+    .index('by_email', ['email']),
+
+  notificationPreferences: defineTable({
+    userId: v.id('users'),
+    category: notificationCategoryValidator,
+    inAppEnabled: v.boolean(),
+    emailEnabled: v.boolean(),
+    pushEnabled: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_user_category', ['userId', 'category']),
+
+  notificationDeliveries: defineTable({
+    eventId: v.id('notificationEvents'),
+    recipientId: v.id('notificationRecipients'),
+    channel: notificationChannelValidator,
+    status: notificationDeliveryStatusValidator,
+    attemptCount: v.number(),
+    providerMessageId: v.optional(v.string()),
+    lastError: v.optional(v.string()),
+    sentAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index('by_event', ['eventId'])
+    .index('by_recipient', ['recipientId'])
+    .index('by_recipient_channel', ['recipientId', 'channel']),
+
+  pushSubscriptions: defineTable({
+    userId: v.id('users'),
+    endpoint: v.string(),
+    p256dh: v.string(),
+    auth: v.string(),
+    userAgent: v.optional(v.string()),
+    deviceLabel: v.optional(v.string()),
+    disabledAt: v.optional(v.number()),
+    lastSeenAt: v.number(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_endpoint', ['endpoint'])
+    .index('by_user_endpoint', ['userId', 'endpoint']),
 });

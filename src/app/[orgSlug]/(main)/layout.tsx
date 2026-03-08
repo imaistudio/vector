@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { OrgSidebar, OrgOptionsDropdown } from '@/components/organization';
 import { UserMenu } from '@/components/user-menu';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import {
@@ -172,6 +173,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 <OrgSidebar orgSlug={orgSlug} />
               </div>
               <div className='border-border border-t p-2'>
+                <div className='mb-2 flex justify-end'>
+                  <NotificationBell />
+                </div>
                 <UserMenu />
               </div>
             </div>
@@ -201,6 +205,9 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   />
                 </div>
                 <div className='border-border border-t p-2'>
+                  <div className='mb-2 flex justify-end'>
+                    <NotificationBell />
+                  </div>
                   <UserMenu />
                 </div>
               </div>

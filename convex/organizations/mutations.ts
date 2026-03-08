@@ -8,6 +8,7 @@ import {
 } from '../authz';
 import { PERMISSIONS } from '../_shared/permissions';
 import { syncOrganizationRoleAssignment } from '../roles';
+import { createNotificationEvent } from '../notifications/lib';
 import {
   ISSUE_PRIORITY_DEFAULTS,
   ISSUE_STATE_DEFAULTS,
@@ -111,7 +112,7 @@ export const resendInvite = mutation({
     token: v.id('invitations'),
   },
   handler: async (ctx, args) => {
-    await requireAuthUser(ctx);
+    const inviterId = await requireAuthUser(ctx);
     const invite = await ctx.db.get('invitations', args.token);
 
     if (!invite) {
@@ -130,6 +131,37 @@ export const resendInvite = mutation({
     await ctx.db.patch('invitations', invite._id, {
       expiresAt: expiresAt.getTime(),
     });
+
+    const [org, existingUser, inviter] = await Promise.all([
+      ctx.db.get('organizations', invite.organizationId),
+      ctx.db
+        .query('users')
+        .withIndex('email', q => q.eq('email', invite.email.toLowerCase()))
+        .first(),
+      ctx.db.get('users', inviterId),
+    ]);
+
+    if (org) {
+      await createNotificationEvent(ctx, {
+        type: 'organization_invite',
+        actorId: inviterId,
+        organizationId: invite.organizationId,
+        invitationId: invite._id,
+        payload: {
+          organizationName: org.name,
+          inviterName:
+            inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
+          roleLabel: invite.role,
+          href: '/settings/invites',
+        },
+        recipients: [
+          {
+            userId: existingUser?._id,
+            email: invite.email,
+          },
+        ],
+      });
+    }
   },
 });
 
@@ -809,6 +841,28 @@ export const invite = mutation({
       inviterId: userId,
     });
 
+    const inviter = await ctx.db.get('users', userId);
+
+    await createNotificationEvent(ctx, {
+      type: 'organization_invite',
+      actorId: userId,
+      organizationId: org._id,
+      invitationId: inviteId,
+      payload: {
+        organizationName: org.name,
+        inviterName:
+          inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
+        roleLabel: args.role,
+        href: '/settings/invites',
+      },
+      recipients: [
+        {
+          userId: existingUser?._id,
+          email: args.email,
+        },
+      ],
+    });
+
     return { inviteId } as const;
   },
 });
@@ -818,11 +872,7 @@ export const generateLogoUploadUrl = mutation({
     orgSlug: v.string(),
   },
   handler: async (ctx, args) => {
-    const org = await requireOrgAccess(
-      ctx,
-      args.orgSlug,
-      PERMISSIONS.ORG_MANAGE_SETTINGS,
-    );
+    await requireOrgAccess(ctx, args.orgSlug, PERMISSIONS.ORG_MANAGE_SETTINGS);
 
     return await ctx.storage.generateUploadUrl();
   },

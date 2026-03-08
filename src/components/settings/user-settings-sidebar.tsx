@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Mail, Settings, ArrowLeft, type LucideIcon } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Bell,
+  Settings,
+  ArrowLeft,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@/lib/convex';
@@ -37,6 +44,12 @@ export function UserSettingsSidebar() {
       href: '/settings/invites',
       icon: Mail,
       description: 'Pending organization invitations',
+    },
+    {
+      label: 'Notifications',
+      href: '/settings/notifications',
+      icon: Bell,
+      description: 'Notification preferences and push devices',
     },
   ];
 

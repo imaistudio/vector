@@ -2,7 +2,7 @@
 
 import { useQuery } from '@/lib/convex';
 import { api } from '@/lib/convex';
-import { User, Mail, Settings } from 'lucide-react';
+import { User, Mail, Bell, Settings } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 
@@ -76,6 +76,19 @@ export default function SettingsPage() {
             <p className='text-sm font-medium'>Invitations</p>
             <p className='text-muted-foreground text-xs'>
               Manage organization invitations
+            </p>
+          </div>
+        </Link>
+
+        <Link
+          href='/settings/notifications'
+          className='hover:bg-muted/50 flex items-center gap-3 rounded-md border px-3 py-2.5 transition-colors'
+        >
+          <Bell className='text-muted-foreground size-4' />
+          <div>
+            <p className='text-sm font-medium'>Notifications</p>
+            <p className='text-muted-foreground text-xs'>
+              Manage inbox, email, and push delivery
             </p>
           </div>
         </Link>

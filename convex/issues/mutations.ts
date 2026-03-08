@@ -19,6 +19,11 @@ import {
   resolveIssueScope,
   snapshotForIssue,
 } from '../activities/lib';
+import {
+  createNotificationEvent,
+  getIssueHref,
+  resolveMentionedUsers,
+} from '../notifications/lib';
 
 function priorityLabel(
   priority: Doc<'issuePriorities'> | null | undefined,
@@ -224,6 +229,30 @@ export const create = mutation({
       });
     }
 
+    if (
+      createdIssue &&
+      args.data.assigneeIds &&
+      args.data.assigneeIds.length > 0
+    ) {
+      for (const assigneeId of args.data.assigneeIds) {
+        await createNotificationEvent(ctx, {
+          type: 'issue_assigned',
+          actorId: userId,
+          organizationId: createdIssue.organizationId,
+          issueId: createdIssue._id,
+          projectId: createdIssue.projectId,
+          teamId: createdIssue.teamId,
+          payload: {
+            organizationName: org.name,
+            issueKey: createdIssue.key,
+            issueTitle: createdIssue.title,
+            href: getIssueHref(org.slug, createdIssue.key),
+          },
+          recipients: [{ userId: assigneeId }],
+        });
+      }
+    }
+
     return { issueId, key: issueKey } as const;
   },
 });
@@ -376,6 +405,71 @@ export const addComment = mutation({
       snapshot: snapshotForIssue(issue),
     });
 
+    const org = await ctx.db.get('organizations', issue.organizationId);
+    if (org) {
+      const assignees = await ctx.db
+        .query('issueAssignees')
+        .withIndex('by_issue', q => q.eq('issueId', issue._id))
+        .collect();
+      const mentionedUsers = await resolveMentionedUsers(
+        ctx,
+        issue.organizationId,
+        args.body,
+      );
+      const mentionedUserIds = new Set(mentionedUsers.map(user => user._id));
+      const assigneeUserIds = Array.from(
+        new Set(
+          assignees
+            .map(assignment => assignment.assigneeId)
+            .filter((id): id is Id<'users'> => Boolean(id)),
+        ),
+      );
+      const href = getIssueHref(org.slug, issue.key);
+      const commentPreview = getCommentPreview(args.body);
+
+      for (const mentionedUser of mentionedUsers) {
+        await createNotificationEvent(ctx, {
+          type: 'issue_mentioned',
+          actorId: userId,
+          organizationId: issue.organizationId,
+          issueId: issue._id,
+          projectId: issue.projectId,
+          teamId: issue.teamId,
+          payload: {
+            organizationName: org.name,
+            issueKey: issue.key,
+            issueTitle: issue.title,
+            commentPreview,
+            href,
+          },
+          recipients: [{ userId: mentionedUser._id }],
+        });
+      }
+
+      for (const assigneeUserId of assigneeUserIds) {
+        if (mentionedUserIds.has(assigneeUserId)) {
+          continue;
+        }
+
+        await createNotificationEvent(ctx, {
+          type: 'issue_comment_on_assigned_issue',
+          actorId: userId,
+          organizationId: issue.organizationId,
+          issueId: issue._id,
+          projectId: issue.projectId,
+          teamId: issue.teamId,
+          payload: {
+            organizationName: org.name,
+            issueKey: issue.key,
+            issueTitle: issue.title,
+            commentPreview,
+            href,
+          },
+          recipients: [{ userId: assigneeUserId }],
+        });
+      }
+    }
+
     return { commentId } as const;
   },
 });
@@ -495,6 +589,25 @@ export const addAssignee = mutation({
       snapshot: snapshotForIssue(issue),
     });
 
+    const org = await ctx.db.get('organizations', issue.organizationId);
+    if (assignee && org) {
+      await createNotificationEvent(ctx, {
+        type: 'issue_assigned',
+        actorId: userId,
+        organizationId: issue.organizationId,
+        issueId: issue._id,
+        projectId: issue.projectId,
+        teamId: issue.teamId,
+        payload: {
+          organizationName: org.name,
+          issueKey: issue.key,
+          issueTitle: issue.title,
+          href: getIssueHref(org.slug, issue.key),
+        },
+        recipients: [{ userId: assignee._id }],
+      });
+    }
+
     return { assignmentId } as const;
   },
 });
@@ -613,6 +726,29 @@ export const updateAssignmentAssignee = mutation({
         },
         snapshot: snapshotForIssue(issue),
       });
+
+      const org = await ctx.db.get('organizations', issue.organizationId);
+      if (nextAssignee && org) {
+        await createNotificationEvent(ctx, {
+          type: 'issue_reassigned',
+          actorId: userId,
+          organizationId: issue.organizationId,
+          issueId: issue._id,
+          projectId: issue.projectId,
+          teamId: issue.teamId,
+          payload: {
+            organizationName: org.name,
+            issueKey: issue.key,
+            issueTitle: issue.title,
+            subjectUserName: getUserDisplayName(
+              previousAssignee,
+              'Unknown user',
+            ),
+            href: getIssueHref(org.slug, issue.key),
+          },
+          recipients: [{ userId: nextAssignee._id }],
+        });
+      }
     }
 
     return { success: true } as const;
@@ -792,6 +928,27 @@ export const updateAssignees = mutation({
         },
         snapshot: snapshotForIssue(issue),
       });
+
+      const org = await ctx.db.get('organizations', issue.organizationId);
+      if (org) {
+        for (const assigneeId of addedUserIds) {
+          await createNotificationEvent(ctx, {
+            type: 'issue_assigned',
+            actorId: userId,
+            organizationId: issue.organizationId,
+            issueId: issue._id,
+            projectId: issue.projectId,
+            teamId: issue.teamId,
+            payload: {
+              organizationName: org.name,
+              issueKey: issue.key,
+              issueTitle: issue.title,
+              href: getIssueHref(org.slug, issue.key),
+            },
+            recipients: [{ userId: assigneeId }],
+          });
+        }
+      }
     }
   },
 });
