@@ -19,8 +19,13 @@ import { PermissionAware } from '@/components/ui/permission-aware';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { UserAvatar } from '@/components/user-avatar';
 import { FunctionReturnType } from 'convex/server';
-import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  addIssueAssignmentRow,
+  removeIssueAssignmentRow,
+  updateIssueAssignmentRows,
+  updateQuery,
+} from '@/lib/optimistic-updates';
 
 export interface IssueAssignmentsProps {
   orgSlug: string;
@@ -84,9 +89,7 @@ function IssueAssignmentRow({
   onUpdateAssignee,
   onRemoveAssignment,
 }: IssueAssignmentRowProps) {
-  const [displayAssigneeId, setOptimisticAssigneeId] = useOptimisticValue(
-    assignment.assigneeId?.toString() || '',
-  );
+  const displayAssigneeId = assignment.assigneeId?.toString() || '';
 
   const isOwnAssignment = assignment.assigneeId === currentUserId;
   const canModifyAssignment = canManage || isOwnAssignment;
@@ -110,10 +113,7 @@ function IssueAssignmentRow({
           selectedAssignee={displayAssigneeId}
           onAssigneeSelect={
             canModifyAssignment
-              ? userId => {
-                  setOptimisticAssigneeId(userId);
-                  onUpdateAssignee(assignment._id, userId);
-                }
+              ? userId => onUpdateAssignee(assignment._id, userId)
               : undefined
           }
           displayMode='labelOnly'
@@ -124,7 +124,9 @@ function IssueAssignmentRow({
                   <UserAvatar
                     name={displayMember.name}
                     email={displayMember.email}
-                    image={displayMember.image}
+                    image={
+                      'image' in displayMember ? displayMember.image : undefined
+                    }
                     userId={displayAssigneeId}
                     size='sm'
                     className='flex-shrink-0'
@@ -216,16 +218,96 @@ export function IssueAssignments({
   const assignmentList = assignments ?? [];
 
   // Mutations
-  const addAssigneeMutation = useMutation(api.issues.mutations.addAssignee);
+  const addAssigneeMutation = useMutation(
+    api.issues.mutations.addAssignee,
+  ).withOptimisticUpdate((store, args) => {
+    const nextState =
+      states.find(state => String(state._id) === String(args.stateId)) ??
+      states.find(state => String(state._id) === String(defaultStateId)) ??
+      states[0] ??
+      null;
+    const optimisticAssignment: IssueAssignment = {
+      _id: `optimistic-${args.issueId}-${args.assigneeId}` as Id<'issueAssignees'>,
+      _creationTime: 0,
+      issueId,
+      assigneeId: args.assigneeId,
+      stateId: nextState?._id,
+      assignee: null,
+      state: nextState
+        ? {
+            _id: nextState._id,
+            _creationTime: nextState._creationTime ?? 0,
+            organizationId: nextState.organizationId,
+            name: nextState.name,
+            type: nextState.type,
+            color: nextState.color,
+            icon: nextState.icon,
+            position: nextState.position,
+          }
+        : null,
+    };
+    updateQuery(
+      store,
+      api.issues.queries.getAssignments,
+      { issueId },
+      current => addIssueAssignmentRow(current, optimisticAssignment),
+    );
+  });
   const changeAssignmentStateMutation = useMutation(
     api.issues.mutations.changeAssignmentState,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    const nextState = states.find(
+      state => String(state._id) === String(args.stateId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.getAssignments,
+      { issueId },
+      current =>
+        updateIssueAssignmentRows(current, String(args.assignmentId), row => ({
+          ...row,
+          stateId: args.stateId,
+          state: nextState
+            ? {
+                _id: nextState._id,
+                _creationTime:
+                  row.state?._creationTime ?? nextState._creationTime ?? 0,
+                organizationId: nextState.organizationId,
+                name: nextState.name,
+                type: nextState.type,
+                color: nextState.color,
+                icon: nextState.icon,
+                position: nextState.position,
+              }
+            : null,
+        })),
+    );
+  });
   const updateAssignmentAssigneeMutation = useMutation(
     api.issues.mutations.updateAssignmentAssignee,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.issues.queries.getAssignments,
+      { issueId },
+      current =>
+        updateIssueAssignmentRows(current, String(args.assignmentId), row => ({
+          ...row,
+          assigneeId: args.assigneeId,
+          assignee: null,
+        })),
+    );
+  });
   const deleteAssignmentMutation = useMutation(
     api.issues.mutations.deleteAssignment,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.issues.queries.getAssignments,
+      { issueId },
+      current => removeIssueAssignmentRow(current, String(args.assignmentId)),
+    );
+  });
 
   // Helper to filter members so the same user cannot be assigned twice
   const assignedUserIds = assignments

@@ -83,12 +83,20 @@ import {
   VisibilitySelector,
   type VisibilityState,
 } from '@/components/ui/visibility-selector';
-import { useOptimisticValue } from '@/hooks/use-optimistic';
 
 import { Id } from '@/convex/_generated/dataModel';
 import { FunctionReturnType } from 'convex/server';
 import { useConfirm } from '@/hooks/use-confirm';
 import { MobileNavTrigger } from '../../layout';
+import {
+  buildOptimisticIssueRows,
+  removeProjectRow,
+  replaceIssueRows,
+  updateIssueRows,
+  updateProjectRows,
+  updateQuery,
+  updateTeamRows,
+} from '@/lib/optimistic-updates';
 
 // Add Member Dialog
 function AddMemberDialog({
@@ -333,8 +341,6 @@ export default function TeamViewPage() {
   const [nameValue, setNameValue] = useState('');
   const [descriptionValue, setDescriptionValue] = useState('');
   const [keyValue, setKeyValue] = useState('');
-  const [iconValue, setIconValue] = useState<string | null>(null);
-  const [colorValue, setColorValue] = useState<string | null>(null);
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false);
   const [activeTab, setActiveTab] = useState('members');
   const [issueViewMode, setIssueViewMode] = useState<'table' | 'kanban'>(
@@ -362,21 +368,23 @@ export default function TeamViewPage() {
     teamKey,
   });
   const team = teamQuery.data;
-  const [displayName, setOptimisticName] = useOptimisticValue(team?.name ?? '');
-  const [displayDescription, setOptimisticDescription] = useOptimisticValue(
-    team?.description ?? '',
-  );
+  const teamQueryArgs = { orgSlug, teamKey };
+  const displayName = team?.name ?? '';
+  const displayDescription = team?.description ?? '';
+  const iconValue = team?.icon ?? null;
+  const colorValue = team?.color ?? null;
 
   // Fetch team members
   const teamMembersQuery = useQuery(
     api.teams.queries.listMembers,
     team?._id ? { teamId: team._id } : 'skip',
   );
-  const teamMembers = teamMembersQuery.data ?? [];
+  const teamMembers = teamMembersQuery.data;
   const filteredMembers = useMemo(() => {
+    const memberRows = teamMembers ?? [];
     const q = deferredMemberSearch.trim().toLowerCase();
-    if (!q) return teamMembers;
-    return teamMembers.filter(m => {
+    if (!q) return memberRows;
+    return memberRows.filter(m => {
       const name = m.user?.name?.toLowerCase() ?? '';
       const email = m.user?.email?.toLowerCase() ?? '';
       return name.includes(q) || email.includes(q);
@@ -402,6 +410,16 @@ export default function TeamViewPage() {
     team?.key ? { orgSlug, teamId: team.key } : 'skip',
   );
   const teamProjects = teamProjectsQuery.data ?? [];
+  const teamIssuesQueryArgs = team?._id
+    ? {
+        orgSlug,
+        teamId: team._id,
+        searchQuery: deferredIssueSearch || undefined,
+      }
+    : null;
+  const teamProjectsQueryArgs = team?.key
+    ? { orgSlug, teamId: team.key }
+    : null;
 
   // Fetch supporting data for tables
   const statesQuery = useQuery(api.organizations.queries.listIssueStates, {
@@ -455,32 +473,263 @@ export default function TeamViewPage() {
     PERMISSIONS.TEAM_DELETE,
     permissionScope,
   );
-  const updateTeamMutation = useMutation(api.teams.mutations.update);
+  const updateTeamMutation = useMutation(
+    api.teams.mutations.update,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(store, api.teams.queries.getByKey, teamQueryArgs, current => ({
+      ...current,
+      ...(args.data.name !== undefined ? { name: args.data.name } : {}),
+      ...(args.data.description !== undefined
+        ? { description: args.data.description }
+        : {}),
+      ...(args.data.icon !== undefined ? { icon: args.data.icon } : {}),
+      ...(args.data.color !== undefined ? { color: args.data.color } : {}),
+      ...(args.data.leadId !== undefined ? { leadId: args.data.leadId } : {}),
+    }));
+    updateQuery(
+      store,
+      api.organizations.queries.listTeams,
+      { orgSlug },
+      current =>
+        updateTeamRows(current, String(args.teamId), row => ({
+          ...row,
+          ...(args.data.name !== undefined ? { name: args.data.name } : {}),
+          ...(args.data.description !== undefined
+            ? { description: args.data.description }
+            : {}),
+          ...(args.data.icon !== undefined ? { icon: args.data.icon } : {}),
+          ...(args.data.color !== undefined ? { color: args.data.color } : {}),
+          ...(args.data.leadId !== undefined
+            ? { leadId: args.data.leadId }
+            : {}),
+        })),
+    );
+  });
   const deleteTeamMutation = useMutation(api.teams.mutations.deleteTeam);
   const deleteMutation = useMutation(api.issues.mutations.deleteIssue);
   const changePriorityMutation = useMutation(
     api.issues.mutations.changePriority,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamIssuesQueryArgs) return;
+    const nextPriority = priorities.find(
+      priority => String(priority._id) === String(args.priorityId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      teamIssuesQueryArgs,
+      current =>
+        updateIssueRows(current, String(args.issueId), row => ({
+          ...row,
+          priorityId: nextPriority?._id,
+          priorityName: nextPriority?.name ?? undefined,
+          priorityIcon: nextPriority?.icon ?? undefined,
+          priorityColor: nextPriority?.color ?? undefined,
+        })),
+    );
+  });
   const updateAssigneesMutation = useMutation(
     api.issues.mutations.updateAssignees,
-  );
-  const changeTeamMutation = useMutation(api.issues.mutations.changeTeam);
-  const changeProjectMutation = useMutation(api.issues.mutations.changeProject);
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamIssuesQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      teamIssuesQueryArgs,
+      current => {
+        const existingRows = current.issues.filter(
+          row => String(row.id) === String(args.issueId),
+        );
+        const existingStateRow = existingRows.find(row => row.stateId);
+        const fallbackState = existingStateRow
+          ? {
+              _id: existingStateRow.stateId,
+              name: existingStateRow.stateName,
+              icon: existingStateRow.stateIcon,
+              color: existingStateRow.stateColor,
+              type: existingStateRow.stateType,
+            }
+          : states[0]
+            ? {
+                _id: states[0]._id,
+                name: states[0].name,
+                icon: states[0].icon,
+                color: states[0].color,
+                type: states[0].type,
+              }
+            : null;
+        const membersForOrg =
+          store.getQuery(api.organizations.queries.listMembers, { orgSlug }) ??
+          undefined;
+        const nextRows = buildOptimisticIssueRows(
+          existingRows,
+          args.issueId,
+          args.assigneeIds,
+          membersForOrg,
+          fallbackState,
+        );
+        return replaceIssueRows(current, String(args.issueId), nextRows);
+      },
+    );
+  });
+  const changeTeamMutation = useMutation(
+    api.issues.mutations.changeTeam,
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamIssuesQueryArgs || !team) return;
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      teamIssuesQueryArgs,
+      current => {
+        if (String(args.teamId) !== String(team._id)) {
+          return {
+            ...current,
+            issues: current.issues.filter(
+              row => String(row.id) !== String(args.issueId),
+            ),
+            total: Math.max(
+              0,
+              current.total -
+                (current.issues.some(
+                  row => String(row.id) === String(args.issueId),
+                )
+                  ? 1
+                  : 0),
+            ),
+          };
+        }
+        return current;
+      },
+    );
+  });
+  const changeProjectMutation = useMutation(
+    api.issues.mutations.changeProject,
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamIssuesQueryArgs) return;
+    const nextProject =
+      projects.find(
+        project => String(project._id) === String(args.projectId),
+      ) ?? null;
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      teamIssuesQueryArgs,
+      current =>
+        updateIssueRows(current, String(args.issueId), row => ({
+          ...row,
+          projectId: args.projectId ?? undefined,
+          projectKey: nextProject?.key,
+        })),
+    );
+  });
   const changeAssignmentStateMutation = useMutation(
     api.issues.mutations.changeAssignmentState,
-  );
-  const changeStatusMutation = useMutation(api.projects.mutations.changeStatus);
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamIssuesQueryArgs) return;
+    const nextState = states.find(
+      state => String(state._id) === String(args.stateId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      teamIssuesQueryArgs,
+      current => ({
+        ...current,
+        issues: current.issues.map(row =>
+          String(row.assignmentId) === String(args.assignmentId)
+            ? {
+                ...row,
+                stateId: nextState?._id,
+                stateName: nextState?.name ?? undefined,
+                stateIcon: nextState?.icon ?? undefined,
+                stateColor: nextState?.color ?? undefined,
+                stateType: nextState?.type ?? undefined,
+              }
+            : row,
+        ) as typeof current.issues,
+      }),
+    );
+  });
+  const changeStatusMutation = useMutation(
+    api.projects.mutations.changeStatus,
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamProjectsQueryArgs) return;
+    const nextStatus =
+      statuses.find(status => String(status._id) === String(args.statusId)) ??
+      null;
+    updateQuery(
+      store,
+      api.projects.queries.list,
+      teamProjectsQueryArgs,
+      current =>
+        updateProjectRows(current, String(args.projectId), row => ({
+          ...row,
+          statusId: args.statusId ?? undefined,
+          status: nextStatus,
+        })),
+    );
+  });
   const changeProjectTeamMutation = useMutation(
     api.projects.mutations.changeTeam,
-  );
-  const changeLeadMutation = useMutation(api.projects.mutations.changeLead);
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamProjectsQueryArgs || !team) return;
+    updateQuery(
+      store,
+      api.projects.queries.list,
+      teamProjectsQueryArgs,
+      current => {
+        if (String(args.teamId) !== String(team._id)) {
+          return removeProjectRow(current, String(args.projectId));
+        }
+        return updateProjectRows(current, String(args.projectId), row => ({
+          ...row,
+          teamId: args.teamId ?? undefined,
+        }));
+      },
+    );
+  });
+  const changeLeadMutation = useMutation(
+    api.projects.mutations.changeLead,
+  ).withOptimisticUpdate((store, args) => {
+    if (!teamProjectsQueryArgs) return;
+    const projectRow = teamProjects.find(
+      project => String(project._id) === String(args.projectId),
+    );
+    updateQuery(
+      store,
+      api.projects.queries.list,
+      teamProjectsQueryArgs,
+      current =>
+        updateProjectRows(current, String(args.projectId), row => ({
+          ...row,
+          leadId: args.leadId ?? undefined,
+        })),
+    );
+    if (projectRow) {
+      updateQuery(
+        store,
+        api.projects.queries.getByKey,
+        { orgSlug, projectKey: projectRow.key },
+        current => ({
+          ...current,
+          leadId: args.leadId ?? undefined,
+          ...(args.leadId === null ? { lead: null } : {}),
+        }),
+      );
+    }
+  });
   const deleteProjectMutation = useMutation(
     api.projects.mutations.deleteProject,
   );
   const removeMemberMutation = useMutation(api.teams.mutations.removeMember);
   const changeVisibilityMutation = useMutation(
     api.teams.mutations.changeVisibility,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(store, api.teams.queries.getByKey, teamQueryArgs, current => ({
+      ...current,
+      visibility: args.visibility,
+    }));
+  });
 
   // Check if any queries are still loading
   const isLoading =
@@ -592,8 +841,6 @@ export default function TeamViewPage() {
     setNameValue(team.name);
     setDescriptionValue(team.description || '');
     setKeyValue(team.key);
-    setIconValue(team.icon || null);
-    setColorValue(team.color || null);
   }
 
   if (!user) return null;
@@ -602,7 +849,6 @@ export default function TeamViewPage() {
     if (!nameValue.trim() || !team) return;
     const nextName = nameValue.trim();
     setIsUpdating(true);
-    setOptimisticName(nextName);
     setNameValue(nextName);
     setEditingName(false);
     await updateTeamMutation({
@@ -616,7 +862,6 @@ export default function TeamViewPage() {
     if (!team) return;
     const nextDescription = descriptionValue.trim();
     setIsUpdating(true);
-    setOptimisticDescription(nextDescription);
     setDescriptionValue(nextDescription);
     setEditingDescription(false);
     await updateTeamMutation({
@@ -639,7 +884,6 @@ export default function TeamViewPage() {
 
   const handleIconChange = async (iconName: string | null) => {
     if (!team) return;
-    setIconValue(iconName);
     setIsUpdating(true);
     await updateTeamMutation({
       teamId: team._id,
@@ -650,7 +894,6 @@ export default function TeamViewPage() {
 
   const handleColorChange = async (color: string) => {
     if (!team) return;
-    setColorValue(color);
     setIsUpdating(true);
     await updateTeamMutation({
       teamId: team._id,
@@ -1224,7 +1467,7 @@ export default function TeamViewPage() {
                     <TooltipTrigger asChild>
                       <div className='text-muted-foreground hover:bg-muted/50 flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-sm transition-colors'>
                         <UsersRound className='size-3.5' />
-                        <span>{teamMembers.length}</span>
+                        <span>{teamMembers?.length ?? 0}</span>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side='bottom'>Members</TooltipContent>
@@ -1254,7 +1497,7 @@ export default function TeamViewPage() {
                   <TabsTrigger value='members'>
                     Members
                     <span className='text-muted-foreground text-xs'>
-                      {teamMembers.length}
+                      {teamMembers?.length ?? 0}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger value='issues'>
@@ -1586,7 +1829,7 @@ export default function TeamViewPage() {
         <AddMemberDialog
           orgSlug={orgSlug}
           teamId={team._id}
-          existingMemberIds={new Set(teamMembers.map(m => m.userId))}
+          existingMemberIds={new Set((teamMembers ?? []).map(m => m.userId))}
           onClose={() => setShowAddMemberDialog(false)}
         />
       )}

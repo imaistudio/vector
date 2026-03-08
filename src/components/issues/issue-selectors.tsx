@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useOptimisticArray, useOptimisticValue } from '@/hooks/use-optimistic';
 
 // UI primitives
 import { Button } from '@/components/ui/button';
@@ -136,8 +135,7 @@ export function ProjectSelector({
 }: ProjectSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
-  const [displayProject, setOptimisticProject] =
-    useOptimisticValue(selectedProject);
+  const displayProject = selectedProject;
 
   // Always render selector even when no projects to make the control discoverable.
 
@@ -184,7 +182,6 @@ export function ProjectSelector({
                 value=''
                 onSelect={() => {
                   if (!viewOnly) {
-                    setOptimisticProject('');
                     onProjectSelect('');
                     setOpen(false);
                   }
@@ -214,7 +211,6 @@ export function ProjectSelector({
                     value={project.name}
                     onSelect={() => {
                       if (!viewOnly) {
-                        setOptimisticProject(project._id);
                         onProjectSelect(project._id);
                         setOpen(false);
                       }
@@ -273,7 +269,7 @@ export function StateSelector({
 }: StateSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
-  const [displayState, setOptimisticState] = useOptimisticValue(selectedState);
+  const displayState = selectedState;
 
   // Transform states from API into combobox-friendly structure
   const stateOptions = states.map(s => ({
@@ -343,7 +339,6 @@ export function StateSelector({
                     value={state.label}
                     onSelect={() => {
                       if (!viewOnly) {
-                        setOptimisticState(state.value);
                         onStateSelect(state.value);
                         setOpen(false);
                       }
@@ -409,8 +404,7 @@ export function PrioritySelector({
 }: PrioritySelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
-  const [displayPriority, setOptimisticPriority] =
-    useOptimisticValue(selectedPriority);
+  const displayPriority = selectedPriority;
 
   if (priorities.length === 0) return null;
 
@@ -455,7 +449,6 @@ export function PrioritySelector({
                     value={priority.name}
                     onSelect={() => {
                       if (!viewOnly) {
-                        setOptimisticPriority(priority._id);
                         onPrioritySelect(priority._id);
                         setOpen(false);
                       }
@@ -524,11 +517,8 @@ export function AssigneeSelector({
   align = 'start',
 }: AssigneeSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
-  const [displayAssignee, setOptimisticAssignee] = useOptimisticValue(
-    selectedAssignee || '',
-  );
-  const [displayAssignees, setOptimisticAssignees] =
-    useOptimisticArray(selectedAssignees);
+  const displayAssignee = selectedAssignee || '';
+  const displayAssignees = selectedAssignees;
 
   if (members.length === 0) return null;
 
@@ -543,14 +533,12 @@ export function AssigneeSelector({
       const nextAssignees = isSelected
         ? displayAssignees.filter(id => id !== userId)
         : [...displayAssignees, userId];
-      setOptimisticAssignees(nextAssignees);
       onAssigneesSelect(nextAssignees);
       if (isSelected) {
         return;
       }
       // Keep popover open for multiple selection
     } else if (onAssigneeSelect) {
-      setOptimisticAssignee(userId);
       onAssigneeSelect(userId);
       setOpen(false);
     }
@@ -598,7 +586,6 @@ export function AssigneeSelector({
                   value=''
                   onSelect={() => {
                     if (!canManageAll && currentUserId !== '') return; // cannot unassign others
-                    setOptimisticAssignees([]);
                     onAssigneesSelect?.([]);
                     setOpen(false);
                   }}

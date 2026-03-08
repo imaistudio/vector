@@ -45,7 +45,6 @@ import {
   VisibilitySelector,
   type VisibilityState,
 } from '@/components/ui/visibility-selector';
-import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { IssuesKanban } from '@/components/issues/issues-kanban';
 import { IssuesTable } from '@/components/issues/issues-table';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
@@ -60,6 +59,12 @@ import {
 } from '@/components/ui/tooltip';
 import { Calendar } from '@/components/ui/calendar';
 import type { DateRange } from 'react-day-picker';
+import {
+  buildOptimisticIssueRows,
+  replaceIssueRows,
+  updateIssueRows,
+  updateQuery,
+} from '@/lib/optimistic-updates';
 
 interface ProjectViewClientProps {
   params: { orgSlug: string; projectKey: string };
@@ -77,6 +82,20 @@ const DEFAULT_COLORS = [
   '#6b7280', // gray-500
 ];
 
+/** Parse a YYYY-MM-DD string as a local-timezone Date (not UTC). */
+function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Format a Date as YYYY-MM-DD in local timezone. */
+function toDateString(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function ProjectDateRangePicker({
   project,
   updateMutation,
@@ -88,32 +107,62 @@ function ProjectDateRangePicker({
     typeof useMutation<typeof api.projects.mutations.update>
   >;
   orgSlug: string;
-  permissionScope: { teamId?: Id<'teams'> };
+  permissionScope: {
+    orgSlug: string;
+    teamId?: Id<'teams'>;
+    projectId?: Id<'projects'>;
+  };
 }) {
-  const [displayStart, setOptimisticStart] = useOptimisticValue(
-    project.startDate ?? '',
+  // Local state for optimistic calendar updates
+  const [localRange, setLocalRange] = useState<DateRange | undefined>(
+    undefined,
   );
-  const [displayDue, setOptimisticDue] = useOptimisticValue(
-    project.dueDate ?? '',
-  );
+  const [open, setOpen] = useState(false);
+
+  // Sync from server when popover opens or server data changes
+  const serverRange: DateRange | undefined = useMemo(() => {
+    if (!project.startDate && !project.dueDate) return undefined;
+    return {
+      from: project.startDate ? parseLocalDate(project.startDate) : undefined,
+      to: project.dueDate ? parseLocalDate(project.dueDate) : undefined,
+    };
+  }, [project.startDate, project.dueDate]);
+
+  // Use local range while popover is open, otherwise server
+  const displayRange = open ? localRange : serverRange;
+  const displayStart = displayRange?.from
+    ? toDateString(displayRange.from)
+    : '';
+  const displayDue = displayRange?.to ? toDateString(displayRange.to) : '';
+
+  // Whether user has picked start but not yet end
+  const isSelectingEnd = !!(displayRange?.from && !displayRange?.to);
+
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next) {
+      // Reset local state to match server when opening
+      setLocalRange(serverRange);
+    }
+  };
 
   const handleSelect = (range: DateRange | undefined) => {
-    const start = range?.from ? range.from.toISOString().split('T')[0] : '';
-    const due = range?.to ? range.to.toISOString().split('T')[0] : '';
-    setOptimisticStart(start);
-    setOptimisticDue(due);
-    void updateMutation({
-      projectId: project._id,
-      data: {
-        startDate: start || null,
-        dueDate: due || null,
-      },
-    });
+    setLocalRange(range);
+    // Only persist when we have a complete range (both from and to)
+    // or when clearing (undefined)
+    if (range?.from && range?.to) {
+      void updateMutation({
+        projectId: project._id,
+        data: {
+          startDate: toDateString(range.from),
+          dueDate: toDateString(range.to),
+        },
+      });
+    }
   };
 
   const handleClear = () => {
-    setOptimisticStart('');
-    setOptimisticDue('');
+    setLocalRange(undefined);
     void updateMutation({
       projectId: project._id,
       data: { startDate: null, dueDate: null },
@@ -127,7 +176,7 @@ function ProjectDateRangePicker({
       scope={permissionScope}
       fallbackMessage="You don't have permission to change dates"
     >
-      <Popover>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
@@ -136,10 +185,10 @@ function ProjectDateRangePicker({
                 {displayStart || displayDue ? (
                   <span>
                     {displayStart
-                      ? formatDateHuman(new Date(displayStart))
+                      ? formatDateHuman(parseLocalDate(displayStart))
                       : '—'}
                     {displayDue
-                      ? ` → ${formatDateHuman(new Date(displayDue))}`
+                      ? ` → ${formatDateHuman(parseLocalDate(displayDue))}`
                       : ''}
                   </span>
                 ) : null}
@@ -150,31 +199,30 @@ function ProjectDateRangePicker({
         </Tooltip>
         <PopoverContent className='w-auto p-0' align='start'>
           <div className='flex flex-col'>
+            {/* Header indicating current selection step */}
+            <div className='flex items-center justify-between border-b px-3 py-2'>
+              <span className='text-muted-foreground text-xs font-medium'>
+                {isSelectingEnd
+                  ? 'Select end date'
+                  : displayRange?.from
+                    ? `${formatDateHuman(displayRange.from)} → ${displayRange.to ? formatDateHuman(displayRange.to) : '...'}`
+                    : 'Select start date'}
+              </span>
+              {(displayRange?.from || displayRange?.to) && (
+                <button
+                  className='text-muted-foreground hover:text-foreground text-xs underline-offset-2 transition-colors hover:underline'
+                  onClick={handleClear}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
             <Calendar
               mode='range'
-              selected={
-                displayStart || displayDue
-                  ? {
-                      from: displayStart ? new Date(displayStart) : undefined,
-                      to: displayDue ? new Date(displayDue) : undefined,
-                    }
-                  : undefined
-              }
+              selected={displayRange}
               onSelect={handleSelect}
               numberOfMonths={2}
             />
-            {(displayStart || displayDue) && (
-              <div className='border-t px-3 py-2'>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='text-muted-foreground h-7 w-full text-xs'
-                  onClick={handleClear}
-                >
-                  Clear dates
-                </Button>
-              </div>
-            )}
           </div>
         </PopoverContent>
       </Popover>
@@ -229,20 +277,16 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     orgSlug: params.orgSlug,
     projectKey: params.projectKey,
   });
+  const projectQueryArgs = {
+    orgSlug: params.orgSlug,
+    projectKey: params.projectKey,
+  };
 
   const projectId = project?._id;
-  const [displayTitle, setOptimisticTitle] = useOptimisticValue(
-    project?.name ?? '',
-  );
-  const [displayDescription, setOptimisticDescription] = useOptimisticValue(
-    project?.description ?? '',
-  );
-  const [displayIcon, setOptimisticIcon] = useOptimisticValue(
-    project?.icon ?? '',
-  );
-  const [displayColor, setOptimisticColor] = useOptimisticValue(
-    project?.color ?? '',
-  );
+  const displayTitle = project?.name ?? '';
+  const displayDescription = project?.description ?? '';
+  const displayIcon = project?.icon ?? '';
+  const displayColor = project?.color ?? '';
   const iconValue = displayIcon || null;
   const colorValue = displayColor || null;
 
@@ -307,38 +351,201 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   );
   const projectIssues = projectIssuesData?.issues ?? [];
   const projectIssuesTotal = projectIssuesData?.total ?? 0;
+  const projectIssuesQueryArgs = project?._id
+    ? {
+        orgSlug: params.orgSlug,
+        projectId: project._id,
+        searchQuery: deferredIssueSearch || undefined,
+        page: issueViewMode === 'table' ? issuePage : undefined,
+        pageSize: issueViewMode === 'table' ? ISSUE_PAGE_SIZE : undefined,
+      }
+    : null;
 
   // Reset page when search changes
   useEffect(() => {
     setIssuePage(1);
   }, [deferredIssueSearch]);
 
-  const updateMutation = useMutation(api.projects.mutations.update);
+  const updateMutation = useMutation(
+    api.projects.mutations.update,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.projects.queries.getByKey,
+      projectQueryArgs,
+      current => ({
+        ...current,
+        ...(args.data.name !== undefined ? { name: args.data.name } : {}),
+        ...(args.data.description !== undefined
+          ? { description: args.data.description }
+          : {}),
+        ...(args.data.icon !== undefined ? { icon: args.data.icon } : {}),
+        ...(args.data.color !== undefined ? { color: args.data.color } : {}),
+        ...(args.data.startDate !== undefined
+          ? { startDate: args.data.startDate ?? undefined }
+          : {}),
+        ...(args.data.dueDate !== undefined
+          ? { dueDate: args.data.dueDate ?? undefined }
+          : {}),
+      }),
+    );
+  });
   const deleteProjectMutation = useMutation(
     api.projects.mutations.deleteProject,
   );
-  const changeStatusMutation = useMutation(api.projects.mutations.changeStatus);
-  const changeTeamMutation = useMutation(api.projects.mutations.changeTeam);
-  const changeLeadMutation = useMutation(api.projects.mutations.changeLead);
+  const changeStatusMutation = useMutation(
+    api.projects.mutations.changeStatus,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.projects.queries.getByKey,
+      projectQueryArgs,
+      current => ({
+        ...current,
+        statusId: args.statusId ?? undefined,
+      }),
+    );
+  });
+  const changeTeamMutation = useMutation(
+    api.projects.mutations.changeTeam,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.projects.queries.getByKey,
+      projectQueryArgs,
+      current => ({
+        ...current,
+        teamId: args.teamId ?? undefined,
+      }),
+    );
+  });
+  const changeLeadMutation = useMutation(
+    api.projects.mutations.changeLead,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.projects.queries.getByKey,
+      projectQueryArgs,
+      current => ({
+        ...current,
+        leadId: args.leadId ?? undefined,
+        ...(args.leadId === null ? { lead: null } : {}),
+      }),
+    );
+  });
   const changeAssignmentStateMutation = useMutation(
     api.issues.mutations.changeAssignmentState,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!projectIssuesQueryArgs) return;
+    const nextState = issueStates?.find(
+      state => String(state._id) === String(args.stateId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      projectIssuesQueryArgs,
+      current => ({
+        ...current,
+        issues: current.issues.map(row =>
+          String(row.assignmentId) === String(args.assignmentId)
+            ? {
+                ...row,
+                stateId: nextState?._id,
+                stateName: nextState?.name ?? undefined,
+                stateIcon: nextState?.icon ?? undefined,
+                stateColor: nextState?.color ?? undefined,
+                stateType: nextState?.type ?? undefined,
+              }
+            : row,
+        ) as typeof current.issues,
+      }),
+    );
+  });
   const changePriorityMutation = useMutation(
     api.issues.mutations.changePriority,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!projectIssuesQueryArgs) return;
+    const nextPriority = issuePriorities?.find(
+      priority => String(priority._id) === String(args.priorityId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      projectIssuesQueryArgs,
+      current =>
+        updateIssueRows(current, String(args.issueId), row => ({
+          ...row,
+          priorityId: nextPriority?._id,
+          priorityName: nextPriority?.name ?? undefined,
+          priorityIcon: nextPriority?.icon ?? undefined,
+          priorityColor: nextPriority?.color ?? undefined,
+        })),
+    );
+  });
   const updateAssigneesMutation = useMutation(
     api.issues.mutations.updateAssignees,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!projectIssuesQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.listIssues,
+      projectIssuesQueryArgs,
+      current => {
+        const existingRows = current.issues.filter(
+          row => String(row.id) === String(args.issueId),
+        );
+        const existingStateRow = existingRows.find(row => row.stateId);
+        const fallbackState = existingStateRow
+          ? {
+              _id: existingStateRow.stateId,
+              name: existingStateRow.stateName,
+              icon: existingStateRow.stateIcon,
+              color: existingStateRow.stateColor,
+              type: existingStateRow.stateType,
+            }
+          : issueStates?.[0]
+            ? {
+                _id: issueStates[0]._id,
+                name: issueStates[0].name,
+                icon: issueStates[0].icon,
+                color: issueStates[0].color,
+                type: issueStates[0].type,
+              }
+            : null;
+        const members =
+          store.getQuery(api.organizations.queries.listMembers, {
+            orgSlug: params.orgSlug,
+          }) ?? undefined;
+        const nextRows = buildOptimisticIssueRows(
+          existingRows,
+          args.issueId,
+          args.assigneeIds,
+          members,
+          fallbackState,
+        );
+        return replaceIssueRows(current, String(args.issueId), nextRows);
+      },
+    );
+  });
   const deleteIssueMutation = useMutation(api.issues.mutations.deleteIssue);
   const changeVisibilityMutation = useMutation(
     api.projects.mutations.changeVisibility,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.projects.queries.getByKey,
+      projectQueryArgs,
+      current => ({
+        ...current,
+        visibility: args.visibility,
+      }),
+    );
+  });
 
   const handleTitleSave = () => {
     if (!project) return;
     const nextTitle = titleValue.trim();
     if (!nextTitle) return;
-    setOptimisticTitle(nextTitle);
     setTitleValue(nextTitle);
     void updateMutation({
       projectId: project._id,
@@ -350,7 +557,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   const handleDescriptionSave = () => {
     if (!project) return;
     const nextDescription = descriptionValue.trim();
-    setOptimisticDescription(nextDescription);
     setDescriptionValue(nextDescription);
     void updateMutation({
       projectId: project._id,
@@ -385,7 +591,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
   const handleIconChange = (iconName: string | null) => {
     if (!project) return;
-    setOptimisticIcon(iconName || '');
     void updateMutation({
       projectId: project._id,
       data: { icon: iconName || undefined },
@@ -394,7 +599,6 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
   const handleColorChange = (color: string) => {
     if (!project) return;
-    setOptimisticColor(color);
     void updateMutation({
       projectId: project._id,
       data: { color },

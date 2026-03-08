@@ -37,8 +37,8 @@ import {
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { IssueActivityFeed } from '@/components/activity/issue-activity-feed';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
-import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { useConfirm } from '@/hooks/use-confirm';
+import { updateQuery } from '@/lib/optimistic-updates';
 
 interface IssueViewPageProps {
   params: Promise<{ orgSlug: string; issueKey: string }>;
@@ -149,12 +149,11 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
       ? { orgSlug: resolvedParams.orgSlug, issueKey: resolvedParams.issueKey }
       : 'skip',
   );
-  const [displayTitle, setOptimisticTitle] = useOptimisticValue(
-    issue?.title ?? '',
-  );
-  const [displayDescription, setOptimisticDescription] = useOptimisticValue(
-    issue?.description ?? '',
-  );
+  const issueQueryArgs = resolvedParams
+    ? { orgSlug: resolvedParams.orgSlug, issueKey: resolvedParams.issueKey }
+    : null;
+  const displayTitle = issue?.title ?? '';
+  const displayDescription = issue?.description ?? '';
 
   const states = useQuery(
     api.organizations.queries.listIssueStates,
@@ -177,26 +176,155 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
     resolvedParams ? { orgSlug: resolvedParams.orgSlug } : 'skip',
   );
 
-  const updateTitleMutation = useMutation(api.issues.mutations.updateTitle);
+  const updateTitleMutation = useMutation(
+    api.issues.mutations.updateTitle,
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        title: args.title,
+      }),
+    );
+  });
   const updateDescriptionMutation = useMutation(
     api.issues.mutations.updateDescription,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        description: args.description ?? undefined,
+      }),
+    );
+  });
   const updateEstimatesMutation = useMutation(
     api.issues.mutations.updateEstimatedTimes,
   );
   const deleteIssueMutation = useMutation(api.issues.mutations.deleteIssue);
-  const changeTeamMutation = useMutation(api.issues.mutations.changeTeam);
-  const changeProjectMutation = useMutation(api.issues.mutations.changeProject);
+  const changeTeamMutation = useMutation(
+    api.issues.mutations.changeTeam,
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        teamId: args.teamId ?? undefined,
+      }),
+    );
+  });
+  const changeProjectMutation = useMutation(
+    api.issues.mutations.changeProject,
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    const nextProject =
+      projects?.find(
+        project => String(project._id) === String(args.projectId),
+      ) ?? null;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        projectId: args.projectId ?? undefined,
+        project: nextProject,
+      }),
+    );
+  });
   const changePriorityMutation = useMutation(
     api.issues.mutations.changePriority,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    const nextPriority =
+      priorities?.find(
+        priority => String(priority._id) === String(args.priorityId),
+      ) ?? null;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        priorityId: args.priorityId,
+        priority: nextPriority,
+      }),
+    );
+  });
   const changeAssignmentStateMutation = useMutation(
     api.issues.mutations.changeAssignmentState,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    if (!issue) return;
+    const nextState = states?.find(
+      state => String(state._id) === String(args.stateId),
+    );
+    updateQuery(
+      store,
+      api.issues.queries.getAssignments,
+      { issueId: issue._id },
+      current =>
+        current.map(assignment =>
+          String(assignment._id) === String(args.assignmentId)
+            ? {
+                ...assignment,
+                stateId: args.stateId,
+                state: nextState
+                  ? {
+                      _id: nextState._id,
+                      _creationTime:
+                        assignment.state?._creationTime ??
+                        nextState._creationTime ??
+                        0,
+                      organizationId: nextState.organizationId,
+                      name: nextState.name,
+                      type: nextState.type,
+                      color: nextState.color,
+                      icon: nextState.icon,
+                      position: nextState.position,
+                    }
+                  : null,
+              }
+            : assignment,
+        ),
+    );
+  });
   const changeVisibilityMutation = useMutation(
     api.issues.mutations.changeVisibility,
-  );
-  const updateIssueParentMutation = useMutation(api.issues.mutations.update);
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        visibility: args.visibility,
+      }),
+    );
+  });
+  const updateIssueParentMutation = useMutation(
+    api.issues.mutations.update,
+  ).withOptimisticUpdate((store, args) => {
+    if (!issueQueryArgs) return;
+    updateQuery(
+      store,
+      api.issues.queries.getByKey,
+      issueQueryArgs,
+      current => ({
+        ...current,
+        parentIssueId: args.data.parentIssueId,
+      }),
+    );
+  });
 
   const assignments = useQuery(
     api.issues.queries.getAssignments,
@@ -266,7 +394,6 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
     const nextTitle = titleValue.trim();
     if (!nextTitle) return;
     setIsUpdatingTitle(true);
-    setOptimisticTitle(nextTitle);
     setTitleValue(nextTitle);
     setEditingTitle(false);
     try {
@@ -283,7 +410,6 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
     if (!user) return;
     const nextDescription = descriptionValue.trim();
     setIsUpdatingDescription(true);
-    setOptimisticDescription(nextDescription);
     setDescriptionValue(nextDescription);
     setEditingDescription(false);
     try {

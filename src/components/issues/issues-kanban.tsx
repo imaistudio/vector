@@ -135,13 +135,6 @@ export function IssuesKanban({
   createDefaults,
 }: IssuesKanbanProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
-  // Optimistic overrides: issueId -> new stateType
-  const [optimisticMoves, setOptimisticMoves] = useState<Map<string, string>>(
-    new Map(),
-  );
-  const [optimisticPriorityIds, setOptimisticPriorityIds] = useState<
-    Map<string, string | null>
-  >(new Map());
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -219,77 +212,6 @@ export function IssuesKanban({
     return [...map.values()];
   }, [issues, currentUserId]);
 
-  const prioritiesById = React.useMemo(
-    () =>
-      new Map<string, Priority>(
-        priorities.map(priority => [priority._id, priority]),
-      ),
-    [priorities],
-  );
-
-  // Clear optimistic moves when server data catches up
-  React.useEffect(() => {
-    if (optimisticMoves.size === 0) return;
-    setOptimisticMoves(prev => {
-      const next = new Map(prev);
-      for (const [issueId, targetType] of prev) {
-        const issue = groupedIssues.find(i => i.id === issueId);
-        if (issue && issue.stateType === targetType) {
-          next.delete(issueId);
-        }
-      }
-      return next.size === prev.size ? prev : next;
-    });
-  }, [groupedIssues, optimisticMoves]);
-
-  React.useEffect(() => {
-    if (optimisticPriorityIds.size === 0) return;
-    setOptimisticPriorityIds(prev => {
-      const next = new Map(prev);
-      for (const [issueId, targetPriorityId] of prev) {
-        const issue = groupedIssues.find(item => item.id === issueId);
-        if (issue && issue.priorityId === targetPriorityId) {
-          next.delete(issueId);
-        }
-      }
-      return next.size === prev.size ? prev : next;
-    });
-  }, [groupedIssues, optimisticPriorityIds]);
-
-  // Apply optimistic overrides
-  const displayIssues = React.useMemo(() => {
-    if (optimisticMoves.size === 0 && optimisticPriorityIds.size === 0) {
-      return groupedIssues;
-    }
-    return groupedIssues.map(issue => {
-      const override = optimisticMoves.get(issue.id);
-      const priorityOverride = optimisticPriorityIds.get(issue.id);
-      let nextIssue = issue;
-
-      if (override && override !== issue.stateType) {
-        nextIssue = { ...nextIssue, stateType: override };
-      }
-
-      if (
-        priorityOverride !== undefined &&
-        priorityOverride !== issue.priorityId
-      ) {
-        const optimisticPriority = priorityOverride
-          ? prioritiesById.get(priorityOverride)
-          : null;
-        nextIssue = {
-          ...nextIssue,
-          priorityId: priorityOverride,
-          priorityName: optimisticPriority?.name ?? null,
-          priorityIcon: optimisticPriority?.icon ?? null,
-          priorityColor: optimisticPriority?.color ?? null,
-        };
-      }
-
-      return nextIssue;
-    });
-  }, [groupedIssues, optimisticMoves, optimisticPriorityIds, prioritiesById]);
-
   // Sort states by position
   const sortedStates = React.useMemo(
     () => [...states].sort((a, b) => a.position - b.position),
@@ -300,12 +222,12 @@ export function IssuesKanban({
   const columns = React.useMemo(() => {
     return sortedStates.map(state => ({
       state,
-      issues: displayIssues.filter(issue => issue.stateType === state.type),
+      issues: groupedIssues.filter(issue => issue.stateType === state.type),
     }));
-  }, [sortedStates, displayIssues]);
+  }, [sortedStates, groupedIssues]);
 
   const activeIssue = activeId
-    ? (displayIssues.find(i => i.id === activeId) ?? null)
+    ? (groupedIssues.find(i => i.id === activeId) ?? null)
     : null;
 
   function handleDragStart(event: DragStartEvent) {
@@ -325,9 +247,6 @@ export function IssuesKanban({
     // Find the target state and check if it's different
     const targetState = sortedStates.find(s => s._id === targetStateId);
     if (!targetState || targetState.type === issue.stateType) return;
-
-    // Optimistically move the card
-    setOptimisticMoves(prev => new Map(prev).set(issueId, targetState.type));
 
     onStateChange(issueId, issue.assignmentId, targetStateId);
   }
@@ -359,7 +278,6 @@ export function IssuesKanban({
             onDelete={onDelete}
             deletePending={deletePending}
             createDefaults={createDefaults}
-            setOptimisticPriority={setOptimisticPriorityIds}
           />
         ))}
       </div>
@@ -402,7 +320,6 @@ function KanbanColumn({
   onDelete,
   deletePending,
   createDefaults,
-  setOptimisticPriority,
 }: {
   state: State;
   issues: GroupedIssue[];
@@ -425,9 +342,6 @@ function KanbanColumn({
   onDelete?: (issueId: string) => void;
   deletePending?: boolean;
   createDefaults?: Record<string, unknown>;
-  setOptimisticPriority: React.Dispatch<
-    React.SetStateAction<Map<string, string | null>>
-  >;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: state._id });
   const count = issues.length;
@@ -482,7 +396,6 @@ function KanbanColumn({
               onProjectChange={onProjectChange}
               onDelete={onDelete}
               deletePending={deletePending}
-              setOptimisticPriority={setOptimisticPriority}
             />
           ))
         )}
@@ -515,7 +428,6 @@ function KanbanCard({
   onProjectChange,
   onDelete,
   deletePending,
-  setOptimisticPriority,
 }: {
   issue: GroupedIssue;
   orgSlug: string;
@@ -536,9 +448,6 @@ function KanbanCard({
   onProjectChange?: (issueId: string, projectId: string) => void;
   onDelete?: (issueId: string) => void;
   deletePending?: boolean;
-  setOptimisticPriority: React.Dispatch<
-    React.SetStateAction<Map<string, string | null>>
-  >;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: issue.id,
@@ -575,7 +484,6 @@ function KanbanCard({
         onProjectChange={onProjectChange}
         onDelete={onDelete}
         deletePending={deletePending}
-        setOptimisticPriority={setOptimisticPriority}
       />
     </ContextMenu>
   );
@@ -594,7 +502,6 @@ function KanbanCardMenu({
   onProjectChange,
   onDelete,
   deletePending,
-  setOptimisticPriority,
 }: {
   issue: GroupedIssue;
   orgSlug: string;
@@ -612,9 +519,6 @@ function KanbanCardMenu({
   onProjectChange?: (issueId: string, projectId: string) => void;
   onDelete?: (issueId: string) => void;
   deletePending?: boolean;
-  setOptimisticPriority: React.Dispatch<
-    React.SetStateAction<Map<string, string | null>>
-  >;
 }) {
   return (
     <ContextMenuContent className='w-56'>
@@ -675,9 +579,6 @@ function KanbanCardMenu({
                 <ContextMenuItem
                   key={priority._id}
                   onClick={() => {
-                    setOptimisticPriority(prev =>
-                      new Map(prev).set(issue.id, priority._id),
-                    );
                     onPriorityChange(issue.id, priority._id);
                   }}
                 >
