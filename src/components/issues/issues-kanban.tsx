@@ -19,6 +19,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 
+import { Plus } from 'lucide-react';
 import type {
   State,
   Priority,
@@ -30,6 +31,7 @@ import {
   MultiAssigneeSelector,
 } from '@/components/issues/issue-selectors';
 import type { IssueRowData } from './issues-table';
+import { CreateIssueDialog } from './create-issue-dialog';
 
 export interface IssuesKanbanProps {
   orgSlug: string;
@@ -47,6 +49,8 @@ export interface IssuesKanbanProps {
   ) => void;
   onPriorityChange?: (issueId: string, priorityId: string) => void;
   onAssigneesChange?: (issueId: string, assigneeIds: string[]) => void;
+  /** Extra defaults passed to the create-issue dialog (e.g. projectId) */
+  createDefaults?: Record<string, unknown>;
 }
 
 interface GroupedIssue {
@@ -100,6 +104,7 @@ export function IssuesKanban({
   onStateChange,
   onPriorityChange,
   onAssigneesChange,
+  createDefaults,
 }: IssuesKanbanProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   // Optimistic overrides: issueId -> new stateType
@@ -268,6 +273,7 @@ export function IssuesKanban({
             currentUserId={currentUserId}
             onPriorityChange={onPriorityChange}
             onAssigneesChange={onAssigneesChange}
+            createDefaults={createDefaults}
           />
         ))}
       </div>
@@ -301,6 +307,7 @@ function KanbanColumn({
   currentUserId,
   onPriorityChange,
   onAssigneesChange,
+  createDefaults,
 }: {
   state: State;
   issues: GroupedIssue[];
@@ -310,6 +317,7 @@ function KanbanColumn({
   currentUserId: string;
   onPriorityChange?: (issueId: string, priorityId: string) => void;
   onAssigneesChange?: (issueId: string, assigneeIds: string[]) => void;
+  createDefaults?: Record<string, unknown>;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: state._id });
   const count = issues.length;
@@ -359,6 +367,14 @@ function KanbanColumn({
             />
           ))
         )}
+
+        {/* Add issue button */}
+        <CreateIssueDialog
+          orgSlug={orgSlug}
+          variant='default'
+          defaultStates={{ stateId: state._id, ...createDefaults }}
+          className='text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full border-dashed'
+        />
       </div>
     </div>
   );

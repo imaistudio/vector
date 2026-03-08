@@ -782,6 +782,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                       assigneeIds: assigneeIds as Id<'users'>[],
                     });
                   }}
+                  createDefaults={{ projectId: project._id }}
                 />
               </div>
             ) : (
