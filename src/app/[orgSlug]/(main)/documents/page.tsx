@@ -300,24 +300,15 @@ function DraggableDocRow({
         className='min-w-0 flex-1'
       >
         <div className='truncate text-sm font-medium'>{doc.title}</div>
-        <div className='text-muted-foreground flex items-center gap-2 text-xs'>
-          {doc.team && <span>{doc.team.name}</span>}
-          {doc.project && (
-            <>
-              {doc.team && <span>·</span>}
-              <span>{doc.project.name}</span>
-            </>
-          )}
-          {doc.author && (
-            <>
-              <span>·</span>
-              <span>{doc.author.name || doc.author.email}</span>
-            </>
-          )}
-          <span>·</span>
-          <span>
-            {formatDateHuman(new Date(doc.lastEditedAt || doc._creationTime))}
-          </span>
+        <div className='text-muted-foreground truncate text-xs'>
+          {[
+            doc.team?.name,
+            doc.project?.name,
+            doc.author?.name || doc.author?.email,
+            formatDateHuman(new Date(doc.lastEditedAt || doc._creationTime)),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </div>
       </Link>
       <div

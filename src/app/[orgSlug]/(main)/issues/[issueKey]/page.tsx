@@ -504,7 +504,7 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
   return (
     <div className='bg-background h-full overflow-y-auto'>
       {/* Page Grid: main area + sidebar */}
-      <div className='flex h-full flex-col lg:flex-row'>
+      <div className='flex min-h-full flex-col lg:flex-row'>
         {/* LEFT COLUMN - Main Content */}
         <div className='min-w-0 flex-1'>
           {/* Header */}
