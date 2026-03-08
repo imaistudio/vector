@@ -14,6 +14,12 @@ import {
   VisibilitySelector,
   type VisibilityState,
 } from '@/components/ui/visibility-selector';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { withIds } from '@/lib/convex-helpers';
 import type { Id } from '@/convex/_generated/dataModel';
 import { usePermissionCheck } from '@/components/ui/permission-aware';
@@ -63,6 +69,58 @@ function extractTitle(markdown: string): string | null {
 
 type SaveStatus = 'idle' | 'saving' | 'saved';
 
+const HEARTBEAT_INTERVAL = 15_000; // 15 seconds
+
+function useDocumentPresence(documentId: string | null) {
+  const heartbeatMutation = useMutation(api.documents.presence.heartbeat);
+  const leaveMutation = useMutation(api.documents.presence.leave);
+  const viewers = useQuery(
+    api.documents.presence.getViewers,
+    documentId ? { documentId: documentId as Id<'documents'> } : 'skip',
+  );
+
+  useEffect(() => {
+    if (!documentId) return;
+    const docId = documentId as Id<'documents'>;
+
+    // Initial heartbeat
+    void heartbeatMutation({ documentId: docId });
+
+    const interval = setInterval(() => {
+      void heartbeatMutation({ documentId: docId });
+    }, HEARTBEAT_INTERVAL);
+
+    return () => {
+      clearInterval(interval);
+      void leaveMutation({ documentId: docId });
+    };
+  }, [documentId, heartbeatMutation, leaveMutation]);
+
+  return viewers ?? [];
+}
+
+function getInitials(name?: string | null, email?: string | null) {
+  const display = name || email;
+  if (!display) return '?';
+  return display
+    .split(' ')
+    .map(p => p.charAt(0))
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+// Presence colors for viewer avatars
+const PRESENCE_COLORS = [
+  '#22c55e',
+  '#3b82f6',
+  '#f97316',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#eab308',
+];
+
 export default function DocumentDetailPage({
   params,
 }: DocumentDetailPageProps) {
@@ -97,6 +155,7 @@ export default function DocumentDetailPage({
   const teams = teamsData ? withIds(teamsData) : [];
 
   const updateMutation = useMutation(api.documents.mutations.update);
+  const viewers = useDocumentPresence(resolvedParams?.documentId ?? null);
 
   const { isAllowed: canEdit } = usePermissionCheck(
     resolvedParams?.orgSlug || '',
@@ -237,6 +296,50 @@ export default function DocumentDetailPage({
           </div>
 
           <div className='flex items-center gap-1.5'>
+            {/* Live viewers */}
+            {viewers.length > 0 && (
+              <div className='flex -space-x-1.5'>
+                {viewers.slice(0, 5).map((viewer, i) =>
+                  viewer ? (
+                    <Tooltip key={viewer._id}>
+                      <TooltipTrigger asChild>
+                        <Avatar
+                          className='ring-background size-5 ring-2'
+                          style={
+                            {
+                              '--presence-color':
+                                PRESENCE_COLORS[i % PRESENCE_COLORS.length],
+                            } as React.CSSProperties
+                          }
+                        >
+                          <AvatarFallback
+                            className='text-[9px]'
+                            style={{
+                              backgroundColor:
+                                PRESENCE_COLORS[i % PRESENCE_COLORS.length] +
+                                '22',
+                              color:
+                                PRESENCE_COLORS[i % PRESENCE_COLORS.length],
+                            }}
+                          >
+                            {getInitials(viewer.name, viewer.email)}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TooltipTrigger>
+                      <TooltipContent side='bottom' className='text-xs'>
+                        {viewer.name || viewer.email}
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : null,
+                )}
+                {viewers.length > 5 && (
+                  <div className='ring-background bg-muted text-muted-foreground flex size-5 items-center justify-center rounded-full text-[9px] ring-2'>
+                    +{viewers.length - 5}
+                  </div>
+                )}
+              </div>
+            )}
+
             {saveStatus === 'saving' && (
               <span className='text-muted-foreground flex items-center gap-1 text-xs'>
                 <Loader2 className='size-3 animate-spin' />

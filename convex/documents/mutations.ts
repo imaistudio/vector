@@ -16,6 +16,7 @@ export const create = mutation({
     data: v.object({
       title: v.string(),
       content: v.optional(v.string()),
+      folderId: v.optional(v.id('documentFolders')),
       teamId: v.optional(v.id('teams')),
       projectId: v.optional(v.id('projects')),
       visibility: v.optional(
@@ -43,6 +44,13 @@ export const create = mutation({
       throw new ConvexError('INVALID_INPUT');
     }
 
+    if (args.data.folderId) {
+      const folder = await ctx.db.get('documentFolders', args.data.folderId);
+      if (!folder || folder.organizationId !== org._id) {
+        throw new ConvexError('INVALID_FOLDER');
+      }
+    }
+
     if (args.data.teamId) {
       const team = await ctx.db.get('teams', args.data.teamId);
       if (!team || team.organizationId !== org._id) {
@@ -61,6 +69,7 @@ export const create = mutation({
       organizationId: org._id,
       title: args.data.title.trim(),
       content: args.data.content,
+      folderId: args.data.folderId,
       teamId: args.data.teamId,
       projectId: args.data.projectId,
       createdBy: userId,
@@ -90,6 +99,7 @@ export const update = mutation({
     data: v.object({
       title: v.optional(v.string()),
       content: v.optional(v.string()),
+      folderId: v.optional(v.union(v.id('documentFolders'), v.null())),
       teamId: v.optional(v.union(v.id('teams'), v.null())),
       projectId: v.optional(v.union(v.id('projects'), v.null())),
       visibility: v.optional(
@@ -146,6 +156,8 @@ export const update = mutation({
 
     if (args.data.title !== undefined) patchData.title = args.data.title.trim();
     if (args.data.content !== undefined) patchData.content = args.data.content;
+    if (args.data.folderId !== undefined)
+      patchData.folderId = args.data.folderId ?? undefined;
     if (args.data.teamId !== undefined)
       patchData.teamId = args.data.teamId ?? undefined;
     if (args.data.projectId !== undefined)

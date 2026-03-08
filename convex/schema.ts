@@ -477,10 +477,19 @@ export default defineSchema({
     payload: v.optional(v.any()),
   }).index('by_issue', ['issueId']),
 
+  documentFolders: defineTable({
+    organizationId: v.id('organizations'),
+    name: v.string(),
+    description: v.optional(v.string()),
+    color: v.optional(v.string()),
+    createdBy: v.id('users'),
+  }).index('by_organizationId', ['organizationId']),
+
   documents: defineTable({
     organizationId: v.id('organizations'),
     title: v.string(),
     content: v.optional(v.string()),
+    folderId: v.optional(v.id('documentFolders')),
     teamId: v.optional(v.id('teams')),
     projectId: v.optional(v.id('projects')),
     createdBy: v.id('users'),
@@ -495,6 +504,7 @@ export default defineSchema({
     ),
   })
     .index('by_organizationId', ['organizationId'])
+    .index('by_folder', ['folderId'])
     .index('by_team', ['teamId'])
     .index('by_project', ['projectId'])
     .index('by_org_team', ['organizationId', 'teamId'])
@@ -503,6 +513,14 @@ export default defineSchema({
       searchField: 'title',
       filterFields: ['organizationId'],
     }),
+
+  documentPresence: defineTable({
+    documentId: v.id('documents'),
+    userId: v.id('users'),
+    lastSeen: v.number(),
+  })
+    .index('by_document', ['documentId'])
+    .index('by_document_user', ['documentId', 'userId']),
 
   activityEvents: defineTable({
     organizationId: v.id('organizations'),
