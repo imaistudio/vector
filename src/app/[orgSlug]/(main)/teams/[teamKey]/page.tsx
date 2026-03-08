@@ -73,6 +73,7 @@ import {
 import { Id } from '@/convex/_generated/dataModel';
 import { FunctionReturnType } from 'convex/server';
 import { useConfirm } from '@/hooks/use-confirm';
+import { MobileNavTrigger } from '../../layout';
 
 // Add Member Dialog
 function AddMemberDialog({
@@ -737,14 +738,15 @@ export default function TeamViewPage() {
       <div className='h-full'>
         <div>
           {/* Header */}
-          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex items-center justify-between border-b px-2 backdrop-blur'>
-            <div className='flex h-8 flex-wrap items-center gap-2'>
+          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
+            <div className='flex h-8 items-center gap-2'>
+              <MobileNavTrigger />
               <Link
                 href={`/${orgSlug}/teams`}
                 className='text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm transition-colors'
               >
                 <ArrowLeft className='size-3' />
-                Teams
+                <span className='hidden sm:inline'>Teams</span>
               </Link>
               <span className='text-muted-foreground text-sm'>/</span>
               <span className='text-sm font-medium'>{teamKey}</span>
@@ -816,7 +818,7 @@ export default function TeamViewPage() {
           </div>
 
           {/* Main Content */}
-          <div className='mx-auto max-w-5xl px-4 py-4'>
+          <div className='mx-auto max-w-5xl px-3 py-3 sm:px-4 sm:py-4'>
             {/* Team Header */}
             <div className='mb-2 max-w-4xl space-y-2'>
               <div className='text-muted-foreground flex items-center gap-2 text-xs'>
@@ -1095,14 +1097,17 @@ export default function TeamViewPage() {
 
             {/* Team Content Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className='grid w-full grid-cols-4'>
+              <TabsList className='flex w-full'>
                 <TabsTrigger asChild value='members'>
-                  <div className='flex items-center gap-2'>
-                    Members ({teamMembers.length})
+                  <div className='flex items-center gap-1'>
+                    <span className='truncate'>Members</span>
+                    <span className='text-muted-foreground text-xs'>
+                      {teamMembers.length}
+                    </span>
                     {canEdit && (
                       <Button
                         onClick={() => setShowAddMemberDialog(true)}
-                        className='h-5 gap-1 px-0 text-xs'
+                        className='hidden h-5 gap-1 px-0 text-xs sm:flex'
                         variant='outline'
                       >
                         <Plus className='size-3' />
@@ -1111,31 +1116,43 @@ export default function TeamViewPage() {
                   </div>
                 </TabsTrigger>
                 <TabsTrigger asChild value='issues'>
-                  <div className='flex items-center gap-2'>
-                    Issues ({teamIssuesData?.total || 0})
+                  <div className='flex items-center gap-1'>
+                    <span className='truncate'>Issues</span>
+                    <span className='text-muted-foreground text-xs'>
+                      {teamIssuesData?.total || 0}
+                    </span>
                     {canEdit && (
-                      <CreateIssueDialog
-                        orgSlug={orgSlug}
-                        defaultStates={{ teamId: team?._id }}
-                        className='h-5 gap-1 px-0 text-xs'
-                      />
+                      <div className='hidden sm:block'>
+                        <CreateIssueDialog
+                          orgSlug={orgSlug}
+                          defaultStates={{ teamId: team?._id }}
+                          className='h-5 gap-1 px-0 text-xs'
+                        />
+                      </div>
                     )}
                   </div>
                 </TabsTrigger>
                 <TabsTrigger asChild value='projects'>
-                  <div className='flex items-center gap-2'>
-                    Projects ({teamProjects.length})
+                  <div className='flex items-center gap-1'>
+                    <span className='truncate'>Projects</span>
+                    <span className='text-muted-foreground text-xs'>
+                      {teamProjects.length}
+                    </span>
                     {canEdit && (
-                      <CreateProjectDialog
-                        orgSlug={orgSlug}
-                        defaultStates={{ teamId: team?._id }}
-                        className='h-5 gap-1 px-0 text-xs'
-                      />
+                      <div className='hidden sm:block'>
+                        <CreateProjectDialog
+                          orgSlug={orgSlug}
+                          defaultStates={{ teamId: team?._id }}
+                          className='h-5 gap-1 px-0 text-xs'
+                        />
+                      </div>
                     )}
                   </div>
                 </TabsTrigger>
                 <TabsTrigger asChild value='activity'>
-                  <div className='flex items-center gap-2'>Activity</div>
+                  <div className='flex items-center gap-1'>
+                    <span className='truncate'>Activity</span>
+                  </div>
                 </TabsTrigger>
               </TabsList>
 

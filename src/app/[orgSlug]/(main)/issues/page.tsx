@@ -18,6 +18,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 import { PermissionAware } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { useConfirm } from '@/hooks/use-confirm';
+import { MobileNavTrigger } from '../layout';
 
 type StateType = (typeof ISSUE_STATE_DEFAULTS)[number]['type'];
 type FilterType = 'all' | StateType;
@@ -195,15 +196,16 @@ export default function IssuesPage() {
     <div className='bg-background h-full'>
       {/* Header with tabs */}
       <div className='border-b'>
-        <div className='flex items-center justify-between p-1'>
-          <div className='flex items-center gap-1'>
+        <div className='flex items-center justify-between gap-1 p-1'>
+          <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
+            <MobileNavTrigger />
             {visibleTabs.map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
                 size='sm'
                 className={cn(
-                  'h-6 gap-2 rounded-xs px-3 text-xs font-normal',
+                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
                   activeFilter === tab.key && 'bg-secondary',
                 )}
                 onClick={() => setActiveFilter(tab.key)}
@@ -217,7 +219,7 @@ export default function IssuesPage() {
           </div>
 
           {/* Global filters and create button */}
-          <div className='flex items-center gap-1'>
+          <div className='flex shrink-0 items-center gap-1'>
             {/* Team filter */}
             <PermissionAware
               orgSlug={orgSlug}
@@ -234,21 +236,23 @@ export default function IssuesPage() {
               />
             </PermissionAware>
 
-            {/* Project filter */}
-            <PermissionAware
-              orgSlug={orgSlug}
-              permission={PERMISSIONS.PROJECT_VIEW}
-              fallbackMessage="You don't have permission to view projects"
-              showTooltip={true}
-            >
-              <ProjectSelector
-                projects={mappedProjects}
-                selectedProject={selectedProject}
-                onProjectSelect={setSelectedProject}
-                displayMode='iconWhenUnselected'
-                className='h-6 text-xs'
-              />
-            </PermissionAware>
+            {/* Project filter - hidden on small screens */}
+            <div className='hidden sm:block'>
+              <PermissionAware
+                orgSlug={orgSlug}
+                permission={PERMISSIONS.PROJECT_VIEW}
+                fallbackMessage="You don't have permission to view projects"
+                showTooltip={true}
+              >
+                <ProjectSelector
+                  projects={mappedProjects}
+                  selectedProject={selectedProject}
+                  onProjectSelect={setSelectedProject}
+                  displayMode='iconWhenUnselected'
+                  className='h-6 text-xs'
+                />
+              </PermissionAware>
+            </div>
 
             <CreateIssueDialog className='h-6' orgSlug={orgSlug} />
           </div>

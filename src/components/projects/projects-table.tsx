@@ -118,16 +118,18 @@ export function ProjectsTable({
                 <span className='block truncate text-sm font-medium'>
                   {project.name}
                 </span>
-                <div className='bg-muted h-4 w-px' />
                 {project.description && (
-                  <p className='text-muted-foreground max-w-xs truncate text-xs'>
-                    {project.description}
-                  </p>
+                  <>
+                    <div className='bg-muted hidden h-4 w-px sm:block' />
+                    <p className='text-muted-foreground hidden max-w-xs truncate text-xs sm:block'>
+                      {project.description}
+                    </p>
+                  </>
                 )}
               </Link>
 
-              {/* Date Info - Moved to be first on the right section */}
-              <div className='text-muted-foreground flex flex-col text-xs'>
+              {/* Date Info - hidden on mobile */}
+              <div className='text-muted-foreground hidden flex-col text-xs md:flex'>
                 {project.startDate && (
                   <span>
                     Start: {formatDateHuman(new Date(project.startDate))}
@@ -156,40 +158,44 @@ export function ProjectsTable({
                 />
               </PermissionAware>
 
-              {/* Team Selector */}
-              <PermissionAware
-                orgSlug={orgSlug}
-                permission={PERMISSIONS.PROJECT_EDIT}
-                fallbackMessage="You don't have permission to change project team"
-              >
-                <div className='flex-shrink-0'>
-                  <TeamSelector
-                    teams={teams}
-                    selectedTeam={project.teamId || ''}
-                    onTeamSelect={tid => onTeamChange(project.id, tid)}
-                    displayMode='iconWhenUnselected'
+              {/* Team Selector - hidden on mobile */}
+              <div className='hidden sm:block'>
+                <PermissionAware
+                  orgSlug={orgSlug}
+                  permission={PERMISSIONS.PROJECT_EDIT}
+                  fallbackMessage="You don't have permission to change project team"
+                >
+                  <div className='flex-shrink-0'>
+                    <TeamSelector
+                      teams={teams}
+                      selectedTeam={project.teamId || ''}
+                      onTeamSelect={tid => onTeamChange(project.id, tid)}
+                      displayMode='iconWhenUnselected'
+                      className='border-none bg-transparent p-0 shadow-none'
+                    />
+                  </div>
+                </PermissionAware>
+              </div>
+
+              {/* Lead Selector - hidden on mobile */}
+              <div className='hidden sm:block'>
+                <PermissionAware
+                  orgSlug={orgSlug}
+                  permission={PERMISSIONS.PROJECT_LEAD_UPDATE}
+                  fallbackMessage="You don't have permission to change project lead"
+                >
+                  <ProjectLeadSelector
+                    orgSlug={orgSlug}
+                    projectKey={project.key}
+                    selectedLead={project.leadId || ''}
+                    onLeadSelect={(leadId: string) =>
+                      onLeadChange(project.id, leadId)
+                    }
+                    displayMode='iconOnly'
                     className='border-none bg-transparent p-0 shadow-none'
                   />
-                </div>
-              </PermissionAware>
-
-              {/* Lead Selector */}
-              <PermissionAware
-                orgSlug={orgSlug}
-                permission={PERMISSIONS.PROJECT_LEAD_UPDATE}
-                fallbackMessage="You don't have permission to change project lead"
-              >
-                <ProjectLeadSelector
-                  orgSlug={orgSlug}
-                  projectKey={project.key}
-                  selectedLead={project.leadId || ''}
-                  onLeadSelect={(leadId: string) =>
-                    onLeadChange(project.id, leadId)
-                  }
-                  displayMode='iconOnly'
-                  className='border-none bg-transparent p-0 shadow-none'
-                />
-              </PermissionAware>
+                </PermissionAware>
+              </div>
 
               {/* Actions */}
               <div className='flex-shrink-0'>

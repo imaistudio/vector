@@ -12,7 +12,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 
 const header = (
   <div className='border-b'>
-    <div className='flex items-center p-1'>
+    <div className='flex items-center p-1 pl-8 lg:pl-1'>
       <span className='flex items-center gap-1.5 px-3 text-xs font-medium'>
         <Mail className='size-3.5' />
         Invitations
@@ -81,7 +81,10 @@ export default function InvitesPage() {
       ) : (
         <div className='divide-y'>
           {invites.map(inv => (
-            <div key={inv._id} className='flex items-center gap-3 px-3 py-2'>
+            <div
+              key={inv._id}
+              className='flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap sm:gap-3'
+            >
               <div className='min-w-0 flex-1'>
                 <p className='truncate text-sm font-medium'>
                   {inv.organization?.name ?? 'Unknown Organization'}
@@ -95,7 +98,7 @@ export default function InvitesPage() {
                 {inv.role}
               </Badge>
 
-              <div className='text-muted-foreground text-xs'>
+              <div className='text-muted-foreground hidden text-xs sm:block'>
                 Expires {format(new Date(inv.expiresAt), 'MMM d')}
               </div>
 

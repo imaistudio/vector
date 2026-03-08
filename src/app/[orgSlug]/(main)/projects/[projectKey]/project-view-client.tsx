@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/popover';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
 import { UsersIcon, CalendarIcon, ClockIcon } from 'lucide-react';
+import { MobileNavTrigger } from '../../layout';
 import type { Id } from '@/convex/_generated/dataModel';
 import {
   VisibilitySelector,
@@ -201,14 +202,15 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     <div className='bg-background h-full overflow-y-auto'>
       <div className='h-full'>
         {/* Header */}
-        <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex items-center justify-between border-b px-2 backdrop-blur'>
-          <div className='flex h-8 flex-wrap items-center gap-2'>
+        <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
+          <div className='flex h-8 items-center gap-2'>
+            <MobileNavTrigger />
             <Link
               href={`/${params.orgSlug}/projects`}
               className='text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm transition-colors'
             >
               <ArrowLeft className='size-3' />
-              Projects
+              <span className='hidden sm:inline'>Projects</span>
             </Link>
             <div className='flex items-center'>
               {/* Team & Status selectors */}
@@ -281,7 +283,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
         </div>
 
         {/* Main Content */}
-        <div className='mx-auto max-w-5xl px-4 py-4'>
+        <div className='mx-auto max-w-5xl px-3 py-3 sm:px-4 sm:py-4'>
           {/* Project Header */}
           <div className='mb-2 max-w-4xl space-y-2'>
             <div className='text-muted-foreground flex items-center gap-2 text-xs'>

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Circle, Save, X, Pencil } from 'lucide-react';
+import { MobileNavTrigger } from '../../layout';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { formatDateHuman } from '@/lib/date';
@@ -332,18 +333,19 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
   return (
     <div className='bg-background h-full overflow-y-auto'>
       {/* Page Grid: main area + sidebar */}
-      <div className='flex h-full'>
+      <div className='flex h-full flex-col lg:flex-row'>
         {/* LEFT COLUMN - Main Content */}
         <div className='min-w-0 flex-1'>
           {/* Header */}
-          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex items-center justify-between border-b px-2 backdrop-blur'>
-            <div className='flex h-8 flex-wrap items-center gap-2'>
+          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
+            <div className='flex h-8 items-center gap-2'>
+              <MobileNavTrigger />
               <Link
                 href={`/${resolvedParams.orgSlug}/issues`}
                 className='text-muted-foreground hover:text-foreground flex items-center gap-2 text-sm transition-colors'
               >
                 <ArrowLeft className='size-3' />
-                Issues
+                <span className='hidden sm:inline'>Issues</span>
               </Link>
               <div className='flex items-center'>
                 {/* Team & Project selectors */}
@@ -375,22 +377,24 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                     className='border-none bg-transparent shadow-none'
                   />
                 </PermissionAwareSelector>
-                <PermissionAwareSelector
-                  orgSlug={resolvedParams.orgSlug}
-                  permission={PERMISSIONS.ISSUE_RELATION_UPDATE}
-                  fallbackMessage="You don't have permission to change parent issue"
-                >
-                  <IssueSelector
+                <div className='hidden sm:contents'>
+                  <PermissionAwareSelector
                     orgSlug={resolvedParams.orgSlug}
-                    selectedIssue={issue.parentIssueId || ''}
-                    onIssueSelect={
-                      canChangeProject ? handleParentIssueChange : () => {}
-                    }
-                    excludeIssueId={issue._id}
-                    displayMode='iconWhenUnselected'
-                    className='border-none bg-transparent shadow-none'
-                  />
-                </PermissionAwareSelector>
+                    permission={PERMISSIONS.ISSUE_RELATION_UPDATE}
+                    fallbackMessage="You don't have permission to change parent issue"
+                  >
+                    <IssueSelector
+                      orgSlug={resolvedParams.orgSlug}
+                      selectedIssue={issue.parentIssueId || ''}
+                      onIssueSelect={
+                        canChangeProject ? handleParentIssueChange : () => {}
+                      }
+                      excludeIssueId={issue._id}
+                      displayMode='iconWhenUnselected'
+                      className='border-none bg-transparent shadow-none'
+                    />
+                  </PermissionAwareSelector>
+                </div>
               </div>
               <span className='text-muted-foreground text-sm'>/</span>
               <span className='text-sm font-medium'>{issue.key}</span>
@@ -450,7 +454,7 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
           </div>
 
           {/* Main Content */}
-          <div className='mx-auto max-w-5xl px-4 py-4'>
+          <div className='mx-auto max-w-5xl px-3 py-3 sm:px-4 sm:py-4'>
             {/* Issue Header */}
             <div className='mb-2 max-w-4xl space-y-2'>
               <div className='text-muted-foreground flex items-center gap-2 text-xs'>
@@ -728,7 +732,7 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
         </div>
 
         {/* RIGHT SIDEBAR - Assignments */}
-        <div className='bg-background w-80 overflow-y-auto border-l'>
+        <div className='bg-background w-full overflow-y-auto border-t lg:w-80 lg:border-t-0 lg:border-l'>
           <div className='flex h-full flex-col'>
             {/* Assignments Section with max height */}
             <div className='max-h-96 overflow-y-auto'>

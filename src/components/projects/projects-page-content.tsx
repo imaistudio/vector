@@ -11,6 +11,7 @@ import { CreateProjectButton } from './create-project-button';
 
 import { cn } from '@/lib/utils';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
+import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
 
 // Define project status types based on Convex schema
 type StatusType =
@@ -207,15 +208,16 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     <div className='bg-background h-full'>
       <div className='flex flex-col'>
         {/* Header with tabs and create button */}
-        <div className='flex items-center justify-between border-b p-1'>
-          <div className='flex items-center gap-1'>
+        <div className='flex items-center justify-between gap-1 border-b p-1'>
+          <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
+            <MobileNavTrigger />
             {visibleTabs.map(tab => (
               <Button
                 key={tab.key}
                 variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
                 size='sm'
                 className={cn(
-                  'h-6 gap-2 rounded-xs px-3 text-xs font-normal',
+                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
                   activeFilter === tab.key && 'bg-secondary',
                 )}
                 onClick={() => setActiveFilter(tab.key)}
@@ -228,7 +230,11 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
             ))}
           </div>
 
-          <CreateProjectButton className='h-6' orgSlug={orgSlug} size='sm' />
+          <CreateProjectButton
+            className='h-6 shrink-0'
+            orgSlug={orgSlug}
+            size='sm'
+          />
         </div>
 
         {/* Projects Table */}

@@ -6,10 +6,9 @@ import { useQuery } from '@/lib/convex';
 import { api } from '@/lib/convex';
 import { UserSettingsSidebar } from '@/components/settings/user-settings-sidebar';
 import { UserMenu } from '@/components/user-menu';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Menu } from 'lucide-react';
-import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
 interface SettingsLayoutProps {
   children: ReactNode;
@@ -110,34 +109,6 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
 
   return (
     <div className='bg-secondary flex h-screen'>
-      {/* Mobile Menu Button */}
-      <div className='lg:hidden'>
-        <Dialog open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-          <DialogTrigger asChild>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='absolute top-2 left-2 z-40'
-            >
-              <Menu className='size-4' />
-            </Button>
-          </DialogTrigger>
-          <DialogContent className='w-80 p-0'>
-            <div className='flex h-96 flex-col'>
-              {/* Settings Navigation */}
-              <div className='flex-1 overflow-y-auto'>
-                <UserSettingsSidebar />
-              </div>
-
-              {/* User menu at bottom */}
-              <div className='border-border border-t p-2'>
-                <UserMenu />
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-
       {/* Desktop Settings Sidebar */}
       <aside className='hidden w-56 lg:block'>
         <div className='flex h-full flex-col'>
@@ -153,8 +124,35 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         </div>
       </aside>
 
+      {/* Mobile sheet */}
+      <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+        <SheetContent
+          side='left'
+          showCloseButton={false}
+          className='bg-secondary w-56 p-0 sm:max-w-56'
+        >
+          <SheetTitle className='sr-only'>Settings navigation</SheetTitle>
+          <div className='flex h-full flex-col'>
+            <div className='flex-1 overflow-y-auto'>
+              <UserSettingsSidebar />
+            </div>
+            <div className='border-border border-t p-2'>
+              <UserMenu />
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       {/* Main Content */}
-      <main className='bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border lg:ml-0'>
+      <main className='bg-background relative m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
+        {/* Mobile menu button */}
+        <button
+          onClick={() => setIsMobileOpen(true)}
+          className='hover:bg-accent/80 absolute top-1.5 left-1.5 z-10 flex size-7 items-center justify-center rounded-md transition-colors lg:hidden'
+          aria-label='Open settings menu'
+        >
+          <Menu className='text-muted-foreground size-4' />
+        </button>
         <div className='h-full'>{children}</div>
       </main>
     </div>
