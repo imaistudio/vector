@@ -12,13 +12,15 @@ export function ProjectActivityFeed({
   orgSlug: string;
   projectId: string;
 }) {
+  const pageSize = 5;
+
   const { results, status, loadMore } = usePaginatedQuery(
     api.activities.queries.listProjectActivity,
     {
       projectId: projectId as Id<'projects'>,
     },
     {
-      initialNumItems: 20,
+      initialNumItems: pageSize,
     },
   );
 
@@ -29,6 +31,7 @@ export function ProjectActivityFeed({
       status={status}
       loadMore={loadMore}
       emptyMessage='No activity yet.'
+      pageSize={pageSize}
     />
   );
 }

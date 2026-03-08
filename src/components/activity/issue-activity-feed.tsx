@@ -12,13 +12,15 @@ export function IssueActivityFeed({
   orgSlug: string;
   issueId: string;
 }) {
+  const pageSize = 5;
+
   const { results, status, loadMore } = usePaginatedQuery(
     api.activities.queries.listIssueActivity,
     {
       issueId: issueId as Id<'issues'>,
     },
     {
-      initialNumItems: 20,
+      initialNumItems: pageSize,
     },
   );
 
@@ -29,6 +31,7 @@ export function IssueActivityFeed({
       status={status}
       loadMore={loadMore}
       emptyMessage='No activity yet for this issue.'
+      pageSize={pageSize}
     />
   );
 }

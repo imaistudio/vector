@@ -12,13 +12,15 @@ export function TeamActivityFeed({
   orgSlug: string;
   teamId: string;
 }) {
+  const pageSize = 5;
+
   const { results, status, loadMore } = usePaginatedQuery(
     api.activities.queries.listTeamActivity,
     {
       teamId: teamId as Id<'teams'>,
     },
     {
-      initialNumItems: 20,
+      initialNumItems: pageSize,
     },
   );
 
@@ -29,6 +31,7 @@ export function TeamActivityFeed({
       status={status}
       loadMore={loadMore}
       emptyMessage='No activity yet.'
+      pageSize={pageSize}
     />
   );
 }
