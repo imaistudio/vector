@@ -6,7 +6,7 @@ import {
 import { convex } from '@convex-dev/better-auth/plugins';
 import { betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
-import { username } from 'better-auth/plugins';
+import { username, emailOTP } from 'better-auth/plugins';
 import { v } from 'convex/values';
 import { components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
@@ -117,6 +117,26 @@ export const createAuthOptions = (
   },
   plugins: [
     username(),
+    emailOTP({
+      async sendVerificationOTP({ email, otp, type }) {
+        console.log(`[otp] ${type} for ${email}: ${otp}`);
+        // Schedule the Node.js action to send the email via SMTP.
+        // The ctx from createAuthOptions closure has scheduler access
+        // when called from an HTTP handler or action context.
+        if ('scheduler' in ctx) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const scheduler = (ctx as any).scheduler;
+          await scheduler.runAfter(0, internal.email.otp.sendOtpEmail, {
+            to: email,
+            otp,
+            type,
+          });
+        }
+      },
+      otpLength: 4,
+      expiresIn: 900,
+      allowedAttempts: 5,
+    }),
     convex({
       authConfig,
       jwksRotateOnTokenGenerationError: true,
