@@ -11,6 +11,7 @@ export interface ActivityScope {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  documentId?: Id<'documents'>;
 }
 
 export interface ActivityWrite {
@@ -22,6 +23,7 @@ export interface ActivityWrite {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  documentId?: Id<'documents'>;
   subjectUserId?: Id<'users'>;
   details?: {
     field?: ActivityField;
@@ -132,9 +134,27 @@ export function resolveIssueScope(issue: Doc<'issues'>): ActivityScope {
   };
 }
 
+export function getDocumentSnapshot(doc: Doc<'documents'> | null | undefined) {
+  if (!doc) return {};
+  return {
+    entityKey: doc._id,
+    entityName: doc.title,
+  };
+}
+
+export function resolveDocumentScope(doc: Doc<'documents'>): ActivityScope {
+  return {
+    organizationId: doc.organizationId,
+    teamId: doc.teamId ?? undefined,
+    projectId: doc.projectId ?? undefined,
+    documentId: doc._id,
+  };
+}
+
 export const snapshotForTeam = getTeamSnapshot;
 export const snapshotForProject = getProjectSnapshot;
 export const snapshotForIssue = getIssueSnapshot;
+export const snapshotForDocument = getDocumentSnapshot;
 
 export function getCommentPreview(body: string, maxLength = 140) {
   const compact = body.replace(/\s+/g, ' ').trim();
@@ -153,6 +173,7 @@ export async function recordActivity(
     teamId: event.teamId,
     projectId: event.projectId,
     issueId: event.issueId,
+    documentId: event.documentId,
   };
 
   if (!scope.organizationId) {
@@ -167,6 +188,7 @@ export async function recordActivity(
     teamId: scope.teamId,
     projectId: scope.projectId,
     issueId: scope.issueId,
+    documentId: scope.documentId,
     subjectUserId: event.subjectUserId,
     details: event.details ?? {},
     snapshot: event.snapshot ?? {},

@@ -2,12 +2,20 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Save, X, Plus, FolderOpen } from 'lucide-react';
+import {
+  ArrowLeft,
+  Save,
+  X,
+  Plus,
+  FolderOpen,
+  LayoutList,
+  Columns3,
+} from 'lucide-react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichEditor } from '@/components/ui/rich-editor';
 import { formatDateHuman } from '@/lib/date';
 import { StatusSelector } from '@/components/projects/project-selectors';
 import { ProjectLeadSelector } from '@/components/projects/project-lead-selector';
@@ -35,6 +43,9 @@ import {
   type VisibilityState,
 } from '@/components/ui/visibility-selector';
 import { useOptimisticValue } from '@/hooks/use-optimistic';
+import { IssuesKanban } from '@/components/issues/issues-kanban';
+import { IssuesTable } from '@/components/issues/issues-table';
+import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 
 interface ProjectViewClientProps {
   params: { orgSlug: string; projectKey: string };
@@ -57,6 +68,29 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
   const [editingDescription, setEditingDescription] = useState(false);
   const [titleValue, setTitleValue] = useState('');
   const [descriptionValue, setDescriptionValue] = useState('');
+  // Issue view mode from URL search params
+  const issueViewParam =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('issueView')
+      : null;
+  const [issueViewMode, setIssueViewModeState] = useState<'table' | 'kanban'>(
+    issueViewParam === 'table' ? 'table' : 'kanban',
+  );
+  const setIssueViewMode = (mode: 'table' | 'kanban') => {
+    setIssueViewModeState(mode);
+    const sp = new URLSearchParams(window.location.search);
+    if (mode === 'kanban') {
+      sp.delete('issueView');
+    } else {
+      sp.set('issueView', mode);
+    }
+    const qs = sp.toString();
+    window.history.replaceState(
+      null,
+      '',
+      qs ? `?${qs}` : window.location.pathname,
+    );
+  };
 
   const user = useQuery(api.users.currentUser);
 
@@ -102,10 +136,35 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     orgSlug: params.orgSlug,
   });
 
+  // Issue data for project board
+  const issueStates = useQuery(api.organizations.queries.listIssueStates, {
+    orgSlug: params.orgSlug,
+  });
+  const issuePriorities = useQuery(
+    api.organizations.queries.listIssuePriorities,
+    {
+      orgSlug: params.orgSlug,
+    },
+  );
+  const projectIssuesData = useQuery(
+    api.issues.queries.listIssues,
+    project?._id ? { orgSlug: params.orgSlug, projectId: project._id } : 'skip',
+  );
+  const projectIssues = projectIssuesData?.issues ?? [];
+
   const updateMutation = useMutation(api.projects.mutations.update);
   const changeStatusMutation = useMutation(api.projects.mutations.changeStatus);
   const changeTeamMutation = useMutation(api.projects.mutations.changeTeam);
   const changeLeadMutation = useMutation(api.projects.mutations.changeLead);
+  const changeAssignmentStateMutation = useMutation(
+    api.issues.mutations.changeAssignmentState,
+  );
+  const changePriorityMutation = useMutation(
+    api.issues.mutations.changePriority,
+  );
+  const updateAssigneesMutation = useMutation(
+    api.issues.mutations.updateAssignees,
+  );
   const changeVisibilityMutation = useMutation(
     api.projects.mutations.changeVisibility,
   );
@@ -500,18 +559,11 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
           <div className='mb-4'>
             {editingDescription ? (
               <div className='space-y-4'>
-                <Textarea
+                <RichEditor
                   value={descriptionValue}
-                  onChange={e => setDescriptionValue(e.target.value)}
+                  onChange={setDescriptionValue}
                   placeholder='Add a description...'
-                  className='min-h-[200px] resize-none text-base'
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') {
-                      setDescriptionValue(project.description || '');
-                      setEditingDescription(false);
-                    }
-                  }}
-                  autoFocus
+                  mode='compact'
                 />
                 <div className='flex items-center gap-3'>
                   <Button onClick={handleDescriptionSave}>
@@ -543,7 +595,12 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                       setEditingDescription(true);
                     }}
                   >
-                    <p className='whitespace-pre-wrap'>{project.description}</p>
+                    <RichEditor
+                      value={project.description}
+                      onChange={() => {}}
+                      mode='compact'
+                      disabled={true}
+                    />
                   </div>
                 ) : canEdit ? (
                   <button
@@ -648,6 +705,92 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                 {formatDateHuman(new Date(project._creationTime))}
               </span>
             </div>
+          </div>
+
+          {/* Issues Board */}
+          <div className='mb-6'>
+            <div className='mb-2 flex items-center justify-between'>
+              <h2 className='text-sm font-semibold'>Issues</h2>
+              <div className='flex items-center gap-2'>
+                <div className='border-border flex items-center rounded-md border'>
+                  <Button
+                    variant={issueViewMode === 'kanban' ? 'secondary' : 'ghost'}
+                    size='sm'
+                    className='h-6 rounded-r-none px-2'
+                    onClick={() => setIssueViewMode('kanban')}
+                  >
+                    <Columns3 className='size-3.5' />
+                  </Button>
+                  <Button
+                    variant={issueViewMode === 'table' ? 'secondary' : 'ghost'}
+                    size='sm'
+                    className='h-6 rounded-l-none px-2'
+                    onClick={() => setIssueViewMode('table')}
+                  >
+                    <LayoutList className='size-3.5' />
+                  </Button>
+                </div>
+                {project && (
+                  <CreateIssueDialog
+                    orgSlug={params.orgSlug}
+                    defaultStates={{ projectId: project._id }}
+                    className='h-6 text-xs'
+                  />
+                )}
+              </div>
+            </div>
+            {projectIssues.length === 0 ? (
+              <div className='text-muted-foreground rounded-lg border border-dashed px-3 py-8 text-center text-sm'>
+                No issues yet. Create one to get started.
+              </div>
+            ) : issueViewMode === 'kanban' ? (
+              <div className='-mx-3 overflow-hidden rounded-lg border sm:-mx-4'>
+                <IssuesKanban
+                  orgSlug={params.orgSlug}
+                  issues={projectIssues}
+                  states={issueStates ?? []}
+                  priorities={issuePriorities ?? []}
+                  currentUserId={user?._id || ''}
+                  onStateChange={(_issueId, assignmentId, stateId) => {
+                    void changeAssignmentStateMutation({
+                      assignmentId: assignmentId as Id<'issueAssignees'>,
+                      stateId: stateId as Id<'issueStates'>,
+                    });
+                  }}
+                  onPriorityChange={(issueId, priorityId) => {
+                    void changePriorityMutation({
+                      issueId: issueId as Id<'issues'>,
+                      priorityId: priorityId as Id<'issuePriorities'>,
+                    });
+                  }}
+                  onAssigneesChange={(issueId, assigneeIds) => {
+                    void updateAssigneesMutation({
+                      issueId: issueId as Id<'issues'>,
+                      assigneeIds: assigneeIds as Id<'users'>[],
+                    });
+                  }}
+                />
+              </div>
+            ) : (
+              <div className='overflow-hidden rounded-lg border'>
+                <IssuesTable
+                  orgSlug={params.orgSlug}
+                  issues={projectIssues}
+                  states={issueStates ?? []}
+                  priorities={issuePriorities ?? []}
+                  teams={teams ?? []}
+                  projects={[]}
+                  onPriorityChange={() => {}}
+                  onAssigneesChange={() => {}}
+                  onTeamChange={() => {}}
+                  onProjectChange={() => {}}
+                  onDelete={() => {}}
+                  onAssignmentStateChange={() => {}}
+                  currentUserId={user?._id || ''}
+                  activeFilter='all'
+                />
+              </div>
+            )}
           </div>
 
           {/* Project Details */}

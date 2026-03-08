@@ -7,11 +7,14 @@ import { api } from '@/lib/convex';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { ProjectsTable } from './projects-table';
 import type { ProjectRowData } from './projects-table';
+import { ProjectsKanban } from './projects-kanban';
 import { CreateProjectButton } from './create-project-button';
 
 import { cn } from '@/lib/utils';
+import { LayoutList, Columns3 } from 'lucide-react';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 // Define project status types based on Convex schema
 type StatusType =
@@ -58,8 +61,24 @@ interface ProjectsPageContentProps {
   orgSlug: string;
 }
 
+type ViewMode = 'table' | 'kanban';
+
 export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+
+  const viewParam = searchParams.get('view');
+  const viewMode: ViewMode = viewParam === 'kanban' ? 'kanban' : 'table';
+  const setViewMode = (mode: ViewMode) => {
+    const sp = new URLSearchParams(searchParams.toString());
+    if (mode === 'table') {
+      sp.delete('view');
+    } else {
+      sp.set('view', mode);
+    }
+    router.replace(`?${sp.toString()}`, { scroll: false });
+  };
 
   // Pagination constants
   const PAGE_SIZE = 25;
@@ -230,54 +249,90 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
             ))}
           </div>
 
-          <CreateProjectButton
-            className='h-6 shrink-0'
-            orgSlug={orgSlug}
-            size='sm'
-          />
-        </div>
+          <div className='flex shrink-0 items-center gap-1'>
+            {/* View mode toggle */}
+            <div className='border-border flex items-center rounded-md border'>
+              <Button
+                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-6 rounded-r-none px-2'
+                onClick={() => setViewMode('table')}
+              >
+                <LayoutList className='size-3.5' />
+              </Button>
+              <Button
+                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-6 rounded-l-none px-2'
+                onClick={() => setViewMode('kanban')}
+              >
+                <Columns3 className='size-3.5' />
+              </Button>
+            </div>
 
-        {/* Projects Table */}
-        <div className='flex-1 overflow-y-auto'>
-          <ProjectsTable
-            orgSlug={orgSlug}
-            projects={filteredProjects}
-            statuses={statuses}
-            teams={teams}
-            onStatusChange={handleStatusChange}
-            onTeamChange={handleTeamChange}
-            onLeadChange={handleLeadChange}
-            onDelete={handleDelete}
-            deletePending={false} // TODO: Add proper mutation loading state
-          />
-        </div>
-
-        {/* Pagination controls */}
-        <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
-          <span>
-            Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-          </span>
-          <div className='flex gap-1'>
-            <Button
-              variant='ghost'
+            <CreateProjectButton
+              className='h-6 shrink-0'
+              orgSlug={orgSlug}
               size='sm'
-              className='h-6 px-2 text-xs'
-              disabled={page === 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-            >
-              Prev
-            </Button>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-6 px-2 text-xs'
-              disabled={page * PAGE_SIZE >= total}
-              onClick={() => setPage(p => p + 1)}
-            >
-              Next
-            </Button>
+            />
           </div>
         </div>
+
+        {/* Projects content */}
+        {viewMode === 'table' ? (
+          <>
+            <div className='flex-1 overflow-y-auto'>
+              <ProjectsTable
+                orgSlug={orgSlug}
+                projects={filteredProjects}
+                statuses={statuses}
+                teams={teams}
+                onStatusChange={handleStatusChange}
+                onTeamChange={handleTeamChange}
+                onLeadChange={handleLeadChange}
+                onDelete={handleDelete}
+                deletePending={false}
+              />
+            </div>
+
+            {/* Pagination controls */}
+            <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
+              <span>
+                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+              </span>
+              <div className='flex gap-1'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-2 text-xs'
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-2 text-xs'
+                  disabled={page * PAGE_SIZE >= total}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className='flex-1 overflow-hidden'>
+            <ProjectsKanban
+              orgSlug={orgSlug}
+              projects={filteredProjects}
+              statuses={statuses}
+              onStatusChange={handleStatusChange}
+              onLeadChange={handleLeadChange}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

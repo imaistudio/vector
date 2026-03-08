@@ -243,7 +243,11 @@ export default defineSchema({
     .index('by_org_key', ['organizationId', 'key'])
     .index('by_lead', ['leadId'])
     .index('by_visibility', ['visibility'])
-    .index('by_org_visibility', ['organizationId', 'visibility']),
+    .index('by_org_visibility', ['organizationId', 'visibility'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['organizationId'],
+    }),
 
   // Team members (equivalent to Drizzle 'teamMember' table)
   teamMembers: defineTable({
@@ -304,7 +308,11 @@ export default defineSchema({
     .index('by_org_key', ['organizationId', 'key'])
     .index('by_status', ['statusId'])
     .index('by_visibility', ['visibility'])
-    .index('by_org_visibility', ['organizationId', 'visibility']),
+    .index('by_org_visibility', ['organizationId', 'visibility'])
+    .searchIndex('search_name', {
+      searchField: 'name',
+      filterFields: ['organizationId'],
+    }),
 
   // Project members (equivalent to Drizzle 'projectMember' table)
   projectMembers: defineTable({
@@ -404,7 +412,11 @@ export default defineSchema({
     .index('by_visibility', ['visibility'])
     .index('by_org_visibility', ['organizationId', 'visibility'])
     .index('by_created_by', ['createdBy'])
-    .index('by_parent', ['parentIssueId']),
+    .index('by_parent', ['parentIssueId'])
+    .searchIndex('search_title', {
+      searchField: 'title',
+      filterFields: ['organizationId'],
+    }),
 
   // Issue assignees (equivalent to Drizzle 'issueAssignee' table)
   issueAssignees: defineTable({
@@ -465,11 +477,39 @@ export default defineSchema({
     payload: v.optional(v.any()),
   }).index('by_issue', ['issueId']),
 
+  documents: defineTable({
+    organizationId: v.id('organizations'),
+    title: v.string(),
+    content: v.optional(v.string()),
+    teamId: v.optional(v.id('teams')),
+    projectId: v.optional(v.id('projects')),
+    createdBy: v.id('users'),
+    lastEditedBy: v.optional(v.id('users')),
+    lastEditedAt: v.optional(v.number()),
+    visibility: v.optional(
+      v.union(
+        v.literal('private'),
+        v.literal('organization'),
+        v.literal('public'),
+      ),
+    ),
+  })
+    .index('by_organizationId', ['organizationId'])
+    .index('by_team', ['teamId'])
+    .index('by_project', ['projectId'])
+    .index('by_org_team', ['organizationId', 'teamId'])
+    .index('by_org_project', ['organizationId', 'projectId'])
+    .searchIndex('search_title', {
+      searchField: 'title',
+      filterFields: ['organizationId'],
+    }),
+
   activityEvents: defineTable({
     organizationId: v.id('organizations'),
     teamId: v.optional(v.id('teams')),
     projectId: v.optional(v.id('projects')),
     issueId: v.optional(v.id('issues')),
+    documentId: v.optional(v.id('documents')),
     entityType: activityEntityTypeValidator,
     eventType: activityEventTypeValidator,
     actorId: v.id('users'),
@@ -481,7 +521,8 @@ export default defineSchema({
     .index('by_team', ['teamId'])
     .index('by_project', ['projectId'])
     .index('by_issue', ['issueId'])
-    .index('by_actor', ['actorId']),
+    .index('by_actor', ['actorId'])
+    .index('by_document', ['documentId']),
 
   notificationEvents: defineTable({
     type: notificationEventTypeValidator,

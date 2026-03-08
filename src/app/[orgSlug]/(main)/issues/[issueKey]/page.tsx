@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichEditor } from '@/components/ui/rich-editor';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Circle, Save, X, Pencil } from 'lucide-react';
 import { MobileNavTrigger } from '../../layout';
@@ -34,6 +34,8 @@ import {
   PermissionAwareSelector,
 } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { IssueActivityFeed } from '@/components/activity/issue-activity-feed';
+import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 
 interface IssueViewPageProps {
   params: Promise<{ orgSlug: string; issueKey: string }>;
@@ -558,18 +560,12 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
             <div className='mb-8'>
               {editingDescription ? (
                 <div className='space-y-4'>
-                  <Textarea
+                  <RichEditor
                     value={descriptionValue}
-                    onChange={e => setDescriptionValue(e.target.value)}
+                    onChange={setDescriptionValue}
                     placeholder='Add a description...'
-                    className='min-h-[120px] resize-none text-base'
-                    onKeyDown={e => {
-                      if (e.key === 'Escape') {
-                        setDescriptionValue(issue.description || '');
-                        setEditingDescription(false);
-                      }
-                    }}
-                    autoFocus
+                    mode='compact'
+                    orgSlug={resolvedParams.orgSlug}
                   />
                   <div className='flex items-center gap-3'>
                     <Button
@@ -601,8 +597,8 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                       <div
                         className={cn(
                           canEditIssue
-                            ? 'prose prose-sm text-muted-foreground hover:text-foreground max-w-none cursor-pointer transition-colors'
-                            : 'prose prose-sm text-muted-foreground max-w-none',
+                            ? 'cursor-pointer transition-colors'
+                            : '',
                         )}
                         onClick={
                           canEditIssue
@@ -610,9 +606,12 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                             : undefined
                         }
                       >
-                        <p className='whitespace-pre-wrap'>
-                          {issue.description}
-                        </p>
+                        <RichEditor
+                          value={issue.description}
+                          onChange={() => {}}
+                          mode='compact'
+                          disabled={true}
+                        />
                       </div>
                     ) : (
                       <button
@@ -638,26 +637,18 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
             </div>
 
             {/* Sub-Issues */}
-            <div>
+            <div className='mb-6'>
               <div className='mb-2 flex items-center justify-between'>
                 <h2 className='text-sm font-semibold'>Sub-Issues</h2>
-                <PermissionAwareWrapper
+                <CreateIssueDialog
                   orgSlug={resolvedParams.orgSlug}
-                  permission={PERMISSIONS.ISSUE_CREATE}
-                  fallbackMessage="You don't have permission to create sub-issues"
-                >
-                  <Button
-                    size='sm'
-                    variant='outline'
-                    onClick={() => {
-                      // TODO: Open create issue dialog with this issue as parent
-                      console.log('Create sub-issue for', issue.key);
-                    }}
-                    className='h-6 text-xs'
-                  >
-                    + Add Sub-Issue
-                  </Button>
-                </PermissionAwareWrapper>
+                  defaultStates={{
+                    parentIssueId: issue._id,
+                    teamId: issue.teamId || undefined,
+                    projectId: issue.projectId || undefined,
+                  }}
+                  className='h-6 text-xs'
+                />
               </div>
               {issue.children && issue.children.length > 0 ? (
                 <div className='space-y-1'>
@@ -724,9 +715,10 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
             {/* Activity Feed */}
             <div>
               <h2 className='mb-2 text-sm font-semibold'>Activity</h2>
-              <div className='text-muted-foreground rounded-lg border p-8 text-center'>
-                Activity feed coming soon...
-              </div>
+              <IssueActivityFeed
+                orgSlug={resolvedParams.orgSlug}
+                issueId={issue._id}
+              />
             </div>
           </div>
         </div>

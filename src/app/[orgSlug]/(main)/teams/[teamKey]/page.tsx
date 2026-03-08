@@ -5,7 +5,7 @@ import { useQuery, useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichEditor } from '@/components/ui/rich-editor';
 import {
   Save,
   X,
@@ -16,6 +16,7 @@ import {
   Trash2,
   Target,
   FolderOpen,
+  FileText,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IconPicker } from '@/components/ui/icon-picker';
@@ -382,6 +383,12 @@ export default function TeamViewPage() {
     orgSlug,
   });
   const projects = projectsQuery.data ?? [];
+
+  const teamDocumentsQuery = useQuery(
+    api.documents.queries.list,
+    team?._id ? { orgSlug, teamId: team._id } : 'skip',
+  );
+  const teamDocuments = teamDocumentsQuery.data ?? [];
 
   const statusesQuery = useQuery(
     api.organizations.queries.listProjectStatuses,
@@ -1041,18 +1048,11 @@ export default function TeamViewPage() {
             <div className='mb-2'>
               {editingDescription ? (
                 <div className='space-y-4'>
-                  <Textarea
+                  <RichEditor
                     value={descriptionValue}
-                    onChange={e => setDescriptionValue(e.target.value)}
+                    onChange={setDescriptionValue}
                     placeholder='Add a description...'
-                    className='min-h-[120px] resize-none text-base'
-                    onKeyDown={e => {
-                      if (e.key === 'Escape') {
-                        setDescriptionValue(team?.description || '');
-                        setEditingDescription(false);
-                      }
-                    }}
-                    autoFocus
+                    mode='compact'
                   />
                   <div className='flex items-center gap-3'>
                     <Button
@@ -1083,7 +1083,12 @@ export default function TeamViewPage() {
                       )}
                       onClick={() => canEdit && setEditingDescription(true)}
                     >
-                      <p className='whitespace-pre-wrap'>{team?.description}</p>
+                      <RichEditor
+                        value={team.description}
+                        onChange={() => {}}
+                        mode='compact'
+                        disabled={true}
+                      />
                     </div>
                   ) : canEdit ? (
                     <button
@@ -1153,6 +1158,11 @@ export default function TeamViewPage() {
                         />
                       </div>
                     )}
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger asChild value='documents'>
+                  <div className='flex items-center gap-1'>
+                    <span className='truncate'>Documents</span>
                   </div>
                 </TabsTrigger>
                 <TabsTrigger asChild value='activity'>
@@ -1255,6 +1265,46 @@ export default function TeamViewPage() {
                         </h3>
                         <p className='text-muted-foreground mb-6'>
                           This team doesn&apos;t have any projects yet.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </TabsContent>
+
+              <TabsContent value='documents'>
+                <div className='rounded-lg border'>
+                  {teamDocuments && teamDocuments.length > 0 ? (
+                    <div className='divide-y'>
+                      {teamDocuments.map(doc => (
+                        <Link
+                          key={doc._id}
+                          href={`/${orgSlug}/documents/${doc._id}`}
+                          className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+                        >
+                          <FileText className='text-muted-foreground size-4 flex-shrink-0' />
+                          <div className='min-w-0 flex-1'>
+                            <div className='truncate text-sm font-medium'>
+                              {doc.title}
+                            </div>
+                            <div className='text-muted-foreground text-xs'>
+                              {doc.author?.name || doc.author?.email}
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className='flex items-center justify-center py-12'>
+                      <div className='text-center'>
+                        <div className='mb-4 flex justify-center'>
+                          <FileText className='text-muted-foreground/50 h-16 w-16' />
+                        </div>
+                        <h3 className='mb-2 text-lg font-semibold'>
+                          No documents found
+                        </h3>
+                        <p className='text-muted-foreground mb-6'>
+                          This team doesn&apos;t have any documents yet.
                         </p>
                       </div>
                     </div>

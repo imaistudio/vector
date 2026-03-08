@@ -355,6 +355,88 @@ export async function canDeleteProject(
 /**
  * Check if a user can manage project members (add/remove/update).
  */
+// -----------------------------------------------------------------------------
+// Document-Specific Access Control
+// -----------------------------------------------------------------------------
+
+/**
+ * Check if the current user can view a document.
+ */
+export async function canViewDocument(
+  ctx: QueryCtx | MutationCtx,
+  doc: Doc<'documents'>,
+): Promise<boolean> {
+  const userId = await getAuthUserId(ctx);
+  const vis: VisibilityState = (doc.visibility ??
+    'organization') as VisibilityState;
+
+  if (vis === 'public') return true;
+  if (!userId) return false;
+  if (doc.createdBy === userId) return true;
+
+  if (doc.teamId) {
+    const member = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', doc.teamId!).eq('userId', userId),
+      )
+      .first();
+    if (member) return true;
+  }
+
+  if (doc.projectId) {
+    const member = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', doc.projectId!).eq('userId', userId),
+      )
+      .first();
+    if (member) return true;
+  }
+
+  if (vis === 'private') {
+    return false;
+  }
+
+  if (vis === 'organization') {
+    const member = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', doc.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!member;
+  }
+
+  return hasPermission(ctx, scopeFromEntity(doc), PERMISSIONS.DOCUMENT_VIEW);
+}
+
+/**
+ * Check if the current user can edit a document.
+ */
+export async function canEditDocument(
+  ctx: QueryCtx | MutationCtx,
+  doc: Doc<'documents'>,
+): Promise<boolean> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return false;
+  if (doc.createdBy === userId) return true;
+  return hasPermission(ctx, scopeFromEntity(doc), PERMISSIONS.DOCUMENT_EDIT);
+}
+
+/**
+ * Check if the current user can delete a document.
+ */
+export async function canDeleteDocument(
+  ctx: QueryCtx | MutationCtx,
+  doc: Doc<'documents'>,
+): Promise<boolean> {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return false;
+  if (doc.createdBy === userId) return true;
+  return hasPermission(ctx, scopeFromEntity(doc), PERMISSIONS.DOCUMENT_DELETE);
+}
+
 export async function canManageProjectMembers(
   ctx: QueryCtx | MutationCtx,
   project: Doc<'projects'>,

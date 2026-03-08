@@ -2,7 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { type LucideIcon, CheckSquare, FolderOpen, Circle } from 'lucide-react';
+import {
+  type LucideIcon,
+  CheckSquare,
+  FileText,
+  FolderOpen,
+  Circle,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { CreateTeamButton } from '@/components/teams/create-team-button';
@@ -14,6 +20,7 @@ import { api } from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
 import type { ReactNode } from 'react';
 import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 
 interface NavItem {
   label: string;
@@ -43,6 +50,11 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   // Transform data to maintain frontend compatibility
   const userTeams = userTeamsData ? withIds(userTeamsData) : [];
   const userProjects = userProjectsData ? withIds(userProjectsData) : [];
+
+  const userDocumentsData = useQuery(api.documents.queries.list, {
+    orgSlug: orgSlug,
+  });
+  const userDocuments = userDocumentsData ?? [];
 
   const navItems: NavItem[] = [
     {
@@ -286,6 +298,65 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             {userProjects.length > 3 && (
               <div className='text-muted-foreground px-2 py-1.5 text-xs'>
                 +{userProjects.length - 3} more projects
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Documents Section */}
+        <div className='space-y-2'>
+          <div className='flex items-center justify-between px-2'>
+            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
+              Documents
+            </span>
+            <div className='flex items-center gap-1'>
+              <Link
+                href={`/${orgSlug}/documents`}
+                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+              >
+                View All
+              </Link>
+              <CreateDocumentDialog orgSlug={orgSlug} className='h-5 w-5' />
+            </div>
+          </div>
+
+          <div className='space-y-1'>
+            {userDocuments.length > 0 ? (
+              userDocuments.slice(0, 3).map(doc => {
+                const docHref = `/${orgSlug}/documents/${doc._id}`;
+                const isActive =
+                  pathname === docHref || pathname.startsWith(docHref + '/');
+
+                return (
+                  <Link
+                    key={doc._id}
+                    href={docHref}
+                    onClick={onNavigate}
+                    className={cn(
+                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                      'hover:bg-foreground/5 text-foreground',
+                      {
+                        'bg-foreground/5': isActive,
+                      },
+                    )}
+                  >
+                    <FileText
+                      className='size-3 flex-shrink-0'
+                      style={{ color: '#6b7280' }}
+                    />
+                    <span className='truncate'>{doc.title}</span>
+                  </Link>
+                );
+              })
+            ) : (
+              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+                No documents yet
+              </div>
+            )}
+
+            {userDocuments.length > 3 && (
+              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+                +{userDocuments.length - 3} more documents
               </div>
             )}
           </div>

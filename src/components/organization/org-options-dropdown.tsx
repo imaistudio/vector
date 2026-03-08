@@ -52,8 +52,8 @@ export function OrgOptionsDropdown({
   };
 
   const handleSettingsClick = () => {
-    window.location.href = `/${currentOrgSlug}/settings`;
     setIsOpen(false);
+    window.location.href = `/${currentOrgSlug}/settings`;
   };
 
   return (
@@ -93,7 +93,7 @@ export function OrgOptionsDropdown({
           {/* Current Organization */}
           <DropdownMenuItem
             className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-            onSelect={() => handleOrgSwitch(currentOrgSlug)}
+            onClick={() => handleOrgSwitch(currentOrgSlug)}
           >
             {currentOrgLogo ? (
               <img
@@ -117,7 +117,7 @@ export function OrgOptionsDropdown({
               <DropdownMenuItem
                 key={org._id}
                 className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-                onSelect={() => handleOrgSwitch(org.slug)}
+                onClick={() => handleOrgSwitch(org.slug)}
               >
                 {org.logo ? (
                   <img
@@ -140,7 +140,7 @@ export function OrgOptionsDropdown({
         {/* Organization Actions */}
         <DropdownMenuItem
           className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-          onSelect={handleSettingsClick}
+          onClick={handleSettingsClick}
         >
           <Settings className='size-4' />
           <span className='text-sm'>Organization settings</span>
@@ -149,7 +149,10 @@ export function OrgOptionsDropdown({
         {canManageMembers && (
           <DropdownMenuItem
             className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-            onSelect={() => setShowInviteDialog(true)}
+            onClick={() => {
+              setIsOpen(false);
+              setShowInviteDialog(true);
+            }}
           >
             <UserPlus className='size-4' />
             <span className='text-sm'>Invite members</span>
@@ -159,7 +162,7 @@ export function OrgOptionsDropdown({
         {/* Create New Organization */}
         <DropdownMenuItem
           className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-          onSelect={handleCreateOrg}
+          onClick={handleCreateOrg}
         >
           <div className='border-muted-foreground/60 flex size-4 items-center justify-center rounded border border-dashed'>
             <Plus className='size-2.5' />

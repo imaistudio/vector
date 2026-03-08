@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -18,21 +17,7 @@ import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { useScopedPermission } from '@/hooks/use-permissions';
 import { PermissionAware } from '@/components/ui/permission-aware';
 import type { Id } from '../../../convex/_generated/dataModel';
-
-// Helper to derive initials from a name/email
-function getAssigneeInitials(
-  name?: string | null,
-  email?: string | null,
-): string {
-  const displayName = name || email;
-  if (!displayName) return '?';
-  return displayName
-    .split(' ')
-    .map(part => part.charAt(0))
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-}
+import { UserAvatar } from '@/components/user-avatar';
 
 export interface IssueAssignmentsProps {
   orgSlug: string;
@@ -195,14 +180,14 @@ export function IssueAssignments({
                     <div className='hover:bg-muted/30 -m-1 flex cursor-pointer items-center gap-2 rounded-md p-1 transition-colors'>
                       {assignment.assigneeId && assignment.assignee ? (
                         <>
-                          <Avatar className='h-6 w-6 flex-shrink-0'>
-                            <AvatarFallback className='text-xs'>
-                              {getAssigneeInitials(
-                                assignment.assignee.name,
-                                assignment.assignee.email,
-                              )}
-                            </AvatarFallback>
-                          </Avatar>
+                          <UserAvatar
+                            name={assignment.assignee.name}
+                            email={assignment.assignee.email}
+                            image={assignment.assignee.image}
+                            userId={assignment.assigneeId}
+                            size='sm'
+                            className='flex-shrink-0'
+                          />
                           <span className='truncate text-sm'>
                             {assignment.assignee.name ||
                               assignment.assignee.email}
