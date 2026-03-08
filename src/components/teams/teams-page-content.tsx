@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { CreateTeamButton, TeamsTable } from '@/components/teams';
 import { Button } from '@/components/ui/button';
 
 import { PageSkeleton } from '@/components/ui/table-skeleton';
+import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Id } from '@/convex/_generated/dataModel';
@@ -26,8 +27,6 @@ export function TeamsPageContent({
   const [page, setPage] = useState(1);
 
   const teamsData = useQuery(api.teams.queries.list, { orgSlug });
-  const total = teamsData?.length ?? 0;
-
   const isLoading = teamsData === undefined;
 
   // Transform teams data to match expected interface
@@ -44,12 +43,13 @@ export function TeamsPageContent({
       memberCount: team.memberCount,
     })) ?? [];
 
-  // Ensure page stays within bounds when total changes
-  useEffect(() => {
-    if (page !== 1 && (page - 1) * PAGE_SIZE >= total) {
-      setPage(1);
-    }
-  }, [total, page]);
+  const total = teams.length;
+
+  // Clamp page to valid range during render instead of via effect
+  const safePage = useMemo(() => {
+    const maxPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    return page > maxPage ? 1 : page;
+  }, [page, total]);
 
   // --------------------------------------------------
   // Team operations
@@ -83,6 +83,7 @@ export function TeamsPageContent({
       <div className='border-b'>
         <div className='flex items-center justify-between p-1'>
           <div className='flex items-center gap-1'>
+            <MobileNavTrigger />
             <Button
               variant='secondary'
               size='sm'

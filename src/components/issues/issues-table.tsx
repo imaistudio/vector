@@ -302,12 +302,12 @@ export function IssuesTable({
                 </PermissionAware>
 
                 {/* Issue Key */}
-                <div className='flex flex-shrink-0 items-center gap-2'>
+                <div className='hidden flex-shrink-0 items-center gap-2 sm:flex'>
                   <span className='text-muted-foreground font-mono text-xs'>
                     {issue.key}
                   </span>
                   {issue.parentIssueKey && (
-                    <div className='flex items-center gap-1'>
+                    <div className='hidden items-center gap-1 md:flex'>
                       <ArrowUp className='text-muted-foreground/60 h-3 w-3' />
                       <span className='text-muted-foreground/60 font-mono text-xs'>
                         {issue.parentIssueKey}
@@ -337,42 +337,44 @@ export function IssuesTable({
                   </Link>
                 </div>
 
-                {/* Team / Project selectors */}
-                {issue.teamKey && (
-                  <PermissionAware
-                    orgSlug={orgSlug}
-                    permission={PERMISSIONS.ISSUE_EDIT}
-                    fallbackMessage="You don't have permission to change issue team"
-                  >
-                    <TeamSelector
-                      teams={teams}
-                      selectedTeam={
-                        teams.find(t => t.key === issue.teamKey)?._id || ''
-                      }
-                      onTeamSelect={tid => onTeamChange(issue.id, tid)}
-                    />
-                  </PermissionAware>
-                )}
+                {/* Team / Project selectors - hidden on mobile */}
+                <div className='hidden md:contents'>
+                  {issue.teamKey && (
+                    <PermissionAware
+                      orgSlug={orgSlug}
+                      permission={PERMISSIONS.ISSUE_EDIT}
+                      fallbackMessage="You don't have permission to change issue team"
+                    >
+                      <TeamSelector
+                        teams={teams}
+                        selectedTeam={
+                          teams.find(t => t.key === issue.teamKey)?._id || ''
+                        }
+                        onTeamSelect={tid => onTeamChange(issue.id, tid)}
+                      />
+                    </PermissionAware>
+                  )}
 
-                {issue.projectKey && (
-                  <PermissionAware
-                    orgSlug={orgSlug}
-                    permission={PERMISSIONS.ISSUE_EDIT}
-                    fallbackMessage="You don't have permission to change issue project"
-                  >
-                    <ProjectSelector
-                      projects={projects}
-                      selectedProject={
-                        projects.find(p => p.key === issue.projectKey)?._id ||
-                        ''
-                      }
-                      onProjectSelect={pid => onProjectChange(issue.id, pid)}
-                    />
-                  </PermissionAware>
-                )}
+                  {issue.projectKey && (
+                    <PermissionAware
+                      orgSlug={orgSlug}
+                      permission={PERMISSIONS.ISSUE_EDIT}
+                      fallbackMessage="You don't have permission to change issue project"
+                    >
+                      <ProjectSelector
+                        projects={projects}
+                        selectedProject={
+                          projects.find(p => p.key === issue.projectKey)?._id ||
+                          ''
+                        }
+                        onProjectSelect={pid => onProjectChange(issue.id, pid)}
+                      />
+                    </PermissionAware>
+                  )}
+                </div>
 
-                {/* Last Updated */}
-                <div className='flex-shrink-0'>
+                {/* Last Updated - hidden on mobile */}
+                <div className='hidden flex-shrink-0 sm:block'>
                   <span className='text-muted-foreground text-xs'>
                     {formatDateHuman(new Date(issue.updatedAt))}
                   </span>

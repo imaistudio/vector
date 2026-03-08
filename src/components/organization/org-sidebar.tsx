@@ -25,9 +25,10 @@ interface NavItem {
 
 interface OrgSidebarProps {
   orgSlug: string;
+  onNavigate?: () => void;
 }
 
-export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
+export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const pathname = usePathname();
 
   // Fetch user's teams and projects
@@ -87,6 +88,7 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
                 <Link
                   href={item.href}
                   className='flex flex-1 items-center gap-2 outline-none'
+                  onClick={onNavigate}
                 >
                   <item.icon className='size-4' />
                   <span>{item.label}</span>
@@ -141,6 +143,7 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
                   <Link
                     key={team.id}
                     href={teamHref}
+                    onClick={onNavigate}
                     className={cn(
                       'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
                       'hover:bg-foreground/5 text-foreground',
@@ -216,6 +219,7 @@ export function OrgSidebar({ orgSlug }: OrgSidebarProps) {
                   <Link
                     key={project.id}
                     href={projectHref}
+                    onClick={onNavigate}
                     className={cn(
                       'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
                       'hover:bg-foreground/5 text-foreground',

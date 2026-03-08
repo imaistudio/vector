@@ -6,6 +6,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -84,53 +85,55 @@ export function OrgOptionsDropdown({
 
       <DropdownMenuContent className='w-56' align='start' sideOffset={4}>
         {/* Organization Switcher */}
-        <DropdownMenuLabel className='text-muted-foreground px-2 py-1 text-xs font-medium'>
-          Switch Organizations
-        </DropdownMenuLabel>
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className='text-muted-foreground px-2 py-1 text-xs font-medium'>
+            Switch Organizations
+          </DropdownMenuLabel>
 
-        {/* Current Organization */}
-        <DropdownMenuItem
-          className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-          onSelect={() => handleOrgSwitch(currentOrgSlug)}
-        >
-          {currentOrgLogo ? (
-            <img
-              src={`/api/files/${currentOrgLogo}`}
-              alt='Logo'
-              className='size-4 rounded object-cover'
-            />
-          ) : (
-            <div className='bg-primary text-primary-foreground flex size-4 items-center justify-center rounded text-xs font-semibold'>
-              {currentOrgName.charAt(0).toUpperCase()}
-            </div>
-          )}
-          <span className='flex-1 truncate text-sm'>{currentOrgName}</span>
-          <Check className='text-primary size-3' />
-        </DropdownMenuItem>
+          {/* Current Organization */}
+          <DropdownMenuItem
+            className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
+            onSelect={() => handleOrgSwitch(currentOrgSlug)}
+          >
+            {currentOrgLogo ? (
+              <img
+                src={`/api/files/${currentOrgLogo}`}
+                alt='Logo'
+                className='size-4 rounded object-cover'
+              />
+            ) : (
+              <div className='bg-primary text-primary-foreground flex size-4 items-center justify-center rounded text-xs font-semibold'>
+                {currentOrgName.charAt(0).toUpperCase()}
+              </div>
+            )}
+            <span className='flex-1 truncate text-sm'>{currentOrgName}</span>
+            <Check className='text-primary size-3' />
+          </DropdownMenuItem>
 
-        {/* Other Organizations */}
-        {organizations
-          .filter(org => org.slug !== currentOrgSlug)
-          .map(org => (
-            <DropdownMenuItem
-              key={org._id}
-              className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
-              onSelect={() => handleOrgSwitch(org.slug)}
-            >
-              {org.logo ? (
-                <img
-                  src={`/api/files/${org.logo}`}
-                  alt='Logo'
-                  className='size-4 rounded object-cover'
-                />
-              ) : (
-                <div className='bg-muted text-muted-foreground flex size-4 items-center justify-center rounded text-xs font-semibold'>
-                  {org.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              <span className='flex-1 truncate text-sm'>{org.name}</span>
-            </DropdownMenuItem>
-          ))}
+          {/* Other Organizations */}
+          {organizations
+            .filter(org => org.slug !== currentOrgSlug)
+            .map(org => (
+              <DropdownMenuItem
+                key={org._id}
+                className='flex cursor-pointer items-center gap-2 px-2 py-1.5'
+                onSelect={() => handleOrgSwitch(org.slug)}
+              >
+                {org.logo ? (
+                  <img
+                    src={`/api/files/${org.logo}`}
+                    alt='Logo'
+                    className='size-4 rounded object-cover'
+                  />
+                ) : (
+                  <div className='bg-muted text-muted-foreground flex size-4 items-center justify-center rounded text-xs font-semibold'>
+                    {org.name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className='flex-1 truncate text-sm'>{org.name}</span>
+              </DropdownMenuItem>
+            ))}
+        </DropdownMenuGroup>
 
         <DropdownMenuSeparator />
 

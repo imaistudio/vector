@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 const header = (
   <div className='border-b'>
-    <div className='flex items-center p-1'>
+    <div className='flex items-center p-1 pl-8 lg:pl-1'>
       <span className='flex items-center gap-1.5 px-3 text-xs font-medium'>
         <User className='size-3.5' />
         Profile

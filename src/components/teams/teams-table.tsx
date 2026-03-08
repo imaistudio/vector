@@ -145,8 +145,8 @@ export function TeamsTable({
                 </span>
                 {team.description && (
                   <>
-                    <div className='bg-muted h-4 w-px' />
-                    <p className='text-muted-foreground max-w-xs truncate text-xs'>
+                    <div className='bg-muted hidden h-4 w-px sm:block' />
+                    <p className='text-muted-foreground hidden max-w-xs truncate text-xs sm:block'>
                       {team.description}
                     </p>
                   </>
@@ -170,11 +170,12 @@ export function TeamsTable({
 
               {/* Member Count */}
               <div className='text-muted-foreground flex-shrink-0 text-xs'>
-                <span>{team.memberCount || 0} members</span>
+                <span>{team.memberCount || 0}</span>
+                <span className='hidden sm:inline'> members</span>
               </div>
 
-              {/* Created Date */}
-              <div className='text-muted-foreground flex-shrink-0 text-xs'>
+              {/* Created Date - hidden on mobile */}
+              <div className='text-muted-foreground hidden flex-shrink-0 text-xs md:block'>
                 <span>
                   Created{' '}
                   {team.createdAt ? formatDateHuman(team.createdAt) : '—'}

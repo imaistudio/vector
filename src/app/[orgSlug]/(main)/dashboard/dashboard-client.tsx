@@ -4,6 +4,7 @@ import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { Users, FolderOpen, GitBranch, Bug } from 'lucide-react';
+import { MobileNavTrigger } from '../layout';
 
 interface DashboardClientProps {
   orgSlug: string;
@@ -41,6 +42,7 @@ export default function DashboardClient({ orgSlug }: DashboardClientProps) {
       <div className='border-b'>
         <div className='flex items-center justify-between p-1'>
           <div className='flex items-center gap-1'>
+            <MobileNavTrigger />
             <span className='px-3 text-xs font-medium'>Dashboard</span>
           </div>
         </div>
