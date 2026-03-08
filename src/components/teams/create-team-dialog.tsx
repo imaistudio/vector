@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichEditor } from '@/components/ui/rich-editor';
 import { Button } from '@/components/ui/button';
 import {
   ResponsiveDialog,
@@ -180,17 +180,12 @@ function CreateTeamDialogContent({
           </div>
 
           {/* Description */}
-          <div className='relative'>
-            <Textarea
-              placeholder='Add description...'
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              className='border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 pr-20 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
-            />
-            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
-              Description
-            </span>
-          </div>
+          <RichEditor
+            value={description}
+            onChange={setDescription}
+            placeholder='Add description...'
+            mode='compact'
+          />
         </form>
 
         <div className='flex w-full flex-row items-center justify-between gap-2'>

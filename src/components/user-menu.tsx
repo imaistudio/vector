@@ -11,10 +11,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { UserAvatar } from '@/components/user-avatar';
 
 export function UserMenu() {
   const user = useQuery(api.users.currentUser);
@@ -28,12 +28,13 @@ export function UserMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant='ghost' className='w-full justify-start gap-2 p-2'>
-          <Avatar className='size-6'>
-            {user.image && <AvatarImage src={user.image} alt={user.name} />}
-            <AvatarFallback className='text-xs'>
-              {user.name?.[0]}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            name={user.name}
+            email={user.email}
+            image={user.image}
+            userId={user._id}
+            size='sm'
+          />
           <div className='flex min-w-0 flex-col items-start'>
             <span className='truncate text-sm font-medium'>{user.name}</span>
           </div>

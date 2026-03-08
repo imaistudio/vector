@@ -1,9 +1,18 @@
 'use client';
 
+import { useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { format, isToday, isYesterday } from 'date-fns';
-import { FolderOpen, MessageSquare, Target, Users } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  FolderOpen,
+  MessageSquare,
+  Target,
+  Users,
+} from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -19,7 +28,7 @@ type ActivityStatus =
 export interface ActivityFeedItem {
   _id: string;
   createdAt: number;
-  entityType: 'issue' | 'project' | 'team';
+  entityType: 'issue' | 'project' | 'team' | 'document';
   eventType: string;
   actor: {
     _id: string;
@@ -34,7 +43,7 @@ export interface ActivityFeedItem {
     image: string | null;
   } | null;
   target: {
-    type: 'issue' | 'project' | 'team';
+    type: 'issue' | 'project' | 'team' | 'document';
     id: string | null;
     key: string | null;
     name: string | null;
@@ -56,6 +65,8 @@ interface ActivityFeedListProps {
   status: ActivityStatus;
   loadMore: (count: number) => void;
   emptyMessage: string;
+  /** Number of items to load per "Show more" click (default: 20) */
+  pageSize?: number;
   className?: string;
 }
 
@@ -70,10 +81,14 @@ function getInitials(name?: string | null) {
 }
 
 function getTargetHref(orgSlug: string, target: ActivityFeedItem['target']) {
-  if (!target.key) return null;
-  if (target.type === 'issue') return `/${orgSlug}/issues/${target.key}`;
-  if (target.type === 'project') return `/${orgSlug}/projects/${target.key}`;
-  return `/${orgSlug}/teams/${target.key}`;
+  if (!target.key && !target.id) return null;
+  if (target.type === 'issue')
+    return target.key ? `/${orgSlug}/issues/${target.key}` : null;
+  if (target.type === 'project')
+    return target.key ? `/${orgSlug}/projects/${target.key}` : null;
+  if (target.type === 'document')
+    return target.id ? `/${orgSlug}/documents/${target.id}` : null;
+  return target.key ? `/${orgSlug}/teams/${target.key}` : null;
 }
 
 function ActivityTarget({
@@ -371,6 +386,79 @@ function renderActivityDescription(
           </span>
         </>
       );
+    case 'document_created':
+      return (
+        <>
+          created <ActivityTarget orgSlug={orgSlug} target={item.target} />
+        </>
+      );
+    case 'document_title_changed':
+      return (
+        <>
+          renamed <ActivityTarget orgSlug={orgSlug} target={item.target} /> from{' '}
+          <span className='text-foreground/75'>{details.fromLabel ?? '—'}</span>{' '}
+          to{' '}
+          <span className='text-foreground/75'>{details.toLabel ?? '—'}</span>
+        </>
+      );
+    case 'document_content_changed':
+      return (
+        <>
+          updated the content of{' '}
+          <ActivityTarget orgSlug={orgSlug} target={item.target} />
+        </>
+      );
+    case 'document_team_changed':
+      return (
+        <>
+          changed the team on{' '}
+          <ActivityTarget orgSlug={orgSlug} target={item.target} /> from{' '}
+          <span className='text-foreground/75'>
+            {details.fromLabel ?? 'Unset'}
+          </span>{' '}
+          to{' '}
+          <span className='text-foreground/75'>
+            {details.toLabel ?? 'Unset'}
+          </span>
+        </>
+      );
+    case 'document_project_changed':
+      return (
+        <>
+          changed the project on{' '}
+          <ActivityTarget orgSlug={orgSlug} target={item.target} /> from{' '}
+          <span className='text-foreground/75'>
+            {details.fromLabel ?? 'Unset'}
+          </span>{' '}
+          to{' '}
+          <span className='text-foreground/75'>
+            {details.toLabel ?? 'Unset'}
+          </span>
+        </>
+      );
+    case 'document_visibility_changed':
+      return (
+        <>
+          changed visibility on{' '}
+          <ActivityTarget orgSlug={orgSlug} target={item.target} /> from{' '}
+          <span className='text-foreground/75'>
+            {details.fromLabel ?? 'Unset'}
+          </span>{' '}
+          to{' '}
+          <span className='text-foreground/75'>
+            {details.toLabel ?? 'Unset'}
+          </span>
+        </>
+      );
+    case 'document_deleted':
+      return (
+        <>
+          deleted{' '}
+          <span className='text-foreground/75'>
+            {item.target.name ?? 'a document'}
+          </span>
+        </>
+      );
     default:
       return (
         <>
@@ -446,6 +534,8 @@ function ActivityRow({
             <FolderOpen className='size-3.5' />
           ) : item.entityType === 'team' ? (
             <Users className='size-3.5' />
+          ) : item.entityType === 'document' ? (
+            <FileText className='size-3.5' />
           ) : (
             <Target className='size-3.5' />
           )}
@@ -489,8 +579,14 @@ export function ActivityFeedList({
   status,
   loadMore,
   emptyMessage,
+  pageSize = 20,
   className,
 }: ActivityFeedListProps) {
+  const [page, setPage] = useState(0);
+
+  // Reset to first page when items become empty (valid setState-during-render pattern)
+  if (items.length === 0 && page !== 0) setPage(0);
+
   if (status === 'LoadingFirstPage') {
     return <ActivityFeedSkeleton />;
   }
@@ -503,10 +599,27 @@ export function ActivityFeedList({
     );
   }
 
-  const groups = groupByDay(items);
+  const start = page * pageSize;
+  const end = start + pageSize;
+  const pageItems = items.slice(start, end);
+  const groups = groupByDay(pageItems);
+
+  const hasMoreOnServer = status !== 'Exhausted';
+  const hasNextPage = end < items.length || hasMoreOnServer;
+  const totalPages = hasMoreOnServer
+    ? page + 2 // At least one more page
+    : Math.max(1, Math.ceil(items.length / pageSize));
+
+  const handleNext = () => {
+    if (end >= items.length && hasMoreOnServer) {
+      // Need to fetch more from server before advancing
+      loadMore(pageSize);
+    }
+    setPage(p => p + 1);
+  };
 
   return (
-    <div className={cn('space-y-3', className)}>
+    <div className={cn('space-y-0', className)}>
       <div className='rounded-lg border'>
         {groups.map((group, groupIndex) => (
           <div key={group.dateKey}>
@@ -523,22 +636,39 @@ export function ActivityFeedList({
             ))}
           </div>
         ))}
-      </div>
 
-      {status !== 'Exhausted' ? (
-        <div className='flex justify-center'>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            className='h-8 px-3 text-xs'
-            onClick={() => loadMore(20)}
-            disabled={status === 'LoadingMore'}
-          >
-            {status === 'LoadingMore' ? 'Fetching more' : 'Load more'}
-          </Button>
-        </div>
-      ) : null}
+        {/* Pagination footer */}
+        {(totalPages > 1 || hasNextPage) && (
+          <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
+            <span>
+              Page {page + 1}
+              {!hasMoreOnServer ? ` of ${totalPages}` : ''}
+            </span>
+            <div className='flex items-center gap-1'>
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='h-6 w-6 p-0'
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0}
+              >
+                <ChevronLeft className='size-3.5' />
+              </Button>
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                className='h-6 w-6 p-0'
+                onClick={handleNext}
+                disabled={!hasNextPage || status === 'LoadingMore'}
+              >
+                <ChevronRight className='size-3.5' />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

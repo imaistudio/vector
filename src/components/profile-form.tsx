@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -17,6 +18,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { useFormSubmission } from '@/hooks/use-error-handling';
 import { Skeleton } from '@/components/ui/skeleton';
+import { UserAvatar } from '@/components/user-avatar';
+import { toast } from 'sonner';
 
 const profileFormSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters.'),
@@ -27,6 +30,16 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export function ProfileForm() {
   const user = useQuery(api.users.currentUser);
   const updateProfile = useMutation(api.users.updateProfile);
+  const generateProfileImageUploadUrl = useMutation(
+    api.users.generateProfileImageUploadUrl,
+  );
+  const updateProfileImage = useMutation(api.users.updateProfileImage);
+  const removeProfileImage = useMutation(api.users.removeProfileImage);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isRemovingImage, setIsRemovingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null | undefined>();
+  const previewUrlRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { submit, isSubmitting, error } = useFormSubmission(updateProfile, {
     context: 'Profile update',
@@ -45,9 +58,108 @@ export function ProfileForm() {
     await submit(data);
   }
 
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current?.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+    };
+  }, []);
+
+  async function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose an image file');
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Profile images must be 5 MB or smaller');
+      e.target.value = '';
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    if (previewUrlRef.current?.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrlRef.current);
+    }
+    previewUrlRef.current = objectUrl;
+    setPreviewImage(objectUrl);
+
+    try {
+      setIsUploadingImage(true);
+
+      const uploadUrl = await generateProfileImageUploadUrl({});
+      const uploadRes = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const { storageId } = await uploadRes.json();
+      const result = await updateProfileImage({ storageId });
+
+      if (previewUrlRef.current?.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+
+      previewUrlRef.current = result.imageUrl;
+      setPreviewImage(result.imageUrl);
+    } catch (err) {
+      if (previewUrlRef.current?.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+
+      previewUrlRef.current = user?.image ?? null;
+      setPreviewImage(undefined);
+      toast.error((err as Error)?.message || 'Failed to upload profile image');
+    } finally {
+      e.target.value = '';
+      setIsUploadingImage(false);
+    }
+  }
+
+  async function handleRemoveImage() {
+    try {
+      setIsRemovingImage(true);
+      await removeProfileImage({});
+
+      if (previewUrlRef.current?.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrlRef.current);
+      }
+
+      previewUrlRef.current = null;
+      setPreviewImage(null);
+    } catch (err) {
+      toast.error((err as Error)?.message || 'Failed to remove profile image');
+    } finally {
+      setIsRemovingImage(false);
+    }
+  }
+
   if (!user) {
     return (
       <div className='space-y-6'>
+        <div className='flex items-start gap-3 rounded-lg border p-3'>
+          <Skeleton className='size-14 rounded-full' />
+          <div className='min-w-0 flex-1 space-y-2'>
+            <Skeleton className='h-4 w-20' />
+            <Skeleton className='h-3 w-64' />
+            <div className='flex gap-2'>
+              <Skeleton className='h-8 w-24' />
+              <Skeleton className='h-8 w-16' />
+            </div>
+          </div>
+        </div>
         <div className='grid gap-6 sm:grid-cols-2'>
           <div className='space-y-2'>
             <Skeleton className='h-4 w-20' />
@@ -60,8 +172,63 @@ export function ProfileForm() {
     );
   }
 
+  const displayedImage =
+    previewImage === undefined ? (user.image ?? null) : previewImage;
+  const hasProfileImage =
+    previewImage === undefined ? Boolean(user.image) : Boolean(previewImage);
+
   return (
     <div className='space-y-6'>
+      <div className='flex items-start gap-3 rounded-lg border p-3'>
+        <UserAvatar
+          name={user.name}
+          email={user.email}
+          image={displayedImage}
+          userId={user._id}
+          size='lg'
+          className='size-14'
+        />
+        <div className='min-w-0 flex-1'>
+          <div className='text-sm font-medium'>Profile photo</div>
+          <p className='text-muted-foreground mt-1 text-xs'>
+            Upload an image or keep the generated avatar based on your email.
+          </p>
+          <div className='mt-3 flex flex-wrap items-center gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={isUploadingImage}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploadingImage
+                ? 'Uploading photo'
+                : hasProfileImage
+                  ? 'Change photo'
+                  : 'Upload photo'}
+            </Button>
+            {hasProfileImage && (
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                disabled={isRemovingImage}
+                onClick={handleRemoveImage}
+              >
+                {isRemovingImage ? 'Removing photo' : 'Remove photo'}
+              </Button>
+            )}
+          </div>
+          <input
+            ref={fileInputRef}
+            type='file'
+            accept='image/*'
+            className='hidden'
+            onChange={handleImageChange}
+          />
+        </div>
+      </div>
+
       <div className='grid gap-6 sm:grid-cols-2'>
         <div className='space-y-2'>
           <Form {...form}>

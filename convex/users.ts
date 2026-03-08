@@ -1,9 +1,36 @@
-import { query, mutation, action } from './_generated/server';
+import { query, mutation, action, type MutationCtx } from './_generated/server';
 import { v, ConvexError } from 'convex/values';
-import { api, internal } from './_generated/api';
+import { api, components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { createAuth } from './auth';
 import { getAuthUserId } from './authUtils';
+
+async function syncBetterAuthUser(
+  ctx: MutationCtx,
+  userId: Id<'users'>,
+  update: {
+    name?: string;
+    image?: string | null;
+  },
+) {
+  if (update.name === undefined && update.image === undefined) {
+    return;
+  }
+
+  await ctx.runMutation(components.betterAuth.adapter.updateOne, {
+    input: {
+      model: 'user',
+      update,
+      where: [
+        {
+          field: 'userId',
+          operator: 'eq',
+          value: userId,
+        },
+      ],
+    },
+  });
+}
 
 /**
  * Get the current authenticated user
@@ -36,6 +63,63 @@ export const updateProfile = mutation({
 
     await ctx.db.patch('users', userId, {
       name: args.name,
+    });
+    await syncBetterAuthUser(ctx, userId, {
+      name: args.name,
+    });
+
+    return { success: true };
+  },
+});
+
+export const generateProfileImageUploadUrl = mutation({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+export const updateProfileImage = mutation({
+  args: {
+    storageId: v.id('_storage'),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const imageUrl = `/api/files/${args.storageId}`;
+
+    await ctx.db.patch('users', userId, {
+      image: imageUrl,
+    });
+    await syncBetterAuthUser(ctx, userId, {
+      image: imageUrl,
+    });
+
+    return { imageUrl };
+  },
+});
+
+export const removeProfileImage = mutation({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    await ctx.db.patch('users', userId, {
+      image: '',
+    });
+    await syncBetterAuthUser(ctx, userId, {
+      image: null,
     });
 
     return { success: true };

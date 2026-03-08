@@ -99,14 +99,11 @@ export function NotificationsSheet({
                 <CheckCheck className='size-3.5' />
                 Mark all read
               </Button>
-              <Button
-                variant='outline'
-                size='sm'
-                className='h-7'
-                render={<Link href='/settings/notifications' />}
-              >
-                Settings
-              </Button>
+              <Link href='/settings/notifications'>
+                <Button variant='outline' size='sm' className='h-7'>
+                  Settings
+                </Button>
+              </Link>
             </div>
           </div>
 

@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'motion/react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -24,6 +23,7 @@ import { Id } from '@/convex/_generated/dataModel';
 // Permission system
 import { PermissionAware } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { UserAvatar } from '@/components/user-avatar';
 
 interface Team {
   id: string;
@@ -62,20 +62,6 @@ export function TeamsTable({
       teamId: teamId as Id<'teams'>,
       data: { icon: iconName || undefined },
     });
-  };
-
-  const getInitials = (
-    name: string | null | undefined,
-    email: string | null | undefined,
-  ): string => {
-    const displayName = name || email;
-    if (!displayName) return '?';
-    return displayName
-      .split(' ')
-      .map(part => part.charAt(0))
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
   };
 
   if (teams.length === 0) {
@@ -156,11 +142,13 @@ export function TeamsTable({
               {/* Team Lead */}
               <div className='flex-shrink-0'>
                 {team.lead ? (
-                  <Avatar className='size-5'>
-                    <AvatarFallback className='text-xs'>
-                      {getInitials(team.lead.name, team.lead.email)}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={team.lead.name}
+                    email={team.lead.email}
+                    userId={team.lead._id}
+                    size='sm'
+                    className='size-5'
+                  />
                 ) : (
                   <div className='text-muted-foreground flex size-5 items-center justify-center'>
                     <Users className='size-3' />

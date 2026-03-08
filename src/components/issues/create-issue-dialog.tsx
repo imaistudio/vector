@@ -27,7 +27,7 @@ import {
   MoreHorizontal,
   Plus,
 } from 'lucide-react';
-import { Textarea } from '../ui/textarea';
+import { RichEditor } from '../ui/rich-editor';
 import { cn } from '@/lib/utils';
 import { Id } from '@/convex/_generated/dataModel';
 import { withIds } from '@/lib/convex-helpers';
@@ -208,7 +208,9 @@ function CreateIssueDialogContent({
   );
   const [selectedVisibility, setSelectedVisibility] =
     useState<VisibilityState>('organization');
-  const [selectedParentIssue, setSelectedParentIssue] = useState<string>('');
+  const [selectedParentIssue, setSelectedParentIssue] = useState<string>(
+    (defaultStates?.parentIssueId as string) || '',
+  );
   const [manualFormatOverride, setManualFormatOverride] = useState<
     'team' | 'project' | 'org' | null
   >(null);
@@ -490,11 +492,11 @@ function CreateIssueDialogContent({
           </div>
 
           {/* Description */}
-          <Textarea
-            placeholder='Add description...'
+          <RichEditor
             value={description}
-            onChange={e => setDescription(e.target.value)}
-            className='border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full resize-none rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none'
+            onChange={setDescription}
+            placeholder='Add description...'
+            mode='compact'
           />
         </form>
 

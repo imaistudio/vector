@@ -6,7 +6,7 @@ import { api } from '@/lib/convex';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { RichEditor } from '@/components/ui/rich-editor';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -165,11 +165,11 @@ export function CreateIssueSimple({
           {/* Description */}
           <div>
             <label className='text-sm font-medium'>Description</label>
-            <Textarea
-              placeholder='Add a description...'
+            <RichEditor
               value={description}
-              onChange={e => setDescription(e.target.value)}
-              className='min-h-[80px] resize-none'
+              onChange={setDescription}
+              placeholder='Add a description...'
+              mode='compact'
             />
           </div>
 

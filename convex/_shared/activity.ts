@@ -1,6 +1,11 @@
 import { v } from 'convex/values';
 
-export const ACTIVITY_ENTITY_TYPES = ['team', 'project', 'issue'] as const;
+export const ACTIVITY_ENTITY_TYPES = [
+  'team',
+  'project',
+  'issue',
+  'document',
+] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 
 export const ACTIVITY_EVENT_TYPES = [
@@ -41,6 +46,13 @@ export const ACTIVITY_EVENT_TYPES = [
   'issue_visibility_changed',
   'issue_comment_added',
   'issue_sub_issue_created',
+  'document_created',
+  'document_title_changed',
+  'document_content_changed',
+  'document_team_changed',
+  'document_project_changed',
+  'document_visibility_changed',
+  'document_deleted',
 ] as const;
 
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
@@ -58,6 +70,7 @@ export const ACTIVITY_FIELDS = [
   'assignees',
   'project',
   'role',
+  'content',
 ] as const;
 
 export type ActivityField = (typeof ACTIVITY_FIELDS)[number];
@@ -84,6 +97,7 @@ const activityReferenceIdValidator = v.union(
   v.id('projectStatuses'),
   v.id('issueStates'),
   v.id('issuePriorities'),
+  v.id('documents'),
 );
 
 export const activityDetailsValidator = v.object({

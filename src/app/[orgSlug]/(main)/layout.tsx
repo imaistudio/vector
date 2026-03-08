@@ -172,11 +172,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
               <div className='flex-1 overflow-y-auto'>
                 <OrgSidebar orgSlug={orgSlug} />
               </div>
-              <div className='border-border border-t p-2'>
-                <div className='mb-2 flex justify-end'>
-                  <NotificationBell />
+              <div className='border-border flex items-center gap-1 border-t p-2'>
+                <div className='min-w-0 flex-1'>
+                  <UserMenu />
                 </div>
-                <UserMenu />
+                <NotificationBell />
               </div>
             </div>
           </aside>
@@ -204,11 +204,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     onNavigate={() => setMobileOpen(false)}
                   />
                 </div>
-                <div className='border-border border-t p-2'>
-                  <div className='mb-2 flex justify-end'>
-                    <NotificationBell />
+                <div className='border-border flex items-center gap-1 border-t p-2'>
+                  <div className='min-w-0 flex-1'>
+                    <UserMenu />
                   </div>
-                  <UserMenu />
+                  <NotificationBell />
                 </div>
               </div>
             </SheetContent>

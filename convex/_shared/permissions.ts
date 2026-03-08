@@ -37,11 +37,18 @@ export const PERMISSIONS = {
   ISSUE_STATE_UPDATE: 'issue:state:update',
   ISSUE_PRIORITY_UPDATE: 'issue:priority:update',
 
+  // Document Permissions
+  DOCUMENT_CREATE: 'document:create',
+  DOCUMENT_VIEW: 'document:view',
+  DOCUMENT_EDIT: 'document:edit',
+  DOCUMENT_DELETE: 'document:delete',
+
   // Wildcard permissions
   ALL: '*',
   ISSUE_ALL: 'issue:*',
   TEAM_ALL: 'team:*',
   PROJECT_ALL: 'project:*',
+  DOCUMENT_ALL: 'document:*',
 } as const;
 
 // Helper type for permission values
@@ -117,6 +124,12 @@ export const BUILTIN_ROLE_PERMISSIONS: Record<BuiltinRole, Permission[]> = {
     PERMISSIONS.ISSUE_RELATION_UPDATE,
     PERMISSIONS.ISSUE_STATE_UPDATE,
     PERMISSIONS.ISSUE_PRIORITY_UPDATE,
+
+    // Documents
+    PERMISSIONS.DOCUMENT_VIEW,
+    PERMISSIONS.DOCUMENT_CREATE,
+    PERMISSIONS.DOCUMENT_EDIT,
+    PERMISSIONS.DOCUMENT_DELETE,
   ],
 
   // Member gets essential read / limited write access
@@ -133,6 +146,11 @@ export const BUILTIN_ROLE_PERMISSIONS: Record<BuiltinRole, Permission[]> = {
     PERMISSIONS.ISSUE_VIEW,
     PERMISSIONS.ISSUE_CREATE,
     PERMISSIONS.ISSUE_EDIT,
+
+    // Documents
+    PERMISSIONS.DOCUMENT_VIEW,
+    PERMISSIONS.DOCUMENT_CREATE,
+    PERMISSIONS.DOCUMENT_EDIT,
   ],
 };
 

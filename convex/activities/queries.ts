@@ -2,7 +2,12 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { query, type QueryCtx } from '../_generated/server';
-import { canViewIssue, canViewProject, canViewTeam } from '../access';
+import {
+  canViewDocument,
+  canViewIssue,
+  canViewProject,
+  canViewTeam,
+} from '../access';
 import { getUserDisplayName } from './lib';
 
 type ActivityEventDoc = Doc<'activityEvents'>;
@@ -11,6 +16,7 @@ type HydratedUsers = Map<Id<'users'>, Doc<'users'>>;
 type HydratedIssues = Map<Id<'issues'>, Doc<'issues'>>;
 type HydratedProjects = Map<Id<'projects'>, Doc<'projects'>>;
 type HydratedTeams = Map<Id<'teams'>, Doc<'teams'>>;
+type HydratedDocuments = Map<Id<'documents'>, Doc<'documents'>>;
 
 async function hydrateUsers(
   ctx: QueryCtx,
@@ -68,12 +74,28 @@ async function hydrateTeams(
   );
 }
 
+async function hydrateDocuments(
+  ctx: QueryCtx,
+  ids: readonly Id<'documents'>[],
+): Promise<HydratedDocuments> {
+  const uniqueIds = [...new Set(ids)];
+  const documents = await Promise.all(
+    uniqueIds.map(id => ctx.db.get('documents', id)),
+  );
+  return new Map(
+    uniqueIds.flatMap((id, index) =>
+      documents[index] ? [[id, documents[index] as Doc<'documents'>]] : [],
+    ),
+  );
+}
+
 async function filterVisibleEvents(
   ctx: QueryCtx,
   events: ActivityEventDoc[],
   issues: HydratedIssues,
   projects: HydratedProjects,
   teams: HydratedTeams,
+  documents: HydratedDocuments,
 ) {
   const visible: ActivityEventDoc[] = [];
 
@@ -98,6 +120,16 @@ async function filterVisibleEvents(
       continue;
     }
 
+    if (event.entityType === 'document') {
+      if (!event.documentId) continue;
+      const document = documents.get(event.documentId);
+      if (!document) continue;
+      if (await canViewDocument(ctx, document)) {
+        visible.push(event);
+      }
+      continue;
+    }
+
     if (!event.teamId) continue;
     const team = teams.get(event.teamId);
     if (!team) continue;
@@ -115,6 +147,7 @@ function mapActivityItem(
   issues: HydratedIssues,
   projects: HydratedProjects,
   teams: HydratedTeams,
+  documents: HydratedDocuments,
 ) {
   const actor = users.get(event.actorId) ?? null;
   const subjectUser = event.subjectUserId
@@ -125,6 +158,9 @@ function mapActivityItem(
     ? (projects.get(event.projectId) ?? null)
     : null;
   const team = event.teamId ? (teams.get(event.teamId) ?? null) : null;
+  const document = event.documentId
+    ? (documents.get(event.documentId) ?? null)
+    : null;
 
   const target =
     event.entityType === 'issue'
@@ -141,12 +177,19 @@ function mapActivityItem(
             key: project?.key ?? event.snapshot.entityKey ?? null,
             name: project?.name ?? event.snapshot.entityName ?? null,
           }
-        : {
-            type: 'team' as const,
-            id: event.teamId ?? null,
-            key: team?.key ?? event.snapshot.entityKey ?? null,
-            name: team?.name ?? event.snapshot.entityName ?? null,
-          };
+        : event.entityType === 'document'
+          ? {
+              type: 'document' as const,
+              id: event.documentId ?? null,
+              key: null,
+              name: document?.title ?? event.snapshot.entityName ?? null,
+            }
+          : {
+              type: 'team' as const,
+              id: event.teamId ?? null,
+              key: team?.key ?? event.snapshot.entityKey ?? null,
+              name: team?.name ?? event.snapshot.entityName ?? null,
+            };
 
   return {
     _id: event._id,
@@ -208,6 +251,10 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
     ctx,
     events.flatMap(event => (event.teamId ? [event.teamId] : [])),
   );
+  const documents = await hydrateDocuments(
+    ctx,
+    events.flatMap(event => (event.documentId ? [event.documentId] : [])),
+  );
 
   const visibleEvents = await filterVisibleEvents(
     ctx,
@@ -215,10 +262,11 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
     issues,
     projects,
     teams,
+    documents,
   );
 
   return visibleEvents.map(event =>
-    mapActivityItem(event, users, issues, projects, teams),
+    mapActivityItem(event, users, issues, projects, teams, documents),
   );
 }
 
@@ -296,6 +344,34 @@ export const listIssueActivity = query({
     const result = await ctx.db
       .query('activityEvents')
       .withIndex('by_issue', q => q.eq('issueId', args.issueId))
+      .order('desc')
+      .paginate(args.paginationOpts);
+
+    return {
+      ...result,
+      page: await enrichEvents(ctx, result.page),
+    };
+  },
+});
+
+export const listDocumentActivity = query({
+  args: {
+    documentId: v.id('documents'),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get('documents', args.documentId);
+    if (!document) {
+      throw new ConvexError('DOCUMENT_NOT_FOUND');
+    }
+
+    if (!(await canViewDocument(ctx, document))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const result = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_document', q => q.eq('documentId', args.documentId))
       .order('desc')
       .paginate(args.paginationOpts);
 

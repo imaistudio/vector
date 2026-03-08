@@ -142,7 +142,7 @@ export const create = mutation({
     if (args.data.title.length > 200) {
       throw new ConvexError('INVALID_INPUT');
     }
-    if (args.data.description && args.data.description.length > 5000) {
+    if (args.data.description && args.data.description.length > 10000) {
       throw new ConvexError('INVALID_INPUT');
     }
 

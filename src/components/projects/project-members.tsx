@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -32,6 +31,7 @@ import {
 import { FunctionReturnType } from 'convex/server';
 import { Id } from '@/convex/_generated/dataModel';
 import { useConfirm } from '@/hooks/use-confirm';
+import { UserAvatar } from '@/components/user-avatar';
 
 /**
  * Section component that renders the list of project members and allows adding/removing members.
@@ -280,13 +280,12 @@ function AddMemberDialog({
                   disabled={addingUserId !== null}
                   className='flex items-center gap-2 px-3 py-2'
                 >
-                  <Avatar className='size-6'>
-                    <AvatarFallback className='text-xs'>
-                      {(member.user?.name ?? member.user?.email ?? '?')
-                        .charAt(0)
-                        .toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <UserAvatar
+                    name={member.user?.name}
+                    email={member.user?.email}
+                    userId={member.userId}
+                    size='sm'
+                  />
                   <div className='min-w-0 flex-1'>
                     <div className='truncate text-sm font-medium'>
                       {member.user?.name ?? 'Unknown'}
@@ -331,17 +330,6 @@ function MembersList({
   const user = useQuery(api.users.currentUser);
   const currentUserId = user?._id;
 
-  const getInitials = (name?: string, email?: string): string => {
-    const displayName = name || email;
-    if (!displayName) return '?';
-    return displayName
-      .split(' ')
-      .map(part => part.charAt(0))
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-  };
-
   return (
     <div className='divide-y'>
       <AnimatePresence initial={false}>
@@ -356,11 +344,12 @@ function MembersList({
             className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
           >
             {/* Avatar */}
-            <Avatar className='size-8'>
-              <AvatarFallback className='text-xs'>
-                {getInitials(member.user?.name, member.user?.email)}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              name={member.user?.name}
+              email={member.user?.email}
+              image={member.user?.image}
+              userId={member.userId}
+            />
 
             {/* Member info */}
             <div className='min-w-0 flex-1'>
