@@ -6,11 +6,11 @@ import { api } from '@/convex/_generated/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   Popover,
   PopoverContent,
@@ -297,10 +297,18 @@ export function StatesManagementDialog({
     : SquareDashed;
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-md'>
-        <DialogHeader>
-          <DialogTitle className='sr-only'>{dialogTitle}</DialogTitle>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-md'
+      >
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className='sr-only'>
+            {dialogTitle}
+          </ResponsiveDialogTitle>
 
           {/* Properties */}
           <div className='flex justify-between gap-2'>
@@ -331,7 +339,7 @@ export function StatesManagementDialog({
               />
             </div>
           </div>
-        </DialogHeader>
+        </ResponsiveDialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Name */}
@@ -368,8 +376,8 @@ export function StatesManagementDialog({
             </Button>
           </div>
         </div>
-      </DialogContent>
+      </ResponsiveDialogContent>
       <ConfirmDeleteDialog />
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

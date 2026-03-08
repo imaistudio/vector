@@ -8,11 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   Popover,
   PopoverContent,
@@ -144,11 +144,11 @@ export function CreateIssueSimple({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className='max-w-md'>
-        <DialogHeader>
-          <DialogTitle>Create Issue</DialogTitle>
-        </DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onClose}>
+      <ResponsiveDialogContent className='max-w-md'>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Create Issue</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-4'>
           {/* Title */}
@@ -320,7 +320,7 @@ export function CreateIssueSimple({
             </Button>
           </div>
         </form>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

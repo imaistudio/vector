@@ -8,11 +8,11 @@ import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -403,10 +403,16 @@ function CreateIssueDialogContent({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
-        <DialogHeader className=''>
-          <DialogTitle className='flex items-center'>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className=''>
+          <ResponsiveDialogTitle className='flex items-center'>
             <div className='text-muted-foreground flex w-full items-center gap-2 text-sm'>
               {/* Properties Row */}
               <div className='flex flex-wrap gap-2'>
@@ -461,8 +467,8 @@ function CreateIssueDialogContent({
                 />
               </div>
             </div>
-          </DialogTitle>
-        </DialogHeader>
+          </ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Title and Issue Key Preview */}
@@ -509,8 +515,8 @@ function CreateIssueDialogContent({
             {isLoading ? 'Creating…' : 'Create issue'}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 

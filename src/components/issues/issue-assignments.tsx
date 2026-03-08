@@ -6,11 +6,11 @@ import { api } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { Plus, X, User } from 'lucide-react';
 import { StateSelector, AssigneeSelector } from './issue-selectors';
 import type { Member, State } from './issue-selectors';
@@ -292,11 +292,11 @@ export function IssueAssignments({
         permission={PERMISSIONS.ISSUE_ASSIGN}
         fallbackMessage="You don't have permission to add assignees"
       >
-        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Assignee</DialogTitle>
-            </DialogHeader>
+        <ResponsiveDialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+          <ResponsiveDialogContent>
+            <ResponsiveDialogHeader>
+              <ResponsiveDialogTitle>Add Assignee</ResponsiveDialogTitle>
+            </ResponsiveDialogHeader>
             <div className='space-y-4'>
               <div className='space-y-2'>
                 <label className='text-sm font-medium'>Select assignee</label>
@@ -308,8 +308,8 @@ export function IssueAssignments({
                 />
               </div>
             </div>
-          </DialogContent>
-        </Dialog>
+          </ResponsiveDialogContent>
+        </ResponsiveDialog>
       </PermissionAware>
     </div>
   );

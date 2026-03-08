@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -139,11 +139,17 @@ function CreateProjectDialogContent({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogHeader className='sr-only'>
-        <DialogTitle>Create Project</DialogTitle>
-      </DialogHeader>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogHeader className='sr-only'>
+        <ResponsiveDialogTitle>Create Project</ResponsiveDialogTitle>
+      </ResponsiveDialogHeader>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
         <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Project Name with inline selectors */}
           <div className='flex items-center gap-2'>
@@ -237,8 +243,8 @@ function CreateProjectDialogContent({
             {isLoading ? 'Creating…' : 'Create project'}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 

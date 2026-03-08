@@ -5,13 +5,13 @@ import { api } from '@/lib/convex';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogFooter,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogFooter,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+} from '@/components/ui/responsive-dialog';
 import { useFormSubmission } from '@/hooks/use-error-handling';
 
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -48,14 +48,17 @@ export function InviteDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent className='sm:max-w-sm'>
-        <DialogHeader>
-          <DialogTitle>Invite member</DialogTitle>
-          <DialogDescription>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent className='sm:max-w-sm'>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Invite member</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             Enter the email address of the person you want to invite.
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         <div className='space-y-4 py-2'>
           {error && (
@@ -90,7 +93,7 @@ export function InviteDialog({
           </div>
         </div>
 
-        <DialogFooter>
+        <ResponsiveDialogFooter>
           <Button variant='ghost' size='sm' onClick={onClose}>
             Cancel
           </Button>
@@ -101,8 +104,8 @@ export function InviteDialog({
           >
             {isSubmitting ? 'Sending…' : 'Send Invite'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

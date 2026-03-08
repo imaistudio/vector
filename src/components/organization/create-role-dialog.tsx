@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useMutation } from 'convex/react';
@@ -77,11 +77,17 @@ export function CreateRoleDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-3xl'>
-        <DialogHeader className='sr-only'>
-          <DialogTitle>Create Custom Role</DialogTitle>
-        </DialogHeader>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-3xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Create Custom Role</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Role Name */}
@@ -179,7 +185,7 @@ export function CreateRoleDialog({
             {isSubmitting ? 'Creating…' : 'Create Role'}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

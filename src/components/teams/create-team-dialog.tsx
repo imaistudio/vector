@@ -7,11 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { Plus } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { cn } from '@/lib/utils';
@@ -106,11 +106,17 @@ function CreateTeamDialogContent({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogHeader className='sr-only'>
-        <DialogTitle>Create Team</DialogTitle>
-      </DialogHeader>
-      <DialogContent showCloseButton={false} className='gap-2 p-2 sm:max-w-2xl'>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogHeader className='sr-only'>
+        <ResponsiveDialogTitle>Create Team</ResponsiveDialogTitle>
+      </ResponsiveDialogHeader>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
         <form onSubmit={handleSubmit} className='space-y-2'>
           {/* Team Name */}
           <div className='flex items-center gap-2'>
@@ -199,8 +205,8 @@ function CreateTeamDialogContent({
             {isLoading ? 'Creating…' : 'Create team'}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 

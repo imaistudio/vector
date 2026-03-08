@@ -6,11 +6,11 @@ import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   Command,
   CommandInput,
@@ -256,11 +256,17 @@ function AddMemberDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
-      <DialogContent showCloseButton={false} className='gap-0 p-0 sm:max-w-sm'>
-        <DialogHeader className='sr-only'>
-          <DialogTitle>Add project member</DialogTitle>
-        </DialogHeader>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-0 p-0 sm:max-w-sm'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Add project member</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
         <Command className='rounded-lg'>
           <CommandInput placeholder='Search members...' className='h-9' />
           <CommandList className='max-h-[300px]'>
@@ -299,8 +305,8 @@ function AddMemberDialog({
             </CommandGroup>
           </CommandList>
         </Command>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 
