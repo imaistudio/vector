@@ -129,6 +129,15 @@ function LoginForm() {
               )}
             />
 
+            <div className='flex justify-end'>
+              <Link
+                href='/auth/forgot-password'
+                className='text-muted-foreground text-xs hover:underline'
+              >
+                Forgot password?
+              </Link>
+            </div>
+
             <Button type='submit' className='w-full' disabled={isLoading}>
               {isLoading ? (
                 <span className='flex items-center gap-2'>

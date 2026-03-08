@@ -83,6 +83,7 @@
     "convex-helpers": "^0.1.114",
     "date-fns": "^4.1.0",
     "dotenv": "^16.4.5",
+    "input-otp": "^1.4.2",
     "jose": "^6.2.0",
     "lucide-react": "^0.522.0",
     "motion": "^12.19.2",

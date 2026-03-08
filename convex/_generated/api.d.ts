@@ -21,6 +21,7 @@ import type * as authUtils from "../authUtils.js";
 import type * as authz from "../authz.js";
 import type * as documents_mutations from "../documents/mutations.js";
 import type * as documents_queries from "../documents/queries.js";
+import type * as email_otp from "../email/otp.js";
 import type * as http from "../http.js";
 import type * as issues_mutations from "../issues/mutations.js";
 import type * as issues_queries from "../issues/queries.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   authz: typeof authz;
   "documents/mutations": typeof documents_mutations;
   "documents/queries": typeof documents_queries;
+  "email/otp": typeof email_otp;
   http: typeof http;
   "issues/mutations": typeof issues_mutations;
   "issues/queries": typeof issues_queries;
