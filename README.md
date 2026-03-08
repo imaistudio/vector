@@ -2,13 +2,47 @@
 
 Vector is an open source project management platform built with Next.js, Convex, and Better Auth. It is designed for teams that want projects, issues, permissions, and organization-level workflows in one codebase.
 
+![Issues Kanban Board](public/screenshots/issues-kanban.png)
+
 ## Features
 
 - Multi-tenant organizations and workspaces
 - Projects, issues, teams, and role-based permissions
+- Kanban and table views for issue tracking
+- Rich document editor with markdown, mentions, and slash commands
 - Real-time data updates with Convex
 - Better Auth integration with Convex-backed user data
 - Type-safe frontend and backend with TypeScript
+
+## Screenshots
+
+<details>
+<summary>Issues — Table View</summary>
+
+![Issues Table View](public/screenshots/issues-table.png)
+
+</details>
+
+<details>
+<summary>Project Detail</summary>
+
+![Project Detail](public/screenshots/project-detail.png)
+
+</details>
+
+<details>
+<summary>Documents</summary>
+
+![Documents List](public/screenshots/documents.png)
+
+</details>
+
+<details>
+<summary>Document Editor</summary>
+
+![Document Detail](public/screenshots/document-detail.png)
+
+</details>
 
 ## Stack
 
