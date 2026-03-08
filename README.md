@@ -59,6 +59,59 @@ Vector is under active development. The top-level docs in this repository reflec
 
    On a fresh local instance, visit `/setup-admin` to create the first administrator account.
 
+## Environment Variables
+
+Copy `sample.env` to `.env.local` and update the values. All `NEXT_PUBLIC_` variables are exposed to the browser.
+
+### Required
+
+| Variable                 | Description                                                                 |
+| ------------------------ | --------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CONVEX_URL` | Convex deployment HTTP endpoint. Local default: `http://127.0.0.1:3210`     |
+| `NEXT_PUBLIC_APP_URL`    | Public base URL of the app. Local default: `http://localhost:3000`          |
+| `BETTER_AUTH_SECRET`     | Secret key for signing auth tokens. Generate with `openssl rand -base64 32` |
+
+### Authentication
+
+| Variable                      | Description                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `AUTH_SECRET`                 | Backward-compatible fallback for `BETTER_AUTH_SECRET`                             |
+| `BETTER_AUTH_TRUSTED_ORIGINS` | Comma-separated allowed origins for auth callbacks (e.g. `http://localhost:3000`) |
+
+### Convex
+
+| Variable                      | Description                                                          |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `CONVEX_URL`                  | Convex URL for CLI scripts. Defaults to `http://localhost:8000`      |
+| `CONVEX_SITE_URL`             | Convex site/auth helper URL. Local default: `http://127.0.0.1:3211`  |
+| `NEXT_PUBLIC_CONVEX_SITE_URL` | Public version of the site URL. Fallback for `CONVEX_SITE_URL`       |
+| `NEXT_PUBLIC_SITE_URL`        | Optional fallback for `NEXT_PUBLIC_APP_URL`                          |
+| `CONVEX_DEPLOYMENT`           | Convex deployment identifier (set automatically by `npx convex dev`) |
+| `CONVEX_ADMIN_KEY`            | Admin API key, only needed for running permission migrations         |
+
+### SMTP (Optional)
+
+Email notifications. If unset, emails are logged to the console.
+
+| Variable    | Description                                   |
+| ----------- | --------------------------------------------- |
+| `SMTP_HOST` | SMTP server hostname (e.g. `smtp.resend.com`) |
+| `SMTP_PORT` | SMTP port. Defaults to `587`                  |
+| `SMTP_USER` | SMTP username                                 |
+| `SMTP_PASS` | SMTP password or API key                      |
+| `SMTP_FROM` | From address for outgoing email               |
+
+### Web Push Notifications (Optional)
+
+Required for PWA push notifications. Generate VAPID keys with `npx web-push generate-vapid-keys`.
+
+| Variable                       | Description                                                   |
+| ------------------------------ | ------------------------------------------------------------- |
+| `VAPID_PUBLIC_KEY`             | VAPID public key (server-side)                                |
+| `VAPID_PRIVATE_KEY`            | VAPID private key (server-side)                               |
+| `VAPID_SUBJECT`                | VAPID subject, e.g. `mailto:notifications@example.com`        |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | VAPID public key (client-side, must match `VAPID_PUBLIC_KEY`) |
+
 ## Development
 
 - `pnpm run dev` starts the Next.js development server
