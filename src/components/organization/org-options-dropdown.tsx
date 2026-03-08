@@ -60,7 +60,7 @@ export function OrgOptionsDropdown({
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <button
-          className='hover:bg-accent/50 group flex w-full items-center justify-between rounded-md border p-1 text-left transition-colors'
+          className='bg-background hover:bg-accent/50 group flex w-full items-center justify-between rounded-md border p-1 text-left transition-colors'
           aria-expanded={isOpen}
         >
           <div className='flex min-w-0 flex-1 items-center gap-2'>

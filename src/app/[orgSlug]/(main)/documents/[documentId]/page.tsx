@@ -45,10 +45,20 @@ function DocumentLoadingSkeleton() {
   );
 }
 
-/** Extract the first markdown heading from content */
+/** Extract a title from markdown: prefer h1, then h2, etc., then first text line */
 function extractTitle(markdown: string): string | null {
-  const match = markdown.match(/^#+\s+(.+)$/m);
-  return match ? match[1].trim() || null : null;
+  for (let level = 1; level <= 6; level++) {
+    const re = new RegExp(`^${'#'.repeat(level)}\\s+(.+)$`, 'm');
+    const match = markdown.match(re);
+    if (match) return match[1].trim() || null;
+  }
+  // Fall back to first non-empty text line
+  const lines = markdown.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
 }
 
 type SaveStatus = 'idle' | 'saving' | 'saved';

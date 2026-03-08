@@ -55,10 +55,10 @@ export default function IssuesPage() {
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
   const viewParam = searchParams.get('view');
-  const viewMode: ViewMode = viewParam === 'kanban' ? 'kanban' : 'table';
+  const viewMode: ViewMode = viewParam === 'table' ? 'table' : 'kanban';
   const setViewMode = (mode: ViewMode) => {
     const sp = new URLSearchParams(searchParams.toString());
-    if (mode === 'table') {
+    if (mode === 'kanban') {
       sp.delete('view');
     } else {
       sp.set('view', mode);
