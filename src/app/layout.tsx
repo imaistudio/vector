@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { NotificationClientBootstrap } from '@/components/notifications/notification-client-bootstrap';
 import { getToken } from '@/lib/auth-server';
 import { cn } from '@/lib/utils';
+import { ThemeProvider } from '@/components/theme-provider';
 
 const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
@@ -34,16 +35,26 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en' className={cn('font-sans', geist.variable)}>
+    <html
+      lang='en'
+      className={cn('font-sans', geist.variable)}
+      suppressHydrationWarning
+    >
       <body className={`${urbanist.variable} ${poppins.variable} antialiased`}>
-        <TopLoaderProvider />
-        <ErrorBoundary>
-          <ConvexAuthProvider initialToken={await getToken()}>
-            <NotificationClientBootstrap />
-            {children}
-            <Toaster />
-          </ConvexAuthProvider>
-        </ErrorBoundary>
+        <ThemeProvider
+          attribute='class'
+          defaultTheme='light'
+          disableTransitionOnChange
+        >
+          <TopLoaderProvider />
+          <ErrorBoundary>
+            <ConvexAuthProvider initialToken={await getToken()}>
+              <NotificationClientBootstrap />
+              {children}
+              <Toaster />
+            </ConvexAuthProvider>
+          </ErrorBoundary>
+        </ThemeProvider>
       </body>
     </html>
   );
