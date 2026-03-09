@@ -257,8 +257,8 @@ export default function IssuesPage() {
     <div className='bg-background h-full'>
       {/* Header with tabs */}
       <div className='border-b'>
-        <div className='flex items-center justify-between gap-1 p-1'>
-          <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
+        <div className='space-y-1 p-1'>
+          <div className='flex items-center gap-1 overflow-x-auto'>
             <MobileNavTrigger />
             {visibleTabs.map(tab => (
               <Button
@@ -280,7 +280,7 @@ export default function IssuesPage() {
           </div>
 
           {/* View switcher + filters + create */}
-          <div className='flex shrink-0 items-center gap-1'>
+          <div className='flex items-center gap-1'>
             {/* Search */}
             <div className='relative'>
               {deferredSearch !== searchText ? (
