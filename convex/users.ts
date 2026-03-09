@@ -4,6 +4,7 @@ import { api, components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { createAuth } from './auth';
 import { getAuthUserId } from './authUtils';
+import { PLATFORM_ADMIN_ROLE } from './platformAdmin/lib';
 
 async function syncBetterAuthUser(
   ctx: MutationCtx,
@@ -127,17 +128,17 @@ export const removeProfileImage = mutation({
 });
 
 /**
- * Check if any admin users exist in the system
+ * Check if any platform admin users exist in the system
  */
 export const adminExists = query({
   args: {},
   handler: async ctx => {
-    const existingOwner = await ctx.db
-      .query('members')
-      .filter(q => q.eq(q.field('role'), 'owner'))
+    const existingAdmin = await ctx.db
+      .query('users')
+      .withIndex('by_role', q => q.eq('role', PLATFORM_ADMIN_ROLE))
       .first();
 
-    return existingOwner !== null;
+    return existingAdmin !== null;
   },
 });
 

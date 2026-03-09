@@ -44,10 +44,40 @@ export default defineSchema({
   })
     .index('email', ['email'])
     .index('phone', ['phone'])
+    .index('by_role', ['role'])
     .index('by_username', ['username'])
     .searchIndex('by_name_email_username', {
       searchField: 'name',
     }),
+
+  siteSettings: defineTable({
+    signupBlockedEmailDomains: v.optional(v.array(v.string())),
+    signupAllowedEmailDomains: v.optional(v.array(v.string())),
+    signupDisposableDomainSync: v.optional(
+      v.object({
+        lastStartedAt: v.optional(v.number()),
+        lastSyncedAt: v.optional(v.number()),
+        lastFailureAt: v.optional(v.number()),
+        lastFailureMessage: v.optional(v.string()),
+        totalRulesCount: v.number(),
+        fetchedCount: v.number(),
+        insertedCount: v.number(),
+        updatedCount: v.number(),
+        deletedCount: v.number(),
+        skippedCount: v.number(),
+      }),
+    ),
+  }),
+
+  signupEmailDomainRules: defineTable({
+    domain: v.string(),
+    type: v.union(v.literal('blocked'), v.literal('allowed')),
+    source: v.union(v.literal('manual'), v.literal('upstream_disposable')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_source', ['source'])
+    .index('by_type_domain', ['type', 'domain']),
 
   // Organizations (equivalent to Drizzle 'organization' table)
   organizations: defineTable({

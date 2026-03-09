@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { ChevronsUpDown, LogOut, User, Settings } from 'lucide-react';
+import { ChevronsUpDown, LogOut, User, Settings, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { UserAvatar } from '@/components/user-avatar';
 
@@ -56,6 +56,12 @@ export function UserMenu() {
           <Settings className='mr-2 size-3.5' />
           <span>Settings</span>
         </DropdownMenuItem>
+        {user.role === 'platform_admin' ? (
+          <DropdownMenuItem onClick={() => router.push('/admin')}>
+            <Shield className='mr-2 size-3.5' />
+            <span>Platform Admin</span>
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => router.push('/auth/sign-out')}>
           <LogOut className='mr-2 size-3.5' />

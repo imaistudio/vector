@@ -4,16 +4,21 @@ import {
   type GenericCtx,
 } from '@convex-dev/better-auth';
 import { convex } from '@convex-dev/better-auth/plugins';
-import { betterAuth } from 'better-auth';
+import { APIError, betterAuth } from 'better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 import { username, emailOTP } from 'better-auth/plugins';
 import { v } from 'convex/values';
-import { components, internal } from './_generated/api';
+import { api, components, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { DataModel } from './_generated/dataModel';
 import { internalMutation, query } from './_generated/server';
 import authConfig from './auth.config';
 import authSchema from './betterAuth/schema';
+import {
+  evaluateSignupEmailAddress,
+  hasPlatformAdminUsers,
+  PLATFORM_ADMIN_ROLE,
+} from './platformAdmin/lib';
 
 const betterAuthSecret =
   process.env.BETTER_AUTH_SECRET ||
@@ -115,6 +120,46 @@ export const createAuthOptions = (
       },
     },
   },
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user, context) => {
+          if (context?.path !== '/sign-up/email') {
+            return { data: user };
+          }
+
+          const hasPlatformAdmins =
+            'db' in ctx
+              ? await hasPlatformAdminUsers(ctx.db)
+              : await ctx.runQuery(api.users.adminExists, {});
+          if (!hasPlatformAdmins) {
+            return { data: user };
+          }
+
+          const restriction =
+            'db' in ctx
+              ? await evaluateSignupEmailAddress(ctx.db, user.email)
+              : await ctx.runQuery(
+                  internal.platformAdmin.queries.getSignupRestrictionPreview,
+                  {
+                    email: user.email,
+                  },
+                );
+
+          if (!restriction.blocked) {
+            return { data: user };
+          }
+
+          throw new APIError('FORBIDDEN', {
+            message:
+              restriction.reason === 'not_allowed'
+                ? 'Sign up is limited to approved email domains for this instance.'
+                : 'Temporary or blocked email domains cannot sign up to this instance.',
+          });
+        },
+      },
+    },
+  },
   plugins: [
     username(),
     emailOTP({
@@ -124,8 +169,13 @@ export const createAuthOptions = (
         // The ctx from createAuthOptions closure has scheduler access
         // when called from an HTTP handler or action context.
         if ('scheduler' in ctx) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const scheduler = (ctx as any).scheduler;
+          const scheduler = (ctx as Record<string, unknown>).scheduler as {
+            runAfter: (
+              delay: number,
+              fn: unknown,
+              args: Record<string, unknown>,
+            ) => Promise<void>;
+          };
           await scheduler.runAfter(0, internal.email.otp.sendOtpEmail, {
             to: email,
             otp,
@@ -160,6 +210,10 @@ export const setBootstrapAdminRole = internalMutation({
     }
 
     const userId = authUser.userId as Id<'users'>;
+
+    await ctx.db.patch('users', userId, {
+      role: PLATFORM_ADMIN_ROLE,
+    });
 
     return userId;
   },
