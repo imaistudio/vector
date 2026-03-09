@@ -1153,7 +1153,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
           {/* Tabs: Issues / Activity / Members */}
           <Tabs value={projectTab} onValueChange={setProjectTab}>
             <div className='space-y-2 px-3 sm:px-4'>
-              <div className='overflow-x-auto'>
+              <div className='overflow-x-auto overflow-y-hidden'>
                 <TabsList>
                   <TabsTrigger value='issues'>Issues</TabsTrigger>
                   <TabsTrigger value='activity'>Activity</TabsTrigger>

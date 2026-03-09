@@ -1493,7 +1493,7 @@ export default function TeamViewPage() {
             {/* Team Content Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className='space-y-2 px-3 sm:px-4'>
-                <div className='overflow-x-auto'>
+                <div className='overflow-x-auto overflow-y-hidden'>
                   <TabsList>
                     <TabsTrigger value='members'>
                       Members
