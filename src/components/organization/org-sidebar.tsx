@@ -19,7 +19,7 @@ import { useQuery } from 'convex/react';
 import { api } from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
 import type { ReactNode } from 'react';
-import { getDynamicIcon } from '@/lib/dynamic-icons';
+import { DynamicIcon, getDynamicIcon } from '@/lib/dynamic-icons';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 
 interface NavItem {
@@ -340,10 +340,19 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                       },
                     )}
                   >
-                    <FileText
-                      className='size-3 flex-shrink-0'
-                      style={{ color: '#6b7280' }}
-                    />
+                    {doc.icon ? (
+                      <DynamicIcon
+                        name={doc.icon}
+                        fallback={FileText}
+                        className='size-3 flex-shrink-0'
+                        style={{ color: doc.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <FileText
+                        className='size-3 flex-shrink-0'
+                        style={{ color: doc.color || '#6b7280' }}
+                      />
+                    )}
                     <span className='truncate'>{doc.title}</span>
                   </Link>
                 );

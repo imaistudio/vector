@@ -525,8 +525,8 @@ function ActivityRow({
   const actorName = item.actor?.name ?? 'Unknown user';
 
   return (
-    <div className='hover:bg-muted/40 flex items-start gap-3 px-3 py-2 transition-colors'>
-      <Avatar className='mt-0.5 size-6 shrink-0'>
+    <div className='hover:bg-muted/40 flex items-center gap-3 px-3 py-2 transition-colors'>
+      <Avatar className='size-6 shrink-0'>
         <AvatarFallback className='text-[10px]'>
           {getInitials(actorName)}
         </AvatarFallback>

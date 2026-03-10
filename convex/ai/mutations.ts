@@ -12,7 +12,12 @@ import {
   requireOrgForAssistant,
 } from './lib';
 
-type ConfirmedActionEntityType = 'document' | 'issue' | 'project' | 'team';
+type ConfirmedActionEntityType =
+  | 'document'
+  | 'issue'
+  | 'project'
+  | 'team'
+  | 'folder';
 
 type ConfirmedActionResult = {
   actionId: string;
@@ -155,6 +160,7 @@ export const executeConfirmedAction: RegisteredMutation<
       v.literal('issue'),
       v.literal('project'),
       v.literal('team'),
+      v.literal('folder'),
     ),
     entityLabel: v.string(),
   }),

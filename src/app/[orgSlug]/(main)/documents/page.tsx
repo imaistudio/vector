@@ -12,8 +12,16 @@ import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { formatDateHuman } from '@/lib/date';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FileText, Trash2, Plus, Pencil, MoreHorizontal } from 'lucide-react';
+import {
+  FileText,
+  Trash2,
+  Plus,
+  Pencil,
+  MoreHorizontal,
+  Smile,
+} from 'lucide-react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
+import { IconPicker } from '@/components/ui/icon-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
@@ -77,6 +85,7 @@ function CreateFolderDialog({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState(FOLDER_COLORS[0]);
+  const [icon, setIcon] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const createFolderMutation = useMutation(
     api.documents.folderMutations.createFolder,
@@ -93,6 +102,7 @@ function CreateFolderDialog({
           name: name.trim(),
           description: description.trim() || undefined,
           color,
+          icon: icon || undefined,
         },
       });
       toast.success('Folder created');
@@ -112,12 +122,34 @@ function CreateFolderDialog({
         </ResponsiveDialogHeader>
         <form onSubmit={handleSubmit} className='space-y-4'>
           <div className='space-y-2'>
-            <Input
-              placeholder='Folder name'
-              value={name}
-              onChange={e => setName(e.target.value)}
-              autoFocus
-            />
+            <div className='flex items-center gap-2'>
+              <IconPicker
+                value={icon}
+                onValueChange={setIcon}
+                trigger={
+                  <button
+                    type='button'
+                    className='border-border hover:bg-muted flex size-9 shrink-0 items-center justify-center rounded-md border transition-colors'
+                  >
+                    {icon ? (
+                      <DynamicIcon
+                        name={icon}
+                        className='size-4'
+                        style={{ color: color }}
+                      />
+                    ) : (
+                      <Smile className='text-muted-foreground/50 size-4' />
+                    )}
+                  </button>
+                }
+              />
+              <Input
+                placeholder='Folder name'
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
             <Input
               placeholder='Description (optional)'
               value={description}
@@ -164,12 +196,19 @@ function RenameFolderDialog({
   folder,
   onClose,
 }: {
-  folder: { _id: string; name: string; description?: string; color?: string };
+  folder: {
+    _id: string;
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+  };
   onClose: () => void;
 }) {
   const [name, setName] = useState(folder.name);
   const [description, setDescription] = useState(folder.description || '');
   const [color, setColor] = useState(folder.color || FOLDER_COLORS[0]);
+  const [icon, setIcon] = useState<string | null>(folder.icon || null);
   const [isLoading, setIsLoading] = useState(false);
   const updateMutation = useMutation(
     api.documents.folderMutations.updateFolder,
@@ -186,6 +225,7 @@ function RenameFolderDialog({
           name: name.trim(),
           description: description.trim() || null,
           color,
+          icon: icon || null,
         },
       });
       toast.success('Folder updated');
@@ -205,12 +245,34 @@ function RenameFolderDialog({
         </ResponsiveDialogHeader>
         <form onSubmit={handleSubmit} className='space-y-4'>
           <div className='space-y-2'>
-            <Input
-              placeholder='Folder name'
-              value={name}
-              onChange={e => setName(e.target.value)}
-              autoFocus
-            />
+            <div className='flex items-center gap-2'>
+              <IconPicker
+                value={icon}
+                onValueChange={setIcon}
+                trigger={
+                  <button
+                    type='button'
+                    className='border-border hover:bg-muted flex size-9 shrink-0 items-center justify-center rounded-md border transition-colors'
+                  >
+                    {icon ? (
+                      <DynamicIcon
+                        name={icon}
+                        className='size-4'
+                        style={{ color: color }}
+                      />
+                    ) : (
+                      <Smile className='text-muted-foreground/50 size-4' />
+                    )}
+                  </button>
+                }
+              />
+              <Input
+                placeholder='Folder name'
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
             <Input
               placeholder='Description (optional)'
               value={description}
@@ -396,6 +458,7 @@ function DroppableFolderBook({
     name: string;
     description?: string;
     color?: string;
+    icon?: string;
     documentCount: number;
   };
   onOpen: () => void;
@@ -423,6 +486,12 @@ function DroppableFolderBook({
             style={{ backgroundColor: folder.color || '#6366f1' }}
           />
           <div className='relative z-10'>
+            {folder.icon ? (
+              <DynamicIcon
+                name={folder.icon}
+                className='mb-1 size-4 opacity-80'
+              />
+            ) : null}
             <BookTitle className='text-sm'>{folder.name}</BookTitle>
             {folder.description && (
               <BookDescription>{folder.description}</BookDescription>
@@ -479,6 +548,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
     name: string;
     description?: string;
     color?: string;
+    icon?: string;
   } | null>(null);
   const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
 
@@ -686,6 +756,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
                       name: folder.name,
                       description: folder.description,
                       color: folder.color,
+                      icon: folder.icon,
                     })
                   }
                   onDelete={() => handleDeleteFolder(folder._id)}

@@ -8,8 +8,12 @@ import {
   AssistantPendingAction,
   assistantPageContextValidator,
   buildAssistantThreadPatch,
+  canAssignIssueForUser,
   canDeleteEntity,
   canEditEntity,
+  canUpdateIssueAssignmentStateForUser,
+  canManageProjectMembersForUser,
+  canManageTeamMembersForUser,
   canViewEntity,
   findIssuePriorityByName,
   findIssueStateByName,
@@ -157,14 +161,26 @@ export const listWorkspaceReferenceData = internalQuery({
     const users = await Promise.all(
       userIds.map(userId => ctx.db.get('users', userId)),
     );
+    const visibleTeams = [];
+    for (const team of teams) {
+      if (await canViewEntity(ctx, args.userId, team, 'team')) {
+        visibleTeams.push(team);
+      }
+    }
+    const visibleProjects = [];
+    for (const project of projects) {
+      if (await canViewEntity(ctx, args.userId, project, 'project')) {
+        visibleProjects.push(project);
+      }
+    }
 
     return {
-      teams: teams.map(team => ({
+      teams: visibleTeams.map(team => ({
         id: String(team._id),
         key: team.key,
         name: team.name,
       })),
-      projects: projects.map(project => ({
+      projects: visibleProjects.map(project => ({
         id: String(project._id),
         key: project.key,
         name: project.name,
@@ -242,7 +258,7 @@ export const listDocuments = internalQuery({
     const visible = [];
     for (const document of documents) {
       if (document.organizationId !== organization._id) continue;
-      if (await canViewEntity(ctx, document, 'document')) {
+      if (await canViewEntity(ctx, args.userId, document, 'document')) {
         visible.push(document);
       }
     }
@@ -279,7 +295,7 @@ export const getDocument = internalQuery({
       args.documentId ?? null,
     );
 
-    if (!(await canViewEntity(ctx, document, 'document'))) {
+    if (!(await canViewEntity(ctx, args.userId, document, 'document'))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -455,7 +471,7 @@ export const updateDocument = internalMutation({
       args.documentId ?? null,
     );
 
-    if (!(await canEditEntity(ctx, document, 'document'))) {
+    if (!(await canEditEntity(ctx, args.userId, document, 'document'))) {
       throw new ConvexError('FORBIDDEN');
     }
     if (args.title !== undefined) {
@@ -583,7 +599,7 @@ export const listIssues = internalQuery({
 
     const visible = [];
     for (const issue of issues) {
-      if (await canViewEntity(ctx, issue, 'issue')) {
+      if (await canViewEntity(ctx, args.userId, issue, 'issue')) {
         visible.push(issue);
       }
     }
@@ -648,7 +664,7 @@ export const getIssue = internalQuery({
       args.issueKey ?? null,
     );
 
-    if (!(await canViewEntity(ctx, issue, 'issue'))) {
+    if (!(await canViewEntity(ctx, args.userId, issue, 'issue'))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -908,8 +924,21 @@ export const updateIssue = internalMutation({
       args.pageContext,
       args.issueKey ?? null,
     );
+    const hasIssueFieldEdits =
+      args.title !== undefined ||
+      args.description !== undefined ||
+      args.priorityName !== undefined ||
+      args.teamKey !== undefined ||
+      args.projectKey !== undefined ||
+      args.visibility !== undefined ||
+      args.startDate !== undefined ||
+      args.dueDate !== undefined ||
+      args.parentIssueKey !== undefined;
 
-    if (!(await canEditEntity(ctx, issue, 'issue'))) {
+    if (
+      hasIssueFieldEdits &&
+      !(await canEditEntity(ctx, args.userId, issue, 'issue'))
+    ) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -967,28 +996,32 @@ export const updateIssue = internalMutation({
     const nextTitle = args.title ?? issue.title;
     const nextDescription = args.description ?? issue.description;
 
-    await ctx.db.patch('issues', issue._id, {
-      ...(args.title !== undefined ? { title: args.title.trim() } : {}),
-      ...(args.description !== undefined
-        ? { description: args.description }
-        : {}),
-      ...(priority !== undefined ? { priorityId: priority?._id } : {}),
-      ...(team !== undefined ? { teamId: team?._id } : {}),
-      ...(project !== undefined ? { projectId: project?._id } : {}),
-      ...(args.visibility !== undefined ? { visibility: args.visibility } : {}),
-      ...(args.startDate !== undefined
-        ? { startDate: args.startDate ?? undefined }
-        : {}),
-      ...(args.dueDate !== undefined
-        ? { dueDate: args.dueDate ?? undefined }
-        : {}),
-      ...(parentIssueId !== undefined ? { parentIssueId } : {}),
-      searchText: buildIssueSearchText({
-        key: issue.key,
-        title: nextTitle,
-        description: nextDescription,
-      }),
-    });
+    if (hasIssueFieldEdits) {
+      await ctx.db.patch('issues', issue._id, {
+        ...(args.title !== undefined ? { title: args.title.trim() } : {}),
+        ...(args.description !== undefined
+          ? { description: args.description }
+          : {}),
+        ...(priority !== undefined ? { priorityId: priority?._id } : {}),
+        ...(team !== undefined ? { teamId: team?._id } : {}),
+        ...(project !== undefined ? { projectId: project?._id } : {}),
+        ...(args.visibility !== undefined
+          ? { visibility: args.visibility }
+          : {}),
+        ...(args.startDate !== undefined
+          ? { startDate: args.startDate ?? undefined }
+          : {}),
+        ...(args.dueDate !== undefined
+          ? { dueDate: args.dueDate ?? undefined }
+          : {}),
+        ...(parentIssueId !== undefined ? { parentIssueId } : {}),
+        searchText: buildIssueSearchText({
+          key: issue.key,
+          title: nextTitle,
+          description: nextDescription,
+        }),
+      });
+    }
 
     // Handle assignee and state changes on the issueAssignees table
     const changes: string[] = [];
@@ -1007,6 +1040,20 @@ export const updateIssue = internalMutation({
           : args.assigneeName === null
             ? null
             : await findMemberByName(ctx, organization._id, args.assigneeName);
+      const canModifyAssignments =
+        args.assigneeName !== undefined
+          ? await canAssignIssueForUser(ctx, args.userId, issue)
+          : existingAssignees[0]?.assigneeId
+            ? await canUpdateIssueAssignmentStateForUser(
+                ctx,
+                args.userId,
+                issue,
+                existingAssignees[0].assigneeId,
+              )
+            : await canAssignIssueForUser(ctx, args.userId, issue);
+      if (!canModifyAssignments) {
+        throw new ConvexError('FORBIDDEN');
+      }
 
       if (existingAssignees.length > 0) {
         // Update the first assignment record
@@ -1095,7 +1142,7 @@ export const listProjects = internalQuery({
 
     const visible = [];
     for (const project of projects) {
-      if (await canViewEntity(ctx, project, 'project')) {
+      if (await canViewEntity(ctx, args.userId, project, 'project')) {
         visible.push(project);
       }
     }
@@ -1131,7 +1178,7 @@ export const getProject = internalQuery({
       args.projectKey ?? null,
     );
 
-    if (!(await canViewEntity(ctx, project, 'project'))) {
+    if (!(await canViewEntity(ctx, args.userId, project, 'project'))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -1289,7 +1336,7 @@ export const updateProject = internalMutation({
       args.projectKey ?? null,
     );
 
-    if (!(await canEditEntity(ctx, project, 'project'))) {
+    if (!(await canEditEntity(ctx, args.userId, project, 'project'))) {
       throw new ConvexError('FORBIDDEN');
     }
     if (args.name !== undefined) {
@@ -1370,7 +1417,7 @@ export const listTeams = internalQuery({
 
     const visible = [];
     for (const team of teams) {
-      if (await canViewEntity(ctx, team, 'team')) {
+      if (await canViewEntity(ctx, args.userId, team, 'team')) {
         visible.push(team);
       }
     }
@@ -1404,7 +1451,7 @@ export const getTeam = internalQuery({
       args.teamKey ?? null,
     );
 
-    if (!(await canViewEntity(ctx, team, 'team'))) {
+    if (!(await canViewEntity(ctx, args.userId, team, 'team'))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -1531,7 +1578,7 @@ export const updateTeam = internalMutation({
       args.teamKey ?? null,
     );
 
-    if (!(await canEditEntity(ctx, team, 'team'))) {
+    if (!(await canEditEntity(ctx, args.userId, team, 'team'))) {
       throw new ConvexError('FORBIDDEN');
     }
     if (args.name !== undefined) {
@@ -1623,7 +1670,7 @@ export const setPendingDeleteAction = internalMutation({
                 args.teamKey ?? null,
               );
 
-    if (!(await canDeleteEntity(ctx, entity, args.entityType))) {
+    if (!(await canDeleteEntity(ctx, args.userId, entity, args.entityType))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -1686,7 +1733,7 @@ export const executePendingAction = internalMutation({
         if (!documentId) throw new ConvexError('DOCUMENT_NOT_FOUND');
         const document = await ctx.db.get('documents', documentId);
         if (!document) throw new ConvexError('DOCUMENT_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, document, 'document'))) {
+        if (!(await canDeleteEntity(ctx, args.userId, document, 'document'))) {
           throw new ConvexError('FORBIDDEN');
         }
         const mentions = await ctx.db
@@ -1704,7 +1751,7 @@ export const executePendingAction = internalMutation({
         if (!issueId) throw new ConvexError('ISSUE_NOT_FOUND');
         const issue = await ctx.db.get('issues', issueId);
         if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, issue, 'issue'))) {
+        if (!(await canDeleteEntity(ctx, args.userId, issue, 'issue'))) {
           throw new ConvexError('FORBIDDEN');
         }
         const child = await ctx.db
@@ -1737,7 +1784,7 @@ export const executePendingAction = internalMutation({
         if (!projectId) throw new ConvexError('PROJECT_NOT_FOUND');
         const project = await ctx.db.get('projects', projectId);
         if (!project) throw new ConvexError('PROJECT_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, project, 'project'))) {
+        if (!(await canDeleteEntity(ctx, args.userId, project, 'project'))) {
           throw new ConvexError('FORBIDDEN');
         }
         const members = await ctx.db
@@ -1776,7 +1823,7 @@ export const executePendingAction = internalMutation({
         if (!teamId) throw new ConvexError('TEAM_NOT_FOUND');
         const team = await ctx.db.get('teams', teamId);
         if (!team) throw new ConvexError('TEAM_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, team, 'team'))) {
+        if (!(await canDeleteEntity(ctx, args.userId, team, 'team'))) {
           throw new ConvexError('FORBIDDEN');
         }
         const members = await ctx.db
@@ -1801,6 +1848,34 @@ export const executePendingAction = internalMutation({
           await ctx.db.delete('teamRoleAssignments', assignment._id);
         }
         await ctx.db.delete('teams', team._id);
+        break;
+      }
+      case 'folder': {
+        const folderId = ctx.db.normalizeId(
+          'documentFolders',
+          pendingAction.entityId,
+        );
+        if (!folderId) throw new ConvexError('FOLDER_NOT_FOUND');
+        const folder = await ctx.db.get('documentFolders', folderId);
+        if (!folder || folder.organizationId !== organization._id) {
+          throw new ConvexError('FOLDER_NOT_FOUND');
+        }
+        await requireOrgPermissionForUser(
+          ctx,
+          organization._id,
+          args.userId,
+          PERMISSIONS.DOCUMENT_DELETE,
+        );
+        const documents = await ctx.db
+          .query('documents')
+          .withIndex('by_folder', q => q.eq('folderId', folder._id))
+          .collect();
+        for (const document of documents) {
+          await ctx.db.patch('documents', document._id, {
+            folderId: undefined,
+          });
+        }
+        await ctx.db.delete('documentFolders', folder._id);
         break;
       }
     }
@@ -1895,6 +1970,9 @@ export const addTeamMember = internalMutation({
       args.memberName,
     );
     if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+    if (!(await canManageTeamMembersForUser(ctx, args.userId, team, 'add'))) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     const existing = await ctx.db
       .query('teamMembers')
@@ -1951,6 +2029,11 @@ export const removeTeamMember = internalMutation({
       args.memberName,
     );
     if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+    if (
+      !(await canManageTeamMembersForUser(ctx, args.userId, team, 'remove'))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     const membership = await ctx.db
       .query('teamMembers')
@@ -1962,6 +2045,26 @@ export const removeTeamMember = internalMutation({
       return {
         message: `${memberMatch.user.name ?? memberMatch.user.email} is not a member of ${team.name}`,
       };
+    }
+
+    const scopedAssignments = await ctx.db
+      .query('roleAssignments')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', team._id).eq('userId', memberMatch.user._id),
+      )
+      .collect();
+    for (const assignment of scopedAssignments) {
+      await ctx.db.delete('roleAssignments', assignment._id);
+    }
+
+    const legacyAssignments = await ctx.db
+      .query('teamRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const assignment of legacyAssignments) {
+      if (assignment.teamId === team._id) {
+        await ctx.db.delete('teamRoleAssignments', assignment._id);
+      }
     }
 
     await ctx.db.delete('teamMembers', membership._id);
@@ -1993,6 +2096,11 @@ export const changeTeamLead = internalMutation({
       args.pageContext,
       args.teamKey,
     );
+    if (
+      !(await canManageTeamMembersForUser(ctx, args.userId, team, 'update'))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     if (args.leadName === null) {
       await ctx.db.patch('teams', team._id, { leadId: undefined });
@@ -2064,6 +2172,11 @@ export const addProjectMember = internalMutation({
       args.memberName,
     );
     if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+    if (
+      !(await canManageProjectMembersForUser(ctx, args.userId, project, 'add'))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     const existing = await ctx.db
       .query('projectMembers')
@@ -2125,6 +2238,16 @@ export const removeProjectMember = internalMutation({
       args.memberName,
     );
     if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+    if (
+      !(await canManageProjectMembersForUser(
+        ctx,
+        args.userId,
+        project,
+        'remove',
+      ))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     const membership = await ctx.db
       .query('projectMembers')
@@ -2136,6 +2259,26 @@ export const removeProjectMember = internalMutation({
       return {
         message: `${memberMatch.user.name ?? memberMatch.user.email} is not a member of ${project.name}`,
       };
+    }
+
+    const scopedAssignments = await ctx.db
+      .query('roleAssignments')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', project._id).eq('userId', memberMatch.user._id),
+      )
+      .collect();
+    for (const assignment of scopedAssignments) {
+      await ctx.db.delete('roleAssignments', assignment._id);
+    }
+
+    const legacyAssignments = await ctx.db
+      .query('projectRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const assignment of legacyAssignments) {
+      if (assignment.projectId === project._id) {
+        await ctx.db.delete('projectRoleAssignments', assignment._id);
+      }
     }
 
     await ctx.db.delete('projectMembers', membership._id);
@@ -2167,6 +2310,16 @@ export const changeProjectLead = internalMutation({
       args.pageContext,
       args.projectKey,
     );
+    if (
+      !(await canManageProjectMembersForUser(
+        ctx,
+        args.userId,
+        project,
+        'update',
+      ))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     if (args.leadName === null) {
       await ctx.db.patch('projects', project._id, { leadId: undefined });
@@ -2242,7 +2395,7 @@ export const assignIssue = internalMutation({
       args.pageContext,
       args.issueKey ?? null,
     );
-    if (!(await canEditEntity(ctx, issue, 'issue'))) {
+    if (!(await canAssignIssueForUser(ctx, args.userId, issue))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -2328,7 +2481,7 @@ export const unassignIssue = internalMutation({
       args.pageContext,
       args.issueKey ?? null,
     );
-    if (!(await canEditEntity(ctx, issue, 'issue'))) {
+    if (!(await canAssignIssueForUser(ctx, args.userId, issue))) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -2384,6 +2537,7 @@ export const createFolder = internalMutation({
     );
 
     if (!args.name.trim()) throw new ConvexError('INVALID_INPUT');
+    if (args.name.trim().length > 100) throw new ConvexError('INVALID_INPUT');
 
     const folderId = await ctx.db.insert('documentFolders', {
       organizationId: organization._id,
@@ -2421,6 +2575,18 @@ export const updateFolder = internalMutation({
     const folder = await ctx.db.get('documentFolders', folderDocId);
     if (!folder || folder.organizationId !== organization._id)
       throw new ConvexError('FOLDER_NOT_FOUND');
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.DOCUMENT_EDIT,
+    );
+    if (args.name !== undefined && !args.name.trim()) {
+      throw new ConvexError('INVALID_INPUT');
+    }
+    if (args.name !== undefined && args.name.trim().length > 100) {
+      throw new ConvexError('INVALID_INPUT');
+    }
 
     await ctx.db.patch('documentFolders', folderDocId, {
       ...(args.name !== undefined ? { name: args.name.trim() } : {}),
@@ -2456,19 +2622,33 @@ export const requestDeleteFolder = internalMutation({
     const folder = await ctx.db.get('documentFolders', folderDocId);
     if (!folder || folder.organizationId !== organization._id)
       throw new ConvexError('FOLDER_NOT_FOUND');
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.DOCUMENT_DELETE,
+    );
+    const row = await requireAssistantThreadRow(
+      ctx,
+      organization._id,
+      args.userId,
+    );
+    if (row._id !== args.assistantThreadId) {
+      throw new ConvexError('FORBIDDEN');
+    }
 
     const actionId = makePendingActionId();
     const pendingAction: AssistantPendingAction = {
       id: actionId,
       kind: 'delete_entity',
-      entityType: 'document' as const,
+      entityType: 'folder',
       entityId: args.folderId,
       entityLabel: folder.name,
       summary: `Delete folder "${folder.name}" and unlink its documents`,
       createdAt: Date.now(),
     };
 
-    await ctx.db.patch('assistantThreads', args.assistantThreadId, {
+    await ctx.db.patch('assistantThreads', row._id, {
       pendingAction,
       updatedAt: Date.now(),
     });
@@ -2497,7 +2677,7 @@ export const moveDocumentToFolder = internalMutation({
       args.pageContext,
       args.documentId ?? null,
     );
-    if (!(await canEditEntity(ctx, document, 'document'))) {
+    if (!(await canEditEntity(ctx, args.userId, document, 'document'))) {
       throw new ConvexError('FORBIDDEN');
     }
 

@@ -17,8 +17,10 @@ import {
   ArrowLeft,
   Pencil,
   MoreHorizontal,
+  Smile,
 } from 'lucide-react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
+import { IconPicker } from '@/components/ui/icon-picker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
@@ -65,12 +67,19 @@ function EditFolderDialog({
   folder,
   onClose,
 }: {
-  folder: { _id: string; name: string; description?: string; color?: string };
+  folder: {
+    _id: string;
+    name: string;
+    description?: string;
+    color?: string;
+    icon?: string;
+  };
   onClose: () => void;
 }) {
   const [name, setName] = useState(folder.name);
   const [description, setDescription] = useState(folder.description || '');
   const [color, setColor] = useState(folder.color || FOLDER_COLORS[0]);
+  const [icon, setIcon] = useState<string | null>(folder.icon || null);
   const [isLoading, setIsLoading] = useState(false);
   const updateMutation = useMutation(
     api.documents.folderMutations.updateFolder,
@@ -87,6 +96,7 @@ function EditFolderDialog({
           name: name.trim(),
           description: description.trim() || null,
           color,
+          icon: icon || null,
         },
       });
       toast.success('Folder updated');
@@ -106,12 +116,34 @@ function EditFolderDialog({
         </ResponsiveDialogHeader>
         <form onSubmit={handleSubmit} className='space-y-4'>
           <div className='space-y-2'>
-            <Input
-              placeholder='Folder name'
-              value={name}
-              onChange={e => setName(e.target.value)}
-              autoFocus
-            />
+            <div className='flex items-center gap-2'>
+              <IconPicker
+                value={icon}
+                onValueChange={setIcon}
+                trigger={
+                  <button
+                    type='button'
+                    className='border-border hover:bg-muted flex size-9 shrink-0 items-center justify-center rounded-md border transition-colors'
+                  >
+                    {icon ? (
+                      <DynamicIcon
+                        name={icon}
+                        className='size-4'
+                        style={{ color: color }}
+                      />
+                    ) : (
+                      <Smile className='text-muted-foreground/50 size-4' />
+                    )}
+                  </button>
+                }
+              />
+              <Input
+                placeholder='Folder name'
+                value={name}
+                onChange={e => setName(e.target.value)}
+                autoFocus
+              />
+            </div>
             <Input
               placeholder='Description (optional)'
               value={description}
@@ -344,6 +376,7 @@ function FolderContent({
             name: folder.name,
             description: folder.description,
             color: folder.color,
+            icon: folder.icon,
           }}
           onClose={() => setEditing(false)}
         />
@@ -364,10 +397,18 @@ function FolderContent({
                 Documents
               </Button>
             </Link>
-            <span
-              className='inline-block size-2 rounded-full'
-              style={{ backgroundColor: folder.color || '#6b7280' }}
-            />
+            {folder.icon ? (
+              <DynamicIcon
+                name={folder.icon}
+                className='size-3'
+                style={{ color: folder.color || '#6b7280' }}
+              />
+            ) : (
+              <span
+                className='inline-block size-2 rounded-full'
+                style={{ backgroundColor: folder.color || '#6b7280' }}
+              />
+            )}
             <span className='text-sm font-medium'>{folder.name}</span>
             <span className='text-muted-foreground text-xs'>
               {documents.length}
@@ -418,6 +459,12 @@ function FolderContent({
               style={{ backgroundColor: folder.color || '#6366f1' }}
             />
             <div className='relative z-10'>
+              {folder.icon ? (
+                <DynamicIcon
+                  name={folder.icon}
+                  className='mb-1 size-4 opacity-80'
+                />
+              ) : null}
               <BookTitle className='text-sm'>{folder.name}</BookTitle>
               {folder.description && (
                 <BookDescription>{folder.description}</BookDescription>
