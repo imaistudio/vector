@@ -139,13 +139,13 @@ function normalizeToolParts(parts: ReadonlyArray<MessagePart>) {
 }
 
 function PreviewMessage({ message }: { message: UIMessage }) {
-  const text = getPreviewText(message);
-  if (!text) return null;
-
   if (message.role === 'user') {
+    const text = getPreviewText(message);
+    if (!text) return null;
+
     return (
-      <div className='px-2 py-1'>
-        <div className='bg-muted text-foreground ml-auto max-w-[85%] rounded-2xl px-3 py-2 text-[11px] leading-4'>
+      <div className='px-1 py-0.5'>
+        <div className='bg-muted text-foreground ml-auto max-w-[85%] rounded-2xl px-3 py-1.5 text-[11px] leading-4'>
           {text}
         </div>
       </div>
@@ -153,8 +153,8 @@ function PreviewMessage({ message }: { message: UIMessage }) {
   }
 
   return (
-    <div className='text-muted-foreground px-2 py-1 text-[11px] leading-4'>
-      {text}
+    <div className='max-h-32 overflow-hidden'>
+      <AssistantMessage message={message} />
     </div>
   );
 }
@@ -210,7 +210,10 @@ function ReasoningSection({
 }
 
 function AssistantMessage({ message }: { message: UIMessage }) {
-  const rawParts = Array.isArray(message.parts) ? message.parts : [];
+  const rawParts = useMemo(
+    () => (Array.isArray(message.parts) ? message.parts : []),
+    [message.parts],
+  );
   const parts = useMemo(() => normalizeToolParts(rawParts), [rawParts]);
   const messageText = getCombinedText(rawParts);
   const [visibleText] = useSmoothText(messageText, {

@@ -5,7 +5,7 @@ import { getOrganizationBySlug, requireAuthUser } from '../authz';
 import { PERMISSIONS, requirePermission } from '../permissions/utils';
 
 type DocumentFolderPatch = Partial<
-  Pick<Doc<'documentFolders'>, 'name' | 'description' | 'color'>
+  Pick<Doc<'documentFolders'>, 'name' | 'description' | 'color' | 'icon'>
 >;
 
 export const createFolder = mutation({
@@ -15,6 +15,7 @@ export const createFolder = mutation({
       name: v.string(),
       description: v.optional(v.string()),
       color: v.optional(v.string()),
+      icon: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args) => {
@@ -35,6 +36,7 @@ export const createFolder = mutation({
       name: args.data.name.trim(),
       description: args.data.description?.trim(),
       color: args.data.color,
+      icon: args.data.icon,
       createdBy: userId,
     });
 
@@ -49,6 +51,7 @@ export const updateFolder = mutation({
       name: v.optional(v.string()),
       description: v.optional(v.union(v.string(), v.null())),
       color: v.optional(v.union(v.string(), v.null())),
+      icon: v.optional(v.union(v.string(), v.null())),
     }),
   },
   handler: async (ctx, args) => {
@@ -74,6 +77,9 @@ export const updateFolder = mutation({
     }
     if (args.data.color !== undefined) {
       patchData.color = args.data.color ?? undefined;
+    }
+    if (args.data.icon !== undefined) {
+      patchData.icon = args.data.icon ?? undefined;
     }
 
     await ctx.db.patch('documentFolders', folder._id, patchData);

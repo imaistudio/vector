@@ -517,6 +517,7 @@ export default defineSchema({
     name: v.string(),
     description: v.optional(v.string()),
     color: v.optional(v.string()),
+    icon: v.optional(v.string()),
     createdBy: v.id('users'),
   }).index('by_organizationId', ['organizationId']),
 

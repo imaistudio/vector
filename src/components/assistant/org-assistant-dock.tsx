@@ -28,7 +28,6 @@ import { resolveAssistantPageContext } from '@/lib/assistant-context';
 import { useAssistantActions } from '@/hooks/use-assistant-actions';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
-import { ProgressiveBlur } from '@/components/ui/progressive-blur';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
 
@@ -39,8 +38,6 @@ type PendingAction = {
   summary: string;
 };
 
-const CHAT_TOP_FADE_MASK =
-  'linear-gradient(to bottom, transparent 0px, rgba(0, 0, 0, 0.28) 18px, rgba(0, 0, 0, 0.8) 48px, black 76px)';
 const CHAT_PANEL_TRANSITION = {
   height: {
     type: 'spring' as const,
@@ -128,11 +125,15 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   // --- Scroll management ---
   const contentRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevMessageCountRef = useRef(0);
   const needsInitialScrollRef = useRef(true);
 
   const getViewport = useCallback((): HTMLElement | null => {
+    if (viewportRef.current) {
+      return viewportRef.current;
+    }
     const base = contentRef.current ?? endRef.current;
     if (!base) return null;
     return base.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
@@ -161,7 +162,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
         const targetTop = Math.max(
           0,
           Math.min(
-            messageTopInScroll - viewport.clientHeight * 0.45,
+            messageTopInScroll - viewport.clientHeight * 0.28,
             viewport.scrollHeight - viewport.clientHeight,
           ),
         );
@@ -219,6 +220,28 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
       prevMessageCountRef.current = 0;
     }
   }, [isExpanded]);
+
+  useEffect(() => {
+    if (!isExpanded || !hasMessages) return;
+
+    let frameOne = 0;
+    let frameTwo = 0;
+    const timer = window.setTimeout(() => {
+      scrollToBottom('auto');
+    }, 220);
+
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(() => {
+        scrollToBottom('auto');
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+      window.clearTimeout(timer);
+    };
+  }, [hasMessages, isExpanded, scrollToBottom]);
 
   useEffect(() => {
     return () => {
@@ -333,32 +356,27 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                   transition: CHAT_PANEL_EXIT,
                 }}
                 transition={CHAT_PANEL_TRANSITION}
-                className='pointer-events-auto relative origin-bottom will-change-transform'
+                className='pointer-events-auto relative mb-2 origin-bottom will-change-transform'
               >
-                <div className='from-background via-background/75 pointer-events-none absolute inset-x-3 -top-10 z-0 h-16 bg-gradient-to-b to-transparent blur-xl' />
-                <div className='bg-background/92 border-border/45 relative z-10 overflow-hidden rounded-t-[22px] border-x border-t shadow-[0_-18px_48px_rgba(15,23,42,0.08)] backdrop-blur-xl'>
-                  <ProgressiveBlur
-                    direction='top'
-                    blurLayers={10}
-                    blurIntensity={1}
-                    bgGradient
-                    bgGradientOpacity={1}
-                    className='pointer-events-none absolute inset-x-0 top-0 z-10 h-24'
-                  />
+                <div className='border-border/60 bg-background/95 relative overflow-hidden rounded-[18px] border shadow-[0_18px_40px_rgba(15,23,42,0.08)] backdrop-blur-xl'>
                   <button
                     type='button'
                     onClick={() => setIsExpanded(false)}
-                    className='bg-muted/60 text-muted-foreground/60 hover:bg-muted hover:text-foreground absolute top-2 right-2 z-20 flex size-6 items-center justify-center rounded-full backdrop-blur-sm transition-colors'
+                    className='bg-muted/70 text-muted-foreground/70 hover:bg-muted hover:text-foreground absolute top-3 right-3 z-20 flex size-6 items-center justify-center rounded-full transition-colors'
                     aria-label='Collapse chat'
                   >
                     <ChevronsDown className='size-3.5' />
                   </button>
                   <ScrollArea
-                    className='max-h-[min(50vh,420px)]'
+                    className='h-[min(46vh,400px)] w-full'
                     viewportClassName='overscroll-contain'
-                    maskHeight={56}
+                    maskHeight={18}
+                    viewportRef={viewportRef}
                   >
-                    <div ref={contentRef} className='space-y-3 px-3 pt-16 pb-3'>
+                    <div
+                      ref={contentRef}
+                      className='space-y-3 px-3 pt-3 pb-3 sm:px-4'
+                    >
                       {messages.map(message => (
                         <div
                           key={`${message.role}-${message.id ?? `${message.order}-${message.stepOrder}`}`}
@@ -391,29 +409,16 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                   transition: CHAT_PANEL_EXIT,
                 }}
                 transition={CHAT_PANEL_TRANSITION}
-                className='pointer-events-none relative max-h-20 origin-bottom will-change-transform'
+                className='pointer-events-auto relative mb-2 ml-auto w-full max-w-[420px] origin-bottom cursor-pointer will-change-transform sm:max-w-[460px]'
+                onClick={() => setIsExpanded(true)}
               >
-                <div className='from-background via-background/70 pointer-events-none absolute inset-x-3 -top-8 z-0 h-12 bg-gradient-to-b to-transparent blur-lg' />
-                <div className='bg-background/82 border-border/40 relative z-10 overflow-hidden rounded-t-[18px] border-x border-t shadow-[0_-10px_30px_rgba(15,23,42,0.06)] backdrop-blur-lg'>
-                  <ProgressiveBlur
-                    direction='top'
-                    blurLayers={6}
-                    blurIntensity={0.6}
-                    bgGradient
-                    bgGradientOpacity={0.9}
-                    className='pointer-events-none absolute inset-0 z-10'
-                  />
-                  <div
-                    className='space-y-2 px-3 pt-2 pb-1'
-                    style={{
-                      maskImage: CHAT_TOP_FADE_MASK,
-                      WebkitMaskImage: CHAT_TOP_FADE_MASK,
-                    }}
-                  >
-                    {messages.slice(-2).map(message => (
+                <div className='border-border/50 bg-background/92 overflow-hidden rounded-[14px] border shadow-sm backdrop-blur-xl'>
+                  <div className='px-2.5 py-1.5'>
+                    {messages.slice(-1).map(message => (
                       <AssistantDockMessage
                         key={`${message.role}-${message.id ?? `${message.order}-${message.stepOrder}`}-preview`}
                         message={message}
+                        compact
                       />
                     ))}
                   </div>
@@ -474,7 +479,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
           {/* Input bar */}
           <motion.div
             layout
-            className='border-border/60 bg-card pointer-events-auto rounded-3xl border p-1 shadow-sm backdrop-blur-xl'
+            className='border-border/60 bg-background/96 pointer-events-auto rounded-full border p-1 shadow-sm backdrop-blur-xl'
           >
             <div className='flex items-end gap-1'>
               <Textarea

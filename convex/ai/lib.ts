@@ -1,22 +1,14 @@
 import { ConvexError, v } from 'convex/values';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import {
-  canDeleteDocument,
-  canDeleteIssue,
-  canDeleteProject,
-  canDeleteTeam,
-  canEditDocument,
-  canEditIssue,
-  canEditProject,
-  canEditTeam,
-  canViewDocument,
-  canViewIssue,
-  canViewProject,
-  canViewTeam,
-} from '../access';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
-import { hasScopedPermission, PERMISSIONS } from '../permissions/utils';
+import {
+  hasScopedPermission,
+  PERMISSIONS,
+  type Permission,
+  type PermissionScope,
+  type VisibilityState,
+} from '../permissions/utils';
 
 export type AssistantPageContextKind =
   | 'documents_list'
@@ -48,7 +40,7 @@ export type AssistantPageContext = {
 export type AssistantPendingAction = {
   id: string;
   kind: 'delete_entity';
-  entityType: 'document' | 'issue' | 'project' | 'team';
+  entityType: 'document' | 'issue' | 'project' | 'team' | 'folder';
   entityId: string;
   entityLabel: string;
   summary: string;
@@ -83,6 +75,33 @@ export async function requireOrgPermissionForUser(
   if (!allowed) {
     throw new ConvexError('FORBIDDEN');
   }
+}
+
+function scopeFromEntity(entity: {
+  organizationId: Id<'organizations'>;
+  teamId?: Id<'teams'> | null;
+  projectId?: Id<'projects'> | null;
+}): PermissionScope {
+  return {
+    organizationId: entity.organizationId,
+    teamId: entity.teamId ?? undefined,
+    projectId: entity.projectId ?? undefined,
+  };
+}
+
+function getVisibility(
+  visibility: VisibilityState | null | undefined,
+): VisibilityState {
+  return visibility ?? 'organization';
+}
+
+async function hasPermissionForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  scope: PermissionScope,
+  permission: Permission,
+) {
+  return await hasScopedPermission(ctx, scope, userId, permission);
 }
 
 export async function getAssistantThreadRow(
@@ -288,30 +307,333 @@ export async function findProjectStatusByName(
   );
 }
 
+async function canViewIssueForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  issue: Doc<'issues'>,
+) {
+  const visibility = getVisibility(issue.visibility);
+
+  if (visibility === 'public') return true;
+  if (issue.createdBy === userId) return true;
+
+  if (issue.teamId) {
+    const teamMembership = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', issue.teamId!).eq('userId', userId),
+      )
+      .first();
+    if (teamMembership) return true;
+  }
+
+  if (issue.projectId) {
+    const projectMembership = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', issue.projectId!).eq('userId', userId),
+      )
+      .first();
+    if (projectMembership) return true;
+  }
+
+  if (visibility === 'private') {
+    const assignment = await ctx.db
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', issue._id).eq('assigneeId', userId),
+      )
+      .first();
+    return !!assignment;
+  }
+
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', issue.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(issue),
+    PERMISSIONS.ISSUE_VIEW,
+  );
+}
+
+async function canEditIssueForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  issue: Doc<'issues'>,
+) {
+  if (issue.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(issue),
+    PERMISSIONS.ISSUE_EDIT,
+  );
+}
+
+async function canDeleteIssueForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  issue: Doc<'issues'>,
+) {
+  if (issue.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(issue),
+    PERMISSIONS.ISSUE_DELETE,
+  );
+}
+
+async function canViewTeamForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  team: Doc<'teams'>,
+) {
+  const visibility = getVisibility(team.visibility);
+
+  if (visibility === 'public') return true;
+  if (team.createdBy === userId) return true;
+
+  if (visibility === 'private') {
+    const membership = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', team._id).eq('userId', userId),
+      )
+      .first();
+    return !!membership;
+  }
+
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', team.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(team),
+    PERMISSIONS.TEAM_VIEW,
+  );
+}
+
+async function canEditTeamForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  team: Doc<'teams'>,
+) {
+  if (team.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(team),
+    PERMISSIONS.TEAM_EDIT,
+  );
+}
+
+async function canDeleteTeamForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  team: Doc<'teams'>,
+) {
+  if (team.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(team),
+    PERMISSIONS.TEAM_DELETE,
+  );
+}
+
+async function canViewProjectForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  project: Doc<'projects'>,
+) {
+  const visibility = getVisibility(project.visibility);
+
+  if (visibility === 'public') return true;
+  if (project.createdBy === userId) return true;
+
+  if (visibility === 'private') {
+    const membership = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', project._id).eq('userId', userId),
+      )
+      .first();
+    return !!membership;
+  }
+
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', project.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(project),
+    PERMISSIONS.PROJECT_VIEW,
+  );
+}
+
+async function canEditProjectForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  project: Doc<'projects'>,
+) {
+  if (project.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(project),
+    PERMISSIONS.PROJECT_EDIT,
+  );
+}
+
+async function canDeleteProjectForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  project: Doc<'projects'>,
+) {
+  if (project.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(project),
+    PERMISSIONS.PROJECT_DELETE,
+  );
+}
+
+async function canViewDocumentForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  document: Doc<'documents'>,
+) {
+  const visibility = getVisibility(document.visibility);
+
+  if (visibility === 'public') return true;
+  if (document.createdBy === userId) return true;
+
+  if (document.teamId) {
+    const teamMembership = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', document.teamId!).eq('userId', userId),
+      )
+      .first();
+    if (teamMembership) return true;
+  }
+
+  if (document.projectId) {
+    const projectMembership = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', document.projectId!).eq('userId', userId),
+      )
+      .first();
+    if (projectMembership) return true;
+  }
+
+  if (visibility === 'private') {
+    return false;
+  }
+
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', document.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(document),
+    PERMISSIONS.DOCUMENT_VIEW,
+  );
+}
+
+async function canEditDocumentForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  document: Doc<'documents'>,
+) {
+  if (document.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(document),
+    PERMISSIONS.DOCUMENT_EDIT,
+  );
+}
+
+async function canDeleteDocumentForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  document: Doc<'documents'>,
+) {
+  if (document.createdBy === userId) return true;
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(document),
+    PERMISSIONS.DOCUMENT_DELETE,
+  );
+}
+
 export async function canViewEntity(
   ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
   entity: unknown,
   entityType: 'document' | 'issue' | 'project' | 'team',
 ) {
   switch (entityType) {
     case 'document':
-      return await canViewDocument(
+      return await canViewDocumentForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveDocumentFromContext>>,
       );
     case 'issue':
-      return await canViewIssue(
+      return await canViewIssueForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveIssueFromContext>>,
       );
     case 'project':
-      return await canViewProject(
+      return await canViewProjectForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveProjectFromContext>>,
       );
     case 'team':
-      return await canViewTeam(
+      return await canViewTeamForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveTeamFromContext>>,
       );
   }
@@ -319,28 +641,33 @@ export async function canViewEntity(
 
 export async function canEditEntity(
   ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
   entity: unknown,
   entityType: 'document' | 'issue' | 'project' | 'team',
 ) {
   switch (entityType) {
     case 'document':
-      return await canEditDocument(
+      return await canEditDocumentForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveDocumentFromContext>>,
       );
     case 'issue':
-      return await canEditIssue(
+      return await canEditIssueForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveIssueFromContext>>,
       );
     case 'project':
-      return await canEditProject(
+      return await canEditProjectForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveProjectFromContext>>,
       );
     case 'team':
-      return await canEditTeam(
+      return await canEditTeamForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveTeamFromContext>>,
       );
   }
@@ -348,31 +675,137 @@ export async function canEditEntity(
 
 export async function canDeleteEntity(
   ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
   entity: unknown,
   entityType: 'document' | 'issue' | 'project' | 'team',
 ) {
   switch (entityType) {
     case 'document':
-      return await canDeleteDocument(
+      return await canDeleteDocumentForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveDocumentFromContext>>,
       );
     case 'issue':
-      return await canDeleteIssue(
+      return await canDeleteIssueForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveIssueFromContext>>,
       );
     case 'project':
-      return await canDeleteProject(
+      return await canDeleteProjectForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveProjectFromContext>>,
       );
     case 'team':
-      return await canDeleteTeam(
+      return await canDeleteTeamForUser(
         ctx,
+        userId,
         entity as Awaited<ReturnType<typeof resolveTeamFromContext>>,
       );
   }
+}
+
+export async function canManageTeamMembersForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  team: Doc<'teams'>,
+  action: 'add' | 'remove' | 'update',
+) {
+  const permissionMap = {
+    add: PERMISSIONS.TEAM_MEMBER_ADD,
+    remove: PERMISSIONS.TEAM_MEMBER_REMOVE,
+    update: PERMISSIONS.TEAM_MEMBER_UPDATE,
+  };
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(team),
+    permissionMap[action],
+  );
+}
+
+export async function canManageProjectMembersForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  project: Doc<'projects'>,
+  action: 'add' | 'remove' | 'update',
+) {
+  const permissionMap = {
+    add: PERMISSIONS.PROJECT_MEMBER_ADD,
+    remove: PERMISSIONS.PROJECT_MEMBER_REMOVE,
+    update: PERMISSIONS.PROJECT_MEMBER_UPDATE,
+  };
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(project),
+    permissionMap[action],
+  );
+}
+
+export async function canAssignIssueForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  issue: Doc<'issues'>,
+) {
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(issue),
+    PERMISSIONS.ISSUE_ASSIGN,
+  );
+}
+
+export async function canUpdateIssueAssignmentStateForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  issue: Doc<'issues'>,
+  assigneeId: Id<'users'>,
+) {
+  if (assigneeId === userId) {
+    const assignment = await ctx.db
+      .query('issueAssignees')
+      .withIndex('by_issue_assignee', q =>
+        q.eq('issueId', issue._id).eq('assigneeId', userId),
+      )
+      .first();
+    return !!assignment;
+  }
+
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    scopeFromEntity(issue),
+    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE,
+  );
+}
+
+export async function canEditFolderForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  folder: Doc<'documentFolders'>,
+) {
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    { organizationId: folder.organizationId },
+    PERMISSIONS.DOCUMENT_EDIT,
+  );
+}
+
+export async function canDeleteFolderForUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+  folder: Doc<'documentFolders'>,
+) {
+  return await hasPermissionForUser(
+    ctx,
+    userId,
+    { organizationId: folder.organizationId },
+    PERMISSIONS.DOCUMENT_DELETE,
+  );
 }
 
 export async function findIssueStateByName(
