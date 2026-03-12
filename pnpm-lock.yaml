@@ -10,6 +10,9 @@ importers:
       '@base-ui/react':
         specifier: ^1.2.0
         version: 1.2.0(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@clack/prompts':
+        specifier: ^1.1.0
+        version: 1.1.0
       '@convex-dev/agent':
         specifier: 0.3.2
         version: 0.3.2(@ai-sdk/provider-utils@3.0.22(zod@3.25.76))(ai@5.0.151(zod@3.25.76))(convex-helpers@0.1.114(@standard-schema/spec@1.1.0)(convex@1.32.0(react@19.1.0))(hono@4.12.5)(react@19.1.0)(typescript@5.8.3)(zod@3.25.76))(convex@1.32.0(react@19.1.0))(react@19.1.0)
@@ -145,6 +148,9 @@ importers:
       cmdk:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.1.6(@types/react@19.1.8))(@types/react@19.1.8)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      commander:
+        specifier: ^14.0.3
+        version: 14.0.3
       convex:
         specifier: ^1.32.0
         version: 1.32.0(react@19.1.0)
@@ -671,6 +677,18 @@ packages:
     resolution:
       {
         integrity: sha512-4mudFAQ6H+MqBTfqLmU7G1ZwRzCLfJEooL/fsF6rCX5eePMbGhoy5n4g+G4vlh2muDcsCTJtL+uKbOzWxs5LHA==,
+      }
+
+  '@clack/core@1.1.0':
+    resolution:
+      {
+        integrity: sha512-SVcm4Dqm2ukn64/8Gub2wnlA5nS2iWJyCkdNHcvNHPIeBTGojpdJ+9cZKwLfmqy7irD4N5qLteSilJlE0WLAtA==,
+      }
+
+  '@clack/prompts@1.1.0':
+    resolution:
+      {
+        integrity: sha512-pkqbPGtohJAvm4Dphs2M8xE29ggupihHdy1x84HNojZuMtFsHiUlRvqD24tM2+XmI+61LlfNceM3Wr7U5QES5g==,
       }
 
   '@convex-dev/agent@0.3.2':
@@ -11563,6 +11581,15 @@ snapshots:
   '@chevrotain/types@11.1.2': {}
 
   '@chevrotain/utils@11.1.2': {}
+
+  '@clack/core@1.1.0':
+    dependencies:
+      sisteransi: 1.0.5
+
+  '@clack/prompts@1.1.0':
+    dependencies:
+      '@clack/core': 1.1.0
+      sisteransi: 1.0.5
 
   '@convex-dev/agent@0.3.2(@ai-sdk/provider-utils@3.0.22(zod@3.25.76))(ai@5.0.151(zod@3.25.76))(convex-helpers@0.1.114(@standard-schema/spec@1.1.0)(convex@1.32.0(react@19.1.0))(hono@4.12.5)(react@19.1.0)(typescript@5.8.3)(zod@3.25.76))(convex@1.32.0(react@19.1.0))(react@19.1.0)':
     dependencies:

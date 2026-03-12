@@ -31,6 +31,7 @@ import type * as ai_tools from "../ai/tools.js";
 import type * as auth from "../auth.js";
 import type * as authUtils from "../authUtils.js";
 import type * as authz from "../authz.js";
+import type * as cli from "../cli.js";
 import type * as crons from "../crons.js";
 import type * as documents_folderMutations from "../documents/folderMutations.js";
 import type * as documents_folderQueries from "../documents/folderQueries.js";
@@ -96,6 +97,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   authUtils: typeof authUtils;
   authz: typeof authz;
+  cli: typeof cli;
   crons: typeof crons;
   "documents/folderMutations": typeof documents_folderMutations;
   "documents/folderQueries": typeof documents_folderQueries;
