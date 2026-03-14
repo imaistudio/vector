@@ -1,7 +1,12 @@
 import { internalMutation, internalQuery } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
-import { syncProjectRoleAssignment, syncTeamRoleAssignment } from '../roles';
+import {
+  syncOrganizationRoleAssignment,
+  syncProjectRoleAssignment,
+  syncTeamRoleAssignment,
+} from '../roles';
 import { buildIssueSearchText } from '../issues/search';
+import { createNotificationEvent } from '../notifications/lib';
 import { syncDocumentMentions } from '../documents/mentions';
 import {
   AssistantPageContext,
@@ -2749,5 +2754,387 @@ export const listFolders = internalQuery({
       });
     }
     return results;
+  },
+});
+
+// ──── Organization member management ────
+
+export const listOrgMembers = internalQuery({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const members = await ctx.db
+      .query('members')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', organization._id),
+      )
+      .collect();
+
+    const results = [];
+    for (const member of members) {
+      const user = await ctx.db.get('users', member.userId);
+      if (!user) continue;
+      results.push({
+        name: user.name ?? user.username ?? user.email ?? 'Unknown',
+        email: user.email ?? undefined,
+        role: member.role,
+        userId: String(member.userId),
+      });
+    }
+    return results;
+  },
+});
+
+export const listOrgInvites = internalQuery({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const invites = await ctx.db
+      .query('invitations')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', organization._id),
+      )
+      .collect();
+
+    const pending = invites.filter(
+      inv => inv.status === 'pending' && inv.expiresAt > Date.now(),
+    );
+
+    const results = [];
+    for (const inv of pending) {
+      const inviter = await ctx.db.get('users', inv.inviterId);
+      results.push({
+        inviteId: String(inv._id),
+        email: inv.email,
+        role: inv.role,
+        invitedBy: inviter?.name ?? inviter?.email ?? 'Unknown',
+        expiresAt: new Date(inv.expiresAt).toISOString(),
+      });
+    }
+    return results;
+  },
+});
+
+export const inviteOrgMember = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    email: v.string(),
+    role: v.union(v.literal('member'), v.literal('admin')),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const email = args.email.toLowerCase().trim();
+    if (!email || !email.includes('@')) {
+      throw new ConvexError('INVALID_EMAIL');
+    }
+
+    const existingUser = await ctx.db
+      .query('users')
+      .withIndex('email', q => q.eq('email', email))
+      .first();
+
+    if (existingUser) {
+      const existingMembership = await ctx.db
+        .query('members')
+        .withIndex('by_org_user', q =>
+          q
+            .eq('organizationId', organization._id)
+            .eq('userId', existingUser._id),
+        )
+        .first();
+      if (existingMembership) {
+        return { message: `${email} is already a member of this organization` };
+      }
+    }
+
+    const inviteId = await ctx.db.insert('invitations', {
+      organizationId: organization._id,
+      email,
+      role: args.role,
+      status: 'pending',
+      expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      inviterId: args.userId,
+    });
+
+    const inviter = await ctx.db.get('users', args.userId);
+
+    await createNotificationEvent(ctx, {
+      type: 'organization_invite',
+      actorId: args.userId,
+      organizationId: organization._id,
+      invitationId: inviteId,
+      payload: {
+        organizationName: organization.name,
+        inviterName:
+          inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
+        roleLabel: args.role,
+        href: '/settings/invites',
+      },
+      recipients: [
+        {
+          userId: existingUser?._id,
+          email,
+        },
+      ],
+    });
+
+    return {
+      message: `Invited ${email} as ${args.role}`,
+      inviteId: String(inviteId),
+      email,
+      role: args.role,
+    };
+  },
+});
+
+export const revokeOrgInvite = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    inviteId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const inviteDocId = ctx.db.normalizeId('invitations', args.inviteId);
+    if (!inviteDocId) throw new ConvexError('INVITE_NOT_FOUND');
+    const invite = await ctx.db.get('invitations', inviteDocId);
+    if (!invite || invite.organizationId !== organization._id) {
+      throw new ConvexError('INVITE_NOT_FOUND');
+    }
+    if (invite.status !== 'pending') {
+      return {
+        message: `Invitation to ${invite.email} is already ${invite.status}`,
+      };
+    }
+
+    await ctx.db.patch('invitations', invite._id, {
+      status: 'revoked',
+      revokedAt: Date.now(),
+    });
+
+    return { message: `Revoked invitation to ${invite.email}` };
+  },
+});
+
+export const removeOrgMember = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    memberName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const memberMatch = await findMemberByName(
+      ctx,
+      organization._id,
+      args.memberName,
+    );
+    if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    const member = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q
+          .eq('organizationId', organization._id)
+          .eq('userId', memberMatch.user._id),
+      )
+      .first();
+    if (!member) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    if (member.role === 'owner') {
+      return { message: 'Cannot remove the organization owner' };
+    }
+
+    // Clean up all role assignments
+    const orgAssignments = await ctx.db
+      .query('roleAssignments')
+      .withIndex('by_org_user', q =>
+        q
+          .eq('organizationId', organization._id)
+          .eq('userId', memberMatch.user._id),
+      )
+      .collect();
+    for (const assignment of orgAssignments) {
+      await ctx.db.delete('roleAssignments', assignment._id);
+    }
+
+    const legacyOrgAssignments = await ctx.db
+      .query('orgRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const assignment of legacyOrgAssignments) {
+      if (assignment.organizationId === organization._id) {
+        await ctx.db.delete('orgRoleAssignments', assignment._id);
+      }
+    }
+
+    const legacyTeamAssignments = await ctx.db
+      .query('teamRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const assignment of legacyTeamAssignments) {
+      const team = await ctx.db.get('teams', assignment.teamId);
+      if (team?.organizationId === organization._id) {
+        await ctx.db.delete('teamRoleAssignments', assignment._id);
+      }
+    }
+
+    const legacyProjectAssignments = await ctx.db
+      .query('projectRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const assignment of legacyProjectAssignments) {
+      const project = await ctx.db.get('projects', assignment.projectId);
+      if (project?.organizationId === organization._id) {
+        await ctx.db.delete('projectRoleAssignments', assignment._id);
+      }
+    }
+
+    // Remove from all teams in this org
+    const teamMemberships = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const membership of teamMemberships) {
+      const team = await ctx.db.get('teams', membership.teamId);
+      if (team?.organizationId === organization._id) {
+        await ctx.db.delete('teamMembers', membership._id);
+      }
+    }
+
+    // Remove from all projects in this org
+    const projectMemberships = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_user', q => q.eq('userId', memberMatch.user._id))
+      .collect();
+    for (const membership of projectMemberships) {
+      const project = await ctx.db.get('projects', membership.projectId);
+      if (project?.organizationId === organization._id) {
+        await ctx.db.delete('projectMembers', membership._id);
+      }
+    }
+
+    await ctx.db.delete('members', member._id);
+
+    const displayName =
+      memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown';
+    return {
+      message: `Removed ${displayName} from the organization`,
+      userName: displayName,
+    };
+  },
+});
+
+export const updateOrgMemberRole = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    memberName: v.string(),
+    role: v.union(v.literal('member'), v.literal('admin')),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const memberMatch = await findMemberByName(
+      ctx,
+      organization._id,
+      args.memberName,
+    );
+    if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    const member = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q
+          .eq('organizationId', organization._id)
+          .eq('userId', memberMatch.user._id),
+      )
+      .first();
+    if (!member) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    if (member.role === 'owner') {
+      return { message: "Cannot change the organization owner's role" };
+    }
+
+    await ctx.db.patch('members', member._id, { role: args.role });
+    await syncOrganizationRoleAssignment(
+      ctx,
+      organization._id,
+      memberMatch.user._id,
+      args.role,
+    );
+
+    const displayName =
+      memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown';
+    return {
+      message: `Updated ${displayName}'s role to ${args.role}`,
+      userName: displayName,
+      role: args.role,
+    };
   },
 });

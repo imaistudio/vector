@@ -851,6 +851,109 @@ export const showDocuments: any = createTool({
   },
 });
 
+// ──── Organization member management ────
+
+export const listOrgMembers: any = createTool({
+  description:
+    'List all members of the current organization with their names, emails, and roles (owner/admin/member).',
+  args: z.object({}),
+  handler: async (ctx: AssistantToolCtx) => {
+    return await ctx.runQuery(internal.ai.internal.listOrgMembers, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+    });
+  },
+});
+
+export const listOrgInvites: any = createTool({
+  description:
+    'List pending invitations for the current organization. Shows email, role, who invited them, and expiry.',
+  args: z.object({}),
+  handler: async (ctx: AssistantToolCtx) => {
+    return await ctx.runQuery(internal.ai.internal.listOrgInvites, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+    });
+  },
+});
+
+export const inviteOrgMember: any = createTool({
+  description:
+    'Invite someone to the organization by email. They will receive an invitation email. Role can be "member" or "admin".',
+  args: z.object({
+    email: z.string().describe('Email address to invite'),
+    role: z
+      .enum(['member', 'admin'])
+      .optional()
+      .describe('Organization role. Defaults to member.'),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: { email: string; role?: 'member' | 'admin' },
+  ) => {
+    return await ctx.runMutation(internal.ai.internal.inviteOrgMember, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      email: args.email,
+      role: args.role ?? 'member',
+    });
+  },
+});
+
+export const revokeOrgInvite: any = createTool({
+  description:
+    'Revoke a pending invitation. Use listOrgInvites first to find the inviteId.',
+  args: z.object({
+    inviteId: z.string().describe('The invitation ID to revoke'),
+  }),
+  handler: async (ctx: AssistantToolCtx, args: { inviteId: string }) => {
+    return await ctx.runMutation(internal.ai.internal.revokeOrgInvite, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      inviteId: args.inviteId,
+    });
+  },
+});
+
+export const removeOrgMember: any = createTool({
+  description:
+    'Remove a member from the organization entirely. This also removes them from all teams and projects. Cannot remove the owner. Use listOrgMembers or listWorkspaceReferenceData to find the member name first.',
+  args: z.object({
+    memberName: z
+      .string()
+      .describe('Name or email of the member to remove from the organization'),
+  }),
+  handler: async (ctx: AssistantToolCtx, args: { memberName: string }) => {
+    return await ctx.runMutation(internal.ai.internal.removeOrgMember, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      memberName: args.memberName,
+    });
+  },
+});
+
+export const updateOrgMemberRole: any = createTool({
+  description:
+    'Change a member\'s organization role to "member" or "admin". Cannot change the owner\'s role.',
+  args: z.object({
+    memberName: z
+      .string()
+      .describe('Name or email of the member whose role to change'),
+    role: z.enum(['member', 'admin']).describe('New organization role'),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: { memberName: string; role: 'member' | 'admin' },
+  ) => {
+    return await ctx.runMutation(internal.ai.internal.updateOrgMemberRole, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      memberName: args.memberName,
+      role: args.role,
+    });
+  },
+});
+
 // ──── Client action queue ────
 
 export const performClientAction: any = createTool({

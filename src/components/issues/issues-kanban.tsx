@@ -71,6 +71,7 @@ export interface IssuesKanbanProps {
   deletePending?: boolean;
   /** Extra defaults passed to the create-issue dialog (e.g. projectId) */
   createDefaults?: Record<string, unknown>;
+  canChangeAll?: boolean;
 }
 
 interface GroupedIssue {
@@ -100,10 +101,20 @@ interface GroupedIssue {
     stateName: string | null;
     stateType: string | null;
   }>;
-  /** The assignment ID for the current user (used for state changes) */
-  assignmentId: string | null;
-  stateType: string | null;
   updatedAt: number;
+}
+
+interface KanbanIssueCard extends GroupedIssue {
+  cardId: string;
+  assignmentId: string | null;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
+  stateId: string | null;
+  stateIcon: string | null;
+  stateColor: string | null;
+  stateName: string | null;
+  stateType: string | null;
 }
 
 function getInitials(name?: string | null, email?: string | null) {
@@ -133,6 +144,7 @@ export function IssuesKanban({
   onDelete,
   deletePending = false,
   createDefaults,
+  canChangeAll = false,
 }: IssuesKanbanProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
 
@@ -142,12 +154,10 @@ export function IssuesKanban({
     }),
   );
 
-  // Deduplicate issues and determine primary state
   const groupedIssues = React.useMemo(() => {
     const map = new Map<string, GroupedIssue>();
 
     for (const row of issues) {
-      if (row.id === 'unassigned') continue;
       const existing = map.get(row.id);
 
       const assignment = {
@@ -175,11 +185,6 @@ export function IssuesKanban({
           existing.assigneeIds.push(row.assigneeId);
         }
         existing.assignments.push(assignment);
-        // Prefer the current user's state type and assignment
-        if (row.assigneeId === currentUserId && row.stateType) {
-          existing.stateType = row.stateType;
-          existing.assignmentId = row.assignmentId ?? null;
-        }
       } else {
         map.set(row.id, {
           id: row.id,
@@ -202,15 +207,47 @@ export function IssuesKanban({
             : [],
           assigneeIds: row.assigneeId ? [row.assigneeId] : [],
           assignments: [assignment],
-          assignmentId: row.assignmentId ?? null,
-          stateType: row.stateType ?? null,
           updatedAt: row.updatedAt ?? 0,
         });
       }
     }
 
     return [...map.values()];
-  }, [issues, currentUserId]);
+  }, [issues]);
+
+  const issueCards = React.useMemo(() => {
+    return groupedIssues
+      .flatMap(issue => {
+        const visibleAssignments = issue.assignments.filter(
+          assignment => assignment.assigneeId && assignment.stateType,
+        );
+
+        return visibleAssignments.map<KanbanIssueCard>(assignment => ({
+          ...issue,
+          cardId: `${issue.id}:${assignment.assignmentId}`,
+          assignmentId: assignment.assignmentId,
+          assigneeId: assignment.assigneeId,
+          assigneeName: assignment.assigneeName,
+          assigneeEmail: assignment.assigneeEmail,
+          stateId: assignment.stateId,
+          stateIcon: assignment.stateIcon,
+          stateColor: assignment.stateColor,
+          stateName: assignment.stateName,
+          stateType: assignment.stateType,
+        }));
+      })
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [groupedIssues]);
+
+  const canMoveCard = React.useCallback(
+    (issue: KanbanIssueCard) =>
+      Boolean(
+        onStateChange &&
+          issue.assignmentId &&
+          (canChangeAll || issue.assigneeId === currentUserId),
+      ),
+    [canChangeAll, currentUserId, onStateChange],
+  );
 
   // Sort states by position
   const sortedStates = React.useMemo(
@@ -218,16 +255,15 @@ export function IssuesKanban({
     [states],
   );
 
-  // Group issues by state type
   const columns = React.useMemo(() => {
     return sortedStates.map(state => ({
       state,
-      issues: groupedIssues.filter(issue => issue.stateType === state.type),
+      issues: issueCards.filter(issue => issue.stateType === state.type),
     }));
-  }, [sortedStates, groupedIssues]);
+  }, [sortedStates, issueCards]);
 
   const activeIssue = activeId
-    ? (groupedIssues.find(i => i.id === activeId) ?? null)
+    ? (issueCards.find(i => i.cardId === activeId) ?? null)
     : null;
 
   function handleDragStart(event: DragStartEvent) {
@@ -241,14 +277,14 @@ export function IssuesKanban({
 
     const issueId = active.id as string;
     const targetStateId = over.id as string;
-    const issue = groupedIssues.find(i => i.id === issueId);
-    if (!issue || !issue.assignmentId) return;
+    const issue = issueCards.find(i => i.cardId === issueId);
+    if (!issue || !issue.assignmentId || !canMoveCard(issue)) return;
 
     // Find the target state and check if it's different
     const targetState = sortedStates.find(s => s._id === targetStateId);
     if (!targetState || targetState.type === issue.stateType) return;
 
-    onStateChange(issueId, issue.assignmentId, targetStateId);
+    onStateChange(issue.id, issue.assignmentId, targetStateId);
   }
 
   return (
@@ -270,6 +306,7 @@ export function IssuesKanban({
             teams={teams}
             projects={projects}
             currentUserId={currentUserId}
+            canChangeAll={canChangeAll}
             onStateChange={onStateChange}
             onPriorityChange={onPriorityChange}
             onAssigneesChange={onAssigneesChange}
@@ -312,6 +349,7 @@ function KanbanColumn({
   teams,
   projects,
   currentUserId,
+  canChangeAll,
   onStateChange,
   onPriorityChange,
   onAssigneesChange,
@@ -322,7 +360,7 @@ function KanbanColumn({
   createDefaults,
 }: {
   state: State;
-  issues: GroupedIssue[];
+  issues: KanbanIssueCard[];
   orgSlug: string;
   activeId: string | null;
   states: ReadonlyArray<State>;
@@ -330,6 +368,7 @@ function KanbanColumn({
   teams?: ReadonlyArray<Team>;
   projects?: ReadonlyArray<Project>;
   currentUserId: string;
+  canChangeAll?: boolean;
   onStateChange?: (
     issueId: string,
     assignmentId: string,
@@ -380,15 +419,16 @@ function KanbanColumn({
         ) : (
           issues.map(issue => (
             <KanbanCard
-              key={issue.id}
+              key={issue.cardId}
               issue={issue}
               orgSlug={orgSlug}
-              isHidden={issue.id === activeId}
+              isHidden={issue.cardId === activeId}
               states={states}
               priorities={priorities}
               teams={teams}
               projects={projects}
               currentUserId={currentUserId}
+              canChangeAll={canChangeAll}
               onStateChange={onStateChange}
               onPriorityChange={onPriorityChange}
               onAssigneesChange={onAssigneesChange}
@@ -421,6 +461,7 @@ function KanbanCard({
   teams,
   projects,
   currentUserId,
+  canChangeAll = false,
   onStateChange,
   onPriorityChange,
   onAssigneesChange,
@@ -429,7 +470,7 @@ function KanbanCard({
   onDelete,
   deletePending,
 }: {
-  issue: GroupedIssue;
+  issue: KanbanIssueCard;
   orgSlug: string;
   isHidden?: boolean;
   states: ReadonlyArray<State>;
@@ -437,6 +478,7 @@ function KanbanCard({
   teams?: ReadonlyArray<Team>;
   projects?: ReadonlyArray<Project>;
   currentUserId: string;
+  canChangeAll?: boolean;
   onStateChange?: (
     issueId: string,
     assignmentId: string,
@@ -450,7 +492,11 @@ function KanbanCard({
   deletePending?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: issue.id,
+    id: issue.cardId,
+    disabled:
+      !onStateChange ||
+      !issue.assignmentId ||
+      !(canChangeAll || issue.assigneeId === currentUserId),
   });
 
   return (
@@ -478,6 +524,8 @@ function KanbanCard({
         priorities={priorities}
         teams={teams}
         projects={projects}
+        currentUserId={currentUserId}
+        canChangeAll={canChangeAll}
         onStateChange={onStateChange}
         onPriorityChange={onPriorityChange}
         onTeamChange={onTeamChange}
@@ -496,6 +544,8 @@ function KanbanCardMenu({
   priorities,
   teams,
   projects,
+  currentUserId,
+  canChangeAll = false,
   onStateChange,
   onPriorityChange,
   onTeamChange,
@@ -503,12 +553,14 @@ function KanbanCardMenu({
   onDelete,
   deletePending,
 }: {
-  issue: GroupedIssue;
+  issue: KanbanIssueCard;
   orgSlug: string;
   states: ReadonlyArray<State>;
   priorities: ReadonlyArray<Priority>;
   teams?: ReadonlyArray<Team>;
   projects?: ReadonlyArray<Project>;
+  currentUserId: string;
+  canChangeAll?: boolean;
   onStateChange?: (
     issueId: string,
     assignmentId: string,
@@ -520,6 +572,12 @@ function KanbanCardMenu({
   onDelete?: (issueId: string) => void;
   deletePending?: boolean;
 }) {
+  const canMoveIssue = Boolean(
+    onStateChange &&
+      issue.assignmentId &&
+      (canChangeAll || issue.assigneeId === currentUserId),
+  );
+
   return (
     <ContextMenuContent className='w-56'>
       <ContextMenuItem asChild>
@@ -529,7 +587,7 @@ function KanbanCardMenu({
         </Link>
       </ContextMenuItem>
 
-      {issue.assignmentId && onStateChange ? (
+      {canMoveIssue ? (
         <ContextMenuSub>
           <ContextMenuSubTrigger>
             <Circle className='size-4' />
@@ -544,9 +602,10 @@ function KanbanCardMenu({
               return (
                 <ContextMenuItem
                   key={state._id}
-                  onClick={() =>
-                    onStateChange(issue.id, issue.assignmentId!, state._id)
-                  }
+                  onClick={() => {
+                    if (!onStateChange || !issue.assignmentId) return;
+                    onStateChange(issue.id, issue.assignmentId, state._id);
+                  }}
                 >
                   <span className='flex size-4 items-center justify-center'>
                     {isSelected ? <Check className='size-3.5' /> : null}
@@ -703,7 +762,7 @@ function KanbanCardContent({
   onPriorityChange,
   onAssigneesChange,
 }: {
-  issue: GroupedIssue;
+  issue: KanbanIssueCard;
   orgSlug: string;
   isDragging?: boolean;
   priorities?: ReadonlyArray<Priority>;
@@ -711,6 +770,33 @@ function KanbanCardContent({
   onPriorityChange?: (issueId: string, priorityId: string) => void;
   onAssigneesChange?: (issueId: string, assigneeIds: string[]) => void;
 }) {
+  const assigneeLabel =
+    issue.assigneeName || issue.assigneeEmail || 'Unassigned';
+  const assigneeStateCluster = (
+    <div className='flex min-w-0 items-center gap-1.5'>
+      <Avatar className='size-5 shrink-0'>
+        <AvatarFallback className='text-[9px]'>
+          {getInitials(issue.assigneeName, issue.assigneeEmail)}
+        </AvatarFallback>
+      </Avatar>
+      <div className='flex min-w-0 items-center gap-1.5 text-[11px]'>
+        <span className='truncate font-medium text-current'>
+          {assigneeLabel}
+        </span>
+        <span className='text-muted-foreground/60 shrink-0'>·</span>
+        <DynamicIcon
+          name={issue.stateIcon}
+          className='text-muted-foreground size-3 shrink-0'
+          style={{ color: issue.stateColor || '#94a3b8' }}
+          fallback={Circle}
+        />
+        <span className='text-muted-foreground truncate'>
+          {issue.stateName ?? 'No state'}
+        </span>
+      </div>
+    </div>
+  );
+
   return (
     <div
       className={cn(
@@ -777,7 +863,6 @@ function KanbanCardContent({
 
       {/* Bottom row: assignees + date */}
       <div className='mt-2 flex items-center justify-between'>
-        {/* Assignee selector */}
         {onAssigneesChange && currentUserId ? (
           <div onClick={e => e.stopPropagation()}>
             <MultiAssigneeSelector
@@ -788,23 +873,15 @@ function KanbanCardContent({
               activeFilter='all'
               currentUserId={currentUserId}
               canManageAll={false}
+              trigger={
+                <div className='hover:bg-muted/40 rounded-sm px-0.5 py-0.5 transition-colors'>
+                  {assigneeStateCluster}
+                </div>
+              }
             />
           </div>
         ) : (
-          <div className='flex -space-x-1.5'>
-            {issue.assignees.slice(0, 3).map(assignee => (
-              <Avatar key={assignee.id} className='ring-card size-5 ring-2'>
-                <AvatarFallback className='text-[9px]'>
-                  {getInitials(assignee.name, assignee.email)}
-                </AvatarFallback>
-              </Avatar>
-            ))}
-            {issue.assignees.length > 3 && (
-              <div className='ring-card bg-muted text-muted-foreground flex size-5 items-center justify-center rounded-full text-[9px] ring-2'>
-                +{issue.assignees.length - 3}
-              </div>
-            )}
-          </div>
+          assigneeStateCluster
         )}
 
         <span className='text-muted-foreground text-[11px]'>

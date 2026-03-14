@@ -314,6 +314,11 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
     PERMISSIONS.ISSUE_DELETE,
     permissionScope,
   );
+  const { isAllowed: canUpdateAssignmentStates } = usePermissionCheck(
+    params.orgSlug,
+    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE,
+    permissionScope,
+  );
 
   const canEdit = !!(
     user &&
@@ -1068,7 +1073,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                   {displayDescription ? (
                     <div
                       className={cn(
-                        'prose prose-sm text-muted-foreground max-w-none transition-colors',
+                        'prose prose-sm dark:prose-invert text-muted-foreground max-w-none transition-colors',
                         canEdit && 'hover:text-foreground cursor-pointer',
                       )}
                       onClick={() => {
@@ -1200,7 +1205,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
 
           {/* Tabs: Issues / Activity / Members */}
           <Tabs value={projectTab} onValueChange={setProjectTab}>
-            <div className='space-y-2 px-3 sm:px-4'>
+            <div className='mx-auto w-full max-w-5xl space-y-2 px-3 sm:px-4'>
               <div className='overflow-x-auto overflow-y-hidden'>
                 <TabsList>
                   <TabsTrigger value='issues'>Issues</TabsTrigger>
@@ -1337,6 +1342,7 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                       priorities={issuePriorities ?? []}
                       teams={teams ?? []}
                       currentUserId={user?._id || ''}
+                      canChangeAll={canUpdateAssignmentStates}
                       onStateChange={(_issueId, assignmentId, stateId) => {
                         void changeAssignmentStateMutation({
                           assignmentId: assignmentId as Id<'issueAssignees'>,
@@ -1377,14 +1383,30 @@ export default function ProjectViewClient({ params }: ProjectViewClientProps) {
                         priorities={issuePriorities ?? []}
                         teams={teams ?? []}
                         projects={[]}
-                        onPriorityChange={() => {}}
-                        onAssigneesChange={() => {}}
+                        onPriorityChange={(issueId, priorityId) => {
+                          void changePriorityMutation({
+                            issueId: issueId as Id<'issues'>,
+                            priorityId: priorityId as Id<'issuePriorities'>,
+                          });
+                        }}
+                        onAssigneesChange={(issueId, assigneeIds) => {
+                          void updateAssigneesMutation({
+                            issueId: issueId as Id<'issues'>,
+                            assigneeIds: assigneeIds as Id<'users'>[],
+                          });
+                        }}
                         onTeamChange={() => {}}
                         onProjectChange={() => {}}
-                        onDelete={() => {}}
-                        onAssignmentStateChange={() => {}}
+                        onDelete={canDeleteIssue ? handleDeleteIssue : () => {}}
+                        onAssignmentStateChange={(assignmentId, stateId) => {
+                          void changeAssignmentStateMutation({
+                            assignmentId: assignmentId as Id<'issueAssignees'>,
+                            stateId: stateId as Id<'issueStates'>,
+                          });
+                        }}
                         currentUserId={user?._id || ''}
                         activeFilter='all'
+                        canChangeAll={canUpdateAssignmentStates}
                       />
                     </div>
                     {projectIssuesTotal > ISSUE_PAGE_SIZE && (

@@ -474,6 +474,11 @@ export default function TeamViewPage() {
     PERMISSIONS.TEAM_DELETE,
     permissionScope,
   );
+  const { isAllowed: canUpdateAssignmentStates } = usePermissionCheck(
+    orgSlug,
+    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE,
+    permissionScope,
+  );
   const updateTeamMutation = useMutation(
     api.teams.mutations.update,
   ).withOptimisticUpdate((store, args) => {
@@ -1416,7 +1421,7 @@ export default function TeamViewPage() {
                     {displayDescription ? (
                       <div
                         className={cn(
-                          'prose prose-sm text-muted-foreground max-w-none transition-colors',
+                          'prose prose-sm dark:prose-invert text-muted-foreground max-w-none transition-colors',
                           canEdit && 'hover:text-foreground cursor-pointer',
                         )}
                         onClick={() => {
@@ -1494,7 +1499,7 @@ export default function TeamViewPage() {
 
             {/* Team Content Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <div className='space-y-2 px-3 sm:px-4'>
+              <div className='mx-auto w-full max-w-5xl space-y-2 px-3 sm:px-4'>
                 <div className='overflow-x-auto overflow-y-hidden'>
                   <TabsList>
                     <TabsTrigger value='members'>
@@ -1656,6 +1661,7 @@ export default function TeamViewPage() {
                           teams={teams}
                           projects={projects}
                           currentUserId={user?._id || ''}
+                          canChangeAll={canUpdateAssignmentStates}
                           onStateChange={(_issueId, assignmentId, stateId) => {
                             void handleAssignmentStateChange(
                               assignmentId,
@@ -1702,7 +1708,7 @@ export default function TeamViewPage() {
                               }
                               isUpdatingAssignmentStates={isUpdatingIssues}
                               currentUserId={user?._id || ''}
-                              canChangeAll={user?.role === 'admin'}
+                              canChangeAll={canUpdateAssignmentStates}
                               activeFilter='all'
                             />
                           </div>

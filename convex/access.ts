@@ -12,6 +12,7 @@
 import { getAuthUserId } from './authUtils';
 import type { QueryCtx, MutationCtx } from './_generated/server';
 import type { Id, Doc } from './_generated/dataModel';
+import { permissionMatches } from './authz';
 import {
   hasScopedPermission,
   PERMISSIONS,
@@ -61,6 +62,181 @@ function getVisibility(
   return visibility ?? 'organization';
 }
 
+async function getOrganizationMembership(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: Id<'organizations'>,
+  userId: Id<'users'>,
+) {
+  return ctx.db
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', organizationId).eq('userId', userId),
+    )
+    .first();
+}
+
+async function roleIdsGrantPermission(
+  ctx: QueryCtx | MutationCtx,
+  roleIds: readonly Id<'roles'>[],
+  permission: Permission,
+): Promise<boolean> {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('rolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return permissionRows.some(rows =>
+    rows.some(row => permissionMatches(row.permission, permission)),
+  );
+}
+
+async function legacyTeamRoleIdsGrantPermission(
+  ctx: QueryCtx | MutationCtx,
+  roleIds: readonly Id<'teamRoles'>[],
+  permission: Permission,
+): Promise<boolean> {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('teamRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return permissionRows.some(rows =>
+    rows.some(row => permissionMatches(row.permission, permission)),
+  );
+}
+
+async function legacyProjectRoleIdsGrantPermission(
+  ctx: QueryCtx | MutationCtx,
+  roleIds: readonly Id<'projectRoles'>[],
+  permission: Permission,
+): Promise<boolean> {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('projectRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return permissionRows.some(rows =>
+    rows.some(row => permissionMatches(row.permission, permission)),
+  );
+}
+
+async function hasTeamScopedVisibilityAccess(
+  ctx: QueryCtx | MutationCtx,
+  teamId: Id<'teams'>,
+  userId: Id<'users'>,
+  permission: Permission,
+): Promise<boolean> {
+  const [member, assignments, legacyAssignments] = await Promise.all([
+    ctx.db
+      .query('teamMembers')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', teamId).eq('userId', userId),
+      )
+      .first(),
+    ctx.db
+      .query('roleAssignments')
+      .withIndex('by_team_user', q =>
+        q.eq('teamId', teamId).eq('userId', userId),
+      )
+      .collect(),
+    ctx.db
+      .query('teamRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+  ]);
+
+  if (member) {
+    return true;
+  }
+
+  const scopedLegacyAssignments = legacyAssignments.filter(
+    legacy => legacy.teamId === teamId,
+  );
+
+  const [hasUnifiedRolePermission, hasLegacyRolePermission] = await Promise.all(
+    [
+      roleIdsGrantPermission(
+        ctx,
+        assignments.map(assignment => assignment.roleId),
+        permission,
+      ),
+      legacyTeamRoleIdsGrantPermission(
+        ctx,
+        scopedLegacyAssignments.map(assignment => assignment.roleId),
+        permission,
+      ),
+    ],
+  );
+
+  return hasUnifiedRolePermission || hasLegacyRolePermission;
+}
+
+async function hasProjectScopedVisibilityAccess(
+  ctx: QueryCtx | MutationCtx,
+  projectId: Id<'projects'>,
+  userId: Id<'users'>,
+  permission: Permission,
+): Promise<boolean> {
+  const [member, assignments, legacyAssignments] = await Promise.all([
+    ctx.db
+      .query('projectMembers')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', projectId).eq('userId', userId),
+      )
+      .first(),
+    ctx.db
+      .query('roleAssignments')
+      .withIndex('by_project_user', q =>
+        q.eq('projectId', projectId).eq('userId', userId),
+      )
+      .collect(),
+    ctx.db
+      .query('projectRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+  ]);
+
+  if (member) {
+    return true;
+  }
+
+  const scopedLegacyAssignments = legacyAssignments.filter(
+    legacy => legacy.projectId === projectId,
+  );
+
+  const [hasUnifiedRolePermission, hasLegacyRolePermission] = await Promise.all(
+    [
+      roleIdsGrantPermission(
+        ctx,
+        assignments.map(assignment => assignment.roleId),
+        permission,
+      ),
+      legacyProjectRoleIdsGrantPermission(
+        ctx,
+        scopedLegacyAssignments.map(assignment => assignment.roleId),
+        permission,
+      ),
+    ],
+  );
+
+  return hasUnifiedRolePermission || hasLegacyRolePermission;
+}
+
 // -----------------------------------------------------------------------------
 // Issue-Specific Access Control
 // -----------------------------------------------------------------------------
@@ -81,23 +257,29 @@ export async function canViewIssue(
   if (issue.createdBy === userId) return true;
 
   if (issue.teamId) {
-    const member = await ctx.db
-      .query('teamMembers')
-      .withIndex('by_team_user', q =>
-        q.eq('teamId', issue.teamId!).eq('userId', userId),
+    if (
+      await hasTeamScopedVisibilityAccess(
+        ctx,
+        issue.teamId,
+        userId,
+        PERMISSIONS.ISSUE_VIEW,
       )
-      .first();
-    if (member) return true;
+    ) {
+      return true;
+    }
   }
 
   if (issue.projectId) {
-    const member = await ctx.db
-      .query('projectMembers')
-      .withIndex('by_project_user', q =>
-        q.eq('projectId', issue.projectId!).eq('userId', userId),
+    if (
+      await hasProjectScopedVisibilityAccess(
+        ctx,
+        issue.projectId,
+        userId,
+        PERMISSIONS.ISSUE_VIEW,
       )
-      .first();
-    if (member) return true;
+    ) {
+      return true;
+    }
   }
 
   if (vis === 'private') {
@@ -111,13 +293,16 @@ export async function canViewIssue(
   }
 
   if (vis === 'organization') {
-    const member = await ctx.db
-      .query('members')
-      .withIndex('by_org_user', q =>
-        q.eq('organizationId', issue.organizationId).eq('userId', userId),
-      )
-      .first();
-    return !!member;
+    const membership = await getOrganizationMembership(
+      ctx,
+      issue.organizationId,
+      userId,
+    );
+    if (!membership) return false;
+    if (issue.projectId || issue.teamId) {
+      return hasPermission(ctx, scopeFromEntity(issue), PERMISSIONS.ISSUE_VIEW);
+    }
+    return true;
   }
 
   return hasPermission(ctx, scopeFromEntity(issue), PERMISSIONS.ISSUE_VIEW);
@@ -220,23 +405,22 @@ export async function canViewTeam(
   if (team.createdBy === userId) return true;
 
   if (vis === 'private') {
-    const member = await ctx.db
-      .query('teamMembers')
-      .withIndex('by_team_user', q =>
-        q.eq('teamId', team._id).eq('userId', userId),
-      )
-      .first();
-    return !!member;
+    return hasTeamScopedVisibilityAccess(
+      ctx,
+      team._id,
+      userId,
+      PERMISSIONS.TEAM_VIEW,
+    );
   }
 
   if (vis === 'organization') {
-    const member = await ctx.db
-      .query('members')
-      .withIndex('by_org_user', q =>
-        q.eq('organizationId', team.organizationId).eq('userId', userId),
-      )
-      .first();
-    return !!member;
+    const membership = await getOrganizationMembership(
+      ctx,
+      team.organizationId,
+      userId,
+    );
+    if (!membership) return false;
+    return hasPermission(ctx, scopeFromEntity(team), PERMISSIONS.TEAM_VIEW);
   }
 
   return hasPermission(ctx, scopeFromEntity(team), PERMISSIONS.TEAM_VIEW);
@@ -303,23 +487,26 @@ export async function canViewProject(
   if (project.createdBy === userId) return true;
 
   if (vis === 'private') {
-    const member = await ctx.db
-      .query('projectMembers')
-      .withIndex('by_project_user', q =>
-        q.eq('projectId', project._id).eq('userId', userId),
-      )
-      .first();
-    return !!member;
+    return hasProjectScopedVisibilityAccess(
+      ctx,
+      project._id,
+      userId,
+      PERMISSIONS.PROJECT_VIEW,
+    );
   }
 
   if (vis === 'organization') {
-    const member = await ctx.db
-      .query('members')
-      .withIndex('by_org_user', q =>
-        q.eq('organizationId', project.organizationId).eq('userId', userId),
-      )
-      .first();
-    return !!member;
+    const membership = await getOrganizationMembership(
+      ctx,
+      project.organizationId,
+      userId,
+    );
+    if (!membership) return false;
+    return hasPermission(
+      ctx,
+      scopeFromEntity(project),
+      PERMISSIONS.PROJECT_VIEW,
+    );
   }
 
   return hasPermission(ctx, scopeFromEntity(project), PERMISSIONS.PROJECT_VIEW);

@@ -174,17 +174,31 @@ Read [references/lists-and-micro-interactions.md](./references/lists-and-micro-i
 - Titles or primary content areas almost always use `min-w-0 flex-1`
 - Fixed controls on a row should use `flex-shrink-0`
 - Muted explanatory text should stay `text-muted-foreground`
+- If a card or row already has an identity anchor like an avatar/name, attach any assignee-specific state callout directly to that anchor instead of rendering a second avatar/name elsewhere on the same surface
 - Dense forms often use overlay field labels instead of stacked labels
 - Detail pages often use a sticky top editing bar with compact selector clusters and subtle vertical dividers
 - Empty states are used sparingly; operational screens should bias toward tables and direct controls
 - Motion should be short and structural: `layout`, small Y offsets, `duration: 0.2`
 - Centered supporting copy that highlights a notable capability can use `GradientWaveText`, but keep it short and secondary
 
+### Detail page layout width rules
+
+Entity detail pages (projects, teams, issues) use a constrained `max-w-5xl mx-auto` for the header area (title, description, property bar). When a tabbed section follows (Issues, Activity, Members, etc.):
+
+- The **tab header row** (TabsList) and **tab controls row** (search, view toggles, create buttons) must share the same `max-w-5xl mx-auto` constraint as the section above them.
+- The **tab content** (kanban boards, tables, activity feeds) should remain full-width so horizontally scrollable content like kanban columns can use the available space.
+
+### Dark mode for TipTap / prose content
+
+- Always add `dark:prose-invert` alongside `prose` to ensure typography colors adapt to dark mode.
+- Disabled/read-only `RichEditor` instances must use `bg-transparent dark:bg-transparent` to avoid a visible muted background strip. The description should blend seamlessly into the page background.
+
 ## Anti-Patterns
 
 - Do not wrap dense operational content in unnecessary Cards
 - Do not introduce large paddings or wide gutters by default
 - Do not replace inline pickers with native `<select>` or bulky form sections
+- Do not duplicate identity chrome on the same card or row just to add more metadata; extend the existing avatar/name cluster instead
 - Do not use success toasts for normal inline property changes
 - Do not create separate edit screens for row-level metadata
 - Do not use loading text where a skeleton or existing value can carry the transition
