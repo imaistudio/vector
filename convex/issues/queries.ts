@@ -1,8 +1,10 @@
 import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Id, Doc, DataModel } from '../_generated/dataModel';
+import { hasScopedPermission, permissionMatches } from '../authz';
 import { getAuthUserId } from '../authUtils';
 import { canViewIssue, canViewProject, canViewTeam } from '../access';
+import { PERMISSIONS, type Permission } from '../permissions/utils';
 import { isDefined } from '../_shared/typeGuards';
 import { buildIssueSearchTextFromIssue } from './search';
 
@@ -100,8 +102,11 @@ export const getByKey = query({
 type IssueVisibilityAccess = {
   userId: Id<'users'>;
   isOrgMember: boolean;
+  hasOrgIssueView: boolean;
   teamIds: Set<Id<'teams'>>;
   projectIds: Set<Id<'projects'>>;
+  scopedTeamIds: Set<Id<'teams'>>;
+  scopedProjectIds: Set<Id<'projects'>>;
   assignedIssueIds: Set<Id<'issues'>>;
 };
 
@@ -133,6 +138,81 @@ async function loadDocMap<TableName extends keyof DataModel>(
       const doc = docs[index];
       return doc ? [[id, doc]] : [];
     }),
+  );
+}
+
+async function unifiedRoleMapByPermission(
+  ctx: QueryCtx,
+  roleIds: readonly Id<'roles'>[],
+  permission: Permission,
+) {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('rolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return new Map(
+    uniqueRoleIds.map((roleId, index) => [
+      roleId,
+      permissionRows[index].some(row =>
+        permissionMatches(row.permission, permission),
+      ),
+    ]),
+  );
+}
+
+async function legacyTeamRoleMapByPermission(
+  ctx: QueryCtx,
+  roleIds: readonly Id<'teamRoles'>[],
+  permission: Permission,
+) {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('teamRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return new Map(
+    uniqueRoleIds.map((roleId, index) => [
+      roleId,
+      permissionRows[index].some(row =>
+        permissionMatches(row.permission, permission),
+      ),
+    ]),
+  );
+}
+
+async function legacyProjectRoleMapByPermission(
+  ctx: QueryCtx,
+  roleIds: readonly Id<'projectRoles'>[],
+  permission: Permission,
+) {
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const permissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('projectRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
+
+  return new Map(
+    uniqueRoleIds.map((roleId, index) => [
+      roleId,
+      permissionRows[index].some(row =>
+        permissionMatches(row.permission, permission),
+      ),
+    ]),
   );
 }
 
@@ -191,33 +271,144 @@ async function buildIssueVisibilityAccess(
   userId: Id<'users'>,
   organizationId: Id<'organizations'>,
 ): Promise<IssueVisibilityAccess> {
-  const [membership, teamMemberships, projectMemberships, assignments] =
-    await Promise.all([
-      ctx.db
-        .query('members')
-        .withIndex('by_org_user', q =>
-          q.eq('organizationId', organizationId).eq('userId', userId),
-        )
-        .first(),
-      ctx.db
-        .query('teamMembers')
-        .withIndex('by_user', q => q.eq('userId', userId))
-        .collect(),
-      ctx.db
-        .query('projectMembers')
-        .withIndex('by_user', q => q.eq('userId', userId))
-        .collect(),
-      ctx.db
-        .query('issueAssignees')
-        .withIndex('by_assignee', q => q.eq('assigneeId', userId))
-        .collect(),
-    ]);
+  const [
+    membership,
+    teamMemberships,
+    projectMemberships,
+    assignments,
+    roleAssignments,
+    legacyTeamAssignments,
+    legacyProjectAssignments,
+  ] = await Promise.all([
+    ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', organizationId).eq('userId', userId),
+      )
+      .first(),
+    ctx.db
+      .query('teamMembers')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+    ctx.db
+      .query('projectMembers')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+    ctx.db
+      .query('issueAssignees')
+      .withIndex('by_assignee', q => q.eq('assigneeId', userId))
+      .collect(),
+    ctx.db
+      .query('roleAssignments')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', organizationId).eq('userId', userId),
+      )
+      .collect(),
+    ctx.db
+      .query('teamRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+    ctx.db
+      .query('projectRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect(),
+  ]);
+
+  const teamAssignmentsByTeam = new Map<Id<'teams'>, Id<'roles'>[]>();
+  for (const assignment of roleAssignments) {
+    if (!assignment.teamId) continue;
+    const roleIds = teamAssignmentsByTeam.get(assignment.teamId) ?? [];
+    roleIds.push(assignment.roleId);
+    teamAssignmentsByTeam.set(assignment.teamId, roleIds);
+  }
+
+  const legacyTeamAssignmentsByTeam = new Map<Id<'teams'>, Id<'teamRoles'>[]>();
+  for (const assignment of legacyTeamAssignments) {
+    const roleIds = legacyTeamAssignmentsByTeam.get(assignment.teamId) ?? [];
+    roleIds.push(assignment.roleId);
+    legacyTeamAssignmentsByTeam.set(assignment.teamId, roleIds);
+  }
+
+  const projectAssignmentsByProject = new Map<Id<'projects'>, Id<'roles'>[]>();
+  for (const assignment of roleAssignments) {
+    if (!assignment.projectId) continue;
+    const roleIds = projectAssignmentsByProject.get(assignment.projectId) ?? [];
+    roleIds.push(assignment.roleId);
+    projectAssignmentsByProject.set(assignment.projectId, roleIds);
+  }
+
+  const legacyProjectAssignmentsByProject = new Map<
+    Id<'projects'>,
+    Id<'projectRoles'>[]
+  >();
+  for (const assignment of legacyProjectAssignments) {
+    const roleIds =
+      legacyProjectAssignmentsByProject.get(assignment.projectId) ?? [];
+    roleIds.push(assignment.roleId);
+    legacyProjectAssignmentsByProject.set(assignment.projectId, roleIds);
+  }
+
+  const [
+    unifiedIssueViewRoleMap,
+    legacyTeamIssueViewRoleMap,
+    legacyProjectIssueViewRoleMap,
+    hasOrgIssueView,
+  ] = await Promise.all([
+    unifiedRoleMapByPermission(
+      ctx,
+      roleAssignments.map(assignment => assignment.roleId),
+      PERMISSIONS.ISSUE_VIEW,
+    ),
+    legacyTeamRoleMapByPermission(
+      ctx,
+      legacyTeamAssignments.map(assignment => assignment.roleId),
+      PERMISSIONS.ISSUE_VIEW,
+    ),
+    legacyProjectRoleMapByPermission(
+      ctx,
+      legacyProjectAssignments.map(assignment => assignment.roleId),
+      PERMISSIONS.ISSUE_VIEW,
+    ),
+    hasScopedPermission(
+      ctx,
+      { organizationId },
+      userId,
+      PERMISSIONS.ISSUE_VIEW,
+    ),
+  ]);
+
+  const scopedTeamIds = new Set<Id<'teams'>>();
+  for (const [teamId, roleIds] of teamAssignmentsByTeam) {
+    if (roleIds.some(roleId => unifiedIssueViewRoleMap.get(roleId))) {
+      scopedTeamIds.add(teamId);
+    }
+  }
+  for (const [teamId, roleIds] of legacyTeamAssignmentsByTeam) {
+    if (roleIds.some(roleId => legacyTeamIssueViewRoleMap.get(roleId))) {
+      scopedTeamIds.add(teamId);
+    }
+  }
+
+  const scopedProjectIds = new Set<Id<'projects'>>();
+  for (const [projectId, roleIds] of projectAssignmentsByProject) {
+    if (roleIds.some(roleId => unifiedIssueViewRoleMap.get(roleId))) {
+      scopedProjectIds.add(projectId);
+    }
+  }
+  for (const [projectId, roleIds] of legacyProjectAssignmentsByProject) {
+    if (roleIds.some(roleId => legacyProjectIssueViewRoleMap.get(roleId))) {
+      scopedProjectIds.add(projectId);
+    }
+  }
 
   return {
     userId,
     isOrgMember: Boolean(membership),
+    hasOrgIssueView,
     teamIds: new Set(teamMemberships.map(member => member.teamId)),
     projectIds: new Set(projectMemberships.map(member => member.projectId)),
+    scopedTeamIds,
+    scopedProjectIds,
     assignedIssueIds: new Set(
       assignments.map(assignment => assignment.issueId),
     ),
@@ -252,13 +443,31 @@ function canUserViewIssueFromAccess(
   ) {
     return true;
   }
-  if (issue.teamId && access.teamIds.has(issue.teamId)) return true;
-  if (issue.projectId && access.projectIds.has(issue.projectId)) return true;
+  if (
+    issue.teamId &&
+    (access.teamIds.has(issue.teamId) || access.scopedTeamIds.has(issue.teamId))
+  ) {
+    return true;
+  }
+  if (
+    issue.projectId &&
+    (access.projectIds.has(issue.projectId) ||
+      access.scopedProjectIds.has(issue.projectId))
+  ) {
+    return true;
+  }
   if (visibility === 'private') {
     return access.assignedIssueIds.has(issue._id);
   }
 
-  return access.isOrgMember;
+  if (visibility === 'organization') {
+    if (issue.projectId || issue.teamId) {
+      return access.hasOrgIssueView;
+    }
+    return access.isOrgMember;
+  }
+
+  return false;
 }
 
 function matchesIssueSearch(issue: Doc<'issues'>, searchQuery?: string) {

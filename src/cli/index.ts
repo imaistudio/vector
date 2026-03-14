@@ -2,7 +2,10 @@
 
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
+import { makeFunctionReference } from 'convex/server';
 import { api } from '../../convex/_generated/api';
+import type { Id } from '../../convex/_generated/dataModel';
+import type { Permission } from '../../convex/_shared/permissions';
 import {
   fetchAuthSession,
   loginWithPassword,
@@ -22,6 +25,53 @@ import {
 
 loadEnv({ path: '.env.local', override: false });
 loadEnv({ path: '.env', override: false });
+
+const cliApi = {
+  listWorkspaceReferenceData: makeFunctionReference<'action'>(
+    'cli:listWorkspaceReferenceData',
+  ),
+  searchIcons: makeFunctionReference<'action'>('cli:searchIcons'),
+  listDocuments: makeFunctionReference<'action'>('cli:listDocuments'),
+  getDocument: makeFunctionReference<'action'>('cli:getDocument'),
+  createDocument: makeFunctionReference<'action'>('cli:createDocument'),
+  updateDocument: makeFunctionReference<'action'>('cli:updateDocument'),
+  deleteDocument: makeFunctionReference<'action'>('cli:deleteDocument'),
+  moveDocumentToFolder: makeFunctionReference<'action'>(
+    'cli:moveDocumentToFolder',
+  ),
+  listIssues: makeFunctionReference<'action'>('cli:listIssues'),
+  getIssue: makeFunctionReference<'action'>('cli:getIssue'),
+  createIssue: makeFunctionReference<'action'>('cli:createIssue'),
+  updateIssue: makeFunctionReference<'action'>('cli:updateIssue'),
+  deleteIssue: makeFunctionReference<'action'>('cli:deleteIssue'),
+  assignIssue: makeFunctionReference<'action'>('cli:assignIssue'),
+  unassignIssue: makeFunctionReference<'action'>('cli:unassignIssue'),
+  listProjects: makeFunctionReference<'action'>('cli:listProjects'),
+  getProject: makeFunctionReference<'action'>('cli:getProject'),
+  createProject: makeFunctionReference<'action'>('cli:createProject'),
+  updateProject: makeFunctionReference<'action'>('cli:updateProject'),
+  deleteProject: makeFunctionReference<'action'>('cli:deleteProject'),
+  addProjectMember: makeFunctionReference<'action'>('cli:addProjectMember'),
+  removeProjectMember: makeFunctionReference<'action'>(
+    'cli:removeProjectMember',
+  ),
+  changeProjectLead: makeFunctionReference<'action'>('cli:changeProjectLead'),
+  listTeams: makeFunctionReference<'action'>('cli:listTeams'),
+  getTeam: makeFunctionReference<'action'>('cli:getTeam'),
+  createTeam: makeFunctionReference<'action'>('cli:createTeam'),
+  updateTeam: makeFunctionReference<'action'>('cli:updateTeam'),
+  deleteTeam: makeFunctionReference<'action'>('cli:deleteTeam'),
+  addTeamMember: makeFunctionReference<'action'>('cli:addTeamMember'),
+  removeTeamMember: makeFunctionReference<'action'>('cli:removeTeamMember'),
+  changeTeamLead: makeFunctionReference<'action'>('cli:changeTeamLead'),
+  listFolders: makeFunctionReference<'action'>('cli:listFolders'),
+  createFolder: makeFunctionReference<'action'>('cli:createFolder'),
+  updateFolder: makeFunctionReference<'action'>('cli:updateFolder'),
+  deleteFolder: makeFunctionReference<'action'>('cli:deleteFolder'),
+};
+
+const rolesApi = api.roles.index;
+type OrganizationRoleId = Id<'roles'> | Id<'orgRoles'>;
 
 type GlobalOptions = {
   appUrl?: string;
@@ -110,7 +160,7 @@ async function resolveMemberId(
   client: Awaited<ReturnType<typeof createConvexClient>>,
   orgSlug: string,
   ref: string,
-) {
+): Promise<Id<'users'>> {
   const members = await runQuery(
     client,
     api.organizations.queries.listMembers,
@@ -136,15 +186,15 @@ async function resolveMemberId(
   if (matches.length > 1) {
     throw new Error(`Multiple members matched "${ref}"`);
   }
-  return String(matches[0]!.user!._id);
+  return matches[0]!.user!._id;
 }
 
 async function resolveRoleId(
   client: Awaited<ReturnType<typeof createConvexClient>>,
   orgSlug: string,
   ref: string,
-) {
-  const roles = await runQuery(client, api.roles.list, { orgSlug });
+): Promise<OrganizationRoleId> {
+  const roles = await runQuery(client, rolesApi.list, { orgSlug });
   const needle = normalizeMatch(ref);
   const matches = roles.filter(role => {
     const candidate = role as { _id: string; name?: string; key?: string };
@@ -161,7 +211,14 @@ async function resolveRoleId(
   if (matches.length > 1) {
     throw new Error(`Multiple roles matched "${ref}"`);
   }
-  return String((matches[0] as { _id: string })._id);
+  return matches[0]!._id;
+}
+
+function parsePermissions(value: string): Permission[] {
+  return value
+    .split(',')
+    .map(permission => permission.trim())
+    .filter(Boolean) as Permission[];
 }
 
 function nullableOption(value: string | undefined, clear = false) {
@@ -379,7 +436,7 @@ orgCommand
       api.organizations.mutations.updateMemberRole,
       {
         orgSlug,
-        userId: userId as any,
+        userId,
         role: options.role,
       },
     );
@@ -397,7 +454,7 @@ orgCommand
       api.organizations.mutations.removeMember,
       {
         orgSlug,
-        userId: userId as any,
+        userId,
       },
     );
     printOutput(result ?? { success: true }, runtime.json);
@@ -408,7 +465,7 @@ const roleCommand = program.command('role').description('Organization roles');
 roleCommand.command('list [slug]').action(async (slug, _options, command) => {
   const { client, runtime } = await getClient(command);
   const orgSlug = requireOrg(runtime, slug);
-  const roles = await runQuery(client, api.roles.list, { orgSlug });
+  const roles = await runQuery(client, rolesApi.list, { orgSlug });
   printOutput(roles, runtime.json);
 });
 
@@ -417,8 +474,8 @@ roleCommand.command('get <role>').action(async (role, _options, command) => {
   const orgSlug = requireOrg(runtime);
   const roleId = await resolveRoleId(client, orgSlug, role);
   const [summary, permissions] = await Promise.all([
-    runQuery(client, api.roles.get, { orgSlug, roleId }),
-    runQuery(client, api.roles.getPermissions, { roleId }),
+    runQuery(client, rolesApi.get, { orgSlug, roleId }),
+    runQuery(client, rolesApi.getPermissions, { roleId }),
   ]);
   printOutput({ summary, permissions }, runtime.json);
 });
@@ -431,14 +488,11 @@ roleCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runMutation(client, api.roles.create, {
+    const result = await runMutation(client, rolesApi.create, {
       orgSlug,
       name: options.name,
       description: options.description,
-      permissions: options.permissions
-        .split(',')
-        .map((value: string) => value.trim())
-        .filter(Boolean),
+      permissions: parsePermissions(options.permissions),
     });
     printOutput({ roleId: result }, runtime.json);
   });
@@ -452,15 +506,12 @@ roleCommand
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
     const roleId = await resolveRoleId(client, orgSlug, role);
-    const result = await runMutation(client, api.roles.update, {
+    const result = await runMutation(client, rolesApi.update, {
       orgSlug,
       roleId,
       name: options.name,
       description: options.description,
-      permissions: options.permissions
-        .split(',')
-        .map((value: string) => value.trim())
-        .filter(Boolean),
+      permissions: parsePermissions(options.permissions),
     });
     printOutput(result ?? { success: true }, runtime.json);
   });
@@ -474,10 +525,10 @@ roleCommand
       resolveRoleId(client, orgSlug, role),
       resolveMemberId(client, orgSlug, member),
     ]);
-    const result = await runMutation(client, api.roles.assign, {
+    const result = await runMutation(client, rolesApi.assign, {
       orgSlug,
       roleId,
-      userId: userId as any,
+      userId,
     });
     printOutput({ assignmentId: result }, runtime.json);
   });
@@ -491,10 +542,10 @@ roleCommand
       resolveRoleId(client, orgSlug, role),
       resolveMemberId(client, orgSlug, member),
     ]);
-    const result = await runMutation(client, api.roles.removeAssignment, {
+    const result = await runMutation(client, rolesApi.removeAssignment, {
       orgSlug,
       roleId,
-      userId: userId as any,
+      userId,
     });
     printOutput(result ?? { success: true }, runtime.json);
   });
@@ -502,7 +553,7 @@ roleCommand
 program.command('refdata [slug]').action(async (slug, _options, command) => {
   const { client, runtime } = await getClient(command);
   const orgSlug = requireOrg(runtime, slug);
-  const result = await runAction(client, api.cli.listWorkspaceReferenceData, {
+  const result = await runAction(client, cliApi.listWorkspaceReferenceData, {
     orgSlug,
   });
   printOutput(result, runtime.json);
@@ -513,7 +564,7 @@ program
   .option('--limit <n>')
   .action(async (query, options, command) => {
     const { client, runtime } = await getClient(command);
-    const result = await runAction(client, api.cli.searchIcons, {
+    const result = await runAction(client, cliApi.searchIcons, {
       query,
       limit: options.limit ? Number(options.limit) : undefined,
     });
@@ -528,7 +579,7 @@ teamCommand
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, api.cli.listTeams, {
+    const result = await runAction(client, cliApi.listTeams, {
       orgSlug,
       limit: options.limit ? Number(options.limit) : undefined,
     });
@@ -540,7 +591,7 @@ teamCommand
   .action(async (teamKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.getTeam, {
+    const result = await runAction(client, cliApi.getTeam, {
       orgSlug,
       teamKey,
     });
@@ -558,7 +609,7 @@ teamCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.createTeam, {
+    const result = await runAction(client, cliApi.createTeam, {
       orgSlug,
       key: options.key,
       name: options.name,
@@ -583,7 +634,7 @@ teamCommand
   .action(async (teamKey, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.updateTeam, {
+    const result = await runAction(client, cliApi.updateTeam, {
       orgSlug,
       teamKey,
       name: options.name,
@@ -603,7 +654,7 @@ teamCommand
   .action(async (teamKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.deleteTeam, {
+    const result = await runAction(client, cliApi.deleteTeam, {
       orgSlug,
       teamKey,
     });
@@ -615,7 +666,7 @@ teamCommand
   .action(async (teamKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const team = await runAction(client, api.cli.getTeam, { orgSlug, teamKey });
+    const team = await runAction(client, cliApi.getTeam, { orgSlug, teamKey });
     const result = await runQuery(client, api.teams.queries.listMembers, {
       teamId: team.id as any,
     });
@@ -628,7 +679,7 @@ teamCommand
   .action(async (teamKey, member, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.addTeamMember, {
+    const result = await runAction(client, cliApi.addTeamMember, {
       orgSlug,
       teamKey,
       memberName: member,
@@ -642,7 +693,7 @@ teamCommand
   .action(async (teamKey, member, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.removeTeamMember, {
+    const result = await runAction(client, cliApi.removeTeamMember, {
       orgSlug,
       teamKey,
       memberName: member,
@@ -656,7 +707,7 @@ teamCommand
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
     const leadName = member === 'null' ? null : member;
-    const result = await runAction(client, api.cli.changeTeamLead, {
+    const result = await runAction(client, cliApi.changeTeamLead, {
       orgSlug,
       teamKey,
       leadName,
@@ -673,7 +724,7 @@ projectCommand
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, api.cli.listProjects, {
+    const result = await runAction(client, cliApi.listProjects, {
       orgSlug,
       teamKey: options.team,
       limit: options.limit ? Number(options.limit) : undefined,
@@ -686,7 +737,7 @@ projectCommand
   .action(async (projectKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.getProject, {
+    const result = await runAction(client, cliApi.getProject, {
       orgSlug,
       projectKey,
     });
@@ -706,7 +757,7 @@ projectCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.createProject, {
+    const result = await runAction(client, cliApi.createProject, {
       orgSlug,
       key: options.key,
       name: options.name,
@@ -740,7 +791,7 @@ projectCommand
   .action(async (projectKey, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.updateProject, {
+    const result = await runAction(client, cliApi.updateProject, {
       orgSlug,
       projectKey,
       name: options.name,
@@ -761,7 +812,7 @@ projectCommand
   .action(async (projectKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.deleteProject, {
+    const result = await runAction(client, cliApi.deleteProject, {
       orgSlug,
       projectKey,
     });
@@ -773,7 +824,7 @@ projectCommand
   .action(async (projectKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const project = await runAction(client, api.cli.getProject, {
+    const project = await runAction(client, cliApi.getProject, {
       orgSlug,
       projectKey,
     });
@@ -789,7 +840,7 @@ projectCommand
   .action(async (projectKey, member, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.addProjectMember, {
+    const result = await runAction(client, cliApi.addProjectMember, {
       orgSlug,
       projectKey,
       memberName: member,
@@ -803,7 +854,7 @@ projectCommand
   .action(async (projectKey, member, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.removeProjectMember, {
+    const result = await runAction(client, cliApi.removeProjectMember, {
       orgSlug,
       projectKey,
       memberName: member,
@@ -817,7 +868,7 @@ projectCommand
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
     const leadName = member === 'null' ? null : member;
-    const result = await runAction(client, api.cli.changeProjectLead, {
+    const result = await runAction(client, cliApi.changeProjectLead, {
       orgSlug,
       projectKey,
       leadName,
@@ -835,7 +886,7 @@ issueCommand
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, api.cli.listIssues, {
+    const result = await runAction(client, cliApi.listIssues, {
       orgSlug,
       projectKey: options.project,
       teamKey: options.team,
@@ -849,7 +900,7 @@ issueCommand
   .action(async (issueKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.getIssue, {
+    const result = await runAction(client, cliApi.getIssue, {
       orgSlug,
       issueKey,
     });
@@ -872,7 +923,7 @@ issueCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.createIssue, {
+    const result = await runAction(client, cliApi.createIssue, {
       orgSlug,
       title: options.title,
       description: options.description,
@@ -912,7 +963,7 @@ issueCommand
   .action(async (issueKey, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.updateIssue, {
+    const result = await runAction(client, cliApi.updateIssue, {
       orgSlug,
       issueKey,
       title: options.title,
@@ -935,7 +986,7 @@ issueCommand
   .action(async (issueKey, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.deleteIssue, {
+    const result = await runAction(client, cliApi.deleteIssue, {
       orgSlug,
       issueKey,
     });
@@ -948,7 +999,7 @@ issueCommand
   .action(async (issueKey, member, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.assignIssue, {
+    const result = await runAction(client, cliApi.assignIssue, {
       orgSlug,
       issueKey,
       assigneeName: member,
@@ -962,7 +1013,7 @@ issueCommand
   .action(async (issueKey, member, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.unassignIssue, {
+    const result = await runAction(client, cliApi.unassignIssue, {
       orgSlug,
       issueKey,
       assigneeName: member,
@@ -976,7 +1027,7 @@ issueCommand
   .action(async (issueKey, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const issue = await runAction(client, api.cli.getIssue, {
+    const issue = await runAction(client, cliApi.getIssue, {
       orgSlug,
       issueKey,
     });
@@ -996,7 +1047,7 @@ documentCommand
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, api.cli.listDocuments, {
+    const result = await runAction(client, cliApi.listDocuments, {
       orgSlug,
       folderId: options.folderId,
       limit: options.limit ? Number(options.limit) : undefined,
@@ -1009,7 +1060,7 @@ documentCommand
   .action(async (documentId, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.getDocument, {
+    const result = await runAction(client, cliApi.getDocument, {
       orgSlug,
       documentId,
     });
@@ -1029,7 +1080,7 @@ documentCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.createDocument, {
+    const result = await runAction(client, cliApi.createDocument, {
       orgSlug,
       title: options.title,
       content: options.content,
@@ -1061,7 +1112,7 @@ documentCommand
   .action(async (documentId, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.updateDocument, {
+    const result = await runAction(client, cliApi.updateDocument, {
       orgSlug,
       documentId,
       title: options.title,
@@ -1086,7 +1137,7 @@ documentCommand
     const folderId = options.clearFolder
       ? null
       : requiredString(options.folderId, 'folder-id');
-    const result = await runAction(client, api.cli.moveDocumentToFolder, {
+    const result = await runAction(client, cliApi.moveDocumentToFolder, {
       orgSlug,
       documentId,
       folderId,
@@ -1099,7 +1150,7 @@ documentCommand
   .action(async (documentId, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.deleteDocument, {
+    const result = await runAction(client, cliApi.deleteDocument, {
       orgSlug,
       documentId,
     });
@@ -1111,7 +1162,7 @@ const folderCommand = program.command('folder').description('Document folders');
 folderCommand.command('list [slug]').action(async (slug, _options, command) => {
   const { client, runtime } = await getClient(command);
   const orgSlug = requireOrg(runtime, slug);
-  const result = await runAction(client, api.cli.listFolders, { orgSlug });
+  const result = await runAction(client, cliApi.listFolders, { orgSlug });
   printOutput(result, runtime.json);
 });
 
@@ -1124,7 +1175,7 @@ folderCommand
   .action(async (options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.createFolder, {
+    const result = await runAction(client, cliApi.createFolder, {
       orgSlug,
       name: options.name,
       description: options.description,
@@ -1146,7 +1197,7 @@ folderCommand
   .action(async (folderId, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.updateFolder, {
+    const result = await runAction(client, cliApi.updateFolder, {
       orgSlug,
       folderId,
       name: options.name,
@@ -1165,7 +1216,7 @@ folderCommand
   .action(async (folderId, _options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime);
-    const result = await runAction(client, api.cli.deleteFolder, {
+    const result = await runAction(client, cliApi.deleteFolder, {
       orgSlug,
       folderId,
     });

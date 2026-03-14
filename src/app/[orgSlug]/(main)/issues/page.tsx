@@ -19,7 +19,10 @@ import {
 } from '@/components/issues/issue-selectors';
 import { ISSUE_STATE_DEFAULTS } from '@/lib/defaults';
 import type { Id } from '@/convex/_generated/dataModel';
-import { PermissionAware } from '@/components/ui/permission-aware';
+import {
+  PermissionAware,
+  usePermissionCheck,
+} from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { useConfirm } from '@/hooks/use-confirm';
 import { MobileNavTrigger } from '../layout';
@@ -102,6 +105,10 @@ export default function IssuesPage() {
   const changeProjectMutation = useMutation(api.issues.mutations.changeProject);
   const changeAssignmentStateMutation = useMutation(
     api.issues.mutations.changeAssignmentState,
+  );
+  const { isAllowed: canChangeAll } = usePermissionCheck(
+    orgSlug,
+    PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE,
   );
 
   const states = useQuery(api.organizations.queries.listIssueStates, {
@@ -208,8 +215,6 @@ export default function IssuesPage() {
       setIsDeleting(false);
     }
   };
-
-  const canChangeAll = user?.role === 'admin';
 
   const updatedTabs = filterTabs.map(tab => ({
     ...tab,
@@ -432,6 +437,7 @@ export default function IssuesPage() {
               teams={teams ?? []}
               projects={projects ?? []}
               currentUserId={currentUserId}
+              canChangeAll={canChangeAll}
               onStateChange={(_issueId, assignmentId, stateId) => {
                 void handleAssignmentStateChange(assignmentId, stateId);
               }}

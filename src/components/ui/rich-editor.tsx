@@ -38,9 +38,9 @@ export function RichEditor({
       orgSlug={orgSlug}
       className={cn(className?.replace('notion-editor', '').trim())}
       editorClassName={cn(
-        'prose prose-sm max-w-none',
+        'prose prose-sm dark:prose-invert max-w-none',
         disabled
-          ? 'border-none shadow-none p-0 min-h-0'
+          ? 'border-none shadow-none p-0 min-h-0 bg-transparent dark:bg-transparent'
           : isBorderless
             ? 'border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none p-0 min-h-[60vh]'
             : mode === 'compact'

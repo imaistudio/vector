@@ -62,7 +62,7 @@ export const AssistantResponse = memo(
     return (
       <Streamdown
         className={cn(
-          'prose prose-sm max-w-none',
+          'prose prose-sm dark:prose-invert max-w-none',
           'prose-p:my-2 prose-p:leading-6',
           'prose-ul:my-2 prose-ol:my-2 prose-ul:pl-5 prose-ol:pl-5',
           'prose-li:my-0.5 prose-li:leading-6',

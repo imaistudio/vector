@@ -19,14 +19,18 @@ import {
   getIssue,
   getProject,
   getTeam,
+  inviteOrgMember,
   listDocuments,
   listFolders,
   listIssues,
+  listOrgInvites,
+  listOrgMembers,
   listProjects,
   listTeams,
   listWorkspaceReferenceData,
   moveDocumentToFolder,
   performClientAction,
+  removeOrgMember,
   removeProjectMember,
   removeTeamMember,
   requestDeleteDocument,
@@ -34,6 +38,7 @@ import {
   requestDeleteIssue,
   requestDeleteProject,
   requestDeleteTeam,
+  revokeOrgInvite,
   searchIcons,
   showDocuments,
   showIssues,
@@ -43,6 +48,7 @@ import {
   updateDocument,
   updateFolder,
   updateIssue,
+  updateOrgMemberRole,
   updateProject,
   updateTeam,
 } from './tools';
@@ -66,6 +72,15 @@ Teams:
 Projects:
 - Full CRUD with all fields including dates, descriptions, visibility, icon, and color
 - Add/remove members, change project leads
+
+Organization Members:
+- Invite new people by email with a role (member or admin) — they receive an email invitation
+- List all current members and their roles (owner/admin/member)
+- List pending invitations
+- Change a member's role between member and admin (cannot change owner)
+- Remove members from the organization (cascades to all teams and projects)
+- Revoke pending invitations
+- Use listOrgMembers to see current members and listOrgInvites to see pending invites
 
 Documents:
 - Full CRUD with content, icons, colors, and scoping to teams/projects
@@ -124,6 +139,13 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     createTeam,
     updateTeam,
     requestDeleteTeam,
+    // Organization member management
+    listOrgMembers,
+    listOrgInvites,
+    inviteOrgMember,
+    revokeOrgInvite,
+    removeOrgMember,
+    updateOrgMemberRole,
     // Team member management
     addTeamMember,
     removeTeamMember,
