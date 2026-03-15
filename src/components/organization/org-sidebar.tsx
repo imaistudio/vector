@@ -38,12 +38,12 @@ interface OrgSidebarProps {
 export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const pathname = usePathname();
 
-  // Fetch user's teams and projects
-  const userTeamsData = useQuery(api.organizations.queries.listTeams, {
+  // Fetch only teams/projects the user is a member of
+  const userTeamsData = useQuery(api.teams.queries.listMyTeams, {
     orgSlug: orgSlug,
   });
 
-  const userProjectsData = useQuery(api.organizations.queries.listProjects, {
+  const userProjectsData = useQuery(api.projects.queries.listMyProjects, {
     orgSlug: orgSlug,
   });
 
@@ -233,21 +233,21 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                     )}
                   >
                     <DynamicIcon
-                      name={project.icon || project.statusIcon}
+                      name={project.icon || project.status?.icon}
                       fallback={FolderOpen}
                       className='size-3 flex-shrink-0'
                       style={{
                         color:
-                          project.color || project.statusColor || '#6b7280',
+                          project.color || project.status?.color || '#6b7280',
                       }}
                     />
                     <span className='flex-1 truncate'>{project.name}</span>
                     {/* Status icon on the right */}
-                    {project.statusIcon && (
+                    {project.status?.icon && (
                       <DynamicIcon
-                        name={project.statusIcon}
+                        name={project.status.icon}
                         className='ml-auto size-3 flex-shrink-0'
-                        style={{ color: project.statusColor || '#6b7280' }}
+                        style={{ color: project.status.color || '#6b7280' }}
                       />
                     )}
                   </Link>

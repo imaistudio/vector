@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
@@ -24,6 +24,7 @@ type StatusType =
   | 'completed'
   | 'canceled';
 type FilterType = 'all' | StatusType;
+type ScopeTab = 'mine' | 'all';
 
 const TAB_LABELS: Record<FilterType, string> = {
   all: 'All',
@@ -67,6 +68,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [scopeTab, setScopeTab] = useState<ScopeTab>('mine');
 
   const viewParam = searchParams.get('view');
   const viewMode: ViewMode = viewParam === 'kanban' ? 'kanban' : 'table';
@@ -85,7 +87,10 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   const [page, setPage] = useState(1);
 
   // Queries
-  const projectsData = useQuery(api.projects.queries.list, { orgSlug });
+  const allProjectsData = useQuery(api.projects.queries.list, { orgSlug });
+  const myProjectsData = useQuery(api.projects.queries.listMyProjects, {
+    orgSlug,
+  });
   const statusesData = useQuery(api.organizations.queries.listProjectStatuses, {
     orgSlug,
   });
@@ -94,29 +99,36 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     orgSlug,
   });
 
-  // Transform data to match expected interfaces
-  const projects: ProjectRowData[] = (projectsData ?? []).map(project => ({
-    id: project._id,
-    name: project.name,
-    description: project.description,
-    key: project.key,
-    updatedAt: new Date(project._creationTime), // Using creation time as update time for now
-    createdAt: new Date(project._creationTime),
-    icon: project.icon,
-    color: project.color,
-    statusId: project.status?._id,
-    statusName: project.status?.name,
-    statusColor: project.status?.color,
-    statusIcon: project.status?.icon,
-    statusType: project.status?.type,
-    teamId: project.teamId,
-    teamName: undefined, // Will need to be populated from teams data
-    teamKey: undefined, // Will need to be populated from teams data
-    leadId: project.lead?._id,
-    leadName: project.lead?.name,
-    leadEmail: project.lead?.email,
-    leadImage: project.lead?.image,
-  }));
+  // Transform helper
+  const transformProjects = (
+    data: typeof allProjectsData | typeof myProjectsData,
+  ): ProjectRowData[] =>
+    (data ?? []).map(project => ({
+      id: project._id,
+      name: project.name,
+      description: project.description,
+      key: project.key,
+      updatedAt: new Date(project._creationTime),
+      createdAt: new Date(project._creationTime),
+      icon: project.icon,
+      color: project.color,
+      statusId: project.status?._id,
+      statusName: project.status?.name,
+      statusColor: project.status?.color,
+      statusIcon: project.status?.icon,
+      statusType: project.status?.type,
+      teamId: project.teamId,
+      teamName: undefined,
+      teamKey: undefined,
+      leadId: project.lead?._id,
+      leadName: project.lead?.name,
+      leadEmail: project.lead?.email,
+      leadImage: project.lead?.image,
+    }));
+
+  const allProjects = transformProjects(allProjectsData);
+  const myProjects = transformProjects(myProjectsData);
+  const projects = scopeTab === 'mine' ? myProjects : allProjects;
 
   const statuses = (statusesData ?? []).map(status => ({
     _id: status._id,
@@ -205,7 +217,8 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   const visibleTabs = updatedTabs.filter(t => t.key === 'all' || t.count > 0);
 
   const isLoading =
-    projectsData === undefined ||
+    allProjectsData === undefined ||
+    myProjectsData === undefined ||
     statusesData === undefined ||
     teamsData === undefined ||
     membersData === undefined;
@@ -227,10 +240,52 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   return (
     <div className='bg-background h-full'>
       <div className='flex flex-col'>
-        {/* Header with tabs and create button */}
+        {/* Header with scope tabs, status filter tabs, and create button */}
         <div className='flex items-center justify-between gap-1 border-b p-1'>
           <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
             <MobileNavTrigger />
+            {/* Scope tabs */}
+            <Button
+              variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
+              size='sm'
+              className={cn(
+                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'mine' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('mine');
+                setActiveFilter('all');
+                setPage(1);
+              }}
+            >
+              <span>My projects</span>
+              <span className='text-muted-foreground text-xs'>
+                {myProjects.length}
+              </span>
+            </Button>
+            <Button
+              variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
+              size='sm'
+              className={cn(
+                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'all' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('all');
+                setActiveFilter('all');
+                setPage(1);
+              }}
+            >
+              <span>All projects</span>
+              <span className='text-muted-foreground text-xs'>
+                {allProjects.length}
+              </span>
+            </Button>
+
+            {/* Divider */}
+            <div className='bg-border mx-0.5 h-4 w-px shrink-0' />
+
+            {/* Status filter tabs */}
             {visibleTabs.map(tab => (
               <Button
                 key={tab.key}
