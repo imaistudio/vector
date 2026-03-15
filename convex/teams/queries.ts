@@ -3,6 +3,7 @@ import { v, ConvexError } from 'convex/values';
 import type { Id, Doc } from '../_generated/dataModel';
 import { canViewTeam } from '../access';
 import { isDefined } from '../_shared/typeGuards';
+import { getAuthUserId } from '../authUtils';
 
 /**
  * Get team by organization slug and team key
@@ -120,6 +121,84 @@ export const list = query({
     });
 
     return teamsWithDetails;
+  },
+});
+
+/**
+ * List only teams where the current user is a member (for sidebar).
+ */
+export const listMyTeams = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    // Get all team memberships for this user
+    const myMemberships = await ctx.db
+      .query('teamMembers')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect();
+
+    // Fetch the teams and filter to this org
+    const teams = (
+      await Promise.all(
+        myMemberships.map(async m => {
+          const team = await ctx.db.get('teams', m.teamId);
+          return team && team.organizationId === org._id ? team : null;
+        }),
+      )
+    ).filter((t): t is Doc<'teams'> => t !== null);
+
+    // Also include teams the user created but may not be a member of
+    const allOrgTeams = await ctx.db
+      .query('teams')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .collect();
+    const createdTeams = allOrgTeams.filter(
+      t => t.createdBy === userId && !teams.some(mt => mt._id === t._id),
+    );
+    const combinedTeams = [...teams, ...createdTeams];
+
+    // Enrich with lead + member count
+    const leadIds = combinedTeams.map(t => t.leadId).filter(isDefined);
+    const leadUsers = await Promise.all(
+      leadIds.map(id => ctx.db.get('users', id)),
+    );
+    const leadUserMap = new Map(leadIds.map((id, i) => [id, leadUsers[i]]));
+
+    const teamMemberCounts = await Promise.all(
+      combinedTeams.map(async team => {
+        const count = (
+          await ctx.db
+            .query('teamMembers')
+            .withIndex('by_team', q => q.eq('teamId', team._id))
+            .collect()
+        ).length;
+        return { teamId: team._id, count };
+      }),
+    );
+    const memberCountMap = new Map(
+      teamMemberCounts.map(({ teamId, count }) => [teamId, count]),
+    );
+
+    return combinedTeams.map(team => ({
+      ...team,
+      lead: team.leadId ? leadUserMap.get(team.leadId) : null,
+      memberCount: memberCountMap.get(team._id) ?? 0,
+    }));
   },
 });
 

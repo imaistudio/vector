@@ -9,6 +9,9 @@ import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Id } from '@/convex/_generated/dataModel';
+import { cn } from '@/lib/utils';
+
+type ScopeTab = 'mine' | 'all';
 
 interface TeamsPageContentProps {
   orgSlug: string;
@@ -21,17 +24,19 @@ export function TeamsPageContent({
   canCreateTeams,
 }: TeamsPageContentProps) {
   // --------------------------------------------------
-  // Pagination (server-side)
+  // Scope & Pagination
   // --------------------------------------------------
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
+  const [scopeTab, setScopeTab] = useState<ScopeTab>('mine');
 
-  const teamsData = useQuery(api.teams.queries.list, { orgSlug });
-  const isLoading = teamsData === undefined;
+  const allTeamsData = useQuery(api.teams.queries.list, { orgSlug });
+  const myTeamsData = useQuery(api.teams.queries.listMyTeams, { orgSlug });
+  const isLoading = allTeamsData === undefined || myTeamsData === undefined;
 
-  // Transform teams data to match expected interface
-  const teams =
-    teamsData?.map(team => ({
+  // Transform data
+  const transformTeams = (data: typeof allTeamsData | typeof myTeamsData) =>
+    (data ?? []).map(team => ({
       id: team._id,
       name: team.name,
       description: team.description,
@@ -41,7 +46,11 @@ export function TeamsPageContent({
       createdAt: new Date(team._creationTime),
       lead: team.lead,
       memberCount: team.memberCount,
-    })) ?? [];
+    }));
+
+  const allTeams = transformTeams(allTeamsData);
+  const myTeams = transformTeams(myTeamsData);
+  const teams = scopeTab === 'mine' ? myTeams : allTeams;
 
   const total = teams.length;
 
@@ -54,7 +63,6 @@ export function TeamsPageContent({
   // --------------------------------------------------
   // Team operations
   // --------------------------------------------------
-
   const deleteMutation = useMutation(api.teams.mutations.deleteTeam);
 
   const handleDelete = (teamId: string) => {
@@ -64,12 +72,11 @@ export function TeamsPageContent({
   // --------------------------------------------------
   // Render
   // --------------------------------------------------
-  // Loading state
-  if (isLoading && teams.length === 0) {
+  if (isLoading && allTeams.length === 0) {
     return (
       <PageSkeleton
         showTabs={true}
-        tabCount={1}
+        tabCount={2}
         showCreateButton={canCreateTeams}
         tableRows={8}
         tableColumns={4}
@@ -85,12 +92,38 @@ export function TeamsPageContent({
           <div className='flex items-center gap-1'>
             <MobileNavTrigger />
             <Button
-              variant='secondary'
+              variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
               size='sm'
-              className='bg-secondary h-6 gap-2 rounded-xs px-3 text-xs font-normal'
+              className={cn(
+                'h-6 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'mine' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('mine');
+                setPage(1);
+              }}
+            >
+              <span>My teams</span>
+              <span className='text-muted-foreground text-xs'>
+                {myTeams.length}
+              </span>
+            </Button>
+            <Button
+              variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
+              size='sm'
+              className={cn(
+                'h-6 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'all' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('all');
+                setPage(1);
+              }}
             >
               <span>All teams</span>
-              <span className='text-muted-foreground text-xs'>{total}</span>
+              <span className='text-muted-foreground text-xs'>
+                {allTeams.length}
+              </span>
             </Button>
           </div>
           {canCreateTeams && (

@@ -3,6 +3,7 @@ import { v, ConvexError } from 'convex/values';
 import type { Id, Doc } from '../_generated/dataModel';
 import { canViewProject } from '../access';
 import { isDefined } from '../_shared/typeGuards';
+import { getAuthUserId } from '../authUtils';
 
 export const getByKey = query({
   args: {
@@ -104,6 +105,78 @@ export const list = query({
     });
 
     return projectsWithDetails;
+  },
+});
+
+/**
+ * List only projects where the current user is a member (for sidebar).
+ */
+export const listMyProjects = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    // Get all project memberships for this user
+    const myMemberships = await ctx.db
+      .query('projectMembers')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect();
+
+    // Fetch the projects and filter to this org
+    const projects = (
+      await Promise.all(
+        myMemberships.map(async m => {
+          const project = await ctx.db.get('projects', m.projectId);
+          return project && project.organizationId === org._id ? project : null;
+        }),
+      )
+    ).filter((p): p is Doc<'projects'> => p !== null);
+
+    // Also include projects the user created or leads but may not be a member of
+    const allOrgProjects = await ctx.db
+      .query('projects')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .collect();
+    const ownedProjects = allOrgProjects.filter(
+      p =>
+        (p.createdBy === userId || p.leadId === userId) &&
+        !projects.some(mp => mp._id === p._id),
+    );
+    const combinedProjects = [...projects, ...ownedProjects];
+
+    // Enrich with lead + status
+    const leadIds = combinedProjects.map(p => p.leadId).filter(isDefined);
+    const statusIds = combinedProjects.map(p => p.statusId).filter(isDefined);
+
+    const leadUsers = await Promise.all(
+      leadIds.map(id => ctx.db.get('users', id)),
+    );
+    const statuses = await Promise.all(
+      statusIds.map(id => ctx.db.get('projectStatuses', id)),
+    );
+
+    const leadUserMap = new Map(leadIds.map((id, i) => [id, leadUsers[i]]));
+    const statusMap = new Map(statusIds.map((id, i) => [id, statuses[i]]));
+
+    return combinedProjects.map(project => {
+      const leadUser = project.leadId ? leadUserMap.get(project.leadId) : null;
+      const status = project.statusId ? statusMap.get(project.statusId) : null;
+      return { ...project, lead: leadUser, status };
+    });
   },
 });
 
