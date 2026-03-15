@@ -42,7 +42,7 @@ export function RichEditor({
         disabled
           ? 'border-none shadow-none p-0 min-h-0 bg-transparent dark:bg-transparent'
           : isBorderless
-            ? 'border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none p-0 min-h-[60vh]'
+            ? 'border-none shadow-none ring-0 focus-visible:ring-0 focus-visible:border-none p-0 min-h-[60vh] bg-transparent dark:bg-transparent'
             : mode === 'compact'
               ? 'min-h-[100px]'
               : 'min-h-[300px]',

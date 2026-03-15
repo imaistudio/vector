@@ -133,6 +133,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <Link
                 href={`/${orgSlug}/teams`}
                 className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+                onClick={onNavigate}
               >
                 View All
               </Link>
@@ -198,6 +199,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <Link
                 href={`/${orgSlug}/projects`}
                 className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+                onClick={onNavigate}
               >
                 View All
               </Link>
@@ -275,6 +277,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <Link
                 href={`/${orgSlug}/documents`}
                 className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+                onClick={onNavigate}
               >
                 View All
               </Link>

@@ -245,7 +245,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
     parts.some(part => part.type === 'reasoning' || isToolPart(part));
 
   return (
-    <div className='px-1 py-1'>
+    <div className='min-w-0 px-1 py-1'>
       {!hasVisibleContent && message.status === 'streaming' ? (
         <ReasoningSection isStreaming text='' />
       ) : (
@@ -257,7 +257,7 @@ function AssistantMessage({ message }: { message: UIMessage }) {
               return (
                 <div
                   key={`text-${getMessageKey(message)}-${index}`}
-                  className='overflow-hidden'
+                  className='min-w-0 overflow-hidden'
                 >
                   <AssistantResponse
                     parseIncompleteMarkdown={message.status === 'streaming'}

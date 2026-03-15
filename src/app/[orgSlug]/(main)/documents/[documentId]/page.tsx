@@ -4,7 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FileText, Check, Loader2, Plus } from 'lucide-react';
+import {
+  FileText,
+  Check,
+  Loader2,
+  Plus,
+  Trash2,
+  MoreHorizontal,
+} from 'lucide-react';
 import { MobileNavTrigger } from '../../layout';
 import Link from 'next/link';
 import { formatDateHuman } from '@/lib/date';
@@ -36,6 +43,15 @@ import {
 import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { DEFAULT_DOCUMENT_COLORS } from '@/convex/_shared/document_appearance';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useConfirm } from '@/hooks/use-confirm';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 interface DocumentDetailPageProps {
   params: Promise<{ orgSlug: string; documentId: string }>;
@@ -258,6 +274,9 @@ export default function DocumentDetailPage({
   const teams = teamsData ? withIds(teamsData) : [];
 
   const updateMutation = useMutation(api.documents.mutations.update);
+  const removeMutation = useMutation(api.documents.mutations.remove);
+  const router = useRouter();
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
   const viewers = useDocumentPresence(resolvedParams?.documentId ?? null);
   const [displayIcon, setOptimisticIcon] = useOptimisticValue(
     document?.icon ?? null,
@@ -269,6 +288,10 @@ export default function DocumentDetailPage({
   const { isAllowed: canEdit } = usePermissionCheck(
     resolvedParams?.orgSlug || '',
     PERMISSIONS.DOCUMENT_EDIT,
+  );
+  const { isAllowed: canDelete } = usePermissionCheck(
+    resolvedParams?.orgSlug || '',
+    PERMISSIONS.DOCUMENT_DELETE,
   );
 
   // Initialize content from server once
@@ -397,12 +420,29 @@ export default function DocumentDetailPage({
     });
   };
 
+  const handleDelete = async () => {
+    const confirmed = await confirmDelete({
+      title: 'Delete document',
+      description:
+        'Are you sure you want to delete this document? This action cannot be undone.',
+    });
+    if (!confirmed) return;
+    try {
+      await removeMutation({ documentId: document._id });
+      toast.success('Document deleted');
+      router.push(`/${resolvedParams.orgSlug}/documents`);
+    } catch {
+      toast.error('Failed to delete document');
+    }
+  };
+
   return (
     <ScrollArea
-      className='bg-background h-full'
+      className='h-full'
       viewportClassName='overscroll-contain'
       maskHeight={0}
     >
+      <ConfirmDeleteDialog />
       <div className='h-full'>
         {/* Slim header bar */}
         <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex items-center justify-between border-b px-2 backdrop-blur'>
@@ -410,13 +450,11 @@ export default function DocumentDetailPage({
             <MobileNavTrigger />
             <Link
               href={`/${resolvedParams.orgSlug}/documents`}
-              className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+              className='text-muted-foreground hover:text-foreground shrink-0 text-xs transition-colors'
             >
-              <span className='hidden sm:inline'>Documents</span>
+              Documents
             </Link>
-            <span className='text-muted-foreground/50 hidden text-xs sm:inline'>
-              /
-            </span>
+            <span className='text-muted-foreground/50 text-xs'>/</span>
             <PermissionAwareSelector
               orgSlug={resolvedParams.orgSlug}
               permission={PERMISSIONS.DOCUMENT_EDIT}
@@ -429,7 +467,7 @@ export default function DocumentDetailPage({
                 onColorChange={handleColorChange}
               />
             </PermissionAwareSelector>
-            <span className='text-foreground hidden max-w-48 truncate text-xs font-medium sm:inline'>
+            <span className='text-foreground max-w-32 truncate text-xs font-medium sm:max-w-48'>
               {document.title || 'Untitled'}
             </span>
             <TeamSelector
@@ -501,6 +539,28 @@ export default function DocumentDetailPage({
               displayMode='iconWhenUnselected'
               className='border-none bg-transparent shadow-none'
             />
+            {canDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type='button'
+                    className='text-muted-foreground hover:text-foreground hover:bg-muted inline-flex size-6 items-center justify-center rounded-sm transition-colors'
+                    aria-label='Open document actions'
+                  >
+                    <MoreHorizontal className='size-3.5' />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align='end'>
+                  <DropdownMenuItem
+                    variant='destructive'
+                    onClick={handleDelete}
+                  >
+                    <Trash2 className='size-4' />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 
@@ -80,11 +81,12 @@ export function IssuesTable({
   deletePending = false,
   isUpdatingAssignees = false,
   onAssignmentStateChange,
-  isUpdatingAssignmentStates = false,
+  isUpdatingAssignmentStates: _isUpdatingAssignmentStates = false,
   currentUserId,
   canChangeAll = false,
   activeFilter,
 }: IssuesTableProps) {
+  const router = useRouter();
   const groupedIssues = React.useMemo(() => {
     const map = new Map<
       string,
@@ -153,7 +155,7 @@ export function IssuesTable({
       }
     });
     return Array.from(map.values());
-  }, [issues, currentUserId, activeFilter]);
+  }, [issues, currentUserId]);
 
   const sortedGrouped = React.useMemo(
     () =>
@@ -193,7 +195,18 @@ export function IssuesTable({
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.2 }}
               key={issue.id}
-              className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+              onClick={e => {
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest(
+                    'button, [role="combobox"], [data-radix-popper-content-wrapper], a',
+                  )
+                ) {
+                  return;
+                }
+                router.push(`/${orgSlug}/issues/${issue.key}`);
+              }}
+              className='hover:bg-muted/50 flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors'
             >
               {/* Priority Selector */}
               <PermissionAware
@@ -207,12 +220,17 @@ export function IssuesTable({
                   onPrioritySelect={pid => onPriorityChange(issue.id, pid)}
                   displayMode='labelOnly'
                   trigger={
-                    <div className='flex-shrink-0 cursor-pointer'>
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className='size-6 shrink-0 rounded-md'
+                      aria-label='Change issue priority'
+                    >
                       <PriorityIcon
                         className='size-4'
                         style={{ color: priorityColor }}
                       />
-                    </div>
+                    </Button>
                   }
                   className='border-none bg-transparent p-0 shadow-none'
                 />

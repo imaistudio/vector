@@ -41,17 +41,9 @@ const SIDEBAR_MAX_WIDTH = 480;
 const SIDEBAR_DEFAULT_WIDTH = 224; // w-56
 const SIDEBAR_STORAGE_KEY = 'vector-sidebar-width';
 
-function getInitialSidebarWidth() {
-  if (typeof window === 'undefined') {
-    return SIDEBAR_DEFAULT_WIDTH;
-  }
-
-  const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
-  if (!stored) {
-    return SIDEBAR_DEFAULT_WIDTH;
-  }
-
-  const parsed = parseInt(stored, 10);
+function parseSidebarWidth(raw: string | null): number {
+  if (!raw) return SIDEBAR_DEFAULT_WIDTH;
+  const parsed = parseInt(raw, 10);
   if (
     Number.isNaN(parsed) ||
     parsed < SIDEBAR_MIN_WIDTH ||
@@ -59,7 +51,6 @@ function getInitialSidebarWidth() {
   ) {
     return SIDEBAR_DEFAULT_WIDTH;
   }
-
   return parsed;
 }
 
@@ -91,9 +82,18 @@ export function BottomBarSlot({ children }: { children: ReactNode }) {
 // ---------------------------------------------------------------------------
 
 function useResizableSidebar() {
-  const [width, setWidth] = useState(getInitialSidebarWidth);
+  const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const isResizing = useRef(false);
+
+  // Sync from localStorage after hydration to avoid mismatch
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      setWidth(parseSidebarWidth(localStorage.getItem(SIDEBAR_STORAGE_KEY)));
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -309,7 +309,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             <SheetContent
               side='left'
               showCloseButton={false}
-              className='bg-secondary w-56 p-0 sm:max-w-56'
+              className='bg-secondary !w-[85vw] !max-w-[85vw] p-0 sm:!max-w-80'
             >
               <SheetTitle className='sr-only'>Navigation</SheetTitle>
               <div className='flex h-full flex-col'>

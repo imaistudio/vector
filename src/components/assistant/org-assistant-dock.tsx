@@ -469,15 +469,18 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                 transition: CHAT_PANEL_EXIT,
               }}
               transition={CHAT_PANEL_TRANSITION}
-              className='relative overflow-hidden'
+              className='relative min-w-0 overflow-hidden'
             >
               <ScrollArea
-                className='h-[min(40vh,320px)] w-full'
+                className='h-[min(40vh,320px)] w-full min-w-0'
                 viewportClassName='overscroll-contain'
                 maskHeight={12}
                 viewportRef={viewportRef}
               >
-                <div ref={contentRef} className='space-y-2.5 px-2 pt-1 pb-2'>
+                <div
+                  ref={contentRef}
+                  className='min-w-0 space-y-2.5 overflow-x-hidden px-2 pt-1 pb-2'
+                >
                   {messages.map(message => (
                     <div
                       key={`${message.role}-${message.id ?? `${message.order}-${message.stepOrder}`}`}

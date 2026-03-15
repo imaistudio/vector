@@ -1064,7 +1064,7 @@ export default function TeamViewPage() {
       <div className='h-full'>
         <div>
           {/* Header */}
-          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
+          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex items-center justify-between gap-2 overflow-x-auto border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
               <MobileNavTrigger />
               <Link

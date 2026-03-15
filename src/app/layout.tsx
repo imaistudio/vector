@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { Geist, Poppins, Urbanist } from 'next/font/google';
 import './globals.css';
 import { TopLoaderProvider } from '@/providers/top-loader-provider';
 import { ConvexAuthProvider } from '@/providers/convex-auth-provider';
@@ -8,6 +9,20 @@ import { NotificationClientBootstrap } from '@/components/notifications/notifica
 import { BrandingHead } from '@/components/branding-head';
 import { getToken } from '@/lib/auth-server';
 import { ThemeProvider } from '@/components/theme-provider';
+import { cn } from '@/lib/utils';
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
+
+const urbanist = Urbanist({
+  variable: '--font-title',
+  subsets: ['latin'],
+});
+
+const poppins = Poppins({
+  variable: '--font-body',
+  subsets: ['latin'],
+  weight: ['400'],
+});
 
 export const metadata: Metadata = {
   title: 'Vector',
@@ -32,8 +47,12 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en' className='font-sans' suppressHydrationWarning>
-      <body className='antialiased'>
+    <html
+      lang='en'
+      className={cn('font-sans', geist.variable)}
+      suppressHydrationWarning
+    >
+      <body className={`${urbanist.variable} ${poppins.variable} antialiased`}>
         <ThemeProvider
           attribute='class'
           defaultTheme='light'

@@ -243,7 +243,7 @@ export function IssuesKanban({
         stateType: issue.workflowStateType,
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [groupedIssues, sortedStates]);
+  }, [groupedIssues]);
 
   const canMoveCard = React.useCallback(
     (_issue: KanbanIssueCard) => Boolean(onStateChange),
@@ -288,30 +288,33 @@ export function IssuesKanban({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className='flex h-full gap-3 overflow-x-auto p-3'>
-        {columns.map(({ state, issues: columnIssues }) => (
-          <KanbanColumn
-            key={state._id}
-            state={state}
-            issues={columnIssues}
-            orgSlug={orgSlug}
-            activeId={activeId}
-            states={sortedStates}
-            priorities={priorities}
-            teams={teams}
-            projects={projects}
-            currentUserId={currentUserId}
-            canChangeAll={canChangeAll}
-            onStateChange={onStateChange}
-            onPriorityChange={onPriorityChange}
-            onAssigneesChange={onAssigneesChange}
-            onTeamChange={onTeamChange}
-            onProjectChange={onProjectChange}
-            onDelete={onDelete}
-            deletePending={deletePending}
-            createDefaults={createDefaults}
-          />
-        ))}
+      <div className='relative h-full'>
+        <div className='flex h-full gap-3 overflow-x-auto p-3'>
+          {columns.map(({ state, issues: columnIssues }) => (
+            <KanbanColumn
+              key={state._id}
+              state={state}
+              issues={columnIssues}
+              orgSlug={orgSlug}
+              activeId={activeId}
+              states={sortedStates}
+              priorities={priorities}
+              teams={teams}
+              projects={projects}
+              currentUserId={currentUserId}
+              canChangeAll={canChangeAll}
+              onStateChange={onStateChange}
+              onPriorityChange={onPriorityChange}
+              onAssigneesChange={onAssigneesChange}
+              onTeamChange={onTeamChange}
+              onProjectChange={onProjectChange}
+              onDelete={onDelete}
+              deletePending={deletePending}
+              createDefaults={createDefaults}
+            />
+          ))}
+        </div>
+        <div className='from-background pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l to-transparent lg:hidden' />
       </div>
 
       <DragOverlay

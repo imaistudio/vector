@@ -113,21 +113,25 @@ function DenseToolShell({
   children?: ReactNode;
 }) {
   return (
-    <div className='py-0.5'>
-      <div className='flex items-center gap-1.5 text-[11px]'>
+    <div className='max-w-full min-w-0 py-0.5'>
+      <div className='flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px]'>
         <div className='text-muted-foreground/50 shrink-0'>{icon}</div>
-        <span className='text-muted-foreground/70'>{title}</span>
+        <span className='text-muted-foreground/70 min-w-0 flex-1 break-words'>
+          {title}
+        </span>
         <span
           className={cn('text-[10px]', {
-            'text-muted-foreground/40': tone === 'muted',
-            'text-emerald-600/60': tone === 'success',
-            'text-[#cb706f]/60': tone === 'destructive',
+            'text-muted-foreground/40 shrink-0': tone === 'muted',
+            'shrink-0 text-emerald-600/60': tone === 'success',
+            'shrink-0 text-[#cb706f]/60': tone === 'destructive',
           })}
         >
           {status}
         </span>
       </div>
-      {children ? <div className='mt-1'>{children}</div> : null}
+      {children ? (
+        <div className='mt-1 min-w-0 overflow-hidden'>{children}</div>
+      ) : null}
     </div>
   );
 }
@@ -172,17 +176,17 @@ export function DefaultAssistantToolResult({
       tone={status === 'failed' ? 'destructive' : 'success'}
     >
       {summary ? (
-        <div className='text-muted-foreground/60 text-[11px] leading-4'>
+        <div className='text-muted-foreground/60 min-w-0 text-[11px] leading-4 break-words'>
           {summary}
         </div>
       ) : null}
       {listItems.length > 0 ? (
-        <div className='flex flex-wrap gap-1'>
+        <div className='flex min-w-0 flex-wrap gap-1'>
           {listItems.map(item => (
             <Badge
               key={item}
               variant='secondary'
-              className='h-4 rounded px-1 text-[10px] font-normal'
+              className='h-4 max-w-full overflow-hidden rounded px-1 text-[10px] font-normal text-ellipsis whitespace-nowrap'
             >
               {item}
             </Badge>
@@ -204,7 +208,7 @@ function DeleteRequestToolResult({ tool }: AssistantToolComponentProps) {
       tone='destructive'
     >
       {output?.summary ? (
-        <div className='text-muted-foreground/60 text-[11px] leading-4'>
+        <div className='text-muted-foreground/60 min-w-0 text-[11px] leading-4 break-words'>
           {output.summary}
         </div>
       ) : null}
@@ -266,30 +270,34 @@ function EntityRow({
   const href = entityHref(display, orgSlug, item);
 
   const content = (
-    <div className='hover:bg-muted/50 flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors'>
-      <span className='text-muted-foreground/50'>{entityIcon(display)}</span>
-      {key ? (
-        <span className='text-muted-foreground/60 shrink-0 font-mono text-[10px]'>
-          {key}
-        </span>
-      ) : null}
-      <span className='min-w-0 flex-1 truncate'>{title}</span>
-      {subtitle ? (
-        <span className='text-muted-foreground/50 shrink-0 text-[10px]'>
-          {subtitle}
-        </span>
-      ) : null}
-      {assignee ? (
-        <span className='text-muted-foreground/50 shrink-0 text-[10px]'>
-          {assignee}
-        </span>
-      ) : null}
+    <div className='hover:bg-muted/50 flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs transition-colors'>
+      <span className='text-muted-foreground/50 mt-0.5 shrink-0'>
+        {entityIcon(display)}
+      </span>
+      <div className='min-w-0 flex-1'>
+        <div className='min-w-0 truncate'>{title}</div>
+        {(key || subtitle || assignee) && (
+          <div className='text-muted-foreground/50 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]'>
+            {key ? (
+              <span className='text-muted-foreground/60 shrink-0 font-mono text-[10px]'>
+                {key}
+              </span>
+            ) : null}
+            {subtitle ? (
+              <span className='min-w-0 break-words'>{subtitle}</span>
+            ) : null}
+            {assignee ? (
+              <span className='min-w-0 break-words'>{assignee}</span>
+            ) : null}
+          </div>
+        )}
+      </div>
     </div>
   );
 
   if (href) {
     return (
-      <Link href={href} className='block'>
+      <Link href={href} className='block min-w-0'>
         {content}
       </Link>
     );
@@ -318,7 +326,7 @@ function EntityListResult({ tool }: AssistantToolComponentProps) {
   }
 
   return (
-    <div className='bg-muted/20 rounded-lg border'>
+    <div className='bg-muted/20 max-w-full min-w-0 overflow-hidden rounded-lg border'>
       {items.map((item, i) => (
         <div
           key={(item.id ?? item.key ?? i) as string}

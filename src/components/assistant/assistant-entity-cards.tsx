@@ -10,7 +10,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 
 function CardSkeleton() {
   return (
-    <div className='bg-muted/30 flex animate-pulse items-center gap-2.5 rounded-lg border px-3 py-2'>
+    <div className='bg-muted/30 flex max-w-full min-w-0 animate-pulse items-center gap-2.5 overflow-hidden rounded-lg border px-3 py-2'>
       <div className='bg-muted size-4 rounded' />
       <div className='bg-muted h-3 w-12 rounded' />
       <div className='bg-muted h-3 flex-1 rounded' />
@@ -28,10 +28,12 @@ function EntityUnavailableCard({
   message: string;
 }) {
   return (
-    <div className='bg-muted/20 text-muted-foreground flex items-center gap-2.5 rounded-lg border border-dashed px-3 py-2 text-xs'>
-      <div className='shrink-0'>{icon}</div>
-      <span className='shrink-0 font-mono text-[11px]'>{label}</span>
-      <span className='min-w-0 flex-1 truncate'>{message}</span>
+    <div className='bg-muted/20 text-muted-foreground flex max-w-full min-w-0 items-start gap-2.5 overflow-hidden rounded-lg border border-dashed px-3 py-2 text-xs'>
+      <div className='mt-0.5 shrink-0'>{icon}</div>
+      <div className='min-w-0 flex-1'>
+        <div className='font-mono text-[11px]'>{label}</div>
+        <div className='min-w-0 break-words'>{message}</div>
+      </div>
     </div>
   );
 }
@@ -62,28 +64,29 @@ export function AssistantProjectCard({ projectKey }: { projectKey: string }) {
   const statusIcon = project.statusIcon;
 
   return (
-    <Link href={`/${orgSlug}/projects/${project.key}`} className='group block'>
-      <div className='bg-background hover:bg-muted/30 flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors'>
+    <Link
+      href={`/${orgSlug}/projects/${project.key}`}
+      className='group block max-w-full min-w-0'
+    >
+      <div className='bg-background hover:bg-muted/30 flex max-w-full min-w-0 items-start gap-2.5 overflow-hidden rounded-lg border px-3 py-2 transition-colors'>
         {statusIcon ? (
           <DynamicIcon
             name={statusIcon}
-            className='size-3.5 shrink-0'
+            className='mt-0.5 size-3.5 shrink-0'
             style={{ color: statusColor }}
           />
         ) : (
-          <FolderKanban className='text-muted-foreground/60 size-3.5 shrink-0' />
+          <FolderKanban className='text-muted-foreground/60 mt-0.5 size-3.5 shrink-0' />
         )}
-        <span className='text-muted-foreground shrink-0 font-mono text-[11px]'>
-          {project.key}
-        </span>
-        <span className='group-hover:text-primary min-w-0 flex-1 truncate text-sm font-medium transition-colors'>
-          {project.name}
-        </span>
-        {project.visibility === 'private' ? (
-          <span className='text-muted-foreground/60 shrink-0 text-[10px]'>
-            Private
-          </span>
-        ) : null}
+        <div className='min-w-0 flex-1'>
+          <div className='group-hover:text-primary min-w-0 truncate text-sm font-medium transition-colors'>
+            {project.name}
+          </div>
+          <div className='text-muted-foreground/60 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]'>
+            <span className='font-mono text-[11px]'>{project.key}</span>
+            {project.visibility === 'private' ? <span>Private</span> : null}
+          </div>
+        </div>
       </div>
     </Link>
   );
@@ -110,28 +113,29 @@ export function AssistantTeamCard({ teamKey }: { teamKey: string }) {
   }
 
   return (
-    <Link href={`/${orgSlug}/teams/${team.key}`} className='group block'>
-      <div className='bg-background hover:bg-muted/30 flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors'>
+    <Link
+      href={`/${orgSlug}/teams/${team.key}`}
+      className='group block max-w-full min-w-0'
+    >
+      <div className='bg-background hover:bg-muted/30 flex max-w-full min-w-0 items-start gap-2.5 overflow-hidden rounded-lg border px-3 py-2 transition-colors'>
         {team.icon ? (
           <DynamicIcon
             name={team.icon}
-            className='size-3.5 shrink-0'
+            className='mt-0.5 size-3.5 shrink-0'
             style={{ color: team.color ?? undefined }}
           />
         ) : (
-          <Users className='text-muted-foreground/60 size-3.5 shrink-0' />
+          <Users className='text-muted-foreground/60 mt-0.5 size-3.5 shrink-0' />
         )}
-        <span className='text-muted-foreground shrink-0 font-mono text-[11px]'>
-          {team.key}
-        </span>
-        <span className='group-hover:text-primary min-w-0 flex-1 truncate text-sm font-medium transition-colors'>
-          {team.name}
-        </span>
-        {team.visibility === 'private' ? (
-          <span className='text-muted-foreground/60 shrink-0 text-[10px]'>
-            Private
-          </span>
-        ) : null}
+        <div className='min-w-0 flex-1'>
+          <div className='group-hover:text-primary min-w-0 truncate text-sm font-medium transition-colors'>
+            {team.name}
+          </div>
+          <div className='text-muted-foreground/60 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]'>
+            <span className='font-mono text-[11px]'>{team.key}</span>
+            {team.visibility === 'private' ? <span>Private</span> : null}
+          </div>
+        </div>
       </div>
     </Link>
   );
@@ -158,10 +162,13 @@ export function AssistantDocumentCard({ documentId }: { documentId: string }) {
   }
 
   return (
-    <Link href={`/${orgSlug}/documents/${documentId}`} className='group block'>
-      <div className='bg-background hover:bg-muted/30 flex items-center gap-2.5 rounded-lg border px-3 py-2 transition-colors'>
-        <FileText className='text-muted-foreground/60 size-3.5 shrink-0' />
-        <span className='group-hover:text-primary min-w-0 flex-1 truncate text-sm font-medium transition-colors'>
+    <Link
+      href={`/${orgSlug}/documents/${documentId}`}
+      className='group block max-w-full min-w-0'
+    >
+      <div className='bg-background hover:bg-muted/30 flex max-w-full min-w-0 items-start gap-2.5 overflow-hidden rounded-lg border px-3 py-2 transition-colors'>
+        <FileText className='text-muted-foreground/60 mt-0.5 size-3.5 shrink-0' />
+        <span className='group-hover:text-primary min-w-0 flex-1 text-sm font-medium break-words transition-colors'>
           {document.title || 'View document'}
         </span>
       </div>
