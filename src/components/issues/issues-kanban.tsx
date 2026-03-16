@@ -315,7 +315,7 @@ export function IssuesKanban({
       onDragEnd={handleDragEnd}
     >
       <ScrollArea className='h-full' viewportClassName='h-full'>
-        <div className='flex h-full gap-3 p-3'>
+        <div className='flex min-h-dvh gap-3 p-3 pb-16'>
           {columns.map(({ state, issues: columnIssues }) => (
             <KanbanColumn
               key={state._id}

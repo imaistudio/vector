@@ -102,7 +102,7 @@ export function ProjectsKanban({
       onDragEnd={handleDragEnd}
     >
       <ScrollArea className='h-full' viewportClassName='h-full'>
-        <div className='flex h-full gap-3 p-3'>
+        <div className='flex min-h-dvh gap-3 p-3 pb-16'>
           {columns.map(({ status, projects: columnProjects }) => (
             <KanbanColumn
               key={status._id}
