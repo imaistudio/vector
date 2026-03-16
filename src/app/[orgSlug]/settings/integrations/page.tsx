@@ -29,19 +29,18 @@ export default function IntegrationsPage() {
     notFound();
   }
 
-  const hasUsableAuth = Boolean(githubSettings?.effectiveAuth.hasUsableAuth);
-  const hasSelectedRepos = Boolean(
-    githubSettings?.repositories?.some(r => r.selected),
+  const hasWebhookReady = Boolean(
+    githubSettings?.effectiveAuth.hasWebhookSecret,
   );
 
   let badgeLabel: string;
   let badgeVariant: 'secondary' | 'outline';
 
-  if (hasUsableAuth && hasSelectedRepos) {
-    badgeLabel = 'Connected';
+  if (hasWebhookReady) {
+    badgeLabel = 'Ready';
     badgeVariant = 'secondary';
   } else {
-    badgeLabel = 'Not connected';
+    badgeLabel = 'Needs setup';
     badgeVariant = 'outline';
   }
 
@@ -79,7 +78,7 @@ export default function IntegrationsPage() {
                   </Badge>
                 </div>
                 <p className='text-muted-foreground text-xs'>
-                  Link pull requests, issues, and commits to Vector issues
+                  Receive GitHub webhooks and link development to Vector issues
                 </p>
               </div>
               <ChevronRight className='text-muted-foreground size-4 shrink-0' />
