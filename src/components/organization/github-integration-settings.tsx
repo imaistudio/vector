@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Github, Shield, Webhook } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,14 +29,20 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
     return () => window.clearTimeout(timeout);
   }, [copied]);
 
-  const webhookPath = '/api/webhooks/github';
+  const webhookUrl = useMemo(() => {
+    const configuredBaseUrl =
+      process.env.NEXT_PUBLIC_CONVEX_SITE_URL ??
+      process.env.NEXT_PUBLIC_CONVEX_URL;
+
+    const baseUrl =
+      configuredBaseUrl ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
+
+    return `${baseUrl.replace(/\/$/, '')}/webhooks/github`;
+  }, []);
 
   const handleCopy = async () => {
     try {
-      const webhookUrl =
-        typeof window === 'undefined'
-          ? webhookPath
-          : `${window.location.origin}${webhookPath}`;
       await navigator.clipboard.writeText(webhookUrl);
       setCopied(true);
       toast.success('Webhook URL copied');
@@ -95,12 +101,12 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
           </Button>
         </div>
 
-        <Input value={webhookPath} readOnly className='font-mono text-xs' />
+        <Input value={webhookUrl} readOnly className='font-mono text-xs' />
 
         <p className='text-muted-foreground text-xs leading-5'>
-          Add this path on your Vector deployment as the GitHub webhook
-          endpoint. Workspace development linking is currently webhook-driven,
-          so the endpoint and shared secret are the active setup path here.
+          Point GitHub at this Convex webhook URL. Workspace development linking
+          is currently webhook-driven, so this endpoint and the shared secret
+          are the active setup path here.
         </p>
       </div>
 
