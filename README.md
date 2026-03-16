@@ -57,6 +57,14 @@ Quick links: [Features](#features) · [Screenshots](#screenshots) · [Quick Star
 - Tailwind CSS v4, Base UI/Radix primitives, and shadcn/ui
 - ESLint, Prettier, Husky, and pnpm
 
+## CLI
+
+Vector also ships with a dedicated CLI package for terminal workflows.
+
+- Package README: [packages/vector-cli/README.md](packages/vector-cli/README.md)
+- Local repo entrypoint: `pnpm exec tsx src/cli/index.ts --help`
+- Published package target: `vcli`
+
 ## Project Status
 
 Vector is under active development. The top-level docs in this repository reflect the current contributor workflow. Some files under `docs/migration/` remain as historical implementation notes from earlier architecture work and should not be treated as onboarding documentation.

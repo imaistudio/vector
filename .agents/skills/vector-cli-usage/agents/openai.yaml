@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Vector CLI Usage'
+  short_description: 'Explain installed Vector CLI usage'
+  default_prompt: 'Use $vector-cli-usage to explain how to use the installed Vector CLI.'

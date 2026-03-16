@@ -78,8 +78,15 @@ async function authRequest(
   init: RequestInit = {},
 ) {
   const headers = new Headers(init.headers);
+  const origin = new URL(appUrl).origin;
   if (Object.keys(session.cookies).length > 0) {
     headers.set('cookie', cookieHeader(session.cookies));
+  }
+  if (!headers.has('origin')) {
+    headers.set('origin', origin);
+  }
+  if (!headers.has('referer')) {
+    headers.set('referer', `${origin}/`);
   }
   if (init.body && !headers.has('content-type')) {
     headers.set('content-type', 'application/json');
@@ -132,6 +139,35 @@ export async function loginWithPassword(
   return nextSession;
 }
 
+export async function signUpWithEmail(
+  session: CliSession,
+  appUrl: string,
+  email: string,
+  username: string,
+  password: string,
+) {
+  const { response, session: nextSession } = await authRequest(
+    session,
+    appUrl,
+    '/api/auth/sign-up/email',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        password,
+        name: username,
+        username,
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+
+  return nextSession;
+}
+
 export async function logout(session: CliSession, appUrl: string) {
   const { response } = await authRequest(
     session,
@@ -139,6 +175,7 @@ export async function logout(session: CliSession, appUrl: string) {
     '/api/auth/sign-out',
     {
       method: 'POST',
+      body: JSON.stringify({}),
     },
   );
 

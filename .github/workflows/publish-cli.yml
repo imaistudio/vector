@@ -1,0 +1,70 @@
+name: Publish CLI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  publish-cli:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify CLI
+        run: |
+          pnpm run test:cli
+          pnpm exec tsc --noEmit --pretty false
+          pnpm run build:cli-package
+
+      - name: Set publish version
+        id: version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'packages/vector-cli/package.json';
+          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const [major, minor] = String(pkg.version).split('.').map(Number);
+          const runNumber = Number(process.env.GITHUB_RUN_NUMBER || '0');
+          const runAttempt = Number(process.env.GITHUB_RUN_ATTEMPT || '1');
+          const patch = runNumber * 1000 + runAttempt;
+          pkg.version = `${major}.${minor}.${patch}`;
+          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${pkg.version}\n`);
+          NODE
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish
+        working-directory: packages/vector-cli
+
+      - name: Job summary
+        run: |
+          {
+            echo "## CLI publish"
+            echo
+            echo "- Package: \`vcli\`"
+            echo "- Version: \`${{ steps.version.outputs.version }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

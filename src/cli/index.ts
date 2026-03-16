@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { readFile } from 'node:fs/promises';
+import { extname } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
 import { makeFunctionReference } from 'convex/server';
@@ -12,6 +14,7 @@ import {
   logout,
   prompt,
   promptSecret,
+  signUpWithEmail,
 } from './auth';
 import { createConvexClient, runAction, runMutation, runQuery } from './convex';
 import { printOutput } from './output';
@@ -90,11 +93,77 @@ type Runtime = {
   session: CliSession | null;
 };
 
+const ISSUE_STATE_TYPES = [
+  'backlog',
+  'todo',
+  'in_progress',
+  'done',
+  'canceled',
+] as const;
+
+const PROJECT_STATUS_TYPES = [
+  'backlog',
+  'planned',
+  'in_progress',
+  'completed',
+  'canceled',
+] as const;
+
+const NOTIFICATION_CATEGORIES = [
+  'invites',
+  'assignments',
+  'mentions',
+  'comments',
+] as const;
+
 function requiredString(value: string | undefined, label: string) {
   if (!value?.trim()) {
     throw new Error(`${label} is required`);
   }
   return value.trim();
+}
+
+function optionalNumber(value: string | undefined, label: string) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${label} must be a valid number`);
+  }
+
+  return parsed;
+}
+
+function requiredNumber(value: string | undefined, label: string) {
+  const parsed = optionalNumber(value, label);
+  if (parsed === undefined) {
+    throw new Error(`${label} is required`);
+  }
+  return parsed;
+}
+
+function parseBoolean(value: string, label: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  throw new Error(`${label} must be "true" or "false"`);
+}
+
+function parseList(value: string | undefined) {
+  if (!value) return [];
+  return value
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function buildPaginationOptions(limit?: string, cursor?: string) {
+  return {
+    cursor: cursor ?? null,
+    numItems: optionalNumber(limit, 'limit') ?? 20,
+  };
 }
 
 function normalizeMatch(value: string | undefined | null) {
@@ -129,7 +198,7 @@ async function getRuntime(command: Command) {
 
 function requireSession(runtime: Runtime) {
   if (!runtime.session || Object.keys(runtime.session.cookies).length === 0) {
-    throw new Error('Not logged in. Run `vector auth login` first.');
+    throw new Error('Not logged in. Run `vcli auth login` first.');
   }
   return runtime.session;
 }
@@ -138,7 +207,7 @@ function requireOrg(runtime: Runtime, explicit?: string) {
   const orgSlug = explicit ?? runtime.org;
   if (!orgSlug) {
     throw new Error(
-      'Organization slug is required. Pass `--org <slug>` or run `vector org use <slug>`.',
+      'Organization slug is required. Pass `--org <slug>` or run `vcli org use <slug>`.',
     );
   }
   return orgSlug;
@@ -225,10 +294,206 @@ function nullableOption(value: string | undefined, clear = false) {
   return value;
 }
 
+function mimeTypeForFile(filePath: string) {
+  switch (extname(filePath).toLowerCase()) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    case '.gif':
+      return 'image/gif';
+    case '.svg':
+      return 'image/svg+xml';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+async function uploadFile(uploadUrl: string, filePath: string) {
+  const body = await readFile(filePath);
+  const response = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': mimeTypeForFile(filePath),
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Upload failed with HTTP ${response.status}`);
+  }
+
+  const data = (await response.json()) as { storageId?: Id<'_storage'> };
+  if (!data.storageId) {
+    throw new Error('Upload response did not include a storageId');
+  }
+
+  return data.storageId;
+}
+
+async function resolveTeamId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  teamKey?: string,
+) {
+  if (!teamKey) {
+    return undefined;
+  }
+  const team = await runAction(client, cliApi.getTeam, { orgSlug, teamKey });
+  return team.id as Id<'teams'>;
+}
+
+async function resolveProjectId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  projectKey?: string,
+) {
+  if (!projectKey) {
+    return undefined;
+  }
+  const project = await runAction(client, cliApi.getProject, {
+    orgSlug,
+    projectKey,
+  });
+  return project.id as Id<'projects'>;
+}
+
+async function resolveIssueId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  issueKey: string,
+) {
+  const issue = await runAction(client, cliApi.getIssue, { orgSlug, issueKey });
+  return issue.id as Id<'issues'>;
+}
+
+async function resolveDocumentId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  documentId: string,
+) {
+  const document = await runAction(client, cliApi.getDocument, {
+    orgSlug,
+    documentId,
+  });
+  return document.id as Id<'documents'>;
+}
+
+async function resolveIssueStateId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  ref: string,
+) {
+  const states = await runQuery(
+    client,
+    api.organizations.queries.listIssueStates,
+    {
+      orgSlug,
+    },
+  );
+  const needle = normalizeMatch(ref);
+  const match = states.find(state => {
+    return (
+      normalizeMatch(String(state._id)) === needle ||
+      normalizeMatch(state.name) === needle ||
+      normalizeMatch(state.type) === needle
+    );
+  });
+
+  if (!match) {
+    throw new Error(`No issue state matched "${ref}"`);
+  }
+
+  return match._id;
+}
+
+async function resolveIssuePriorityId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  ref: string,
+) {
+  const priorities = await runQuery(
+    client,
+    api.organizations.queries.listIssuePriorities,
+    { orgSlug },
+  );
+  const needle = normalizeMatch(ref);
+  const match = priorities.find(priority => {
+    return (
+      normalizeMatch(String(priority._id)) === needle ||
+      normalizeMatch(priority.name) === needle
+    );
+  });
+
+  if (!match) {
+    throw new Error(`No issue priority matched "${ref}"`);
+  }
+
+  return match._id;
+}
+
+async function resolveProjectStatusId(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  ref: string,
+) {
+  const statuses = await runQuery(
+    client,
+    api.organizations.queries.listProjectStatuses,
+    { orgSlug },
+  );
+  const needle = normalizeMatch(ref);
+  const match = statuses.find(status => {
+    return (
+      normalizeMatch(String(status._id)) === needle ||
+      normalizeMatch(status.name) === needle ||
+      normalizeMatch(status.type) === needle
+    );
+  });
+
+  if (!match) {
+    throw new Error(`No project status matched "${ref}"`);
+  }
+
+  return match._id;
+}
+
+async function parseEstimatedTimes(
+  client: Awaited<ReturnType<typeof createConvexClient>>,
+  orgSlug: string,
+  value: string,
+) {
+  const entries = parseList(value);
+  const estimatedTimes: Record<string, number> = {};
+
+  for (const entry of entries) {
+    const separatorIndex = entry.indexOf('=');
+    if (separatorIndex <= 0) {
+      throw new Error(
+        'estimated times must use the format "state=hours,state=hours"',
+      );
+    }
+
+    const stateRef = entry.slice(0, separatorIndex).trim();
+    const hours = Number(entry.slice(separatorIndex + 1).trim());
+    if (!Number.isFinite(hours)) {
+      throw new Error(`Invalid estimate for "${stateRef}"`);
+    }
+
+    const stateId = await resolveIssueStateId(client, orgSlug, stateRef);
+    estimatedTimes[String(stateId)] = hours;
+  }
+
+  return estimatedTimes;
+}
+
 const program = new Command();
 
 program
-  .name('vector')
+  .name('vcli')
   .description('Vector CLI')
   .showHelpAfterError()
   .option('--app-url <url>', 'Vector app URL')
@@ -238,6 +503,59 @@ program
   .option('--json', 'Output JSON');
 
 const authCommand = program.command('auth').description('Authentication');
+
+authCommand
+  .command('signup')
+  .option('--email <email>', 'Email address')
+  .option('--username <username>', 'Username')
+  .option('--password <password>', 'Password')
+  .action(async (options, command) => {
+    const runtime = await getRuntime(command);
+    const email = requiredString(
+      options.email?.trim() || (await prompt('Email: ')),
+      'email',
+    ).toLowerCase();
+    const username = requiredString(
+      options.username?.trim() || (await prompt('Username: ')),
+      'username',
+    );
+    const password =
+      options.password?.trim() || (await promptSecret('Password: '));
+
+    let session = createEmptySession();
+    session.appUrl = runtime.appUrl;
+    session.convexUrl = runtime.convexUrl;
+
+    session = await signUpWithEmail(
+      session,
+      runtime.appUrl,
+      email,
+      username,
+      password,
+    );
+    const authState = await fetchAuthSession(session, runtime.appUrl);
+    session = authState.session;
+
+    const client = await createConvexClient(
+      session,
+      runtime.appUrl,
+      runtime.convexUrl,
+    );
+    const orgs = await runQuery(client, api.users.getOrganizations, {});
+    session.activeOrgSlug = orgs[0]?.slug ?? session.activeOrgSlug;
+
+    await writeSession(session, runtime.profile);
+    printOutput(
+      {
+        signedUpAs:
+          authState.user?.email ??
+          authState.user?.username ??
+          authState.user?.name,
+        activeOrgSlug: session.activeOrgSlug ?? null,
+      },
+      runtime.json,
+    );
+  });
 
 authCommand
   .command('login [identifier]')
@@ -378,12 +696,58 @@ orgCommand
     printOutput(result, runtime.json);
   });
 
+orgCommand.command('stats [slug]').action(async (slug, _options, command) => {
+  const { client, runtime } = await getClient(command);
+  const orgSlug = requireOrg(runtime, slug);
+  const result = await runQuery(
+    client,
+    api.organizations.queries.getOrganizationStats,
+    { orgSlug },
+  );
+  printOutput(result, runtime.json);
+});
+
+orgCommand
+  .command('logo [slug]')
+  .option('--file <path>')
+  .option('--remove')
+  .action(async (slug, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+
+    if (options.remove) {
+      throw new Error(
+        'Organization logo removal is not exposed by the current backend API.',
+      );
+    }
+
+    const filePath = requiredString(options.file, 'file');
+    const uploadUrl = await runMutation(
+      client,
+      api.organizations.mutations.generateLogoUploadUrl,
+      { orgSlug },
+    );
+    const storageId = await uploadFile(uploadUrl, filePath);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.updateLogoWithStorageId,
+      {
+        orgSlug,
+        storageId,
+      },
+    );
+    printOutput(
+      { ...(result ?? { success: true }), storageId, orgSlug },
+      runtime.json,
+    );
+  });
+
 orgCommand.command('members [slug]').action(async (slug, _options, command) => {
   const { client, runtime } = await getClient(command);
   const orgSlug = requireOrg(runtime, slug);
   const members = await runQuery(
     client,
-    api.organizations.queries.listMembers,
+    api.organizations.queries.listMembersWithRoles,
     {
       orgSlug,
     },
@@ -454,6 +818,20 @@ orgCommand
       {
         orgSlug,
         userId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+orgCommand
+  .command('revoke-invite <inviteId>')
+  .action(async (inviteId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.revokeInvite,
+      {
+        inviteId,
       },
     );
     printOutput(result ?? { success: true }, runtime.json);
@@ -549,6 +927,38 @@ roleCommand
     printOutput(result ?? { success: true }, runtime.json);
   });
 
+const inviteCommand = program.command('invite').description('Invitations');
+
+inviteCommand.command('list').action(async (_options, command) => {
+  const { client, runtime } = await getClient(command);
+  const invites = await runQuery(client, api.users.getPendingInvitations, {});
+  printOutput(invites, runtime.json);
+});
+
+inviteCommand
+  .command('accept <inviteId>')
+  .action(async (inviteId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.acceptInvitation,
+      { inviteId },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+inviteCommand
+  .command('decline <inviteId>')
+  .action(async (inviteId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.declineInvitation,
+      { inviteId },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
 program.command('refdata [slug]').action(async (slug, _options, command) => {
   const { client, runtime } = await getClient(command);
   const orgSlug = requireOrg(runtime, slug);
@@ -567,6 +977,674 @@ program
       query,
       limit: options.limit ? Number(options.limit) : undefined,
     });
+    printOutput(result, runtime.json);
+  });
+
+program
+  .command('search <query>')
+  .option('--limit <n>')
+  .action(async (query, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const result = await runQuery(client, api.search.queries.searchEntities, {
+      orgSlug,
+      query,
+      limit: optionalNumber(options.limit, 'limit'),
+    });
+    printOutput(result, runtime.json);
+  });
+
+const permissionCommand = program
+  .command('permission')
+  .description('Permission checks');
+
+permissionCommand
+  .command('check <permission>')
+  .option('--team <teamKey>')
+  .option('--project <projectKey>')
+  .action(async (permission, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const [teamId, projectId] = await Promise.all([
+      resolveTeamId(client, orgSlug, options.team),
+      resolveProjectId(client, orgSlug, options.project),
+    ]);
+    const result = await runQuery(client, api.permissions.utils.has, {
+      orgSlug,
+      permission,
+      teamId,
+      projectId,
+    });
+    printOutput(
+      { permission, allowed: result, teamId, projectId },
+      runtime.json,
+    );
+  });
+
+permissionCommand
+  .command('check-many <permissions>')
+  .option('--team <teamKey>')
+  .option('--project <projectKey>')
+  .action(async (permissions, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const [teamId, projectId] = await Promise.all([
+      resolveTeamId(client, orgSlug, options.team),
+      resolveProjectId(client, orgSlug, options.project),
+    ]);
+    const permissionList = parsePermissions(permissions);
+    const result = await runQuery(client, api.permissions.utils.hasMultiple, {
+      orgSlug,
+      permissions: permissionList,
+      teamId,
+      projectId,
+    });
+    printOutput(result, runtime.json);
+  });
+
+const activityCommand = program
+  .command('activity')
+  .description('Activity feed');
+
+activityCommand
+  .command('project <projectKey>')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (projectKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const projectId = await resolveProjectId(client, orgSlug, projectKey);
+    const result = await runQuery(
+      client,
+      api.activities.queries.listProjectActivity,
+      {
+        projectId: projectId!,
+        paginationOpts: buildPaginationOptions(options.limit, options.cursor),
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+activityCommand
+  .command('team <teamKey>')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (teamKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const teamId = await resolveTeamId(client, orgSlug, teamKey);
+    const result = await runQuery(
+      client,
+      api.activities.queries.listTeamActivity,
+      {
+        teamId: teamId!,
+        paginationOpts: buildPaginationOptions(options.limit, options.cursor),
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+activityCommand
+  .command('issue <issueKey>')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (issueKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const issueId = await resolveIssueId(client, orgSlug, issueKey);
+    const result = await runQuery(
+      client,
+      api.activities.queries.listIssueActivity,
+      {
+        issueId,
+        paginationOpts: buildPaginationOptions(options.limit, options.cursor),
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+activityCommand
+  .command('document <documentId>')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (documentId, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const resolvedDocumentId = await resolveDocumentId(
+      client,
+      orgSlug,
+      documentId,
+    );
+    const result = await runQuery(
+      client,
+      api.activities.queries.listDocumentActivity,
+      {
+        documentId: resolvedDocumentId,
+        paginationOpts: buildPaginationOptions(options.limit, options.cursor),
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+const notificationCommand = program
+  .command('notification')
+  .description('Notifications');
+
+notificationCommand
+  .command('inbox')
+  .option('--filter <filter>', 'all or unread')
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runQuery(client, api.notifications.queries.listInbox, {
+      filter: options.filter,
+      paginationOpts: buildPaginationOptions(options.limit, options.cursor),
+    });
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand
+  .command('unread-count')
+  .action(async (_options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runQuery(
+      client,
+      api.notifications.queries.unreadCount,
+      {},
+    );
+    printOutput({ unreadCount: result }, runtime.json);
+  });
+
+notificationCommand
+  .command('mark-read <recipientId>')
+  .action(async (recipientId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.notifications.mutations.markRead,
+      {
+        recipientId,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand
+  .command('mark-all-read')
+  .action(async (_options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.notifications.mutations.markAllRead,
+      {},
+    );
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand
+  .command('archive <recipientId>')
+  .action(async (recipientId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.notifications.mutations.archive,
+      {
+        recipientId,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand.command('preferences').action(async (_options, command) => {
+  const { client, runtime } = await getClient(command);
+  const result = await runQuery(
+    client,
+    api.notifications.queries.getPreferences,
+    {},
+  );
+  printOutput(result, runtime.json);
+});
+
+notificationCommand
+  .command('set-preference <category>')
+  .requiredOption('--in-app <true|false>')
+  .requiredOption('--email <true|false>')
+  .requiredOption('--push <true|false>')
+  .action(async (category, options, command) => {
+    const { client, runtime } = await getClient(command);
+    if (!NOTIFICATION_CATEGORIES.includes(category)) {
+      throw new Error(
+        `category must be one of: ${NOTIFICATION_CATEGORIES.join(', ')}`,
+      );
+    }
+    const result = await runMutation(
+      client,
+      api.notifications.mutations.updatePreferences,
+      {
+        category,
+        inAppEnabled: parseBoolean(options.inApp, 'in-app'),
+        emailEnabled: parseBoolean(options.email, 'email'),
+        pushEnabled: parseBoolean(options.push, 'push'),
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand
+  .command('subscriptions')
+  .action(async (_options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runQuery(
+      client,
+      api.notifications.queries.listPushSubscriptions,
+      {},
+    );
+    printOutput(result, runtime.json);
+  });
+
+notificationCommand
+  .command('remove-subscription <subscriptionId>')
+  .action(async (subscriptionId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.notifications.mutations.removePushSubscription,
+      { subscriptionId },
+    );
+    printOutput(result, runtime.json);
+  });
+
+const priorityCommand = program
+  .command('priority')
+  .description('Issue priorities');
+
+priorityCommand
+  .command('list [slug]')
+  .action(async (slug, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const result = await runQuery(
+      client,
+      api.organizations.queries.listIssuePriorities,
+      { orgSlug },
+    );
+    printOutput(result, runtime.json);
+  });
+
+priorityCommand
+  .command('create')
+  .requiredOption('--name <name>')
+  .requiredOption('--weight <n>')
+  .requiredOption('--color <hex>')
+  .option('--icon <icon>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.createIssuePriority,
+      {
+        orgSlug,
+        name: options.name,
+        weight: requiredNumber(options.weight, 'weight'),
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+priorityCommand
+  .command('update <priority>')
+  .requiredOption('--name <name>')
+  .requiredOption('--color <hex>')
+  .option('--weight <n>')
+  .option('--icon <icon>')
+  .action(async (priority, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const priorityId = await resolveIssuePriorityId(client, orgSlug, priority);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.updateIssuePriority,
+      {
+        orgSlug,
+        priorityId,
+        name: options.name,
+        weight: optionalNumber(options.weight, 'weight'),
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+priorityCommand
+  .command('delete <priority>')
+  .action(async (priority, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const priorityId = await resolveIssuePriorityId(client, orgSlug, priority);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.deleteIssuePriority,
+      {
+        orgSlug,
+        priorityId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+priorityCommand
+  .command('reset [slug]')
+  .action(async (slug, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.resetIssuePriorities,
+      { orgSlug },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+const stateCommand = program.command('state').description('Issue states');
+
+stateCommand.command('list [slug]').action(async (slug, _options, command) => {
+  const { client, runtime } = await getClient(command);
+  const orgSlug = requireOrg(runtime, slug);
+  const result = await runQuery(
+    client,
+    api.organizations.queries.listIssueStates,
+    {
+      orgSlug,
+    },
+  );
+  printOutput(result, runtime.json);
+});
+
+stateCommand
+  .command('create')
+  .requiredOption('--name <name>')
+  .requiredOption('--position <n>')
+  .requiredOption('--type <type>')
+  .requiredOption('--color <hex>')
+  .option('--icon <icon>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    if (!ISSUE_STATE_TYPES.includes(options.type)) {
+      throw new Error(`type must be one of: ${ISSUE_STATE_TYPES.join(', ')}`);
+    }
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.createIssueState,
+      {
+        orgSlug,
+        name: options.name,
+        position: requiredNumber(options.position, 'position'),
+        type: options.type,
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+stateCommand
+  .command('update <state>')
+  .requiredOption('--name <name>')
+  .requiredOption('--position <n>')
+  .requiredOption('--type <type>')
+  .requiredOption('--color <hex>')
+  .option('--icon <icon>')
+  .action(async (state, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    if (!ISSUE_STATE_TYPES.includes(options.type)) {
+      throw new Error(`type must be one of: ${ISSUE_STATE_TYPES.join(', ')}`);
+    }
+    const stateId = await resolveIssueStateId(client, orgSlug, state);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.updateIssueState,
+      {
+        orgSlug,
+        stateId,
+        name: options.name,
+        position: requiredNumber(options.position, 'position'),
+        type: options.type,
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+stateCommand
+  .command('delete <state>')
+  .action(async (state, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const stateId = await resolveIssueStateId(client, orgSlug, state);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.deleteIssueState,
+      {
+        orgSlug,
+        stateId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+stateCommand.command('reset [slug]').action(async (slug, _options, command) => {
+  const { client, runtime } = await getClient(command);
+  const orgSlug = requireOrg(runtime, slug);
+  const result = await runMutation(
+    client,
+    api.organizations.mutations.resetIssueStates,
+    { orgSlug },
+  );
+  printOutput(result ?? { success: true }, runtime.json);
+});
+
+const statusCommand = program.command('status').description('Project statuses');
+
+statusCommand.command('list [slug]').action(async (slug, _options, command) => {
+  const { client, runtime } = await getClient(command);
+  const orgSlug = requireOrg(runtime, slug);
+  const result = await runQuery(
+    client,
+    api.organizations.queries.listProjectStatuses,
+    { orgSlug },
+  );
+  printOutput(result, runtime.json);
+});
+
+statusCommand
+  .command('create')
+  .requiredOption('--name <name>')
+  .requiredOption('--position <n>')
+  .requiredOption('--type <type>')
+  .requiredOption('--color <hex>')
+  .option('--icon <icon>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    if (!PROJECT_STATUS_TYPES.includes(options.type)) {
+      throw new Error(
+        `type must be one of: ${PROJECT_STATUS_TYPES.join(', ')}`,
+      );
+    }
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.createProjectStatus,
+      {
+        orgSlug,
+        name: options.name,
+        position: requiredNumber(options.position, 'position'),
+        type: options.type,
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+statusCommand
+  .command('update <status>')
+  .requiredOption('--name <name>')
+  .requiredOption('--position <n>')
+  .requiredOption('--type <type>')
+  .requiredOption('--color <hex>')
+  .option('--icon <icon>')
+  .action(async (status, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    if (!PROJECT_STATUS_TYPES.includes(options.type)) {
+      throw new Error(
+        `type must be one of: ${PROJECT_STATUS_TYPES.join(', ')}`,
+      );
+    }
+    const statusId = await resolveProjectStatusId(client, orgSlug, status);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.updateProjectStatus,
+      {
+        orgSlug,
+        statusId,
+        name: options.name,
+        position: requiredNumber(options.position, 'position'),
+        type: options.type,
+        color: options.color,
+        icon: options.icon,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+statusCommand
+  .command('delete <status>')
+  .action(async (status, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const statusId = await resolveProjectStatusId(client, orgSlug, status);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.deleteProjectStatus,
+      {
+        orgSlug,
+        statusId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+statusCommand
+  .command('reset [slug]')
+  .action(async (slug, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const result = await runMutation(
+      client,
+      api.organizations.mutations.resetProjectStatuses,
+      { orgSlug },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+const adminCommand = program.command('admin').description('Platform admin');
+
+adminCommand.command('branding').action(async (_options, command) => {
+  const { client, runtime } = await getClient(command);
+  const result = await runQuery(
+    client,
+    api.platformAdmin.queries.getBranding,
+    {},
+  );
+  printOutput(result, runtime.json);
+});
+
+adminCommand
+  .command('set-branding')
+  .option('--name <name>')
+  .option('--description <description>')
+  .option('--theme-color <hex>')
+  .option('--accent-color <hex>')
+  .option('--logo <path>')
+  .option('--remove-logo')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    let logoStorageId: Id<'_storage'> | undefined;
+    if (options.logo) {
+      const uploadUrl = await runMutation(
+        client,
+        api.platformAdmin.mutations.generateBrandLogoUploadUrl,
+        {},
+      );
+      logoStorageId = await uploadFile(uploadUrl, options.logo);
+    }
+
+    const result = await runMutation(
+      client,
+      api.platformAdmin.mutations.updateBranding,
+      {
+        name: options.name,
+        description: options.description,
+        logoStorageId,
+        removeLogo: options.removeLogo ? true : undefined,
+        themeColor: options.themeColor,
+        accentColor: options.accentColor,
+      },
+    );
+    printOutput(
+      {
+        ...(result ?? { success: true }),
+        logoStorageId: logoStorageId ?? null,
+      },
+      runtime.json,
+    );
+  });
+
+adminCommand.command('signup-policy').action(async (_options, command) => {
+  const { client, runtime } = await getClient(command);
+  const result = await runQuery(
+    client,
+    api.platformAdmin.queries.getSignupPolicy,
+    {},
+  );
+  printOutput(result, runtime.json);
+});
+
+adminCommand
+  .command('set-signup-policy')
+  .option('--blocked <domains>')
+  .option('--allowed <domains>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.platformAdmin.mutations.updateSignupEmailDomainPolicy,
+      {
+        blockedDomains: parseList(options.blocked),
+        allowedDomains: parseList(options.allowed),
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+adminCommand
+  .command('sync-disposable-domains')
+  .action(async (_options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runAction(
+      client,
+      api.platformAdmin.actions.runDisposableDomainSyncNow,
+      {},
+    );
     printOutput(result, runtime.json);
   });
 
@@ -1018,6 +2096,131 @@ issueCommand
       assigneeName: member,
     });
     printOutput(result, runtime.json);
+  });
+
+issueCommand
+  .command('assignments <issueKey>')
+  .action(async (issueKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const issueId = await resolveIssueId(client, orgSlug, issueKey);
+    const result = await runQuery(client, api.issues.queries.getAssignments, {
+      issueId,
+    });
+    printOutput(result, runtime.json);
+  });
+
+issueCommand
+  .command('set-assignment-state <assignmentId> <state>')
+  .action(async (assignmentId, state, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const stateId = await resolveIssueStateId(client, orgSlug, state);
+    const result = await runMutation(
+      client,
+      api.issues.mutations.changeAssignmentState,
+      {
+        assignmentId,
+        stateId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+issueCommand
+  .command('reassign-assignment <assignmentId> <member>')
+  .action(async (assignmentId, member, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const assigneeId = await resolveMemberId(client, orgSlug, member);
+    const result = await runMutation(
+      client,
+      api.issues.mutations.updateAssignmentAssignee,
+      {
+        assignmentId,
+        assigneeId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+issueCommand
+  .command('remove-assignment <assignmentId>')
+  .action(async (assignmentId, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await runMutation(
+      client,
+      api.issues.mutations.deleteAssignment,
+      {
+        assignmentId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+issueCommand
+  .command('set-priority <issueKey> <priority>')
+  .action(async (issueKey, priority, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const [issueId, priorityId] = await Promise.all([
+      resolveIssueId(client, orgSlug, issueKey),
+      resolveIssuePriorityId(client, orgSlug, priority),
+    ]);
+    const result = await runMutation(
+      client,
+      api.issues.mutations.changePriority,
+      {
+        issueId,
+        priorityId,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+issueCommand
+  .command('replace-assignees <issueKey> <members>')
+  .action(async (issueKey, members, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const issueId = await resolveIssueId(client, orgSlug, issueKey);
+    const assigneeIds = await Promise.all(
+      parseList(members).map(member =>
+        resolveMemberId(client, orgSlug, member),
+      ),
+    );
+    const result = await runMutation(
+      client,
+      api.issues.mutations.updateAssignees,
+      {
+        issueId,
+        assigneeIds,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
+  });
+
+issueCommand
+  .command('set-estimates <issueKey>')
+  .requiredOption('--values <state=hours,...>')
+  .action(async (issueKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const issueId = await resolveIssueId(client, orgSlug, issueKey);
+    const estimatedTimes = await parseEstimatedTimes(
+      client,
+      orgSlug,
+      options.values,
+    );
+    const result = await runMutation(
+      client,
+      api.issues.mutations.updateEstimatedTimes,
+      {
+        issueId,
+        estimatedTimes,
+      },
+    );
+    printOutput(result ?? { success: true }, runtime.json);
   });
 
 issueCommand

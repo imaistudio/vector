@@ -1,0 +1,46 @@
+{
+  "name": "vcli",
+  "version": "0.1.0",
+  "description": "Command line interface for Vector workspaces.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xrehpicx/vector.git",
+    "directory": "packages/vector-cli"
+  },
+  "homepage": "https://github.com/xrehpicx/vector/tree/main/packages/vector-cli#readme",
+  "bugs": {
+    "url": "https://github.com/xrehpicx/vector/issues"
+  },
+  "keywords": [
+    "vector",
+    "cli",
+    "project-management",
+    "convex",
+    "issues"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "bin": {
+    "vcli": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "commander": "^14.0.3",
+    "convex": "^1.33.1",
+    "dotenv": "^16.4.5"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
