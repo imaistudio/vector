@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   OrgSettingsSidebar,
   OrgOptionsDropdown,
 } from '@/components/organization';
 import { useQuery } from 'convex/react';
 import { api } from '@/lib/convex';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
 import { Doc } from '@/convex/_generated/dataModel';
 import { ArrowLeft, PanelLeft, Menu } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { buttonVariants } from '@/components/ui/button';
@@ -59,6 +60,7 @@ export default function OrgSettingsLayout({
   children,
 }: OrgSettingsLayoutProps) {
   const params = useParams();
+  const pathname = usePathname();
   const orgSlug = params.orgSlug as string;
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -76,6 +78,34 @@ export default function OrgSettingsLayout({
     user?._id ? {} : 'skip',
   );
   const userRole = members?.find(m => m.userId === user?._id)?.role || 'member';
+
+  // Redirect unauthenticated users to login with return URL
+  useEffect(() => {
+    if (user === null) {
+      window.location.href = `/auth/login?redirectTo=${encodeURIComponent(pathname)}`;
+    }
+  }, [user, pathname]);
+
+  // Don't render children until we have auth
+  if (user === undefined || user === null) {
+    return (
+      <div className='bg-secondary flex h-screen'>
+        <aside className='hidden w-56 lg:block'>
+          <div className='flex h-full flex-col'>
+            <div className='p-2'>
+              <Skeleton className='h-9 w-full rounded-md' />
+            </div>
+            <div className='space-y-1 p-2 pt-0'>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className='h-8 w-full rounded-md' />
+              ))}
+            </div>
+          </div>
+        </aside>
+        <main className='bg-background m-2 ml-0 flex-1 rounded-md border' />
+      </div>
+    );
+  }
 
   const organizations =
     userOrganizations?.filter(
