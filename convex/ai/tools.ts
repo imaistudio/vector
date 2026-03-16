@@ -668,6 +668,31 @@ export const unassignIssue: any = createTool({
   },
 });
 
+export const linkGitHubArtifactToIssue: any = createTool({
+  description:
+    'Link an already-ingested GitHub pull request, GitHub issue, or commit URL to a Vector issue. If issueKey is omitted, defaults to the current issue page. Use this after webhook ingestion when the link should be attached intentionally.',
+  args: z.object({
+    issueKey: z
+      .string()
+      .optional()
+      .describe('Issue key. Defaults to the current issue page.'),
+    url: z
+      .string()
+      .describe('GitHub PR, issue, or commit URL to link to the issue'),
+  }),
+  handler: async (ctx: AssistantToolCtx, args) => {
+    return await ctx.runMutation(
+      internal.ai.internal.linkGitHubArtifactToIssue,
+      {
+        orgSlug: ctx.currentPageContext.orgSlug,
+        userId: ctx.userId,
+        pageContext: ctx.currentPageContext,
+        ...args,
+      },
+    );
+  },
+});
+
 // ──── Document folder management ────
 
 export const createFolder: any = createTool({

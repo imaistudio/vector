@@ -20,6 +20,7 @@ import {
   getProject,
   getTeam,
   inviteOrgMember,
+  linkGitHubArtifactToIssue,
   listDocuments,
   listFolders,
   listIssues,
@@ -62,6 +63,7 @@ Issues:
 - Create with title, description, priority, team, project, assignee, state, dates, parent issue, and visibility
 - Update any field including assignee, state (backlog/todo/in_progress/done/canceled), start/due dates, and parent issue
 - Assign and unassign team members directly — use for delegating work
+- Link already-ingested GitHub PRs, issues, and commits to issues by URL
 - Bulk create multiple issues in sequence with proper relations
 
 Teams:
@@ -157,6 +159,7 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     // Issue delegation
     assignIssue,
     unassignIssue,
+    linkGitHubArtifactToIssue,
     // Document folder management
     createFolder,
     updateFolder,

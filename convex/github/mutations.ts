@@ -41,6 +41,7 @@ async function getOrCreateIntegration(
   const id = await ctx.db.insert('githubIntegrations', {
     organizationId,
     provider: 'github',
+    autoLinkEnabled: true,
     connectionMode: 'webhook',
     updatedAt: Date.now(),
   });
@@ -449,6 +450,26 @@ export const setWebhookSecret = internalMutation({
       updatedAt: Date.now(),
     });
     return integration!._id;
+  },
+});
+
+export const setAutoLinkEnabled = mutation({
+  args: {
+    orgSlug: v.string(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    await requireOrgPermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_SETTINGS);
+
+    const integration = await getOrCreateIntegration(ctx, org._id);
+    await ctx.db.patch('githubIntegrations', integration!._id, {
+      autoLinkEnabled: args.enabled,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true, actorId: userId } as const;
   },
 });
 

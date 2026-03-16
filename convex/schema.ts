@@ -545,6 +545,7 @@ export default defineSchema({
   githubIntegrations: defineTable({
     organizationId: v.id('organizations'),
     provider: v.literal('github'),
+    autoLinkEnabled: v.optional(v.boolean()),
     connectionMode: v.union(
       v.literal('webhook'),
       v.literal('app'),

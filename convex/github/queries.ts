@@ -32,6 +32,7 @@ function getEffectiveGitHubAuthState(
   );
 
   return {
+    autoLinkEnabled: integration?.autoLinkEnabled ?? true,
     installationId,
     hasInstallation,
     hasTokenFallback,
@@ -284,6 +285,76 @@ export const getIntegrationByOrgSlug = internalQuery({
   },
 });
 
+export const searchAutoLinkIssueCandidates = internalQuery({
+  args: {
+    organizationId: v.id('organizations'),
+    searchQuery: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const trimmed = args.searchQuery.trim();
+    const limit = Math.min(args.limit ?? 12, 20);
+
+    let issues = trimmed
+      ? await ctx.db
+          .query('issues')
+          .withSearchIndex('search_text', q =>
+            q
+              .search('searchText', trimmed)
+              .eq('organizationId', args.organizationId),
+          )
+          .take(limit * 2)
+      : await ctx.db
+          .query('issues')
+          .withIndex('by_organization', q =>
+            q.eq('organizationId', args.organizationId),
+          )
+          .order('desc')
+          .take(limit * 2);
+
+    issues = issues
+      .filter(issue => !issue.closedAt)
+      .sort((a, b) => b.sequenceNumber - a.sequenceNumber)
+      .slice(0, limit);
+
+    const teams = new Map<string, string>();
+    const projects = new Map<string, string>();
+
+    const results = [];
+    for (const issue of issues) {
+      let teamName: string | undefined;
+      if (issue.teamId) {
+        const key = String(issue.teamId);
+        if (!teams.has(key)) {
+          const team = await ctx.db.get('teams', issue.teamId);
+          teams.set(key, team?.name ?? '');
+        }
+        teamName = teams.get(key) || undefined;
+      }
+
+      let projectName: string | undefined;
+      if (issue.projectId) {
+        const key = String(issue.projectId);
+        if (!projects.has(key)) {
+          const project = await ctx.db.get('projects', issue.projectId);
+          projects.set(key, project?.name ?? '');
+        }
+        projectName = projects.get(key) || undefined;
+      }
+
+      results.push({
+        key: issue.key,
+        title: issue.title,
+        description: issue.description ?? '',
+        teamName,
+        projectName,
+      });
+    }
+
+    return results;
+  },
+});
+
 export const isGitHubEnabled = query({
   args: {
     orgSlug: v.string(),
@@ -377,6 +448,7 @@ export const getOrgSettings = query({
       integration: integration
         ? {
             ...integration,
+            autoLinkEnabled: integration.autoLinkEnabled ?? true,
             hasTokenFallback: Boolean(integration.encryptedToken),
             hasWebhookSecret: Boolean(integration.encryptedWebhookSecret),
           }

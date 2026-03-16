@@ -1,3 +1,4 @@
+import { internal } from '../_generated/api';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
 import {
@@ -40,6 +41,50 @@ import {
   resolveTeamFromContext,
 } from './lib';
 import { PERMISSIONS } from '../permissions/utils';
+
+function parseGitHubArtifactUrl(
+  value: string,
+):
+  | { type: 'pull_request'; owner: string; repo: string; number: number }
+  | { type: 'issue'; owner: string; repo: string; number: number }
+  | { type: 'commit'; owner: string; repo: string; sha: string }
+  | null {
+  try {
+    const url = new URL(value);
+    if (url.hostname !== 'github.com') return null;
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length < 4) return null;
+
+    const [owner, repo, kind, identifier] = parts;
+    if (kind === 'pull' && identifier) {
+      return {
+        type: 'pull_request',
+        owner,
+        repo,
+        number: Number(identifier),
+      };
+    }
+    if (kind === 'issues' && identifier) {
+      return {
+        type: 'issue',
+        owner,
+        repo,
+        number: Number(identifier),
+      };
+    }
+    if (kind === 'commit' && identifier) {
+      return {
+        type: 'commit',
+        owner,
+        repo,
+        sha: identifier,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 function summarizePageContext(pageContext: AssistantPageContext) {
   switch (pageContext.kind) {
@@ -1152,6 +1197,128 @@ export const updateIssue = internalMutation({
       key: issue.key,
       title: nextTitle,
       ...(changes.length > 0 ? { changes: changes.join(', ') } : {}),
+    };
+  },
+});
+
+export const linkGitHubArtifactToIssue = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    pageContext: v.optional(assistantPageContextValidator),
+    issueKey: v.optional(v.string()),
+    url: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const issue = await resolveIssueFromContext(
+      ctx,
+      organization._id,
+      args.pageContext,
+      args.issueKey ?? null,
+    );
+
+    if (!(await canEditEntity(ctx, args.userId, issue, 'issue'))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const parsed = parseGitHubArtifactUrl(args.url.trim());
+    if (!parsed) {
+      throw new ConvexError('INVALID_GITHUB_URL');
+    }
+
+    const fullName = `${parsed.owner}/${parsed.repo}`;
+    const repository = await ctx.db
+      .query('githubRepositories')
+      .withIndex('by_full_name', q => q.eq('fullName', fullName))
+      .filter(q => q.eq(q.field('organizationId'), organization._id))
+      .first();
+
+    if (!repository) {
+      throw new ConvexError('GITHUB_ARTIFACT_NOT_INGESTED');
+    }
+
+    if (parsed.type === 'pull_request') {
+      const artifact = await ctx.db
+        .query('githubPullRequests')
+        .withIndex('by_repo_number', q =>
+          q.eq('repositoryId', repository._id).eq('number', parsed.number),
+        )
+        .first();
+      if (!artifact) {
+        throw new ConvexError('GITHUB_ARTIFACT_NOT_INGESTED');
+      }
+
+      await ctx.runMutation(internal.github.mutations.linkPullRequestManually, {
+        organizationId: organization._id,
+        issueId: issue._id,
+        pullRequestId: artifact._id,
+        repoFullName: repository.fullName,
+        number: artifact.number,
+        actorId: args.userId,
+      });
+
+      return {
+        issueKey: issue.key,
+        linked: `${repository.fullName}#${artifact.number}`,
+        summary: `Linked PR ${repository.fullName}#${artifact.number} to ${issue.key}.`,
+      };
+    }
+
+    if (parsed.type === 'issue') {
+      const artifact = await ctx.db
+        .query('githubIssues')
+        .withIndex('by_repo_number', q =>
+          q.eq('repositoryId', repository._id).eq('number', parsed.number),
+        )
+        .first();
+      if (!artifact) {
+        throw new ConvexError('GITHUB_ARTIFACT_NOT_INGESTED');
+      }
+
+      await ctx.runMutation(internal.github.mutations.linkGitHubIssueManually, {
+        organizationId: organization._id,
+        issueId: issue._id,
+        githubIssueId: artifact._id,
+        repoFullName: repository.fullName,
+        number: artifact.number,
+        actorId: args.userId,
+      });
+
+      return {
+        issueKey: issue.key,
+        linked: `${repository.fullName}#${artifact.number}`,
+        summary: `Linked GitHub issue ${repository.fullName}#${artifact.number} to ${issue.key}.`,
+      };
+    }
+
+    const artifact = await ctx.db
+      .query('githubCommits')
+      .withIndex('by_org_sha', q =>
+        q.eq('organizationId', organization._id).eq('sha', parsed.sha),
+      )
+      .first();
+    if (!artifact || artifact.repositoryId !== repository._id) {
+      throw new ConvexError('GITHUB_ARTIFACT_NOT_INGESTED');
+    }
+
+    await ctx.runMutation(internal.github.mutations.linkCommitManually, {
+      organizationId: organization._id,
+      issueId: issue._id,
+      commitId: artifact._id,
+      repoFullName: repository.fullName,
+      sha: artifact.sha,
+      actorId: args.userId,
+    });
+
+    return {
+      issueKey: issue.key,
+      linked: `${repository.fullName}@${artifact.shortSha}`,
+      summary: `Linked commit ${repository.fullName}@${artifact.shortSha} to ${issue.key}.`,
     };
   },
 });

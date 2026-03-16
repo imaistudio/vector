@@ -1,10 +1,16 @@
 'use node';
 
+import { generateObject } from 'ai';
 import { ConvexError, v } from 'convex/values';
 import { action, internalAction } from '../_generated/server';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { z } from 'zod';
 import { PERMISSIONS } from '../_shared/permissions';
+import {
+  defaultAssistantModel,
+  openrouterLanguageModelWithAnnotations,
+} from '../ai/provider';
 import {
   decryptSecret,
   encryptSecret,
@@ -151,6 +157,111 @@ async function syncRepositoriesForOrganization(
   return repositories.length;
 }
 
+async function resolveAutoLinkIssueKeys(
+  ctx: any,
+  args: {
+    organizationId: Id<'organizations'>;
+    artifactType: 'pull_request' | 'issue';
+    repoFullName: string;
+    title: string;
+    body?: string | null;
+    branchName?: string | null;
+    initialIssueKeys: string[];
+  },
+) {
+  const integrationResult = await ctx.runQuery(
+    internal.github.queries.getIntegrationForOrganization,
+    {
+      organizationId: args.organizationId,
+    },
+  );
+  const autoLinkEnabled =
+    integrationResult.integration?.autoLinkEnabled ?? true;
+
+  if (!autoLinkEnabled) {
+    return [];
+  }
+
+  if (args.initialIssueKeys.length > 0) {
+    return args.initialIssueKeys;
+  }
+
+  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+    return [];
+  }
+
+  const searchQuery = [args.title, args.body ?? '', args.branchName ?? '']
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 400);
+
+  const candidates = await ctx.runQuery(
+    internal.github.queries.searchAutoLinkIssueCandidates,
+    {
+      organizationId: args.organizationId,
+      searchQuery,
+      limit: 10,
+    },
+  );
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  try {
+    const result = await generateObject({
+      model: openrouterLanguageModelWithAnnotations(defaultAssistantModel),
+      schema: z.object({
+        issueKey: z.string().nullable(),
+        confidence: z.enum(['high', 'low']),
+      }),
+      prompt: [
+        'Choose at most one Vector issue that this GitHub artifact should link to.',
+        'Only choose an issue if the match is clearly the same work item.',
+        'If the match is uncertain, return null with low confidence.',
+        '',
+        `Artifact type: ${args.artifactType}`,
+        `Repository: ${args.repoFullName}`,
+        `Title: ${args.title}`,
+        args.branchName ? `Branch: ${args.branchName}` : '',
+        args.body ? `Body: ${args.body.slice(0, 1200)}` : '',
+        '',
+        'Candidate Vector issues:',
+        ...candidates.map(
+          (issue: {
+            key: string;
+            title: string;
+            description: string;
+            teamName?: string;
+            projectName?: string;
+          }) =>
+            `- ${issue.key}: ${issue.title}${issue.projectName ? ` [project: ${issue.projectName}]` : ''}${issue.teamName ? ` [team: ${issue.teamName}]` : ''}${issue.description ? ` — ${issue.description.slice(0, 220)}` : ''}`,
+        ),
+        '',
+        'Return only one issueKey from the candidate list when the match is clearly correct.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    });
+
+    if (
+      result.object.confidence === 'high' &&
+      result.object.issueKey &&
+      candidates.some(
+        (candidate: { key: string }) =>
+          candidate.key === result.object.issueKey,
+      )
+    ) {
+      return [result.object.issueKey];
+    }
+  } catch (error) {
+    console.error('[github.autoLink] model fallback failed', error);
+  }
+
+  return [];
+}
+
 function parseGitHubWebhookPayload(body: string) {
   try {
     return JSON.parse(body);
@@ -284,13 +395,22 @@ async function persistPullRequestPayload(
     args.payload.body,
     args.payload.head?.ref,
   );
+  const resolvedIssueKeys = await resolveAutoLinkIssueKeys(ctx, {
+    organizationId: args.organizationId,
+    artifactType: 'pull_request',
+    repoFullName: args.repository.fullName,
+    title: args.payload.title,
+    body: args.payload.body,
+    branchName: args.payload.head?.ref,
+    initialIssueKeys: issueKeys,
+  });
 
   await ctx.runMutation(internal.github.mutations.syncPullRequestLinks, {
     organizationId: args.organizationId,
     pullRequestId,
     repoFullName: args.repository.fullName,
     number: args.payload.number,
-    issueKeys,
+    issueKeys: resolvedIssueKeys,
   });
 
   return pullRequestId;
@@ -337,13 +457,21 @@ async function persistGitHubIssuePayload(
     args.payload.title,
     args.payload.body,
   );
+  const resolvedIssueKeys = await resolveAutoLinkIssueKeys(ctx, {
+    organizationId: args.organizationId,
+    artifactType: 'issue',
+    repoFullName: args.repository.fullName,
+    title: args.payload.title,
+    body: args.payload.body,
+    initialIssueKeys: issueKeys,
+  });
 
   await ctx.runMutation(internal.github.mutations.syncGitHubIssueLinks, {
     organizationId: args.organizationId,
     githubIssueId,
     repoFullName: args.repository.fullName,
     number: args.payload.number,
-    issueKeys,
+    issueKeys: resolvedIssueKeys,
   });
 
   return githubIssueId;

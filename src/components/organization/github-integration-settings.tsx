@@ -10,9 +10,10 @@ import {
   Shield,
   Webhook,
 } from 'lucide-react';
-import { useAction, api } from '@/lib/convex';
+import { useAction, useMutation, api } from '@/lib/convex';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,10 +54,15 @@ function IntegrationRow({
 export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
   const settings = useQuery(api.github.queries.getOrgSettings, { orgSlug });
   const rotateWebhookSecret = useAction(api.github.actions.rotateWebhookSecret);
+  const setAutoLinkEnabled = useMutation(
+    api.github.mutations.setAutoLinkEnabled,
+  );
 
   const [copiedField, setCopiedField] = useState<'url' | 'secret' | null>(null);
   const [revealedSecret, setRevealedSecret] = useState('');
   const [isRotatingSecret, setIsRotatingSecret] = useState(false);
+  const [optimisticAutoLinkEnabled, setOptimisticAutoLinkEnabled] =
+    useState(true);
 
   useEffect(() => {
     if (!copiedField) return;
@@ -64,6 +70,11 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
     const timeout = window.setTimeout(() => setCopiedField(null), 1500);
     return () => window.clearTimeout(timeout);
   }, [copiedField]);
+
+  useEffect(() => {
+    if (!settings) return;
+    setOptimisticAutoLinkEnabled(settings.integration?.autoLinkEnabled ?? true);
+  }, [settings]);
 
   const webhookUrl = useMemo(() => {
     const configuredBaseUrl =
@@ -108,6 +119,23 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
       toast.error('Failed to generate webhook secret');
     } finally {
       setIsRotatingSecret(false);
+    }
+  };
+
+  const handleAutoLinkChange = async (checked: boolean) => {
+    if (!settings?.canManage) return;
+
+    const previous = optimisticAutoLinkEnabled;
+    setOptimisticAutoLinkEnabled(checked);
+    try {
+      await setAutoLinkEnabled({
+        orgSlug,
+        enabled: checked,
+      });
+    } catch (error) {
+      console.error(error);
+      setOptimisticAutoLinkEnabled(previous);
+      toast.error('Failed to update auto link setting');
     }
   };
 
@@ -276,6 +304,35 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
                   View only
                 </Badge>
               )}
+            </div>
+          }
+        />
+
+        <Separator />
+
+        <IntegrationRow
+          icon={<Github className='text-muted-foreground size-4' />}
+          label='Auto link'
+          value='Automatically link incoming GitHub pull requests and GitHub issues to Vector issues.'
+          meta={
+            <div className='text-muted-foreground text-xs leading-5'>
+              When a webhook payload already contains an issue key, Vector links
+              it directly. If no key is present, Vector uses the assistant model
+              as a fallback to choose the best matching issue.
+            </div>
+          }
+          action={
+            <div className='flex items-center gap-2'>
+              <Checkbox
+                checked={optimisticAutoLinkEnabled}
+                disabled={!settings.canManage}
+                onCheckedChange={checked =>
+                  void handleAutoLinkChange(checked === true)
+                }
+              />
+              <span className='text-muted-foreground text-xs'>
+                {optimisticAutoLinkEnabled ? 'On' : 'Off'}
+              </span>
             </div>
           }
         />
