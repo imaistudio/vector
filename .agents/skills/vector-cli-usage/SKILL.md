@@ -74,9 +74,15 @@ The app URL must come from:
 - the saved profile session
 - `NEXT_PUBLIC_APP_URL`
 
-Convex URL defaults come from:
+Convex URL is resolved in this order:
 
-- `NEXT_PUBLIC_CONVEX_URL` or `CONVEX_URL`
+- `--convex-url` flag
+- saved profile session
+- `NEXT_PUBLIC_CONVEX_URL` or `CONVEX_URL` env vars
+- **auto-fetched from the app** via `GET <app-url>/api/config` (returns `{ convexUrl }`)
+- fallback: `http://127.0.0.1:3210`
+
+In most cases the user only needs to provide `--app-url` and the CLI resolves the Convex URL automatically. The resolved URL is cached in the profile session.
 
 If the local app origin is not already stored in the profile, say that explicitly and show `--app-url`.
 

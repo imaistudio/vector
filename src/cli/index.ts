@@ -170,6 +170,23 @@ function normalizeMatch(value: string | undefined | null) {
   return value?.trim().toLowerCase();
 }
 
+async function fetchConvexUrl(appUrl: string): Promise<string> {
+  try {
+    const url = new URL('/api/config', appUrl).toString();
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const data = (await response.json()) as { convexUrl?: string };
+    if (data.convexUrl) {
+      return data.convexUrl;
+    }
+  } catch {
+    // Fall through to default
+  }
+  return 'http://127.0.0.1:3210';
+}
+
 async function getRuntime(command: Command) {
   const options = command.optsWithGlobals<GlobalOptions>();
   const profile = options.profile ?? 'default';
@@ -177,12 +194,15 @@ async function getRuntime(command: Command) {
   const appUrlSource =
     options.appUrl ?? session?.appUrl ?? process.env.NEXT_PUBLIC_APP_URL;
   const appUrl = requiredString(appUrlSource, 'app URL');
-  const convexUrl =
+  let convexUrl =
     options.convexUrl ??
     session?.convexUrl ??
     process.env.NEXT_PUBLIC_CONVEX_URL ??
-    process.env.CONVEX_URL ??
-    'http://127.0.0.1:3210';
+    process.env.CONVEX_URL;
+
+  if (!convexUrl) {
+    convexUrl = await fetchConvexUrl(appUrl);
+  }
 
   return {
     appUrl,
