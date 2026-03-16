@@ -722,7 +722,6 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                   />
                 </PermissionAwareSelector>
               )}
-              <div className='bg-muted-foreground/20 h-4 w-px' />
 
               <PermissionAwareSelector
                 orgSlug={resolvedParams.orgSlug}
@@ -738,7 +737,6 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                   className='border-none bg-transparent shadow-none'
                 />
               </PermissionAwareSelector>
-              <div className='bg-muted-foreground/20 h-4 w-px' />
               <PermissionAwareSelector
                 orgSlug={resolvedParams.orgSlug}
                 permission={PERMISSIONS.ISSUE_EDIT}
@@ -753,7 +751,6 @@ export default function IssueViewPage({ params }: IssueViewPageProps) {
                   className='border-none bg-transparent shadow-none'
                 />
               </PermissionAwareSelector>
-              <div className='bg-muted-foreground/20 h-4 w-px' />
               <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
                 <PopoverTrigger asChild>
                   <Button variant='ghost' size='sm' className='h-6 w-6 p-0'>
