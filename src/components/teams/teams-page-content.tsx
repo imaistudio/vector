@@ -87,7 +87,6 @@ export function TeamsPageContent({
               )}
               onClick={() => {
                 setScopeTab('mine');
-                setPage(1);
               }}
             >
               <span>My teams</span>
@@ -104,7 +103,6 @@ export function TeamsPageContent({
               )}
               onClick={() => {
                 setScopeTab('all');
-                setPage(1);
               }}
             >
               <span>All teams</span>

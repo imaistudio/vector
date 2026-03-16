@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Github, Menu, Shield } from 'lucide-react';
