@@ -44,6 +44,7 @@ Use whichever form matches the user's setup:
 
 - Repo-local examples: `pnpm exec tsx src/cli/index.ts ...`
 - Installed binary examples: `vcli ...`
+- Installed package name: `@rehpic/vcli`
 
 ## What To Explain
 
@@ -239,7 +240,6 @@ When troubleshooting, start from the actual error and map it to the likely fix:
 
 - `app URL is required`
   Pass `--app-url <url>`, set `NEXT_PUBLIC_APP_URL`, or log in once with `--app-url` so the selected profile stores it.
-
 
 - `Organization slug is required`
   Pass `--org <slug>` or run `vcli org use <slug>`.
