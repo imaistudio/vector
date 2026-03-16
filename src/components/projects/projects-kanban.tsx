@@ -23,6 +23,7 @@ import type { ProjectRowData } from './projects-table';
 import type { Status } from './project-selectors';
 import { StatusSelector } from './project-selectors';
 import { ProjectLeadSelector } from './project-lead-selector';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 const STATUS_ORDER = [
   'backlog',
@@ -100,20 +101,22 @@ export function ProjectsKanban({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className='flex h-full gap-3 overflow-x-auto p-3'>
-        {columns.map(({ status, projects: columnProjects }) => (
-          <KanbanColumn
-            key={status._id}
-            status={status}
-            projects={columnProjects}
-            orgSlug={orgSlug}
-            activeId={activeId}
-            statuses={statuses}
-            onStatusChange={onStatusChange}
-            onLeadChange={onLeadChange}
-          />
-        ))}
-      </div>
+      <ScrollArea className='h-full' viewportClassName='h-full'>
+        <div className='flex h-full gap-3 p-3'>
+          {columns.map(({ status, projects: columnProjects }) => (
+            <KanbanColumn
+              key={status._id}
+              status={status}
+              projects={columnProjects}
+              orgSlug={orgSlug}
+              activeId={activeId}
+              statuses={statuses}
+              onStatusChange={onStatusChange}
+              onLeadChange={onLeadChange}
+            />
+          ))}
+        </div>
+      </ScrollArea>
 
       <DragOverlay
         dropAnimation={{
@@ -176,30 +179,32 @@ function KanbanColumn({
       </div>
 
       {/* Column body */}
-      <div className='min-h-[80px] flex-1 space-y-2 overflow-y-auto rounded-lg'>
-        {projects.length === 0 ? (
-          <div
-            className={cn(
-              'text-muted-foreground rounded-lg border border-dashed px-3 py-6 text-center text-xs',
-              isOver && 'border-primary/50 bg-primary/5',
-            )}
-          >
-            {isOver ? 'Drop here' : 'No projects'}
-          </div>
-        ) : (
-          projects.map(project => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              orgSlug={orgSlug}
-              isHidden={project.id === activeId}
-              statuses={statuses}
-              onStatusChange={onStatusChange}
-              onLeadChange={onLeadChange}
-            />
-          ))
-        )}
-      </div>
+      <ScrollArea className='min-h-[80px] flex-1 rounded-lg'>
+        <div className='space-y-2'>
+          {projects.length === 0 ? (
+            <div
+              className={cn(
+                'text-muted-foreground rounded-lg border border-dashed px-3 py-6 text-center text-xs',
+                isOver && 'border-primary/50 bg-primary/5',
+              )}
+            >
+              {isOver ? 'Drop here' : 'No projects'}
+            </div>
+          ) : (
+            projects.map(project => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                orgSlug={orgSlug}
+                isHidden={project.id === activeId}
+                statuses={statuses}
+                onStatusChange={onStatusChange}
+                onLeadChange={onLeadChange}
+              />
+            ))
+          )}
+        </div>
+      </ScrollArea>
     </div>
   );
 }

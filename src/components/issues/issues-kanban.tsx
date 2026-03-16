@@ -49,6 +49,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export interface IssuesKanbanProps {
   orgSlug: string;
@@ -313,8 +314,8 @@ export function IssuesKanban({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className='relative h-full'>
-        <div className='flex h-full gap-3 overflow-x-auto p-3'>
+      <ScrollArea className='h-full' viewportClassName='h-full'>
+        <div className='flex h-full gap-3 p-3'>
           {columns.map(({ state, issues: columnIssues }) => (
             <KanbanColumn
               key={state._id}
@@ -339,8 +340,7 @@ export function IssuesKanban({
             />
           ))}
         </div>
-        <div className='from-background pointer-events-none absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l to-transparent lg:hidden' />
-      </div>
+      </ScrollArea>
 
       <DragOverlay
         dropAnimation={{
@@ -429,48 +429,50 @@ function KanbanColumn({
       </div>
 
       {/* Column body */}
-      <div className='min-h-[80px] flex-1 space-y-2 overflow-y-auto rounded-lg'>
-        {issues.length === 0 ? (
-          <div
-            className={cn(
-              'text-muted-foreground rounded-lg border border-dashed px-3 py-6 text-center text-xs',
-              isOver && 'border-primary/50 bg-primary/5',
-            )}
-          >
-            {isOver ? 'Drop here' : 'No issues'}
-          </div>
-        ) : (
-          issues.map(issue => (
-            <KanbanCard
-              key={issue.cardId}
-              issue={issue}
-              orgSlug={orgSlug}
-              isHidden={issue.cardId === activeId}
-              states={states}
-              priorities={priorities}
-              teams={teams}
-              projects={projects}
-              currentUserId={currentUserId}
-              canChangeAll={canChangeAll}
-              onStateChange={onStateChange}
-              onPriorityChange={onPriorityChange}
-              onAssigneesChange={onAssigneesChange}
-              onTeamChange={onTeamChange}
-              onProjectChange={onProjectChange}
-              onDelete={onDelete}
-              deletePending={deletePending}
-            />
-          ))
-        )}
+      <ScrollArea className='min-h-[80px] flex-1 rounded-lg'>
+        <div className='space-y-2'>
+          {issues.length === 0 ? (
+            <div
+              className={cn(
+                'text-muted-foreground rounded-lg border border-dashed px-3 py-6 text-center text-xs',
+                isOver && 'border-primary/50 bg-primary/5',
+              )}
+            >
+              {isOver ? 'Drop here' : 'No issues'}
+            </div>
+          ) : (
+            issues.map(issue => (
+              <KanbanCard
+                key={issue.cardId}
+                issue={issue}
+                orgSlug={orgSlug}
+                isHidden={issue.cardId === activeId}
+                states={states}
+                priorities={priorities}
+                teams={teams}
+                projects={projects}
+                currentUserId={currentUserId}
+                canChangeAll={canChangeAll}
+                onStateChange={onStateChange}
+                onPriorityChange={onPriorityChange}
+                onAssigneesChange={onAssigneesChange}
+                onTeamChange={onTeamChange}
+                onProjectChange={onProjectChange}
+                onDelete={onDelete}
+                deletePending={deletePending}
+              />
+            ))
+          )}
 
-        {/* Add issue button */}
-        <CreateIssueDialog
-          orgSlug={orgSlug}
-          variant='default'
-          defaultStates={{ stateId: state._id, ...createDefaults }}
-          className='text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full border-dashed'
-        />
-      </div>
+          {/* Add issue button */}
+          <CreateIssueDialog
+            orgSlug={orgSlug}
+            variant='default'
+            defaultStates={{ stateId: state._id, ...createDefaults }}
+            className='text-muted-foreground hover:text-foreground hover:bg-muted/50 w-full border-dashed'
+          />
+        </div>
+      </ScrollArea>
     </div>
   );
 }
