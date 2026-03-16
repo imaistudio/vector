@@ -130,9 +130,12 @@ export const AssistantInput = forwardRef<
     if (!editor) return;
     const { text, mentions } = extractPromptAndMentions(editor);
     if (!text.trim()) return;
+    const previousContent = editor.getJSON();
+    editor.commands.clearContent();
     const shouldClear = await onSubmitRef.current(text, mentions);
-    if (shouldClear !== false) {
-      editor.commands.clearContent();
+    if (shouldClear === false) {
+      editor.commands.setContent(previousContent);
+      editor.commands.focus('end');
     }
   }, []);
 
