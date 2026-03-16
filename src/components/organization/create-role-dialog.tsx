@@ -138,7 +138,7 @@ export function CreateRoleDialog({
                       {category.permissions.map(permission => (
                         <div
                           key={permission.id}
-                          className='flex items-start space-x-3 py-1'
+                          className='flex items-center space-x-3 py-1'
                         >
                           <Checkbox
                             id={permission.id}
@@ -150,19 +150,13 @@ export function CreateRoleDialog({
                                 permission.id as Permission,
                               )
                             }
-                            className='mt-0.5'
                           />
-                          <div className='grid gap-1 leading-none'>
-                            <Label
-                              htmlFor={permission.id}
-                              className='text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                            >
-                              {permission.label}
-                            </Label>
-                            <p className='text-muted-foreground text-xs leading-relaxed'>
-                              {permission.description}
-                            </p>
-                          </div>
+                          <Label
+                            htmlFor={permission.id}
+                            className='text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
+                          >
+                            {permission.label}
+                          </Label>
                         </div>
                       ))}
                     </div>

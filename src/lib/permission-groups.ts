@@ -43,4 +43,13 @@ export const ALL_PERMISSIONS_WITH_GROUP = [
       { id: PERMISSIONS.ISSUE_ASSIGN, label: 'Assign Issue' },
     ],
   },
+  {
+    group: 'Documents',
+    permissions: [
+      { id: PERMISSIONS.DOCUMENT_CREATE, label: 'Create Document' },
+      { id: PERMISSIONS.DOCUMENT_VIEW, label: 'View Document' },
+      { id: PERMISSIONS.DOCUMENT_EDIT, label: 'Edit Document' },
+      { id: PERMISSIONS.DOCUMENT_DELETE, label: 'Delete Document' },
+    ],
+  },
 ];
