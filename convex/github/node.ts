@@ -18,36 +18,59 @@ function getEncryptionKey() {
     process.env.BETTER_AUTH_SECRET ||
     process.env.AUTH_SECRET;
 
-  if (!raw) {
-    throw new Error('Missing GITHUB_TOKEN_ENCRYPTION_KEY');
-  }
+  if (!raw) return null;
 
   return createHash('sha256').update(raw).digest();
 }
 
 export function encryptSecret(secret: string) {
+  const key = getEncryptionKey();
+  if (!key) {
+    return `plain.${Buffer.from(secret, 'utf8').toString('base64url')}`;
+  }
+
   const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
   const encrypted = Buffer.concat([
     cipher.update(secret, 'utf8'),
     cipher.final(),
   ]);
   const authTag = cipher.getAuthTag();
 
-  return [iv, authTag, encrypted]
+  return ['enc', iv, authTag, encrypted]
     .map(part => part.toString('base64url'))
     .join('.');
 }
 
 export function decryptSecret(payload: string) {
-  const [ivPart, authTagPart, encryptedPart] = payload.split('.');
+  const parts = payload.split('.');
+  if (parts[0] === 'plain') {
+    const encoded = parts[1];
+    if (!encoded) {
+      throw new Error('Invalid plain secret payload');
+    }
+    return Buffer.from(encoded, 'base64url').toString('utf8');
+  }
+
+  const [versionPart, ivPart, authTagPart, encryptedPart] =
+    parts.length === 4 ? parts : [undefined, ...parts];
   if (!ivPart || !authTagPart || !encryptedPart) {
     throw new Error('Invalid encrypted secret payload');
+  }
+  if (versionPart && versionPart !== 'enc') {
+    throw new Error('Unsupported encrypted secret payload');
+  }
+
+  const key = getEncryptionKey();
+  if (!key) {
+    throw new Error(
+      'Missing GITHUB_TOKEN_ENCRYPTION_KEY, BETTER_AUTH_SECRET, or AUTH_SECRET',
+    );
   }
 
   const decipher = createDecipheriv(
     'aes-256-gcm',
-    getEncryptionKey(),
+    key,
     Buffer.from(ivPart, 'base64url'),
   );
   decipher.setAuthTag(Buffer.from(authTagPart, 'base64url'));
