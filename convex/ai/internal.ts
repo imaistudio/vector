@@ -367,6 +367,7 @@ export const listDocuments = internalQuery({
       teamId: document.teamId ? String(document.teamId) : undefined,
       projectId: document.projectId ? String(document.projectId) : undefined,
       lastEditedAt: document.lastEditedAt ?? undefined,
+      createdAt: document._creationTime,
     }));
   },
 });
@@ -734,6 +735,7 @@ export const listIssues = internalQuery({
         parentIssueId: issue.parentIssueId
           ? String(issue.parentIssueId)
           : undefined,
+        createdAt: issue._creationTime,
       });
     }
     return results;
@@ -1410,6 +1412,7 @@ export const listProjects = internalQuery({
       visibility: project.visibility ?? 'organization',
       teamId: project.teamId ? String(project.teamId) : undefined,
       statusId: project.statusId ? String(project.statusId) : undefined,
+      createdAt: project._creationTime,
     }));
   },
 });
@@ -1690,6 +1693,7 @@ export const listTeams = internalQuery({
       key: team.key,
       name: team.name,
       visibility: team.visibility ?? 'organization',
+      createdAt: team._creationTime,
     }));
   },
 });
@@ -2955,6 +2959,7 @@ export const listFolders = internalQuery({
         description: folder.description ?? undefined,
         color: folder.color ?? undefined,
         documentCount: docCount.length,
+        createdAt: folder._creationTime,
       });
     }
     return results;

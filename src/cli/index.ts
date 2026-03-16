@@ -170,6 +170,113 @@ function normalizeMatch(value: string | undefined | null) {
   return value?.trim().toLowerCase();
 }
 
+type ListItem = Record<string, unknown>;
+
+function parseDate(value: string): number {
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) {
+    throw new Error(`Invalid date: ${value}`);
+  }
+  return ms;
+}
+
+function applyListFilters(
+  items: ListItem[],
+  options: {
+    createdAfter?: string;
+    createdBefore?: string;
+    updatedAfter?: string;
+    updatedBefore?: string;
+    sort?: string;
+    order?: string;
+    limit?: string;
+  },
+): ListItem[] {
+  let result = [...items];
+
+  if (options.createdAfter) {
+    const threshold = parseDate(options.createdAfter);
+    result = result.filter(
+      item => typeof item.createdAt === 'number' && item.createdAt >= threshold,
+    );
+  }
+  if (options.createdBefore) {
+    const threshold = parseDate(options.createdBefore);
+    result = result.filter(
+      item => typeof item.createdAt === 'number' && item.createdAt <= threshold,
+    );
+  }
+  if (options.updatedAfter) {
+    const threshold = parseDate(options.updatedAfter);
+    result = result.filter(
+      item =>
+        typeof item.lastEditedAt === 'number' && item.lastEditedAt >= threshold,
+    );
+  }
+  if (options.updatedBefore) {
+    const threshold = parseDate(options.updatedBefore);
+    result = result.filter(
+      item =>
+        typeof item.lastEditedAt === 'number' && item.lastEditedAt <= threshold,
+    );
+  }
+
+  if (options.sort) {
+    const field = options.sort;
+    const desc = options.order?.toLowerCase() === 'desc';
+    result.sort((a, b) => {
+      const aVal = a[field];
+      const bVal = b[field];
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return 1;
+      if (bVal == null) return -1;
+      if (typeof aVal === 'number' && typeof bVal === 'number')
+        return desc ? bVal - aVal : aVal - bVal;
+      return desc
+        ? String(bVal).localeCompare(String(aVal))
+        : String(aVal).localeCompare(String(bVal));
+    });
+  }
+
+  if (options.limit) {
+    const limit = Number(options.limit);
+    if (Number.isFinite(limit) && limit > 0) {
+      result = result.slice(0, limit);
+    }
+  }
+
+  return result;
+}
+
+function addEntityUrls(
+  items: ListItem[],
+  appUrl: string,
+  orgSlug: string,
+  entityType: 'issues' | 'projects' | 'teams' | 'documents' | 'folders',
+): ListItem[] {
+  return items.map(item => {
+    let path: string;
+    switch (entityType) {
+      case 'issues':
+        path = `/${orgSlug}/issues/${item.key}`;
+        break;
+      case 'projects':
+        path = `/${orgSlug}/projects/${item.key}`;
+        break;
+      case 'teams':
+        path = `/${orgSlug}/teams/${item.key}`;
+        break;
+      case 'documents':
+        path = `/${orgSlug}/documents/${item.id}`;
+        break;
+      case 'folders':
+        path = `/${orgSlug}/documents/folders/${item.id}`;
+        break;
+    }
+    return { ...item, url: `${appUrl}${path}` };
+  });
+}
+
 function normalizeAppUrl(raw: string): string {
   let url = raw.trim();
   if (!/^https?:\/\//i.test(url)) {
@@ -1697,13 +1804,18 @@ const teamCommand = program.command('team').description('Teams');
 teamCommand
   .command('list [slug]')
   .option('--limit <n>')
+  .option('--created-after <date>', 'Filter: created on or after date (ISO)')
+  .option('--created-before <date>', 'Filter: created on or before date (ISO)')
+  .option('--sort <field>', 'Sort by field (e.g. createdAt, name, key)')
+  .option('--order <direction>', 'Sort order: asc or desc (default: asc)')
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, cliApi.listTeams, {
+    const raw = await runAction(client, cliApi.listTeams, {
       orgSlug,
-      limit: options.limit ? Number(options.limit) : undefined,
     });
+    const filtered = applyListFilters(raw, options);
+    const result = addEntityUrls(filtered, runtime.appUrl, orgSlug, 'teams');
     printOutput(result, runtime.json);
   });
 
@@ -1842,14 +1954,19 @@ projectCommand
   .command('list [slug]')
   .option('--team <teamKey>')
   .option('--limit <n>')
+  .option('--created-after <date>', 'Filter: created on or after date (ISO)')
+  .option('--created-before <date>', 'Filter: created on or before date (ISO)')
+  .option('--sort <field>', 'Sort by field (e.g. createdAt, name, key)')
+  .option('--order <direction>', 'Sort order: asc or desc (default: asc)')
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, cliApi.listProjects, {
+    const raw = await runAction(client, cliApi.listProjects, {
       orgSlug,
       teamKey: options.team,
-      limit: options.limit ? Number(options.limit) : undefined,
     });
+    const filtered = applyListFilters(raw, options);
+    const result = addEntityUrls(filtered, runtime.appUrl, orgSlug, 'projects');
     printOutput(result, runtime.json);
   });
 
@@ -2004,15 +2121,20 @@ issueCommand
   .option('--project <projectKey>')
   .option('--team <teamKey>')
   .option('--limit <n>')
+  .option('--created-after <date>', 'Filter: created on or after date (ISO)')
+  .option('--created-before <date>', 'Filter: created on or before date (ISO)')
+  .option('--sort <field>', 'Sort by field (e.g. createdAt, title, key)')
+  .option('--order <direction>', 'Sort order: asc or desc (default: asc)')
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, cliApi.listIssues, {
+    const raw = await runAction(client, cliApi.listIssues, {
       orgSlug,
       projectKey: options.project,
       teamKey: options.team,
-      limit: options.limit ? Number(options.limit) : undefined,
     });
+    const filtered = applyListFilters(raw, options);
+    const result = addEntityUrls(filtered, runtime.appUrl, orgSlug, 'issues');
     printOutput(result, runtime.json);
   });
 
@@ -2290,14 +2412,35 @@ documentCommand
   .command('list [slug]')
   .option('--folder-id <id>')
   .option('--limit <n>')
+  .option('--created-after <date>', 'Filter: created on or after date (ISO)')
+  .option('--created-before <date>', 'Filter: created on or before date (ISO)')
+  .option(
+    '--updated-after <date>',
+    'Filter: last edited on or after date (ISO)',
+  )
+  .option(
+    '--updated-before <date>',
+    'Filter: last edited on or before date (ISO)',
+  )
+  .option(
+    '--sort <field>',
+    'Sort by field (e.g. createdAt, title, lastEditedAt)',
+  )
+  .option('--order <direction>', 'Sort order: asc or desc (default: asc)')
   .action(async (slug, options, command) => {
     const { client, runtime } = await getClient(command);
     const orgSlug = requireOrg(runtime, slug);
-    const result = await runAction(client, cliApi.listDocuments, {
+    const raw = await runAction(client, cliApi.listDocuments, {
       orgSlug,
       folderId: options.folderId,
-      limit: options.limit ? Number(options.limit) : undefined,
     });
+    const filtered = applyListFilters(raw, options);
+    const result = addEntityUrls(
+      filtered,
+      runtime.appUrl,
+      orgSlug,
+      'documents',
+    );
     printOutput(result, runtime.json);
   });
 
@@ -2405,12 +2548,21 @@ documentCommand
 
 const folderCommand = program.command('folder').description('Document folders');
 
-folderCommand.command('list [slug]').action(async (slug, _options, command) => {
-  const { client, runtime } = await getClient(command);
-  const orgSlug = requireOrg(runtime, slug);
-  const result = await runAction(client, cliApi.listFolders, { orgSlug });
-  printOutput(result, runtime.json);
-});
+folderCommand
+  .command('list [slug]')
+  .option('--limit <n>')
+  .option('--created-after <date>', 'Filter: created on or after date (ISO)')
+  .option('--created-before <date>', 'Filter: created on or before date (ISO)')
+  .option('--sort <field>', 'Sort by field (e.g. createdAt, name)')
+  .option('--order <direction>', 'Sort order: asc or desc (default: asc)')
+  .action(async (slug, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const raw = await runAction(client, cliApi.listFolders, { orgSlug });
+    const filtered = applyListFilters(raw, options);
+    const result = addEntityUrls(filtered, runtime.appUrl, orgSlug, 'folders');
+    printOutput(result, runtime.json);
+  });
 
 folderCommand
   .command('create')
