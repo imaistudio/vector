@@ -8,6 +8,7 @@ export type CliSession = {
   convexUrl?: string;
   activeOrgSlug?: string;
   cookies: Record<string, string>;
+  bearerToken?: string;
 };
 
 const SESSION_ROOT = path.join(homedir(), '.vector');

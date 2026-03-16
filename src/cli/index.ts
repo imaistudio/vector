@@ -349,7 +349,11 @@ async function getRuntime(command: Command) {
 }
 
 function requireSession(runtime: Runtime) {
-  if (!runtime.session || Object.keys(runtime.session.cookies).length === 0) {
+  if (
+    !runtime.session ||
+    (Object.keys(runtime.session.cookies).length === 0 &&
+      !runtime.session.bearerToken)
+  ) {
     throw new Error('Not logged in. Run `vcli auth login` first.');
   }
   return runtime.session;

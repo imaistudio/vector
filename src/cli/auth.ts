@@ -79,6 +79,9 @@ async function authRequest(
 ) {
   const headers = new Headers(init.headers);
   const origin = new URL(appUrl).origin;
+  if (session.bearerToken && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${session.bearerToken}`);
+  }
   if (Object.keys(session.cookies).length > 0) {
     headers.set('cookie', cookieHeader(session.cookies));
   }
@@ -295,23 +298,7 @@ export async function pollDeviceToken(
     if (response.ok) {
       const data = (await response.json()) as DeviceTokenResponse;
       if (data.access_token) {
-        // The device/token response may set session cookies directly
-        if (Object.keys(session.cookies).length > 0) {
-          return session;
-        }
-        // Otherwise use the token to call get-session with Bearer auth
-        const sessionResp = await fetch(
-          buildUrl(appUrl, '/api/auth/get-session'),
-          {
-            headers: {
-              authorization: `Bearer ${data.access_token}`,
-            },
-          },
-        );
-        if (sessionResp.ok) {
-          const updated = applySetCookieHeaders(session, sessionResp);
-          return updated;
-        }
+        session.bearerToken = data.access_token;
         return session;
       }
     }
