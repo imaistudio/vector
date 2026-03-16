@@ -85,11 +85,13 @@ function useResizableSidebar() {
   const [width, setWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
   const isResizing = useRef(false);
+  const hydrated = useRef(false);
 
   // Sync from localStorage after hydration to avoid mismatch
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       setWidth(parseSidebarWidth(localStorage.getItem(SIDEBAR_STORAGE_KEY)));
+      hydrated.current = true;
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -124,9 +126,11 @@ function useResizableSidebar() {
     document.addEventListener('mouseup', handleMouseUp);
   }, []);
 
-  // Persist to localStorage
+  // Persist to localStorage only after hydration to avoid overwriting saved value
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
+    if (hydrated.current) {
+      localStorage.setItem(SIDEBAR_STORAGE_KEY, String(width));
+    }
   }, [width]);
 
   return { width, isDragging, handleMouseDown };
