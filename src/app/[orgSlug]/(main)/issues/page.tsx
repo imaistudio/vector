@@ -30,6 +30,7 @@ import { MobileNavTrigger } from '../layout';
 type StateType = (typeof ISSUE_STATE_DEFAULTS)[number]['type'];
 type FilterType = 'all' | StateType;
 type ViewMode = 'table' | 'kanban';
+type ScopeTab = 'mine' | 'all';
 
 const TAB_LABELS: Record<FilterType, string> = {
   all: 'All',
@@ -57,7 +58,7 @@ export default function IssuesPage() {
   const searchParams = useSearchParams();
   const orgSlug = params.orgSlug as string;
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const isMyIssuesView = searchParams.get('assignee') === 'me';
+  const [scopeTab, setScopeTab] = useState<ScopeTab>('mine');
 
   const viewParam = searchParams.get('view');
   const [viewMode, setViewModeState] = useState<ViewMode>(
@@ -126,7 +127,7 @@ export default function IssuesPage() {
     orgSlug,
     projectId: selectedProject || undefined,
     teamId: selectedTeam || undefined,
-    assigneeId: isMyIssuesView ? currentUserId || undefined : undefined,
+    assigneeId: scopeTab === 'mine' ? currentUserId || undefined : undefined,
     searchQuery: deferredSearch || undefined,
     page: viewMode === 'table' ? page : undefined,
     pageSize: viewMode === 'table' ? PAGE_SIZE : undefined,
@@ -138,10 +139,23 @@ export default function IssuesPage() {
     counts: {},
   };
 
+  // Lightweight query for the other scope tab's count
+  const otherScopeData = useQuery(api.issues.queries.listIssues, {
+    orgSlug,
+    projectId: selectedProject || undefined,
+    teamId: selectedTeam || undefined,
+    assigneeId: scopeTab === 'mine' ? undefined : currentUserId || undefined,
+    searchQuery: deferredSearch || undefined,
+    page: 1,
+    pageSize: 1,
+    includeCounts: false,
+  });
+  const otherScopeTotal = otherScopeData?.total ?? 0;
+
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [deferredSearch, selectedProject, selectedTeam, activeFilter]);
+  }, [deferredSearch, selectedProject, selectedTeam, activeFilter, scopeTab]);
 
   const handlePriorityChange = (issueId: string, priorityId: string) => {
     if (!user || !priorityId) return;
@@ -265,6 +279,43 @@ export default function IssuesPage() {
         <div className='flex flex-col gap-1 p-1 sm:flex-row sm:items-center sm:justify-between'>
           <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
             <MobileNavTrigger />
+            <Button
+              variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
+              size='sm'
+              className={cn(
+                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'mine' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('mine');
+                setActiveFilter('all');
+                setPage(1);
+              }}
+            >
+              <span>My issues</span>
+              <span className='text-muted-foreground text-xs'>
+                {scopeTab === 'mine' ? total : otherScopeTotal}
+              </span>
+            </Button>
+            <Button
+              variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
+              size='sm'
+              className={cn(
+                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                scopeTab === 'all' && 'bg-secondary',
+              )}
+              onClick={() => {
+                setScopeTab('all');
+                setActiveFilter('all');
+                setPage(1);
+              }}
+            >
+              <span>All issues</span>
+              <span className='text-muted-foreground text-xs'>
+                {scopeTab === 'all' ? total : otherScopeTotal}
+              </span>
+            </Button>
+            <div className='bg-border mx-1 h-4 w-px shrink-0' />
             {visibleTabs.map(tab => (
               <Button
                 key={tab.key}

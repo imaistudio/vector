@@ -59,7 +59,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const navItems: NavItem[] = [
     {
       label: 'My Issues',
-      href: `/${orgSlug}/issues?assignee=me`,
+      href: `/${orgSlug}/issues`,
       icon: CheckSquare,
       createElement: (
         <ScopedPermissionGate
