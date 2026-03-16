@@ -7,6 +7,7 @@ import {
   Circle,
   ExternalLink,
   FolderOpen,
+  GitPullRequest,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -109,6 +110,7 @@ interface GroupedIssue {
     stateType: string | null;
   }>;
   updatedAt: number;
+  linkedPrs: Array<{ number: number; state: string; url: string }>;
 }
 
 interface KanbanIssueCard extends GroupedIssue {
@@ -213,6 +215,7 @@ export function IssuesKanban({
           assigneeIds: row.assigneeId ? [row.assigneeId] : [],
           assignments: [assignment],
           updatedAt: row.updatedAt ?? 0,
+          linkedPrs: row.linkedPrs ?? [],
         });
       }
     }
@@ -253,7 +256,7 @@ export function IssuesKanban({
   const columns = React.useMemo(() => {
     return sortedStates.map(state => ({
       state,
-      issues: issueCards.filter(issue => issue.stateType === state.type),
+      issues: issueCards.filter(issue => issue.stateId === state._id),
     }));
   }, [sortedStates, issueCards]);
 
@@ -277,7 +280,7 @@ export function IssuesKanban({
 
     // Find the target state and check if it's different
     const targetState = sortedStates.find(s => s._id === targetStateId);
-    if (!targetState || targetState.type === issue.stateType) return;
+    if (!targetState || targetState._id === issue.stateId) return;
 
     onStateChange(issue.id, issue.id, targetStateId);
   }
@@ -596,7 +599,7 @@ function KanbanCardMenu({
               const StateIcon = state.icon
                 ? getDynamicIcon(state.icon) || Circle
                 : Circle;
-              const isSelected = issue.stateType === state.type;
+              const isSelected = issue.stateId === state._id;
               return (
                 <ContextMenuItem
                   key={state._id}
@@ -884,9 +887,26 @@ function KanbanCardContent({
           assigneeStateCluster
         )}
 
-        <span className='text-muted-foreground text-[11px]'>
-          {formatDateHuman(new Date(issue.updatedAt))}
-        </span>
+        <div className='flex items-center gap-2'>
+          {issue.linkedPrs && issue.linkedPrs.length > 0 ? (
+            <Link
+              href={issue.linkedPrs[0].url}
+              target='_blank'
+              rel='noreferrer'
+              onClick={e => {
+                if (isDragging) e.preventDefault();
+                e.stopPropagation();
+              }}
+              className='text-muted-foreground hover:text-foreground flex items-center gap-0.5 text-[11px] transition-colors'
+            >
+              <GitPullRequest className='size-3' />
+              <span className='font-mono'>#{issue.linkedPrs[0].number}</span>
+            </Link>
+          ) : null}
+          <span className='text-muted-foreground text-[11px]'>
+            {formatDateHuman(new Date(issue.updatedAt))}
+          </span>
+        </div>
       </div>
     </div>
   );

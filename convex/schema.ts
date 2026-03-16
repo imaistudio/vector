@@ -814,6 +814,11 @@ export default defineSchema({
     pendingAction: v.optional(v.any()),
   })
     .index('by_org_user', ['organizationId', 'userId'])
+    .index('by_org_context_entity', [
+      'organizationId',
+      'lastContextType',
+      'lastEntityKey',
+    ])
     .index('by_threadId', ['threadId']),
 
   documentPresence: defineTable({

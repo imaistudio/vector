@@ -42,6 +42,9 @@ export function formatDateHuman(input?: Date | string | null): string {
     }
 
     // Otherwise show relative time
+    const minutesDiff = Math.abs(Date.now() - date.getTime()) / (1000 * 60);
+    if (minutesDiff < 1) return 'just now';
+
     return formatDistanceToNow(date, { addSuffix: true });
   } catch {
     return format(date, 'MMM d, yyyy');

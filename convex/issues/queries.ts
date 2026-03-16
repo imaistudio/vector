@@ -147,8 +147,6 @@ type IssueListScope = {
   projectKey?: string;
 };
 
-type IssueStateType = Doc<'issueStates'>['type'];
-
 async function loadDocMap<TableName extends keyof DataModel>(
   ctx: QueryCtx,
   table: TableName,
@@ -688,6 +686,59 @@ async function flattenIssueRows(
     .map(assignment => assignment.stateId)
     .filter((id): id is Id<'issueStates'> => Boolean(id));
 
+  // Load active PR links for all issues in parallel
+  const prLinksByIssue = new Map<
+    Id<'issues'>,
+    Array<{ number: number; state: string; url: string }>
+  >();
+  const prLinksRaw = await Promise.all(
+    issues.map(issue =>
+      ctx.db
+        .query('githubArtifactLinks')
+        .withIndex('by_issue_active', q =>
+          q.eq('issueId', issue._id).eq('active', true),
+        )
+        .collect()
+        .then(links => ({ issueId: issue._id, links })),
+    ),
+  );
+
+  // Collect all referenced PR IDs
+  const allPrIds = new Set<Id<'githubPullRequests'>>();
+  for (const { links } of prLinksRaw) {
+    for (const link of links) {
+      if (link.artifactType === 'pull_request' && link.pullRequestId) {
+        allPrIds.add(link.pullRequestId);
+      }
+    }
+  }
+
+  // Batch-load PR records
+  const prRecords = await Promise.all(
+    Array.from(allPrIds).map(id => ctx.db.get('githubPullRequests', id)),
+  );
+  const prMap = new Map(
+    prRecords
+      .filter((pr): pr is NonNullable<typeof pr> => pr !== null)
+      .map(pr => [pr._id, pr]),
+  );
+
+  // Build lightweight PR summaries per issue
+  for (const { issueId, links } of prLinksRaw) {
+    const prs: Array<{ number: number; state: string; url: string }> = [];
+    for (const link of links) {
+      if (link.artifactType === 'pull_request' && link.pullRequestId) {
+        const pr = prMap.get(link.pullRequestId);
+        if (pr) {
+          prs.push({ number: pr.number, state: pr.state, url: pr.url });
+        }
+      }
+    }
+    if (prs.length > 0) {
+      prLinksByIssue.set(issueId, prs);
+    }
+  }
+
   const [
     projectMap,
     teamMap,
@@ -768,6 +819,8 @@ async function flattenIssueRows(
             },
           ];
 
+    const linkedPrs = prLinksByIssue.get(issue._id) ?? [];
+
     return hydratedAssignments.map(assignment => ({
       ...issue,
       id: issue._id,
@@ -785,6 +838,7 @@ async function flattenIssueRows(
       teamKey: team?.key,
       reporterName: reporter?.name,
       parentIssueKey: parentIssue?.key,
+      linkedPrs,
       ...assignment,
     }));
   });

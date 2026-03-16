@@ -334,6 +334,21 @@ export function Editor({
         class: tiptapSurfaceClass,
       },
       handleDOMEvents: {
+        click: (_view, event) => {
+          const target = event.target as HTMLElement;
+          const anchor = target.closest('a') as HTMLAnchorElement | null;
+          if (!anchor) return false;
+          // Let MentionClickHandler deal with mention links
+          if (anchor.classList.contains('mention-user')) return false;
+          const href = anchor.getAttribute('href');
+          if (href) {
+            event.preventDefault();
+            event.stopPropagation();
+            window.open(href, '_blank', 'noopener,noreferrer');
+            return true;
+          }
+          return false;
+        },
         copy: (_view, event) => {
           if (!editor) return false;
 

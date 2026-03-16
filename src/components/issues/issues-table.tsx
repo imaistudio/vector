@@ -11,7 +11,13 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal, Trash2, Circle, ArrowUp } from 'lucide-react';
+import {
+  GitPullRequest,
+  MoreHorizontal,
+  Trash2,
+  Circle,
+  ArrowUp,
+} from 'lucide-react';
 import React from 'react';
 
 import {
@@ -313,8 +319,22 @@ export function IssuesTable({
                 )}
               </div>
 
-              {/* Last Updated - hidden on mobile */}
-              <div className='hidden flex-shrink-0 sm:block'>
+              {/* PR link + Last Updated - hidden on mobile */}
+              <div className='hidden flex-shrink-0 items-center gap-2 sm:flex'>
+                {issue.linkedPrs && issue.linkedPrs.length > 0 ? (
+                  <Link
+                    href={issue.linkedPrs[0].url}
+                    target='_blank'
+                    rel='noreferrer'
+                    onClick={e => e.stopPropagation()}
+                    className='text-muted-foreground hover:text-foreground flex items-center gap-0.5 text-xs transition-colors'
+                  >
+                    <GitPullRequest className='size-3' />
+                    <span className='font-mono'>
+                      #{issue.linkedPrs[0].number}
+                    </span>
+                  </Link>
+                ) : null}
                 <span className='text-muted-foreground text-xs'>
                   {formatDateHuman(new Date(issue.updatedAt))}
                 </span>

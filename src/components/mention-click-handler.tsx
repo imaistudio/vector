@@ -29,25 +29,37 @@ export function MentionClickHandler({ children }: { children: ReactNode }) {
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    const mentionLink = target.closest('a.mention-user') as HTMLAnchorElement;
-    if (!mentionLink) {
+    const anchor = target.closest('a') as HTMLAnchorElement | null;
+
+    if (!anchor) {
       // Clicked elsewhere — close popover
       setPopover(null);
       return;
     }
 
-    e.preventDefault();
-    e.stopPropagation();
+    // Mention-user links → show profile popover
+    if (anchor.classList.contains('mention-user')) {
+      e.preventDefault();
+      e.stopPropagation();
 
-    // Extract userId from href: /{orgSlug}/people/{userId}#...
-    const href = mentionLink.getAttribute('href') || '';
-    const match = href.match(/\/people\/([^#?/]+)/);
-    if (!match) return;
+      const href = anchor.getAttribute('href') || '';
+      const match = href.match(/\/people\/([^#?/]+)/);
+      if (!match) return;
 
-    const userId = match[1];
-    const rect = mentionLink.getBoundingClientRect();
+      const userId = match[1];
+      const rect = anchor.getBoundingClientRect();
 
-    setPopover(prev => (prev?.userId === userId ? null : { userId, rect }));
+      setPopover(prev => (prev?.userId === userId ? null : { userId, rect }));
+      return;
+    }
+
+    // Regular links → open in new tab
+    const href = anchor.getAttribute('href');
+    if (href) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
   }, []);
 
   // Close on click outside
@@ -75,7 +87,6 @@ export function MentionClickHandler({ children }: { children: ReactNode }) {
   }, [popover]);
 
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div ref={containerRef} onClickCapture={handleClick}>
       {children}
       {popover && (

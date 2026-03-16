@@ -1,5 +1,6 @@
+import { saveMessage } from '@convex-dev/agent';
 import { ConvexError, v } from 'convex/values';
-import { components } from '../_generated/api';
+import { components, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
   internalMutation,
@@ -77,6 +78,81 @@ function buildImportedPullRequestDescription(args: {
   ]
     .filter(Boolean)
     .join('\n\n');
+}
+
+async function queueIssueDescriptionRefreshForAssistantThreads(
+  ctx: MutationCtx,
+  args: {
+    organization: Doc<'organizations'>;
+    issue: Doc<'issues'>;
+    pullRequest: Doc<'githubPullRequests'>;
+    repoFullName: string;
+    previousImportedDescription: string;
+    nextImportedDescription: string;
+  },
+) {
+  const scopedThreads = await ctx.db
+    .query('assistantThreads')
+    .withIndex('by_org_context_entity', q =>
+      q
+        .eq('organizationId', args.organization._id)
+        .eq('lastContextType', 'issue_detail')
+        .eq('lastEntityKey', args.issue.key),
+    )
+    .collect();
+
+  if (scopedThreads.length === 0) {
+    return;
+  }
+
+  const pageContext = {
+    kind: 'issue_detail' as const,
+    orgSlug: args.organization.slug,
+    path:
+      args.issue.key.trim().length > 0
+        ? `/${args.organization.slug}/issues/${args.issue.key}`
+        : `/${args.organization.slug}/issues`,
+    issueKey: args.issue.key,
+    entityType: 'issue' as const,
+    entityId: String(args.issue._id),
+    entityKey: args.issue.key,
+  };
+
+  const prompt = [
+    `The linked GitHub pull request ${args.repoFullName}#${args.pullRequest.number} description changed.`,
+    'Update the current issue description so it reflects the latest pull request description while preserving any issue-specific context that still matters.',
+    `Current issue description:\n${args.issue.description ?? '(empty)'}`,
+    `Previous imported pull request description:\n${args.previousImportedDescription}`,
+    `Latest imported pull request description:\n${args.nextImportedDescription}`,
+    `Pull request URL: ${args.pullRequest.url}`,
+  ].join('\n\n');
+
+  for (const thread of scopedThreads) {
+    if (thread.threadStatus === 'pending') {
+      continue;
+    }
+
+    const saved = await saveMessage(ctx, components.agent, {
+      threadId: thread.threadId,
+      userId: thread.userId,
+      prompt,
+    });
+
+    await ctx.db.patch('assistantThreads', thread._id, {
+      updatedAt: Date.now(),
+      threadStatus: 'pending',
+      errorMessage: undefined,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.ai.actions.generateResponse, {
+      assistantThreadId: thread._id,
+      orgSlug: args.organization.slug,
+      userId: thread.userId,
+      threadId: thread.threadId,
+      promptMessageId: saved.messageId,
+      pageContext,
+    });
+  }
 }
 
 async function resolveOrgMemberByGitHubIdentity(
@@ -1126,11 +1202,11 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
     previousBody: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const pullRequest = await ctx.db.get(
-      'githubPullRequests',
-      args.pullRequestId,
-    );
-    if (!pullRequest) {
+    const [organization, pullRequest] = await Promise.all([
+      ctx.db.get('organizations', args.organizationId),
+      ctx.db.get('githubPullRequests', args.pullRequestId),
+    ]);
+    if (!organization || !pullRequest) {
       throw new ConvexError('PULL_REQUEST_NOT_FOUND');
     }
 
@@ -1161,26 +1237,40 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
       if (args.previousTitle && issue.title === args.previousTitle) {
         patch.title = pullRequest.title;
       }
-      if (
+      const canDirectlyReplaceDescription =
         (issue.description ?? '') === previousImportedDescription ||
-        issue.description === undefined
-      ) {
+        issue.description === undefined;
+      if (canDirectlyReplaceDescription) {
         patch.description = nextImportedDescription;
       }
 
-      if (Object.keys(patch).length === 0) continue;
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch('issues', issue._id, {
+          ...patch,
+          searchText: buildIssueSearchText({
+            key: issue.key,
+            title: patch.title ?? issue.title,
+            description:
+              patch.description !== undefined
+                ? patch.description
+                : (issue.description ?? ''),
+          }),
+        });
+      }
 
-      await ctx.db.patch('issues', issue._id, {
-        ...patch,
-        searchText: buildIssueSearchText({
-          key: issue.key,
-          title: patch.title ?? issue.title,
-          description:
-            patch.description !== undefined
-              ? patch.description
-              : (issue.description ?? ''),
-        }),
-      });
+      if (
+        !canDirectlyReplaceDescription &&
+        previousImportedDescription !== nextImportedDescription
+      ) {
+        await queueIssueDescriptionRefreshForAssistantThreads(ctx, {
+          organization,
+          issue,
+          pullRequest,
+          repoFullName: args.repoFullName,
+          previousImportedDescription,
+          nextImportedDescription,
+        });
+      }
     }
   },
 });
