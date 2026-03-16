@@ -270,11 +270,11 @@ function EntityRow({
   const href = entityHref(display, orgSlug, item);
 
   const content = (
-    <div className='hover:bg-muted/50 flex min-w-0 items-start gap-2 rounded-md px-2 py-1.5 text-xs transition-colors'>
+    <div className='hover:bg-muted/50 grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-2 rounded-md px-2 py-1.5 text-xs transition-colors'>
       <span className='text-muted-foreground/50 mt-0.5 shrink-0'>
         {entityIcon(display)}
       </span>
-      <div className='min-w-0 flex-1'>
+      <div className='min-w-0'>
         <div className='min-w-0 truncate'>{title}</div>
         {(key || subtitle || assignee) && (
           <div className='text-muted-foreground/50 mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]'>
@@ -284,10 +284,10 @@ function EntityRow({
               </span>
             ) : null}
             {subtitle ? (
-              <span className='min-w-0 break-words'>{subtitle}</span>
+              <span className='min-w-0 truncate'>{subtitle}</span>
             ) : null}
             {assignee ? (
-              <span className='min-w-0 break-words'>{assignee}</span>
+              <span className='min-w-0 truncate'>{assignee}</span>
             ) : null}
           </div>
         )}
