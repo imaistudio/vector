@@ -427,6 +427,25 @@ export const linkGitHubIdentity = internalAction({
   },
 });
 
+export const syncGitHubIdentityFromLinkedAccount = action({
+  args: {
+    accessToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.runQuery(api.users.currentUser, {});
+    if (!user) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    await ctx.runAction(internal.users.linkGitHubIdentity, {
+      userId: user._id,
+      accessToken: args.accessToken,
+    });
+
+    return { success: true } as const;
+  },
+});
+
 export const setGitHubIdentity = internalMutation({
   args: {
     userId: v.id('users'),

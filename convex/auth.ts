@@ -129,6 +129,13 @@ export const createAuthOptions = (
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
     },
   },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['github'],
+      allowDifferentEmails: true,
+    },
+  },
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 6,

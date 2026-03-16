@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useQuery, useMutation } from 'convex/react';
+import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from '@/lib/convex';
 import { authClient } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
@@ -272,18 +273,86 @@ export function ProfileForm() {
 }
 
 function GitHubConnectionSection() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const githubConnection = useQuery(api.users.getGitHubConnection);
   const unlinkGitHub = useMutation(api.users.unlinkGitHubIdentity);
+  const syncGitHubIdentity = useAction(
+    api.users.syncGitHubIdentityFromLinkedAccount,
+  );
   const [isLinking, setIsLinking] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
+  const [isSyncingIdentity, setIsSyncingIdentity] = useState(false);
+  const hasSyncedCallbackRef = useRef(false);
+
+  useEffect(() => {
+    const githubStatus = searchParams.get('github');
+    if (
+      githubStatus !== 'connected' ||
+      githubConnection === undefined ||
+      githubConnection?.connected ||
+      hasSyncedCallbackRef.current
+    ) {
+      return;
+    }
+
+    hasSyncedCallbackRef.current = true;
+    let cancelled = false;
+
+    const syncIdentity = async () => {
+      setIsSyncingIdentity(true);
+      try {
+        const tokenResult = await authClient.getAccessToken({
+          providerId: 'github',
+        });
+        if (tokenResult.error) {
+          throw tokenResult.error;
+        }
+
+        const accessToken = tokenResult.data?.accessToken;
+        if (!accessToken) {
+          throw new Error('No GitHub access token available');
+        }
+
+        await syncGitHubIdentity({ accessToken });
+        toast.success('GitHub account connected');
+      } catch {
+        hasSyncedCallbackRef.current = false;
+        toast.error('GitHub connected, but Vector could not sync your profile');
+      } finally {
+        if (!cancelled) {
+          setIsSyncingIdentity(false);
+          router.replace('/settings/profile');
+        }
+      }
+    };
+
+    void syncIdentity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [githubConnection, router, searchParams, syncGitHubIdentity]);
 
   const handleConnect = async () => {
     setIsLinking(true);
     try {
-      await authClient.signIn.social({
+      const result = await authClient.linkSocial({
         provider: 'github',
-        callbackURL: '/settings/profile',
+        callbackURL: '/settings/profile?github=connected',
+        errorCallbackURL: '/settings/profile?github=error',
+        disableRedirect: true,
       });
+      if (result.error) {
+        throw result.error;
+      }
+
+      const redirectUrl = result.data?.url;
+      if (!redirectUrl) {
+        throw new Error('GitHub authorization URL missing');
+      }
+
+      window.location.href = redirectUrl;
     } catch {
       toast.error('Failed to start GitHub connection');
       setIsLinking(false);
@@ -293,6 +362,13 @@ function GitHubConnectionSection() {
   const handleDisconnect = async () => {
     setIsUnlinking(true);
     try {
+      const unlinkResult = await authClient.unlinkAccount({
+        providerId: 'github',
+      });
+      if (unlinkResult.error) {
+        throw unlinkResult.error;
+      }
+
       await unlinkGitHub({});
       toast.success('GitHub account disconnected');
     } catch {
@@ -348,11 +424,11 @@ function GitHubConnectionSection() {
           <Button
             variant='outline'
             size='sm'
-            disabled={isLinking}
+            disabled={isLinking || isSyncingIdentity}
             onClick={handleConnect}
           >
             <Github className='mr-1.5 size-3.5' />
-            {isLinking ? 'Connecting...' : 'Connect'}
+            {isLinking || isSyncingIdentity ? 'Connecting...' : 'Connect'}
           </Button>
         )}
       </div>
