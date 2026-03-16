@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useState } from 'react';
 import {
   OrgSettingsSidebar,
@@ -9,9 +10,10 @@ import { useQuery } from 'convex/react';
 import { api } from '@/lib/convex';
 import { useParams } from 'next/navigation';
 import { Doc } from '@/convex/_generated/dataModel';
-import { PanelLeft, Menu } from 'lucide-react';
+import { ArrowLeft, PanelLeft, Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { buttonVariants } from '@/components/ui/button';
 
 interface OrgSettingsLayoutProps {
   children: React.ReactNode;
@@ -144,16 +146,30 @@ export default function OrgSettingsLayout({
       </Sheet>
 
       {/* Main Content */}
-      <main className='bg-background relative m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
-        {/* Mobile menu button */}
-        <button
-          onClick={() => setMobileOpen(true)}
-          className='hover:bg-accent/80 absolute top-1.5 left-1.5 z-10 flex size-7 items-center justify-center rounded-md transition-colors lg:hidden'
-          aria-label='Open settings menu'
-        >
-          <Menu className='text-muted-foreground size-4' />
-        </button>
-        {children}
+      <main className='bg-background relative m-2 ml-0 flex flex-1 flex-col overflow-y-auto rounded-md border'>
+        <div className='bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 flex items-center gap-1 border-b px-2 py-1.5 backdrop-blur'>
+          <button
+            onClick={() => setMobileOpen(true)}
+            className='hover:bg-accent/80 flex size-7 items-center justify-center rounded-md transition-colors lg:hidden'
+            aria-label='Open settings menu'
+          >
+            <Menu className='text-muted-foreground size-4' />
+          </button>
+          <Link
+            href={`/${orgSlug}`}
+            className={cn(
+              buttonVariants({
+                variant: 'ghost',
+                size: 'sm',
+              }),
+              'text-muted-foreground hover:text-foreground h-7 px-2',
+            )}
+          >
+            <ArrowLeft className='size-3.5' />
+            <span>Back to workspace</span>
+          </Link>
+        </div>
+        <div className='min-h-0 flex-1'>{children}</div>
       </main>
     </div>
   );
