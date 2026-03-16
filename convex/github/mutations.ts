@@ -99,6 +99,41 @@ async function resolveOrgMemberByGitHubIdentity(
     candidateUsers.push(user);
   };
 
+  const addCandidateFromBetterAuthUser = async (authUserId: string | null) => {
+    if (!authUserId) return;
+
+    const authUser = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: 'user',
+      where: [
+        {
+          field: '_id',
+          operator: 'eq',
+          value: authUserId,
+        },
+      ],
+    });
+
+    if (!authUser) return;
+
+    const localUserId =
+      typeof authUser.userId === 'string'
+        ? ctx.db.normalizeId('users', authUser.userId)
+        : null;
+    if (localUserId) {
+      addCandidate(await ctx.db.get('users', localUserId));
+      return;
+    }
+
+    if (typeof authUser.email === 'string' && authUser.email.length > 0) {
+      addCandidate(
+        await ctx.db
+          .query('users')
+          .withIndex('email', q => q.eq('email', authUser.email))
+          .first(),
+      );
+    }
+  };
+
   if (typeof identity.githubUserId === 'number') {
     addCandidate(
       await ctx.db
@@ -129,30 +164,7 @@ async function resolveOrgMemberByGitHubIdentity(
         },
       );
 
-      if (account?.userId) {
-        const authUser = await ctx.runQuery(
-          components.betterAuth.adapter.findOne,
-          {
-            model: 'user',
-            select: ['userId'],
-            where: [
-              {
-                field: 'id',
-                operator: 'eq',
-                value: String(account.userId),
-              },
-            ],
-          },
-        );
-
-        const localUserId =
-          typeof authUser?.userId === 'string'
-            ? ctx.db.normalizeId('users', authUser.userId)
-            : null;
-        if (localUserId) {
-          addCandidate(await ctx.db.get('users', localUserId));
-        }
-      }
+      await addCandidateFromBetterAuthUser(account?.userId ?? null);
     }
   }
 
