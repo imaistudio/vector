@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
+import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
@@ -645,14 +646,8 @@ const program = new Command();
 
 function readPackageVersionSync(): string {
   try {
-    const { readFileSync } = require('node:fs') as typeof import('node:fs');
-    const { dirname: d, join: j } =
-      require('node:path') as typeof import('node:path');
-    const dir =
-      typeof __dirname !== 'undefined'
-        ? __dirname
-        : d(fileURLToPath(import.meta.url));
-    const raw = readFileSync(j(dir, '..', 'package.json'), 'utf8');
+    const dir = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
+    const raw = readFileSync(join(dir, '..', 'package.json'), 'utf8');
     return (JSON.parse(raw) as { version?: string }).version ?? 'unknown';
   } catch {
     return 'unknown';
