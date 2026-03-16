@@ -80,6 +80,77 @@ function buildImportedPullRequestDescription(args: {
     .join('\n\n');
 }
 
+const PULL_REQUEST_SUMMARY_START = '<!-- vector-github-pr-summary:start -->';
+const PULL_REQUEST_SUMMARY_END = '<!-- vector-github-pr-summary:end -->';
+
+function stripManagedPullRequestSummary(description?: string | null) {
+  if (!description) {
+    return '';
+  }
+
+  return description
+    .replace(
+      new RegExp(
+        `${PULL_REQUEST_SUMMARY_START}[\\s\\S]*?${PULL_REQUEST_SUMMARY_END}`,
+        'g',
+      ),
+      '',
+    )
+    .trim();
+}
+
+function stripLegacyImportedPullRequestDescription(args: {
+  description?: string | null;
+  legacyImportedDescriptions?: string[];
+}) {
+  const description = stripManagedPullRequestSummary(args.description);
+  if (!description.trim().startsWith('Imported from GitHub PR ')) {
+    return description.trim();
+  }
+
+  const trimmedDescription = description.trim();
+  const matchingLegacyDescription = (args.legacyImportedDescriptions ?? [])
+    .map(value => value.trim())
+    .sort((a, b) => b.length - a.length)
+    .find(value => trimmedDescription.startsWith(value));
+
+  if (matchingLegacyDescription) {
+    return trimmedDescription.slice(matchingLegacyDescription.length).trim();
+  }
+
+  return trimmedDescription
+    .replace(
+      /^Imported from GitHub PR [^\n]+\n+(?:https?:\/\/[^\n]+)(?:\n+)?/i,
+      '',
+    )
+    .trim();
+}
+
+function mergeIssueDescriptionWithPullRequestSummary(args: {
+  currentDescription?: string | null;
+  summaryMarkdown?: string | null;
+  legacyImportedDescriptions?: string[];
+}) {
+  const userDescription = stripLegacyImportedPullRequestDescription({
+    description: args.currentDescription,
+    legacyImportedDescriptions: args.legacyImportedDescriptions,
+  });
+
+  if (!args.summaryMarkdown?.trim()) {
+    return userDescription.trim();
+  }
+
+  return [
+    userDescription || null,
+    PULL_REQUEST_SUMMARY_START,
+    args.summaryMarkdown.trim(),
+    PULL_REQUEST_SUMMARY_END,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+    .trim();
+}
+
 async function queueIssueDescriptionRefreshForAssistantThreads(
   ctx: MutationCtx,
   args: {
@@ -796,6 +867,19 @@ async function syncArtifactLinksForIssues(args: {
   for (const issueId of affectedIssueIds) {
     await applyWorkflowAutomationForIssue(ctx, issueId);
   }
+
+  if (artifactType === 'pull_request') {
+    for (const issueId of affectedIssueIds) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.github.actions.refreshIssuePullRequestSummary,
+        {
+          organizationId,
+          issueId,
+        },
+      );
+    }
+  }
 }
 
 export const upsertInstallationConnection = internalMutation({
@@ -1210,19 +1294,6 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
       throw new ConvexError('PULL_REQUEST_NOT_FOUND');
     }
 
-    const previousImportedDescription = buildImportedPullRequestDescription({
-      repoFullName: args.repoFullName,
-      number: pullRequest.number,
-      url: pullRequest.url,
-      body: args.previousBody ?? undefined,
-    });
-    const nextImportedDescription = buildImportedPullRequestDescription({
-      repoFullName: args.repoFullName,
-      number: pullRequest.number,
-      url: pullRequest.url,
-      body: pullRequest.body ?? undefined,
-    });
-
     const links = await ctx.db
       .query('githubArtifactLinks')
       .withIndex('by_pr', q => q.eq('pullRequestId', args.pullRequestId))
@@ -1236,12 +1307,6 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
       const patch: Partial<Doc<'issues'>> = {};
       if (args.previousTitle && issue.title === args.previousTitle) {
         patch.title = pullRequest.title;
-      }
-      const canDirectlyReplaceDescription =
-        (issue.description ?? '') === previousImportedDescription ||
-        issue.description === undefined;
-      if (canDirectlyReplaceDescription) {
-        patch.description = nextImportedDescription;
       }
 
       if (Object.keys(patch).length > 0) {
@@ -1258,20 +1323,71 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
         });
       }
 
-      if (
-        !canDirectlyReplaceDescription &&
-        previousImportedDescription !== nextImportedDescription
-      ) {
-        await queueIssueDescriptionRefreshForAssistantThreads(ctx, {
-          organization,
-          issue,
-          pullRequest,
+      await ctx.scheduler.runAfter(
+        0,
+        internal.github.actions.refreshIssuePullRequestSummary,
+        {
+          organizationId: args.organizationId,
+          issueId: issue._id,
+        },
+      );
+
+      await queueIssueDescriptionRefreshForAssistantThreads(ctx, {
+        organization,
+        issue: Object.keys(patch).length
+          ? ({ ...issue, ...patch } as Doc<'issues'>)
+          : issue,
+        pullRequest,
+        repoFullName: args.repoFullName,
+        previousImportedDescription: buildImportedPullRequestDescription({
           repoFullName: args.repoFullName,
-          previousImportedDescription,
-          nextImportedDescription,
-        });
-      }
+          number: pullRequest.number,
+          url: pullRequest.url,
+          body: args.previousBody ?? undefined,
+        }),
+        nextImportedDescription: buildImportedPullRequestDescription({
+          repoFullName: args.repoFullName,
+          number: pullRequest.number,
+          url: pullRequest.url,
+          body: pullRequest.body ?? undefined,
+        }),
+      });
     }
+  },
+});
+
+export const applyPullRequestSummaryToIssue = internalMutation({
+  args: {
+    issueId: v.id('issues'),
+    legacyImportedDescriptions: v.optional(v.array(v.string())),
+    summaryMarkdown: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const issue = await ctx.db.get('issues', args.issueId);
+    if (!issue) {
+      return { updated: false } as const;
+    }
+
+    const description = mergeIssueDescriptionWithPullRequestSummary({
+      currentDescription: issue.description,
+      legacyImportedDescriptions: args.legacyImportedDescriptions,
+      summaryMarkdown: args.summaryMarkdown,
+    });
+
+    if (description === (issue.description ?? '')) {
+      return { updated: false } as const;
+    }
+
+    await ctx.db.patch('issues', issue._id, {
+      description: description || undefined,
+      searchText: buildIssueSearchText({
+        key: issue.key,
+        title: issue.title,
+        description,
+      }),
+    });
+
+    return { updated: true } as const;
   },
 });
 

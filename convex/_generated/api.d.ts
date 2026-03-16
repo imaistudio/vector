@@ -57,6 +57,7 @@ import type * as notifications_lib from "../notifications/lib.js";
 import type * as notifications_mutations from "../notifications/mutations.js";
 import type * as notifications_queries from "../notifications/queries.js";
 import type * as notifications_shared from "../notifications/shared.js";
+import type * as og_queries from "../og/queries.js";
 import type * as organizations_mutations from "../organizations/mutations.js";
 import type * as organizations_queries from "../organizations/queries.js";
 import type * as permissions_queries from "../permissions/queries.js";
@@ -129,6 +130,7 @@ declare const fullApi: ApiFromModules<{
   "notifications/mutations": typeof notifications_mutations;
   "notifications/queries": typeof notifications_queries;
   "notifications/shared": typeof notifications_shared;
+  "og/queries": typeof og_queries;
   "organizations/mutations": typeof organizations_mutations;
   "organizations/queries": typeof organizations_queries;
   "permissions/queries": typeof permissions_queries;

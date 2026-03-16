@@ -203,6 +203,7 @@ async function resolveAutoLinkIssueKeys(
       organizationId: args.organizationId,
       searchQuery,
       limit: 10,
+      repoFullName: args.repoFullName,
     },
   );
 
@@ -219,6 +220,8 @@ async function resolveAutoLinkIssueKeys(
       }),
       prompt: [
         'Choose at most one Vector issue that this GitHub artifact should link to.',
+        'A single Vector issue can correctly have multiple linked pull requests.',
+        'If a candidate already has related pull requests linked, treat that as supporting evidence instead of a reason to reject it.',
         'Only choose an issue if the match is clearly the same work item.',
         'If the match is uncertain, return null with low confidence.',
         '',
@@ -229,18 +232,34 @@ async function resolveAutoLinkIssueKeys(
         args.body ? `Body: ${args.body.slice(0, 1200)}` : '',
         '',
         'Candidate Vector issues:',
-        ...candidates.map(
+        ...candidates.flatMap(
           (issue: {
             key: string;
             title: string;
             description: string;
             teamName?: string;
             projectName?: string;
+            linkedPullRequests: Array<{
+              repoFullName: string;
+              number: number;
+              title: string;
+              state: string;
+            }>;
           }) =>
-            `- ${issue.key}: ${issue.title}${issue.projectName ? ` [project: ${issue.projectName}]` : ''}${issue.teamName ? ` [team: ${issue.teamName}]` : ''}${issue.description ? ` — ${issue.description.slice(0, 220)}` : ''}`,
+            [
+              `- ${issue.key}: ${issue.title}${issue.projectName ? ` [project: ${issue.projectName}]` : ''}${issue.teamName ? ` [team: ${issue.teamName}]` : ''}${issue.description ? ` — ${issue.description.slice(0, 220)}` : ''}`,
+              issue.linkedPullRequests.length > 0
+                ? `  linked PRs: ${issue.linkedPullRequests
+                    .map(
+                      pullRequest =>
+                        `${pullRequest.repoFullName}#${pullRequest.number} (${pullRequest.state}) ${pullRequest.title}`,
+                    )
+                    .join(' | ')}`
+                : null,
+            ].filter((line): line is string => Boolean(line)),
         ),
         '',
-        'Return only one issueKey from the candidate list when the match is clearly correct.',
+        'Return only one issueKey from the candidate list when the match is clearly correct, including when this PR looks like another part of work already tracked on the same issue.',
       ]
         .filter(Boolean)
         .join('\n'),
@@ -262,6 +281,174 @@ async function resolveAutoLinkIssueKeys(
 
   return [];
 }
+
+function buildFallbackPullRequestSummaryMarkdown(args: {
+  issueTitle: string;
+  pullRequests: Array<{
+    number: number;
+    title: string;
+    body: string;
+    url: string;
+    state: string;
+    repoFullName: string;
+  }>;
+}) {
+  const overview =
+    args.pullRequests.length === 1
+      ? 'This issue is currently tracked by 1 linked GitHub pull request.'
+      : `This issue is currently tracked by ${args.pullRequests.length} linked GitHub pull requests.`;
+
+  const changeLines = args.pullRequests.flatMap(pullRequest => {
+    const bodySnippet = pullRequest.body
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 220);
+
+    return [
+      `- \`${pullRequest.repoFullName}#${pullRequest.number}\` ${pullRequest.title} (${pullRequest.state})`,
+      `  URL: ${pullRequest.url}`,
+      `  Changes: ${bodySnippet || 'No additional description provided in GitHub.'}`,
+      args.pullRequests.length > 1
+        ? '  Conflicts / overlap: Review this PR against the other linked pull requests before merging because this issue is split across multiple PRs.'
+        : null,
+    ].filter(Boolean);
+  });
+
+  return [
+    '## GitHub PR Summary',
+    overview,
+    '### Linked pull requests',
+    ...changeLines,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+export const refreshIssuePullRequestSummary = internalAction({
+  args: {
+    organizationId: v.id('organizations'),
+    issueId: v.id('issues'),
+  },
+  handler: async (ctx, args) => {
+    const context = await ctx.runQuery(
+      internal.github.queries.getPullRequestSummaryContextForIssue,
+      args,
+    );
+
+    if (!context) {
+      return { updated: false } as const;
+    }
+
+    if (context.pullRequests.length === 0) {
+      await ctx.runMutation(
+        internal.github.mutations.applyPullRequestSummaryToIssue,
+        {
+          issueId: args.issueId,
+        },
+      );
+      return { updated: true } as const;
+    }
+
+    const fallbackSummary = buildFallbackPullRequestSummaryMarkdown({
+      issueTitle: context.issue.title,
+      pullRequests: context.pullRequests,
+    });
+
+    let summaryMarkdown = fallbackSummary;
+
+    if (process.env.OPENROUTER_API_KEY?.trim()) {
+      try {
+        const result = await generateObject({
+          model: openrouterLanguageModelWithAnnotations(defaultAssistantModel),
+          schema: z.object({
+            overview: z.string().nullable(),
+            pullRequests: z.array(
+              z.object({
+                label: z.string(),
+                changes: z.string(),
+                conflicts: z.string().nullable(),
+              }),
+            ),
+            overallConflicts: z.string().nullable(),
+          }),
+          prompt: [
+            'Summarize the linked GitHub pull requests for a Vector issue.',
+            'Be concise and concrete.',
+            'Call out what each pull request changes.',
+            'If there is likely overlap, sequencing risk, or merge conflict potential between pull requests, mention it. If not, say none.',
+            'Do not invent file names or implementation details that are not supported by the pull request titles, branches, or descriptions.',
+            '',
+            `Issue: ${context.issue.key} ${context.issue.title}`,
+            context.issue.description
+              ? `Current issue description:\n${context.issue.description.slice(0, 1600)}`
+              : 'Current issue description: (empty)',
+            '',
+            'Linked pull requests:',
+            ...context.pullRequests.map(pullRequest =>
+              [
+                `- ${pullRequest.repoFullName}#${pullRequest.number} ${pullRequest.title}`,
+                `  State: ${pullRequest.state}`,
+                pullRequest.headRefName
+                  ? `  Branch: ${pullRequest.headRefName}`
+                  : null,
+                pullRequest.baseRefName
+                  ? `  Base: ${pullRequest.baseRefName}`
+                  : null,
+                `  URL: ${pullRequest.url}`,
+                pullRequest.body
+                  ? `  Description: ${pullRequest.body.slice(0, 1200)}`
+                  : '  Description: (empty)',
+              ]
+                .filter(Boolean)
+                .join('\n'),
+            ),
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        });
+
+        summaryMarkdown = [
+          '## GitHub PR Summary',
+          result.object.overview ? result.object.overview : null,
+          '### Linked pull requests',
+          ...result.object.pullRequests.flatMap(pullRequest => [
+            `- ${pullRequest.label}`,
+            `  Changes: ${pullRequest.changes}`,
+            pullRequest.conflicts
+              ? `  Conflicts / overlap: ${pullRequest.conflicts}`
+              : '  Conflicts / overlap: None called out.',
+          ]),
+          result.object.overallConflicts
+            ? `### Overall conflicts\n${result.object.overallConflicts}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join('\n');
+      } catch (error) {
+        console.error('[github.prSummary] model summary failed', error);
+      }
+    }
+
+    await ctx.runMutation(
+      internal.github.mutations.applyPullRequestSummaryToIssue,
+      {
+        issueId: args.issueId,
+        legacyImportedDescriptions: context.pullRequests.map(pullRequest =>
+          [
+            `Imported from GitHub PR ${pullRequest.repoFullName}#${pullRequest.number}`,
+            pullRequest.url,
+            pullRequest.body?.trim() || null,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
+        ),
+        summaryMarkdown,
+      },
+    );
+
+    return { updated: true } as const;
+  },
+});
 
 function parseGitHubWebhookPayload(body: string) {
   try {

@@ -525,12 +525,13 @@ export const searchAutoLinkIssueCandidates = internalQuery({
     organizationId: v.id('organizations'),
     searchQuery: v.string(),
     limit: v.optional(v.number()),
+    repoFullName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const trimmed = args.searchQuery.trim();
     const limit = Math.min(args.limit ?? 12, 20);
 
-    let issues = trimmed
+    const searchMatches = trimmed
       ? await ctx.db
           .query('issues')
           .withSearchIndex('search_text', q =>
@@ -547,13 +548,35 @@ export const searchAutoLinkIssueCandidates = internalQuery({
           .order('desc')
           .take(limit * 2);
 
-    issues = issues
-      .filter(issue => !issue.closedAt)
-      .sort((a, b) => b.sequenceNumber - a.sequenceNumber)
-      .slice(0, limit);
+    const recentOpenIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', args.organizationId),
+      )
+      .order('desc')
+      .take(limit * 4);
+
+    const searchRankByIssueId = new Map<string, number>();
+    searchMatches.forEach((issue, index) => {
+      searchRankByIssueId.set(String(issue._id), index);
+    });
+
+    const recentRankByIssueId = new Map<string, number>();
+    recentOpenIssues.forEach((issue, index) => {
+      recentRankByIssueId.set(String(issue._id), index);
+    });
+
+    const issueMap = new Map<string, (typeof searchMatches)[number]>();
+    for (const issue of [...searchMatches, ...recentOpenIssues]) {
+      if (issue.closedAt) continue;
+      issueMap.set(String(issue._id), issue);
+    }
+
+    const issues = Array.from(issueMap.values());
 
     const teams = new Map<string, string>();
     const projects = new Map<string, string>();
+    const repositories = new Map<string, string>();
 
     const results = [];
     for (const issue of issues) {
@@ -577,16 +600,158 @@ export const searchAutoLinkIssueCandidates = internalQuery({
         projectName = projects.get(key) || undefined;
       }
 
+      const prLinks = await ctx.db
+        .query('githubArtifactLinks')
+        .withIndex('by_issue_active', q =>
+          q.eq('issueId', issue._id).eq('active', true),
+        )
+        .collect();
+
+      const linkedPullRequests = await Promise.all(
+        prLinks
+          .map(link => link.pullRequestId)
+          .filter((id): id is Id<'githubPullRequests'> => Boolean(id))
+          .map(async pullRequestId => {
+            const pullRequest = await ctx.db.get(
+              'githubPullRequests',
+              pullRequestId,
+            );
+            if (!pullRequest) return null;
+
+            const repositoryKey = String(pullRequest.repositoryId);
+            if (!repositories.has(repositoryKey)) {
+              const repository = await ctx.db.get(
+                'githubRepositories',
+                pullRequest.repositoryId,
+              );
+              repositories.set(
+                repositoryKey,
+                repository?.fullName ?? 'unknown/unknown',
+              );
+            }
+
+            return {
+              number: pullRequest.number,
+              title: pullRequest.title,
+              state: pullRequest.state,
+              url: pullRequest.url,
+              repoFullName:
+                repositories.get(repositoryKey) ?? 'unknown/unknown',
+            };
+          }),
+      ).then(items =>
+        items
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+          .sort((a, b) => b.number - a.number)
+          .slice(0, 3),
+      );
+
       results.push({
         key: issue.key,
         title: issue.title,
         description: issue.description ?? '',
         teamName,
         projectName,
+        linkedPullRequests,
+        recentRank:
+          recentRankByIssueId.get(String(issue._id)) ??
+          Number.POSITIVE_INFINITY,
+        searchRank:
+          searchRankByIssueId.get(String(issue._id)) ??
+          Number.POSITIVE_INFINITY,
       });
     }
 
-    return results;
+    return results
+      .sort((a, b) => {
+        if (a.searchRank !== b.searchRank) {
+          return a.searchRank - b.searchRank;
+        }
+
+        const aMatchesRepo = a.linkedPullRequests.some(
+          pullRequest => pullRequest.repoFullName === args.repoFullName,
+        );
+        const bMatchesRepo = b.linkedPullRequests.some(
+          pullRequest => pullRequest.repoFullName === args.repoFullName,
+        );
+        if (aMatchesRepo !== bMatchesRepo) {
+          return aMatchesRepo ? -1 : 1;
+        }
+
+        if (a.linkedPullRequests.length !== b.linkedPullRequests.length) {
+          return b.linkedPullRequests.length - a.linkedPullRequests.length;
+        }
+
+        if (a.recentRank !== b.recentRank) {
+          return a.recentRank - b.recentRank;
+        }
+
+        return b.key.localeCompare(a.key);
+      })
+      .map(({ searchRank, recentRank, ...issue }) => issue)
+      .slice(0, limit);
+  },
+});
+
+export const getPullRequestSummaryContextForIssue = internalQuery({
+  args: {
+    organizationId: v.id('organizations'),
+    issueId: v.id('issues'),
+  },
+  handler: async (ctx, args) => {
+    const issue = await ctx.db.get('issues', args.issueId);
+    if (!issue || issue.organizationId !== args.organizationId) {
+      return null;
+    }
+
+    const links = await ctx.db
+      .query('githubArtifactLinks')
+      .withIndex('by_issue_active', q =>
+        q.eq('issueId', args.issueId).eq('active', true),
+      )
+      .collect();
+
+    const pullRequests = await Promise.all(
+      links
+        .map(link => link.pullRequestId)
+        .filter((id): id is Id<'githubPullRequests'> => Boolean(id))
+        .map(async pullRequestId => {
+          const pullRequest = await ctx.db.get(
+            'githubPullRequests',
+            pullRequestId,
+          );
+          if (!pullRequest) return null;
+          const repository = await ctx.db.get(
+            'githubRepositories',
+            pullRequest.repositoryId,
+          );
+          return {
+            number: pullRequest.number,
+            title: pullRequest.title,
+            body: pullRequest.body ?? '',
+            url: pullRequest.url,
+            state: pullRequest.state,
+            headRefName: pullRequest.headRefName ?? '',
+            baseRefName: pullRequest.baseRefName ?? '',
+            repoFullName: repository?.fullName ?? 'unknown/unknown',
+            lastActivityAt: pullRequest.lastActivityAt,
+          };
+        }),
+    ).then(items =>
+      items
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+        .sort((a, b) => b.lastActivityAt - a.lastActivityAt),
+    );
+
+    return {
+      issue: {
+        _id: issue._id,
+        key: issue.key,
+        title: issue.title,
+        description: issue.description ?? '',
+      },
+      pullRequests,
+    };
   },
 });
 
