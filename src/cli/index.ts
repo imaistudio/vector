@@ -328,14 +328,18 @@ async function getRuntime(command: Command) {
   const appUrlSource =
     options.appUrl ?? session?.appUrl ?? process.env.NEXT_PUBLIC_APP_URL;
   const appUrl = await resolveAppUrl(requiredString(appUrlSource, 'app URL'));
-  let convexUrl =
-    options.convexUrl ??
-    session?.convexUrl ??
-    process.env.NEXT_PUBLIC_CONVEX_URL ??
-    process.env.CONVEX_URL;
+  let convexUrl = options.convexUrl ?? session?.convexUrl;
 
   if (!convexUrl) {
-    convexUrl = await fetchConvexUrl(appUrl);
+    // When an explicit --app-url is provided, always fetch from the app
+    // to avoid using local env vars that may point at a different deployment.
+    const fetchedUrl = await fetchConvexUrl(appUrl);
+    convexUrl =
+      fetchedUrl !== 'http://127.0.0.1:3210'
+        ? fetchedUrl
+        : (process.env.NEXT_PUBLIC_CONVEX_URL ??
+          process.env.CONVEX_URL ??
+          fetchedUrl);
   }
 
   return {
