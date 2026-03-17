@@ -1,10 +1,11 @@
-<p align="center">
+<h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="public/icons/vector-wordmark-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="public/icons/vector-wordmark.svg">
-    <img alt="Vector" src="public/icons/vector-wordmark.svg" height="56">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-black.svg">
+    <img alt="Vector" src="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-black.svg" width="28">
   </picture>
-</p>
+  Vector
+</h1>
 
 <p align="center">
   Open source project management platform built with Next.js, Convex, and Better Auth.

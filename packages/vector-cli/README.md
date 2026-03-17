@@ -1,6 +1,13 @@
-# Vector CLI
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-white.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-black.svg">
+    <img alt="Vector" src="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-mark-black.svg" width="28">
+  </picture>
+  Vector CLI
+</h1>
 
-CLI for interacting with a Vector workspace from the terminal.
+<p align="center">CLI for interacting with a Vector workspace from the terminal.</p>
 
 This package wraps the same auth and Convex-backed workflows used by the app, so you can manage orgs, roles, teams, projects, issues, documents, notifications, and admin settings without opening the UI.
 
