@@ -491,3 +491,78 @@ export const getPublicDocument = query({
     };
   },
 });
+
+export const getPublicDocumentFull = query({
+  args: {
+    orgSlug: v.string(),
+    documentId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+    if (!org) return null;
+
+    let doc;
+    try {
+      doc = await ctx.db.get('documents', args.documentId as Id<'documents'>);
+    } catch {
+      return null;
+    }
+    if (!doc || doc.organizationId !== org._id || doc.visibility !== 'public') {
+      return null;
+    }
+
+    const [author, lastEditor, team, project] = await Promise.all([
+      ctx.db.get('users', doc.createdBy),
+      doc.lastEditedBy ? ctx.db.get('users', doc.lastEditedBy) : null,
+      doc.teamId ? ctx.db.get('teams', doc.teamId) : null,
+      doc.projectId ? ctx.db.get('projects', doc.projectId) : null,
+    ]);
+
+    return {
+      _id: doc._id,
+      title: doc.title,
+      content: doc.content ?? '',
+      orgName: org.name,
+      orgSlug: org.slug,
+      icon: doc.icon ?? null,
+      color: doc.color ?? null,
+      createdAt: doc._creationTime,
+      lastEditedAt: doc.lastEditedAt ?? null,
+      author: author
+        ? {
+            name: author.name ?? author.email ?? 'Unknown',
+            email: author.email ?? null,
+            image: author.image ?? null,
+            userId: author._id,
+          }
+        : null,
+      lastEditor: lastEditor
+        ? {
+            name: lastEditor.name ?? lastEditor.email ?? 'Unknown',
+            email: lastEditor.email ?? null,
+            image: lastEditor.image ?? null,
+            userId: lastEditor._id,
+          }
+        : null,
+      team: team
+        ? {
+            name: team.name,
+            key: team.key,
+            icon: team.icon ?? null,
+            color: team.color ?? null,
+          }
+        : null,
+      project: project
+        ? {
+            name: project.name,
+            key: project.key,
+            icon: project.icon ?? null,
+            color: project.color ?? null,
+          }
+        : null,
+    };
+  },
+});

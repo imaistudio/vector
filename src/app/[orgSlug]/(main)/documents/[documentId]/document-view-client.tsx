@@ -248,6 +248,10 @@ export default function DocumentViewClient({
   initialDocument,
   initialTeams,
 }: DocumentDetailPageProps) {
+  const publicDocumentUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/${params.orgSlug}/documents/${params.documentId}/public`
+      : '';
   const [contentValue, setContentValue] = useState('');
   const [initialized, setInitialized] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -539,6 +543,7 @@ export default function DocumentViewClient({
               onValueChange={canEdit ? handleVisibilityChange : () => {}}
               displayMode='iconWhenUnselected'
               className='border-none bg-transparent shadow-none'
+              publicLinkUrl={publicDocumentUrl}
             />
             {canDelete ? (
               <DropdownMenu>
