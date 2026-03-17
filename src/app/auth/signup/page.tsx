@@ -27,6 +27,7 @@ import {
   getContrastingTextColor,
   resolveBrandColor,
 } from '@/lib/branding';
+import { AuthBrandHeader } from '../_components/auth-brand-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,26 +97,23 @@ function SignupForm() {
   };
 
   return (
-    <div className='flex min-h-dvh items-center justify-center px-4'>
+    <div className='flex min-h-dvh flex-col items-center justify-center px-6 py-12'>
       <div className='w-full max-w-sm'>
-        <div className='mb-6 text-center'>
-          <img
-            src={branding.logoUrl || '/icons/vector-logo.svg'}
-            alt={branding.name}
-            className='mx-auto mb-4 size-12 rounded-xl object-contain'
-          />
-          <h2 className='text-2xl font-semibold tracking-tight'>
+        <AuthBrandHeader />
+
+        <div className='mb-8 text-center'>
+          <h1 className='font-title text-2xl font-semibold tracking-tight'>
             Create your account
-          </h2>
+          </h1>
           <p className='text-muted-foreground mt-1 text-sm'>
-            Get started with {branding.name}
+            Get started with Vector
           </p>
         </div>
 
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(handleSubmit)}
-            className='space-y-3'
+            className='space-y-4'
             noValidate
           >
             <FormField
@@ -123,12 +121,12 @@ function SignupForm() {
               name='email'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className='sr-only'>Email</FormLabel>
+                  <FormLabel className='text-xs font-medium'>Email</FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       type='email'
-                      placeholder='Email address'
+                      placeholder='you@example.com'
                       autoComplete='email'
                       disabled={isLoading}
                       autoFocus
@@ -144,12 +142,14 @@ function SignupForm() {
               name='username'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className='sr-only'>Username</FormLabel>
+                  <FormLabel className='text-xs font-medium'>
+                    Username
+                  </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       type='text'
-                      placeholder='Username'
+                      placeholder='Choose a username'
                       autoComplete='username'
                       disabled={isLoading}
                     />
@@ -164,12 +164,14 @@ function SignupForm() {
               name='password'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className='sr-only'>Password</FormLabel>
+                  <FormLabel className='text-xs font-medium'>
+                    Password
+                  </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       type='password'
-                      placeholder='Password (min 6 characters)'
+                      placeholder='Min 6 characters'
                       autoComplete='new-password'
                       disabled={isLoading}
                     />
@@ -181,7 +183,7 @@ function SignupForm() {
 
             <Button
               type='submit'
-              className='w-full transition-opacity hover:opacity-90'
+              className='!mt-6 w-full transition-opacity hover:opacity-90'
               disabled={isLoading}
               style={{
                 backgroundColor: accentColor,
@@ -198,7 +200,7 @@ function SignupForm() {
               )}
             </Button>
 
-            <p className='text-muted-foreground mt-4 text-center text-sm'>
+            <p className='text-muted-foreground text-center text-sm'>
               Already have an account?{' '}
               <Link
                 href='/auth/login'
@@ -218,17 +220,29 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <div className='flex min-h-dvh items-center justify-center px-4'>
-          <div className='w-full max-w-sm space-y-6'>
-            <div className='flex flex-col items-center gap-2'>
-              <Skeleton className='size-12 rounded-xl' />
-              <Skeleton className='h-7 w-48' />
-              <Skeleton className='h-4 w-36' />
+        <div className='flex min-h-dvh flex-col items-center justify-center px-6'>
+          <div className='w-full max-w-sm space-y-8'>
+            <div className='flex flex-col items-center gap-4'>
+              <Skeleton className='size-14 rounded-2xl' />
+              <Skeleton className='h-5 w-16' />
             </div>
-            <div className='space-y-3'>
-              <Skeleton className='h-10 w-full rounded-md' />
-              <Skeleton className='h-10 w-full rounded-md' />
-              <Skeleton className='h-10 w-full rounded-md' />
+            <div className='space-y-2 text-center'>
+              <Skeleton className='mx-auto h-8 w-48' />
+              <Skeleton className='mx-auto h-4 w-36' />
+            </div>
+            <div className='space-y-4'>
+              <div className='space-y-2'>
+                <Skeleton className='h-4 w-12' />
+                <Skeleton className='h-10 w-full rounded-md' />
+              </div>
+              <div className='space-y-2'>
+                <Skeleton className='h-4 w-20' />
+                <Skeleton className='h-10 w-full rounded-md' />
+              </div>
+              <div className='space-y-2'>
+                <Skeleton className='h-4 w-16' />
+                <Skeleton className='h-10 w-full rounded-md' />
+              </div>
               <Skeleton className='h-10 w-full rounded-md' />
             </div>
             <Skeleton className='mx-auto h-4 w-48' />

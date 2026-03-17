@@ -1,6 +1,14 @@
-# Vector
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/icons/vector-wordmark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="public/icons/vector-wordmark.svg">
+    <img alt="Vector" src="public/icons/vector-wordmark.svg" height="56">
+  </picture>
+</p>
 
-Open source project management platform built with Next.js, Convex, and Better Auth.
+<p align="center">
+  Open source project management platform built with Next.js, Convex, and Better Auth.
+</p>
 
 Vector is designed for teams that want issues, projects, teams, permissions, documents, and organization-level workflows in one codebase.
 
