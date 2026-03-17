@@ -57,7 +57,8 @@ const filterTabs = [
 ];
 
 const ISSUES_LAYOUT_STORAGE_KEY = 'vector:issues-list-layout';
-const ISSUES_GROUP_BY_STORAGE_KEY = 'vector:issues-group-by';
+const ISSUES_TABLE_GROUP_BY_KEY = 'vector:issues-table-group-by';
+const ISSUES_KANBAN_GROUP_BY_KEY = 'vector:issues-kanban-group-by';
 const VALID_ISSUE_GROUP_BY: IssueGroupByField[] = [
   'none',
   'priority',
@@ -67,15 +68,18 @@ const VALID_ISSUE_GROUP_BY: IssueGroupByField[] = [
   'project',
 ];
 
-function getInitialGroupBy(): IssueGroupByField {
-  if (typeof window === 'undefined') return 'priority';
+function getInitialGroupBy(
+  storageKey: string,
+  defaultValue: IssueGroupByField,
+): IssueGroupByField {
+  if (typeof window === 'undefined') return defaultValue;
   const urlVal = new URLSearchParams(window.location.search).get('groupBy');
   if (urlVal && VALID_ISSUE_GROUP_BY.includes(urlVal as IssueGroupByField))
     return urlVal as IssueGroupByField;
-  const stored = localStorage.getItem(ISSUES_GROUP_BY_STORAGE_KEY);
+  const stored = localStorage.getItem(storageKey);
   if (stored && VALID_ISSUE_GROUP_BY.includes(stored as IssueGroupByField))
     return stored as IssueGroupByField;
-  return 'priority';
+  return defaultValue;
 }
 
 export default function IssuesPage() {
@@ -84,13 +88,25 @@ export default function IssuesPage() {
   const orgSlug = params.orgSlug as string;
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const [scopeTab, setScopeTab] = useState<ScopeTab>('mine');
-  const [groupBy, setGroupByState] =
-    useState<IssueGroupByField>(getInitialGroupBy);
-  const setGroupBy = useCallback((val: IssueGroupByField) => {
-    setGroupByState(val);
-    localStorage.setItem(ISSUES_GROUP_BY_STORAGE_KEY, val);
+  const [tableGroupBy, setTableGroupByState] = useState<IssueGroupByField>(() =>
+    getInitialGroupBy(ISSUES_TABLE_GROUP_BY_KEY, 'priority'),
+  );
+  const [kanbanGroupBy, setKanbanGroupByState] = useState<IssueGroupByField>(
+    () => getInitialGroupBy(ISSUES_KANBAN_GROUP_BY_KEY, 'status'),
+  );
+  const setGroupBy = useCallback((val: IssueGroupByField, mode: ViewMode) => {
+    if (mode === 'table') {
+      setTableGroupByState(val);
+      localStorage.setItem(ISSUES_TABLE_GROUP_BY_KEY, val);
+    } else {
+      setKanbanGroupByState(val);
+      localStorage.setItem(ISSUES_KANBAN_GROUP_BY_KEY, val);
+    }
     const sp = new URLSearchParams(window.location.search);
-    if (val === 'priority') {
+    if (
+      (mode === 'table' && val === 'priority') ||
+      (mode === 'kanban' && val === 'status')
+    ) {
       sp.delete('groupBy');
     } else {
       sp.set('groupBy', val);
@@ -448,8 +464,8 @@ export default function IssuesPage() {
                 { value: 'team', label: 'Team' },
                 { value: 'project', label: 'Project' },
               ]}
-              value={groupBy}
-              onChange={setGroupBy}
+              value={viewMode === 'table' ? tableGroupBy : kanbanGroupBy}
+              onChange={val => setGroupBy(val, viewMode)}
               className='h-6 text-xs'
             />
 
@@ -523,7 +539,7 @@ export default function IssuesPage() {
                 currentUserId={currentUserId}
                 canManageAssignees={canAssignIssues}
                 activeFilter={activeFilter}
-                groupBy={groupBy}
+                groupBy={tableGroupBy}
               />
             </div>
 
@@ -584,7 +600,7 @@ export default function IssuesPage() {
               onProjectChange={handleProjectChange}
               onDelete={handleDelete}
               deletePending={isDeleting}
-              groupBy={groupBy}
+              groupBy={kanbanGroupBy}
             />
           </motion.div>
         )}
