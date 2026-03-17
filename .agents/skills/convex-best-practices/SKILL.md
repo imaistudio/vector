@@ -71,7 +71,7 @@ export const get = query({
       name: v.string(),
       email: v.string(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     return await ctx.db.get('users', args.userId);
@@ -129,7 +129,7 @@ export const getTasksByUser = query({
       userId: v.id('users'),
       status: v.string(),
       createdAt: v.number(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     return await ctx.db
@@ -212,7 +212,7 @@ export const reorderItems = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const updates = args.itemIds.map((id, index) =>
-      ctx.db.patch('items', id, { order: index })
+      ctx.db.patch('items', id, { order: index }),
     );
     await Promise.all(updates);
     return null;
@@ -245,7 +245,7 @@ export const getUser = query({
     v.null(),
     v.object({
       /* ... */
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     // ...
@@ -318,7 +318,7 @@ export const update = mutation({
 
     // Remove undefined values
     const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, v]) => v !== undefined)
+      Object.entries(updates).filter(([_, v]) => v !== undefined),
     );
 
     if (Object.keys(cleanUpdates).length > 0) {

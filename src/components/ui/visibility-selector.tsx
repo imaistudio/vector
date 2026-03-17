@@ -16,8 +16,9 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { Building, Check, Globe, Lock } from 'lucide-react';
+import { Building, Check, Globe, Link2, Lock } from 'lucide-react';
 import { useAccess } from '@/components/ui/permission-aware';
+import { toast } from 'sonner';
 
 // Visibility options - matching convex schema exactly
 export type VisibilityOption = 'public' | 'organization' | 'private';
@@ -112,6 +113,9 @@ interface VisibilitySelectorProps {
   trigger?: React.ReactElement;
   className?: string;
   align?: 'start' | 'center' | 'end';
+  disabled?: boolean;
+  /** When set and value is 'public', shows a "Copy public link" action in the popover. */
+  publicLinkUrl?: string;
 }
 
 export function VisibilitySelector({
@@ -121,9 +125,12 @@ export function VisibilitySelector({
   trigger,
   className,
   align = 'start',
+  disabled = false,
+  publicLinkUrl,
 }: VisibilitySelectorProps) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const isDisabled = viewOnly || disabled;
   const displayValue = value;
 
   const hasSelection = Boolean(displayValue);
@@ -142,7 +149,7 @@ export function VisibilitySelector({
       variant='outline'
       size='sm'
       className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
-      disabled={viewOnly}
+      disabled={isDisabled}
     >
       {showIcon && CurrentIcon && (
         <ColoredIcon
@@ -172,12 +179,12 @@ export function VisibilitySelector({
                     key={option.value}
                     value={option.label}
                     onSelect={() => {
-                      if (!viewOnly) {
+                      if (!isDisabled) {
                         onValueChange(option.value);
                         setOpen(false);
                       }
                     }}
-                    disabled={viewOnly}
+                    disabled={isDisabled}
                     className='cursor-pointer'
                   >
                     <Check
@@ -199,7 +206,7 @@ export function VisibilitySelector({
                         {option.description}
                       </div>
                     </div>
-                    {viewOnly && (
+                    {isDisabled && (
                       <span className='text-muted-foreground ml-auto text-xs'>
                         (view only)
                       </span>
@@ -208,6 +215,23 @@ export function VisibilitySelector({
                 );
               })}
             </CommandGroup>
+            {publicLinkUrl && displayValue === 'public' && (
+              <CommandGroup>
+                <CommandItem
+                  onSelect={() => {
+                    void navigator.clipboard.writeText(publicLinkUrl);
+                    toast.success('Public link copied');
+                    setOpen(false);
+                  }}
+                  className='cursor-pointer'
+                >
+                  {/* Spacer matching the Check + ColoredIcon width from above */}
+                  <div className='mr-2 h-4 w-4 opacity-0' />
+                  <Link2 className='mr-2 h-4 w-4 text-emerald-500' />
+                  <span>Copy public link</span>
+                </CommandItem>
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

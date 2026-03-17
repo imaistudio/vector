@@ -17,6 +17,7 @@ import {
   Trash2,
   Circle,
   ArrowUp,
+  EyeOff,
 } from 'lucide-react';
 import React from 'react';
 
@@ -65,6 +66,7 @@ export interface IssuesTableProps {
   onTeamChange: (issueId: string, teamId: string) => void;
   onProjectChange: (issueId: string, projectId: string) => void;
   onDelete: (issueId: string) => void;
+  onExclude?: (issueId: string) => void;
   deletePending?: boolean;
   isUpdatingAssignees?: boolean;
   onAssignmentStateChange: (assignmentId: string, stateId: string) => void;
@@ -87,6 +89,7 @@ export function IssuesTable({
   onTeamChange,
   onProjectChange,
   onDelete,
+  onExclude,
   deletePending = false,
   isUpdatingAssignees = false,
   onAssignmentStateChange,
@@ -208,6 +211,10 @@ export function IssuesTable({
       a => a.assigneeId === currentUserId,
     );
     const displayStateId = viewerAssignment?.stateId ?? issue.workflowStateId;
+    const displayAssignmentId =
+      viewerAssignment?.assignmentId ??
+      assignments.find(assignment => assignment.assignmentId !== 'unassigned')
+        ?.assignmentId;
 
     return (
       <motion.div
@@ -273,21 +280,23 @@ export function IssuesTable({
           )}
         </div>
 
-        <PermissionAware
-          orgSlug={orgSlug}
-          permission={PERMISSIONS.ISSUE_STATE_UPDATE}
-          fallbackMessage="You don't have permission to change issue state"
-        >
-          <StateSelector
-            states={states}
-            selectedState={displayStateId || ''}
-            onStateSelect={stateId =>
-              onAssignmentStateChange(issue.id, stateId)
-            }
-            displayMode='labelOnly'
-            className='border-none bg-transparent p-0 shadow-none'
-          />
-        </PermissionAware>
+        {displayAssignmentId && (
+          <PermissionAware
+            orgSlug={orgSlug}
+            permission={PERMISSIONS.ISSUE_STATE_UPDATE}
+            fallbackMessage="You don't have permission to change issue state"
+          >
+            <StateSelector
+              states={states}
+              selectedState={displayStateId || ''}
+              onStateSelect={stateId =>
+                onAssignmentStateChange(displayAssignmentId, stateId)
+              }
+              displayMode='labelOnly'
+              className='border-none bg-transparent p-0 shadow-none'
+            />
+          </PermissionAware>
+        )}
 
         {/* Title */}
         <div className='min-w-0 flex-1'>
@@ -380,6 +389,12 @@ export function IssuesTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align='end'>
+              {onExclude && (
+                <DropdownMenuItem onClick={() => onExclude(issue.id!)}>
+                  <EyeOff className='size-4' />
+                  Exclude from view
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 variant='destructive'
                 disabled={deletePending}

@@ -45,7 +45,7 @@ crons.interval(
   'cleanup expired sessions',
   { hours: 1 },
   internal.tasks.cleanupExpiredSessions,
-  {}
+  {},
 );
 
 // Run every day at midnight UTC
@@ -53,7 +53,7 @@ crons.cron(
   'daily report',
   '0 0 * * *',
   internal.reports.generateDailyReport,
-  {}
+  {},
 );
 
 export default crons;
@@ -75,7 +75,7 @@ crons.interval(
   'sync external data',
   { minutes: 5 },
   internal.sync.fetchExternalData,
-  {}
+  {},
 );
 
 // Every 2 hours
@@ -83,7 +83,7 @@ crons.interval(
   'cleanup temp files',
   { hours: 2 },
   internal.files.cleanupTempFiles,
-  {}
+  {},
 );
 
 // Every 30 seconds (minimum interval)
@@ -91,7 +91,7 @@ crons.interval(
   'health check',
   { seconds: 30 },
   internal.monitoring.healthCheck,
-  {}
+  {},
 );
 
 export default crons;
@@ -113,7 +113,7 @@ crons.cron(
   'morning notifications',
   '0 9 * * *',
   internal.notifications.sendMorningDigest,
-  {}
+  {},
 );
 
 // Every Monday at 8 AM UTC
@@ -121,7 +121,7 @@ crons.cron(
   'weekly summary',
   '0 8 * * 1',
   internal.reports.generateWeeklySummary,
-  {}
+  {},
 );
 
 // First day of every month at midnight
@@ -129,7 +129,7 @@ crons.cron(
   'monthly billing',
   '0 0 1 * *',
   internal.billing.processMonthlyBilling,
-  {}
+  {},
 );
 
 // Every 15 minutes
@@ -233,14 +233,14 @@ crons.interval(
   'cleanup temp files',
   { hours: 1 },
   internal.cleanup.cleanupByType,
-  { fileType: 'temp', maxAge: 3600000 }
+  { fileType: 'temp', maxAge: 3600000 },
 );
 
 crons.interval(
   'cleanup cache files',
   { hours: 24 },
   internal.cleanup.cleanupByType,
-  { fileType: 'cache', maxAge: 86400000 }
+  { fileType: 'cache', maxAge: 86400000 },
 );
 
 export default crons;
@@ -263,7 +263,7 @@ export const cleanupByType = internalMutation({
     const oldFiles = await ctx.db
       .query('files')
       .withIndex('by_type_and_created', q =>
-        q.eq('type', args.fileType).lt('createdAt', cutoff)
+        q.eq('type', args.fileType).lt('createdAt', cutoff),
       )
       .collect();
 
@@ -449,7 +449,7 @@ crons.interval(
   'sync external data',
   { minutes: 15 },
   internal.sync.syncExternalData,
-  {}
+  {},
 );
 
 export default crons;
@@ -475,7 +475,7 @@ export default defineSchema({
     status: v.union(
       v.literal('success'),
       v.literal('partial'),
-      v.literal('failed')
+      v.literal('failed'),
     ),
     error: v.optional(v.string()),
   })
@@ -499,7 +499,7 @@ export default defineSchema({
       v.literal('pending'),
       v.literal('processing'),
       v.literal('completed'),
-      v.literal('failed')
+      v.literal('failed'),
     ),
     data: v.any(),
     createdAt: v.number(),
@@ -525,7 +525,7 @@ crons.interval(
   'cleanup expired sessions',
   { hours: 1 },
   internal.cleanup.expiredSessions,
-  {}
+  {},
 );
 
 crons.interval('cleanup old logs', { hours: 24 }, internal.cleanup.oldLogs, {
@@ -545,7 +545,7 @@ crons.interval(
   'service health check',
   { minutes: 5 },
   internal.monitoring.healthCheck,
-  {}
+  {},
 );
 
 export default crons;

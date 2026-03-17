@@ -119,13 +119,13 @@ export default defineSchema({
         productId: v.id('products'),
         quantity: v.number(),
         price: v.number(),
-      })
+      }),
     ),
     status: v.union(
       v.literal('pending'),
       v.literal('processing'),
       v.literal('shipped'),
-      v.literal('delivered')
+      v.literal('delivered'),
     ),
   }),
 
@@ -158,8 +158,8 @@ export default defineSchema({
         type: v.literal('page_view'),
         sessionId: v.string(),
         path: v.string(),
-      })
-    )
+      }),
+    ),
   ).index('by_type', ['type']),
 });
 ```
@@ -300,7 +300,7 @@ export default defineSchema({
         productId: v.id('products'),
         quantity: v.number(),
         priceAtPurchase: v.number(),
-      })
+      }),
     ),
     total: v.number(),
     status: v.union(
@@ -308,7 +308,7 @@ export default defineSchema({
       v.literal('paid'),
       v.literal('shipped'),
       v.literal('delivered'),
-      v.literal('cancelled')
+      v.literal('cancelled'),
     ),
     shippingAddress: v.object({
       street: v.string(),
@@ -363,7 +363,7 @@ export const get = query({
       inventory: v.number(),
       isActive: v.boolean(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args): Promise<Product | null> => {
     return await ctx.db.get(args.productId);

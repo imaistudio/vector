@@ -87,7 +87,7 @@ export const getMyProfile = query({
       name: v.string(),
       email: v.string(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async ctx => {
     const identity = await requireAuth(ctx);
@@ -95,7 +95,7 @@ export const getMyProfile = query({
     return await ctx.db
       .query('users')
       .withIndex('by_tokenIdentifier', q =>
-        q.eq('tokenIdentifier', identity.tokenIdentifier)
+        q.eq('tokenIdentifier', identity.tokenIdentifier),
       )
       .unique();
   },
@@ -111,7 +111,7 @@ export const listPublicPosts = query({
   returns: v.array(
     v.object({
       /* ... */
-    })
+    }),
   ),
   handler: async ctx => {
     // Anyone can call this - intentionally public
@@ -278,7 +278,7 @@ async function getAuthenticatedUser(ctx: QueryCtx | MutationCtx) {
   const user = await ctx.db
     .query('users')
     .withIndex('by_tokenIdentifier', q =>
-      q.eq('tokenIdentifier', identity.tokenIdentifier)
+      q.eq('tokenIdentifier', identity.tokenIdentifier),
     )
     .unique();
 
@@ -314,7 +314,7 @@ export const listMyTasks = query({
       _id: v.id('tasks'),
       title: v.string(),
       completed: v.boolean(),
-    })
+    }),
   ),
   handler: async ctx => {
     const user = await getAuthenticatedUser(ctx);
@@ -334,7 +334,7 @@ export const listAllUsers = query({
       _id: v.id('users'),
       name: v.string(),
       role: v.string(),
-    })
+    }),
   ),
   handler: async ctx => {
     await requireAdmin(ctx);

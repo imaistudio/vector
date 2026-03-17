@@ -173,7 +173,7 @@ function useCreateTask(userId: Id<'users'>) {
           ...currentTasks,
         ]);
       }
-    }
+    },
   );
 }
 ```
@@ -326,7 +326,7 @@ export const list = query({
       content: v.string(),
       authorId: v.id('users'),
       authorName: v.string(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     const messages = await ctx.db
@@ -343,7 +343,7 @@ export const list = query({
           ...msg,
           authorName: author?.name ?? 'Unknown',
         };
-      })
+      }),
     );
   },
 });

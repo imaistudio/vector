@@ -200,7 +200,7 @@ export const getOrganizationBySlug = query({
     const membership = await ctx.db
       .query('members')
       .withIndex('by_org_user', q =>
-        q.eq('organizationId', organization._id).eq('userId', userId)
+        q.eq('organizationId', organization._id).eq('userId', userId),
       )
       .first();
 
@@ -310,7 +310,7 @@ export const listProjects = query({
     let query = ctx.db
       .query('projects')
       .withIndex('by_organization', q =>
-        q.eq('organizationId', args.organizationId)
+        q.eq('organizationId', args.organizationId),
       )
       .order('desc');
 
@@ -343,7 +343,7 @@ export const searchIssues = query({
     let query = ctx.db
       .query('issues')
       .withIndex('by_organization', q =>
-        q.eq('organizationId', args.organizationId)
+        q.eq('organizationId', args.organizationId),
       );
 
     // Apply filters
@@ -367,7 +367,7 @@ export const searchIssues = query({
       return issues.filter(
         issue =>
           issue.title.toLowerCase().includes(searchLower) ||
-          issue.description?.toLowerCase().includes(searchLower)
+          issue.description?.toLowerCase().includes(searchLower),
       );
     }
 
@@ -382,7 +382,7 @@ export const searchIssues = query({
 // convex/_shared/permissions.ts
 export const checkOrganizationAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<'organizations'>
+  organizationId: Id<'organizations'>,
 ) => {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error('Unauthorized');
@@ -390,7 +390,7 @@ export const checkOrganizationAccess = async (
   const membership = await ctx.db
     .query('members')
     .withIndex('by_org_user', q =>
-      q.eq('organizationId', organizationId).eq('userId', userId)
+      q.eq('organizationId', organizationId).eq('userId', userId),
     )
     .first();
 

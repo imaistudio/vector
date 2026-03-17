@@ -457,6 +457,8 @@ export default defineSchema({
     ),
     createdBy: v.optional(v.id('users')), // Made optional for backwards compatibility with existing data
     parentIssueId: v.optional(v.id('issues')),
+    updatedAt: v.optional(v.number()),
+    lastActivityEventType: v.optional(v.string()),
   })
     .index('by_organization', ['organizationId'])
     .index('by_key', ['key'])
@@ -846,6 +848,7 @@ export default defineSchema({
     projectId: v.optional(v.id('projects')),
     issueId: v.optional(v.id('issues')),
     documentId: v.optional(v.id('documents')),
+    viewId: v.optional(v.id('views')),
     entityType: activityEntityTypeValidator,
     eventType: activityEventTypeValidator,
     actorId: v.id('users'),
@@ -858,7 +861,8 @@ export default defineSchema({
     .index('by_project', ['projectId'])
     .index('by_issue', ['issueId'])
     .index('by_actor', ['actorId'])
-    .index('by_document', ['documentId']),
+    .index('by_document', ['documentId'])
+    .index('by_view', ['viewId']),
 
   notificationEvents: defineTable({
     type: notificationEventTypeValidator,
@@ -949,6 +953,56 @@ export default defineSchema({
     .index('by_document', ['documentId'])
     .index('by_entity', ['mentionType', 'entityId'])
     .index('by_org_entity', ['organizationId', 'mentionType', 'entityId']),
+
+  // Saved issue views with filters, layout, and visibility
+  views: defineTable({
+    organizationId: v.id('organizations'),
+    name: v.string(),
+    description: v.optional(v.string()),
+    icon: v.optional(v.string()),
+    color: v.optional(v.string()),
+    filters: v.object({
+      teamId: v.optional(v.id('teams')),
+      projectId: v.optional(v.id('projects')),
+      priorityIds: v.optional(v.array(v.id('issuePriorities'))),
+      workflowStateIds: v.optional(v.array(v.id('issueStates'))),
+      workflowStateTypes: v.optional(v.array(v.string())),
+      assigneeIds: v.optional(v.array(v.id('users'))),
+      labelIds: v.optional(v.array(v.id('issueLabels'))),
+    }),
+    layout: v.optional(
+      v.object({
+        viewMode: v.optional(
+          v.union(
+            v.literal('table'),
+            v.literal('kanban'),
+            v.literal('timeline'),
+          ),
+        ),
+        groupBy: v.optional(v.string()),
+      }),
+    ),
+    visibility: v.union(
+      v.literal('private'),
+      v.literal('organization'),
+      v.literal('public'),
+    ),
+    createdBy: v.id('users'),
+    updatedAt: v.optional(v.number()),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_org_visibility', ['organizationId', 'visibility'])
+    .index('by_org_created_by', ['organizationId', 'createdBy']),
+
+  // Issues explicitly excluded from a view (overrides filter matches)
+  viewExclusions: defineTable({
+    viewId: v.id('views'),
+    issueId: v.id('issues'),
+    excludedBy: v.id('users'),
+  })
+    .index('by_view', ['viewId'])
+    .index('by_issue', ['issueId'])
+    .index('by_view_issue', ['viewId', 'issueId']),
 
   pushSubscriptions: defineTable({
     userId: v.id('users'),

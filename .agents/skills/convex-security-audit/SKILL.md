@@ -49,7 +49,7 @@ const roleHierarchy: Record<UserRole, number> = {
 };
 
 export async function getUser(
-  ctx: QueryCtx | MutationCtx
+  ctx: QueryCtx | MutationCtx,
 ): Promise<Doc<'users'> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
@@ -57,14 +57,14 @@ export async function getUser(
   return await ctx.db
     .query('users')
     .withIndex('by_tokenIdentifier', q =>
-      q.eq('tokenIdentifier', identity.tokenIdentifier)
+      q.eq('tokenIdentifier', identity.tokenIdentifier),
     )
     .unique();
 }
 
 export async function requireRole(
   ctx: QueryCtx | MutationCtx,
-  minRole: UserRole
+  minRole: UserRole,
 ): Promise<Doc<'users'>> {
   const user = await getUser(ctx);
 
@@ -104,7 +104,7 @@ const rolePermissions: Record<UserRole, Permission[]> = {
 
 export async function requirePermission(
   ctx: QueryCtx | MutationCtx,
-  permission: Permission
+  permission: Permission,
 ): Promise<Doc<'users'>> {
   const user = await getUser(ctx);
 
@@ -145,7 +145,7 @@ export const getMyData = query({
     v.object({
       _id: v.id('userData'),
       content: v.string(),
-    })
+    }),
   ),
   handler: async ctx => {
     const user = await getUser(ctx);
@@ -167,7 +167,7 @@ export const getSensitiveItem = query({
       _id: v.id('sensitiveItems'),
       secret: v.string(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -193,7 +193,7 @@ export const getSharedDocument = query({
       content: v.string(),
       accessLevel: v.string(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     const user = await getUser(ctx);
@@ -218,7 +218,7 @@ export const getSharedDocument = query({
     const access = await ctx.db
       .query('documentAccess')
       .withIndex('by_doc_and_user', q =>
-        q.eq('documentId', args.docId).eq('userId', user._id)
+        q.eq('documentId', args.docId).eq('userId', user._id),
       )
       .unique();
 
@@ -327,7 +327,7 @@ export const checkRateLimit = mutation({
     action: v.union(
       v.literal('message'),
       v.literal('upload'),
-      v.literal('api')
+      v.literal('api'),
     ),
   },
   returns: v.object({
@@ -343,7 +343,7 @@ export const checkRateLimit = mutation({
     const requests = await ctx.db
       .query('rateLimits')
       .withIndex('by_user_and_action', q =>
-        q.eq('userId', args.userId).eq('action', args.action)
+        q.eq('userId', args.userId).eq('action', args.action),
       )
       .filter(q => q.gt(q.field('timestamp'), windowStart))
       .collect();
@@ -420,7 +420,7 @@ export const deleteAllUserData = mutation({
     const confirmation = await ctx.db
       .query('confirmations')
       .withIndex('by_admin_and_code', q =>
-        q.eq('adminId', admin._id).eq('code', args.confirmationCode)
+        q.eq('adminId', admin._id).eq('code', args.confirmationCode),
       )
       .filter(q => q.gt(q.field('expiresAt'), Date.now()))
       .unique();
@@ -528,7 +528,7 @@ export const getAuditLogs = query({
 
     if (args.resourceType) {
       query = query.withIndex('by_resource_type', q =>
-        q.eq('resourceType', args.resourceType)
+        q.eq('resourceType', args.resourceType),
       );
     }
 

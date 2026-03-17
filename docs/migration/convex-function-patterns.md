@@ -229,7 +229,7 @@ export const getOrganizationWithAccess = query({
     const membership = await ctx.db
       .query('members')
       .withIndex('by_org_user', q =>
-        q.eq('organizationId', organization._id).eq('userId', userId)
+        q.eq('organizationId', organization._id).eq('userId', userId),
       )
       .first();
 
@@ -253,7 +253,7 @@ export const getOrganizationWithAccess = query({
 // ✅ GOOD - Clear, actionable error messages
 throw new Error('Organization not found');
 throw new Error(
-  "Access denied: You don't have permission to view this project"
+  "Access denied: You don't have permission to view this project",
 );
 throw new Error('Invalid input: Project name must be at least 3 characters');
 
@@ -322,7 +322,7 @@ export const listProjects = query({
     let query = ctx.db
       .query('projects')
       .withIndex('by_organization', q =>
-        q.eq('organizationId', args.organizationId)
+        q.eq('organizationId', args.organizationId),
       )
       .order('desc');
 
@@ -365,7 +365,7 @@ export const deleteProject = mutation({
     const membership = await ctx.db
       .query('members')
       .withIndex('by_org_user', q =>
-        q.eq('organizationId', project.organizationId).eq('userId', userId)
+        q.eq('organizationId', project.organizationId).eq('userId', userId),
       )
       .first();
 
@@ -454,7 +454,7 @@ export const bulkUpdateIssues = mutation({
   },
   handler: async (ctx, args) => {
     const updates = args.issueIds.map(id =>
-      ctx.db.patch(id, { statusId: args.statusId })
+      ctx.db.patch(id, { statusId: args.statusId }),
     );
 
     await Promise.all(updates);

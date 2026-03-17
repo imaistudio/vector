@@ -5,6 +5,7 @@ export const ACTIVITY_ENTITY_TYPES = [
   'project',
   'issue',
   'document',
+  'view',
 ] as const;
 export type ActivityEntityType = (typeof ACTIVITY_ENTITY_TYPES)[number];
 
@@ -60,6 +61,11 @@ export const ACTIVITY_EVENT_TYPES = [
   'document_project_changed',
   'document_visibility_changed',
   'document_deleted',
+  'view_created',
+  'view_name_changed',
+  'view_visibility_changed',
+  'view_filters_changed',
+  'view_deleted',
 ] as const;
 
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
@@ -106,6 +112,7 @@ const activityReferenceIdValidator = v.union(
   v.id('issueStates'),
   v.id('issuePriorities'),
   v.id('documents'),
+  v.id('views'),
 );
 
 export const activityDetailsValidator = v.object({

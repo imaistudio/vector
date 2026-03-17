@@ -30,7 +30,7 @@ const jwks = JSON.stringify({ keys: [jwk] });
 
 // Output the keys
 process.stdout.write(
-  `JWT_PRIVATE_KEY="${privateKey.trimEnd().replace(/\n/g, ' ')}"`
+  `JWT_PRIVATE_KEY="${privateKey.trimEnd().replace(/\n/g, ' ')}"`,
 );
 process.stdout.write('\n');
 process.stdout.write(`JWKS=${jwks}`);

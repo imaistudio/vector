@@ -95,7 +95,7 @@ export const getFileUrl = action({
 // Current S3 patterns
 export const getPresignedUploadUrl = async (
   key: string,
-  contentType: string
+  contentType: string,
 ) => {
   // S3 presigned URL generation
 };

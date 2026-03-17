@@ -137,6 +137,325 @@ export const getPublicTeam = query({
   },
 });
 
+// ─── Rich public pages (for /public routes) ─────────────────────────────
+
+export const getPublicIssueFull = query({
+  args: {
+    orgSlug: v.string(),
+    issueKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+    if (!org) return null;
+
+    const issue = await ctx.db
+      .query('issues')
+      .withIndex('by_org_key', q =>
+        q.eq('organizationId', org._id).eq('key', args.issueKey),
+      )
+      .first();
+    if (!issue || issue.visibility !== 'public') return null;
+
+    const [state, priority, project, team] = await Promise.all([
+      issue.workflowStateId
+        ? ctx.db.get('issueStates', issue.workflowStateId)
+        : null,
+      issue.priorityId ? ctx.db.get('issuePriorities', issue.priorityId) : null,
+      issue.projectId ? ctx.db.get('projects', issue.projectId) : null,
+      issue.teamId ? ctx.db.get('teams', issue.teamId) : null,
+    ]);
+
+    // Load assignees
+    const assignments = await ctx.db
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .collect();
+    const assigneeIds = assignments
+      .map(a => a.assigneeId)
+      .filter((id): id is Id<'users'> => !!id);
+    const assigneeUsers = await Promise.all(
+      assigneeIds.map(id => ctx.db.get('users', id)),
+    );
+
+    // Load labels
+    const labelAssignments = await ctx.db
+      .query('issueLabelAssignments')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .collect();
+    const labels = await Promise.all(
+      labelAssignments.map(la => ctx.db.get('issueLabels', la.labelId)),
+    );
+
+    // Load sub-issues (public ones only)
+    const childIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
+      .collect();
+    const publicChildren = childIssues.filter(c => c.visibility === 'public');
+    const childStates = await Promise.all(
+      publicChildren.map(c =>
+        c.workflowStateId ? ctx.db.get('issueStates', c.workflowStateId) : null,
+      ),
+    );
+
+    return {
+      key: issue.key,
+      title: issue.title,
+      description: issue.description ?? null,
+      orgName: org.name,
+      orgSlug: org.slug,
+      startDate: issue.startDate ?? null,
+      dueDate: issue.dueDate ?? null,
+      createdAt: issue._creationTime,
+      state: state
+        ? {
+            name: state.name,
+            color: state.color ?? null,
+            type: state.type,
+            icon: state.icon ?? null,
+          }
+        : null,
+      priority: priority
+        ? {
+            name: priority.name,
+            color: priority.color ?? null,
+            icon: priority.icon ?? null,
+          }
+        : null,
+      project: project ? { name: project.name, key: project.key } : null,
+      team: team
+        ? {
+            name: team.name,
+            key: team.key,
+            icon: team.icon ?? null,
+            color: team.color ?? null,
+          }
+        : null,
+      assignees: assigneeUsers
+        .filter((u): u is NonNullable<typeof u> => !!u)
+        .map(u => ({
+          name: u.name ?? u.email ?? 'Unknown',
+          image: u.image ?? null,
+        })),
+      labels: labels
+        .filter((l): l is NonNullable<typeof l> => !!l)
+        .map(l => ({ name: l.name, color: l.color ?? null })),
+      subIssues: publicChildren.map((c, i) => ({
+        key: c.key,
+        title: c.title,
+        state: childStates[i]
+          ? {
+              name: childStates[i]!.name,
+              color: childStates[i]!.color ?? null,
+              type: childStates[i]!.type,
+              icon: childStates[i]!.icon ?? null,
+            }
+          : null,
+      })),
+    };
+  },
+});
+
+export const getPublicProjectFull = query({
+  args: {
+    orgSlug: v.string(),
+    projectKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+    if (!org) return null;
+
+    const project = await ctx.db
+      .query('projects')
+      .withIndex('by_org_key', q =>
+        q.eq('organizationId', org._id).eq('key', args.projectKey),
+      )
+      .first();
+    if (!project || project.visibility !== 'public') return null;
+
+    const [status, team, lead] = await Promise.all([
+      project.statusId ? ctx.db.get('projectStatuses', project.statusId) : null,
+      project.teamId ? ctx.db.get('teams', project.teamId) : null,
+      project.leadId ? ctx.db.get('users', project.leadId) : null,
+    ]);
+
+    // Get public issues for this project
+    const allIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_project', q => q.eq('projectId', project._id))
+      .collect();
+
+    // Show all issues — full detail for public, limited for others
+    const issueStates = await Promise.all(
+      allIssues.map(i =>
+        i.workflowStateId ? ctx.db.get('issueStates', i.workflowStateId) : null,
+      ),
+    );
+
+    const issues = allIssues.map((issue, idx) => {
+      const isPublic = issue.visibility === 'public';
+      const s = issueStates[idx];
+      return {
+        _id: issue._id,
+        key: issue.key,
+        title: issue.title,
+        isPublic,
+        status: s
+          ? {
+              name: s.name,
+              color: s.color ?? null,
+              type: s.type,
+              icon: s.icon ?? null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      key: project.key,
+      name: project.name,
+      description: project.description ?? null,
+      orgName: org.name,
+      orgSlug: org.slug,
+      startDate: project.startDate ?? null,
+      dueDate: project.dueDate ?? null,
+      status: status
+        ? {
+            name: status.name,
+            color: status.color ?? null,
+            type: status.type,
+            icon: status.icon ?? null,
+          }
+        : null,
+      team: team
+        ? {
+            name: team.name,
+            key: team.key,
+            icon: team.icon ?? null,
+            color: team.color ?? null,
+          }
+        : null,
+      lead: lead
+        ? {
+            name: lead.name ?? lead.email ?? 'Unknown',
+            image: lead.image ?? null,
+          }
+        : null,
+      issues,
+      totalIssues: allIssues.length,
+      publicIssueCount: allIssues.filter(i => i.visibility === 'public').length,
+    };
+  },
+});
+
+export const getPublicTeamFull = query({
+  args: {
+    orgSlug: v.string(),
+    teamKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+    if (!org) return null;
+
+    const team = await ctx.db
+      .query('teams')
+      .withIndex('by_org_key', q =>
+        q.eq('organizationId', org._id).eq('key', args.teamKey),
+      )
+      .first();
+    if (!team || team.visibility !== 'public') return null;
+
+    const [lead, members] = await Promise.all([
+      team.leadId ? ctx.db.get('users', team.leadId) : null,
+      ctx.db
+        .query('teamMembers')
+        .withIndex('by_team', q => q.eq('teamId', team._id))
+        .collect(),
+    ]);
+
+    // Get projects linked to this team
+    const projects = await ctx.db
+      .query('projects')
+      .withIndex('by_team', q => q.eq('teamId', team._id))
+      .collect();
+    const publicProjects = projects.filter(p => p.visibility === 'public');
+    const projectStatuses = await Promise.all(
+      publicProjects.map(p =>
+        p.statusId ? ctx.db.get('projectStatuses', p.statusId) : null,
+      ),
+    );
+
+    // Get public issues for this team
+    const allIssues = await ctx.db
+      .query('issues')
+      .withIndex('by_team', q => q.eq('teamId', team._id))
+      .collect();
+    const issueStates = await Promise.all(
+      allIssues.map(i =>
+        i.workflowStateId ? ctx.db.get('issueStates', i.workflowStateId) : null,
+      ),
+    );
+
+    const issues = allIssues.map((issue, idx) => {
+      const isPublic = issue.visibility === 'public';
+      const s = issueStates[idx];
+      return {
+        _id: issue._id,
+        key: issue.key,
+        title: issue.title,
+        isPublic,
+        status: s
+          ? {
+              name: s.name,
+              color: s.color ?? null,
+              type: s.type,
+              icon: s.icon ?? null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      key: team.key,
+      name: team.name,
+      description: team.description ?? null,
+      icon: team.icon ?? null,
+      color: team.color ?? null,
+      orgName: org.name,
+      orgSlug: org.slug,
+      memberCount: members.length,
+      lead: lead
+        ? {
+            name: lead.name ?? lead.email ?? 'Unknown',
+            image: lead.image ?? null,
+          }
+        : null,
+      projects: publicProjects.map((p, i) => ({
+        key: p.key,
+        name: p.name,
+        status: projectStatuses[i]
+          ? {
+              name: projectStatuses[i]!.name,
+              color: projectStatuses[i]!.color ?? null,
+              icon: projectStatuses[i]!.icon ?? null,
+            }
+          : null,
+      })),
+      issues,
+      totalIssues: allIssues.length,
+    };
+  },
+});
+
 export const getPublicDocument = query({
   args: {
     orgSlug: v.string(),

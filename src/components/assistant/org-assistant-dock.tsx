@@ -548,6 +548,14 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                   <div ref={endRef} aria-hidden className='h-px' />
                 </div>
               </ScrollArea>
+              {isClearing && (
+                <div className='bg-background/80 absolute inset-0 z-20 flex items-center justify-center backdrop-blur-[2px]'>
+                  <div className='text-muted-foreground flex items-center gap-2 text-xs'>
+                    <Loader2 className='size-3.5 animate-spin' />
+                    <span>Clearing conversation...</span>
+                  </div>
+                </div>
+              )}
             </motion.div>
           ) : null}
         </AnimatePresence>

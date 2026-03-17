@@ -8,6 +8,7 @@ import {
   FileText,
   FolderOpen,
   Circle,
+  LayoutGrid,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
@@ -73,6 +74,11 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
           />
         </ScopedPermissionGate>
       ),
+    },
+    {
+      label: 'Views',
+      href: `/${orgSlug}/views`,
+      icon: LayoutGrid,
     },
   ];
 

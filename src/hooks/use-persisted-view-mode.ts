@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type ViewMode = 'table' | 'kanban';
+export type ViewMode = 'table' | 'kanban' | 'timeline';
 
 function parseStoredViewMode(value: string | null): ViewMode | null {
-  if (value === 'table' || value === 'kanban') {
+  if (value === 'table' || value === 'kanban' || value === 'timeline') {
     return value;
   }
 

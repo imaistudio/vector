@@ -8,10 +8,11 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useDeferredValue, useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { LayoutList, Columns3, Search, Loader2 } from 'lucide-react';
+import { LayoutList, Columns3, Clock, Search, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { IssuesTable } from '@/components/issues/issues-table';
 import { IssuesKanban } from '@/components/issues/issues-kanban';
+import { IssuesTimeline } from '@/components/issues/issues-timeline';
 import type { IssueGroupByField } from '@/lib/group-by';
 import { GroupBySelector } from '@/components/ui/group-by-selector';
 import { PageSkeleton, KanbanSkeleton } from '@/components/ui/table-skeleton';
@@ -27,12 +28,14 @@ import {
 } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { useConfirm } from '@/hooks/use-confirm';
-import { usePersistedViewMode } from '@/hooks/use-persisted-view-mode';
+import {
+  usePersistedViewMode,
+  type ViewMode,
+} from '@/hooks/use-persisted-view-mode';
 import { MobileNavTrigger } from '../layout';
 
 type StateType = (typeof ISSUE_STATE_DEFAULTS)[number]['type'];
 type FilterType = 'all' | StateType;
-type ViewMode = 'table' | 'kanban';
 type ScopeTab = 'mine' | 'related' | 'all';
 
 const TAB_LABELS: Record<FilterType, string> = {
@@ -120,7 +123,12 @@ export default function IssuesPage() {
   }, []);
 
   const viewParam = searchParams.get('view');
-  const queryMode: ViewMode | null = viewParam === 'table' ? 'table' : null;
+  const queryMode: ViewMode | null =
+    viewParam === 'table'
+      ? 'table'
+      : viewParam === 'timeline'
+        ? 'timeline'
+        : null;
   const syncViewModeUrl = useCallback((mode: ViewMode) => {
     const sp = new URLSearchParams(window.location.search);
     if (mode === 'kanban') {
@@ -141,6 +149,7 @@ export default function IssuesPage() {
     queryMode,
     syncUrl: syncViewModeUrl,
   });
+  const isListView = viewMode === 'table' || viewMode === 'timeline';
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [searchText, setSearchText] = useState('');
@@ -200,8 +209,8 @@ export default function IssuesPage() {
     ...scopeQueryArgs,
     assigneeId: scopeTab === 'mine' ? currentUserId || undefined : undefined,
     relatedOnly: scopeTab === 'related' ? true : undefined,
-    page: viewMode === 'table' ? page : undefined,
-    pageSize: viewMode === 'table' ? PAGE_SIZE : undefined,
+    page: isListView ? page : undefined,
+    pageSize: isListView ? PAGE_SIZE : undefined,
     includeCounts: true,
   });
   const { issues, total, counts } = issuesData ?? {
@@ -391,7 +400,7 @@ export default function IssuesPage() {
                 </span>
               </Button>
             ))}
-            {viewMode !== 'kanban' && (
+            {isListView && (
               <>
                 <div className='bg-border mx-1 h-4 w-px shrink-0' />
                 {visibleTabs.map(tab => (
@@ -436,15 +445,23 @@ export default function IssuesPage() {
               <Button
                 variant={viewMode === 'table' ? 'secondary' : 'ghost'}
                 size='sm'
-                className='h-6 rounded-r-none px-2'
+                className='h-6 rounded-none rounded-l-md px-2'
                 onClick={() => setViewMode('table')}
               >
                 <LayoutList className='size-3.5' />
               </Button>
               <Button
+                variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-6 rounded-none px-2'
+                onClick={() => setViewMode('timeline')}
+              >
+                <Clock className='size-3.5' />
+              </Button>
+              <Button
                 variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
                 size='sm'
-                className='h-6 rounded-l-none px-2'
+                className='h-6 rounded-none rounded-r-md px-2'
                 onClick={() => {
                   setViewMode('kanban');
                   setActiveFilter('all');
@@ -540,6 +557,64 @@ export default function IssuesPage() {
                 canManageAssignees={canAssignIssues}
                 activeFilter={activeFilter}
                 groupBy={tableGroupBy}
+              />
+            </div>
+
+            {/* Pagination controls */}
+            <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
+              <span>
+                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+              </span>
+              <div className='flex gap-1'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-2 text-xs'
+                  disabled={page === 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 px-2 text-xs'
+                  disabled={page * PAGE_SIZE >= total}
+                  onClick={() => setPage(p => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        ) : viewMode === 'timeline' ? (
+          <motion.div
+            key='timeline'
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className='flex flex-1 flex-col'
+          >
+            <div className='flex-1 overflow-y-auto'>
+              <IssuesTimeline
+                orgSlug={orgSlug}
+                issues={issues}
+                states={states ?? []}
+                priorities={priorities ?? []}
+                teams={teams ?? []}
+                projects={projects ?? []}
+                currentUserId={currentUserId}
+                canManageAssignees={canAssignIssues}
+                activeFilter={activeFilter}
+                onPriorityChange={handlePriorityChange}
+                onAssigneesChange={handleAssigneesChange}
+                onTeamChange={handleTeamChange}
+                onProjectChange={handleProjectChange}
+                onAssignmentStateChange={handleAssignmentStateChange}
+                onDelete={handleDelete}
+                deletePending={isDeleting}
+                isUpdatingAssignees={isUpdatingAssignees}
               />
             </div>
 

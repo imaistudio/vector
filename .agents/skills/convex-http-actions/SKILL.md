@@ -85,7 +85,7 @@ http.route({
       {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
-      }
+      },
     );
   }),
 });
@@ -297,7 +297,7 @@ export const verifyAndProcessWebhook = internalAction({
     const event = stripe.webhooks.constructEvent(
       args.body,
       args.signature,
-      webhookSecret
+      webhookSecret,
     );
 
     // Process based on event type
@@ -378,7 +378,7 @@ http.route({
     if (!authHeader?.startsWith('Bearer ')) {
       return new Response(
         JSON.stringify({ error: 'Missing or invalid Authorization header' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
       );
     }
 

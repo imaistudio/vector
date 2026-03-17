@@ -21,6 +21,7 @@ interface GroupBySelectorProps<T extends string> {
   value: T;
   onChange: (value: T) => void;
   className?: string;
+  disabled?: boolean;
 }
 
 export function GroupBySelector<T extends string>({
@@ -28,6 +29,7 @@ export function GroupBySelector<T extends string>({
   value,
   onChange,
   className,
+  disabled = false,
 }: GroupBySelectorProps<T>) {
   const [open, setOpen] = useState(false);
   const activeLabel = options.find(o => o.value === value)?.label;
@@ -40,6 +42,7 @@ export function GroupBySelector<T extends string>({
           variant='outline'
           size='sm'
           className={cn('bg-muted/30 hover:bg-muted/50 h-8 gap-2', className)}
+          disabled={disabled}
         >
           <Rows3 className='h-3 w-3' />
           {hasGrouping && activeLabel}
@@ -54,9 +57,11 @@ export function GroupBySelector<T extends string>({
                   key={option.value}
                   value={option.label}
                   onSelect={() => {
+                    if (disabled) return;
                     onChange(option.value);
                     setOpen(false);
                   }}
+                  disabled={disabled}
                   className='gap-2 text-xs'
                 >
                   <Check

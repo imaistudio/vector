@@ -49,6 +49,7 @@ import { IssueCommentsSection } from '@/components/comments/comments-section';
 import { LinkedDocuments } from '@/components/documents/linked-documents';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
+import { IssueViewVisibilityCallout } from '@/components/issues/issue-view-visibility-callout';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
 import { updateQuery } from '@/lib/optimistic-updates';
@@ -994,6 +995,9 @@ export default function IssueViewClient({
                 </PermissionAwareWrapper>
               )}
             </div>
+
+            {/* View visibility callout */}
+            <IssueViewVisibilityCallout issueId={issue._id as Id<'issues'>} />
 
             {/* Schedule Info */}
             <div className='flex items-center gap-4'>

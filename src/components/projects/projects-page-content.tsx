@@ -15,7 +15,10 @@ import { LayoutList, Columns3 } from 'lucide-react';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { usePersistedViewMode } from '@/hooks/use-persisted-view-mode';
+import {
+  usePersistedViewMode,
+  type ViewMode,
+} from '@/hooks/use-persisted-view-mode';
 import { updateProjectRows, updateQuery } from '@/lib/optimistic-updates';
 import type { ProjectGroupByField } from '@/lib/group-by';
 import { GroupBySelector } from '@/components/ui/group-by-selector';
@@ -67,7 +70,7 @@ interface ProjectsPageContentProps {
   orgSlug: string;
 }
 
-type ViewMode = 'table' | 'kanban';
+// ViewMode imported from use-persisted-view-mode
 
 const PROJECTS_LAYOUT_STORAGE_KEY = 'vector:projects-list-layout';
 const PROJECTS_GROUP_BY_STORAGE_KEY = 'vector:projects-group-by';

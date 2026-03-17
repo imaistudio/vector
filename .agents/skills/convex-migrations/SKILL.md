@@ -66,7 +66,7 @@ export const getUser = query({
       email: v.string(),
       avatarUrl: v.union(v.string(), v.null()),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     const user = await ctx.db.get(args.userId);
@@ -194,7 +194,7 @@ export const removeDeprecatedField = internalMutation({
         internal.migrations.removeDeprecatedField,
         {
           cursor: result.continueCursor,
-        }
+        },
       );
     }
 
@@ -303,7 +303,7 @@ export const getPublishedPosts = query({
       _id: v.id('posts'),
       title: v.string(),
       publishedAt: v.number(),
-    })
+    }),
   ),
   handler: async ctx => {
     const posts = await ctx.db
@@ -369,7 +369,7 @@ export const migratePriorityToNumber = internalMutation({
         internal.migrations.migratePriorityToNumber,
         {
           cursor: result.continueCursor,
-        }
+        },
       );
     }
 
@@ -430,7 +430,7 @@ export default defineSchema({
     status: v.union(
       v.literal('running'),
       v.literal('completed'),
-      v.literal('failed')
+      v.literal('failed'),
     ),
     error: v.optional(v.string()),
     processed: v.number(),
@@ -606,7 +606,7 @@ export const run = internalMutation({
           {
             migrationId,
             cursor: result.continueCursor,
-          }
+          },
         );
       } else {
         await ctx.runMutation(internal.migrations.completeMigration, {
@@ -645,7 +645,7 @@ export default defineSchema({
     status: v.union(
       v.literal('running'),
       v.literal('completed'),
-      v.literal('failed')
+      v.literal('failed'),
     ),
     error: v.optional(v.string()),
     processed: v.number(),
@@ -669,7 +669,7 @@ export default defineSchema({
       v.object({
         theme: v.string(),
         notifications: v.boolean(),
-      })
+      }),
     ),
   })
     .index('by_email', ['email'])
@@ -683,7 +683,7 @@ export default defineSchema({
     status: v.union(
       v.literal('draft'),
       v.literal('published'),
-      v.literal('archived')
+      v.literal('archived'),
     ),
     publishedAt: v.optional(v.number()),
     createdAt: v.number(),

@@ -74,6 +74,8 @@ import type * as search_queries from "../search/queries.js";
 import type * as teams_mutations from "../teams/mutations.js";
 import type * as teams_queries from "../teams/queries.js";
 import type * as users from "../users.js";
+import type * as views_mutations from "../views/mutations.js";
+import type * as views_queries from "../views/queries.js";
 
 import type {
   ApiFromModules,
@@ -148,6 +150,8 @@ declare const fullApi: ApiFromModules<{
   "teams/mutations": typeof teams_mutations;
   "teams/queries": typeof teams_queries;
   users: typeof users;
+  "views/mutations": typeof views_mutations;
+  "views/queries": typeof views_queries;
 }>;
 
 /**

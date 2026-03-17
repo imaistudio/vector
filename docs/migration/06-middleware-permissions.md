@@ -48,7 +48,7 @@ import { Id } from './_generated/dataModel';
 
 export const checkOrganizationAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<'organizations'>
+  organizationId: Id<'organizations'>,
 ) => {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error('Unauthorized');
@@ -56,7 +56,7 @@ export const checkOrganizationAccess = async (
   const membership = await ctx.db
     .query('members')
     .withIndex('by_org_user', q =>
-      q.eq('organizationId', organizationId).eq('userId', userId)
+      q.eq('organizationId', organizationId).eq('userId', userId),
     )
     .first();
 
@@ -67,7 +67,7 @@ export const checkOrganizationAccess = async (
 
 export const checkProjectAccess = async (
   ctx: QueryCtx | MutationCtx,
-  projectId: Id<'projects'>
+  projectId: Id<'projects'>,
 ) => {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error('Unauthorized');
@@ -78,7 +78,7 @@ export const checkProjectAccess = async (
   const membership = await ctx.db
     .query('members')
     .withIndex('by_org_user', q =>
-      q.eq('organizationId', project.organizationId).eq('userId', userId)
+      q.eq('organizationId', project.organizationId).eq('userId', userId),
     )
     .first();
 
@@ -89,7 +89,7 @@ export const checkProjectAccess = async (
 
 export const checkAdminAccess = async (
   ctx: QueryCtx | MutationCtx,
-  organizationId: Id<'organizations'>
+  organizationId: Id<'organizations'>,
 ) => {
   const { membership } = await checkOrganizationAccess(ctx, organizationId);
 
@@ -103,7 +103,7 @@ export const checkAdminAccess = async (
 export const checkCustomPermission = async (
   ctx: QueryCtx | MutationCtx,
   organizationId: Id<'organizations'>,
-  permission: string
+  permission: string,
 ) => {
   const userId = await getAuthUserId(ctx);
   if (!userId) throw new Error('Unauthorized');
@@ -112,7 +112,7 @@ export const checkCustomPermission = async (
   const roleAssignments = await ctx.db
     .query('orgRoleAssignments')
     .withIndex('by_user_org', q =>
-      q.eq('userId', userId).eq('organizationId', organizationId)
+      q.eq('userId', userId).eq('organizationId', organizationId),
     )
     .collect();
 
@@ -149,7 +149,7 @@ export const createTRPCContext = async (opts: CreateNextContextOptions) => {
 };
 
 export const createTRPCMiddleware = <TInput, TOutput>(
-  middleware: MiddlewareFunction<TInput, TOutput>
+  middleware: MiddlewareFunction<TInput, TOutput>,
 ) => {
   return middleware;
 };
@@ -165,7 +165,7 @@ export const protectedProcedure = t.procedure.use(
         user: ctx.session.user,
       },
     });
-  })
+  }),
 );
 ```
 
@@ -181,7 +181,7 @@ export const getOrganizationData = query({
     // Permission check built into function
     const { userId, membership } = await checkOrganizationAccess(
       ctx,
-      args.organizationId
+      args.organizationId,
     );
 
     const organization = await ctx.db.get(args.organizationId);
@@ -246,7 +246,7 @@ export const assignRole = mutation({
     const membership = await ctx.db
       .query('members')
       .withIndex('by_org_user', q =>
-        q.eq('organizationId', args.organizationId).eq('userId', args.userId)
+        q.eq('organizationId', args.organizationId).eq('userId', args.userId),
       )
       .first();
 
@@ -284,7 +284,7 @@ export const listProjects = query({
     return await ctx.db
       .query('projects')
       .withIndex('by_organization', q =>
-        q.eq('organizationId', args.organizationId)
+        q.eq('organizationId', args.organizationId),
       )
       .collect();
   },

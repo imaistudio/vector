@@ -43,12 +43,19 @@ export const PERMISSIONS = {
   DOCUMENT_EDIT: 'document:edit',
   DOCUMENT_DELETE: 'document:delete',
 
+  // View Permissions
+  VIEW_CREATE: 'view:create',
+  VIEW_VIEW: 'view:view',
+  VIEW_EDIT: 'view:edit',
+  VIEW_DELETE: 'view:delete',
+
   // Wildcard permissions
   ALL: '*',
   ISSUE_ALL: 'issue:*',
   TEAM_ALL: 'team:*',
   PROJECT_ALL: 'project:*',
   DOCUMENT_ALL: 'document:*',
+  VIEW_ALL: 'view:*',
 } as const;
 
 // Helper type for permission values
@@ -130,6 +137,12 @@ export const BUILTIN_ROLE_PERMISSIONS: Record<BuiltinRole, Permission[]> = {
     PERMISSIONS.DOCUMENT_CREATE,
     PERMISSIONS.DOCUMENT_EDIT,
     PERMISSIONS.DOCUMENT_DELETE,
+
+    // Views
+    PERMISSIONS.VIEW_VIEW,
+    PERMISSIONS.VIEW_CREATE,
+    PERMISSIONS.VIEW_EDIT,
+    PERMISSIONS.VIEW_DELETE,
   ],
 
   // Member gets essential read / limited write access
@@ -153,6 +166,10 @@ export const BUILTIN_ROLE_PERMISSIONS: Record<BuiltinRole, Permission[]> = {
     PERMISSIONS.DOCUMENT_VIEW,
     PERMISSIONS.DOCUMENT_CREATE,
     PERMISSIONS.DOCUMENT_EDIT,
+
+    // Views
+    PERMISSIONS.VIEW_VIEW,
+    PERMISSIONS.VIEW_CREATE,
   ],
 };
 

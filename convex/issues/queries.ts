@@ -142,7 +142,7 @@ export const getByKey = query({
   },
 });
 
-type IssueVisibilityAccess = {
+export type IssueVisibilityAccess = {
   userId: Id<'users'>;
   isOrgMember: boolean;
   hasOrgIssueView: boolean;
@@ -159,7 +159,7 @@ type IssueListResult = {
   counts: Record<string, number>;
 };
 
-type IssueListScope = {
+export type IssueListScope = {
   organizationId: Id<'organizations'>;
   projectId?: Id<'projects'>;
   teamId?: Id<'teams'>;
@@ -257,7 +257,7 @@ async function legacyProjectRoleMapByPermission(
   );
 }
 
-async function resolveProjectId(
+export async function resolveProjectId(
   ctx: QueryCtx,
   organizationId: Id<'organizations'>,
   value?: string,
@@ -282,7 +282,7 @@ async function resolveProjectId(
   return doc?._id ?? null;
 }
 
-async function resolveTeamId(
+export async function resolveTeamId(
   ctx: QueryCtx,
   organizationId: Id<'organizations'>,
   value?: string,
@@ -307,7 +307,7 @@ async function resolveTeamId(
   return doc?._id ?? null;
 }
 
-async function buildIssueVisibilityAccess(
+export async function buildIssueVisibilityAccess(
   ctx: QueryCtx,
   userId: Id<'users'>,
   organizationId: Id<'organizations'>,
@@ -456,7 +456,7 @@ async function buildIssueVisibilityAccess(
   };
 }
 
-function canUserViewIssueFromAccess(
+export function canUserViewIssueFromAccess(
   access: IssueVisibilityAccess,
   issue: Doc<'issues'>,
   options?: {
@@ -593,7 +593,7 @@ async function collectScopedIssues(
     : await orgQuery.collect();
 }
 
-async function collectIssueCandidates(
+export async function collectIssueCandidates(
   ctx: QueryCtx,
   scope: IssueListScope,
   searchQuery?: string,
@@ -642,7 +642,7 @@ async function collectIssueCandidates(
   });
 }
 
-async function loadAssignmentsByIssue(
+export async function loadAssignmentsByIssue(
   ctx: QueryCtx,
   issueIds: readonly Id<'issues'>[],
 ) {
@@ -671,7 +671,7 @@ function resolveWorkflowStateFromAssignments(
   return fallbackStateId ? (stateMap.get(fallbackStateId) ?? null) : null;
 }
 
-async function flattenIssueRows(
+export async function flattenIssueRows(
   ctx: QueryCtx,
   issues: readonly Doc<'issues'>[],
   assignmentsByIssue: Map<Id<'issues'>, Doc<'issueAssignees'>[]>,
@@ -767,6 +767,7 @@ async function flattenIssueRows(
     parentIssueMap,
     assigneeMap,
     stateMap,
+    latestActivityResults,
   ] = await Promise.all([
     loadDocMap(ctx, 'projects', projectIds),
     loadDocMap(ctx, 'teams', teamIds),
@@ -776,7 +777,25 @@ async function flattenIssueRows(
     loadDocMap(ctx, 'issues', parentIssueIds),
     loadDocMap(ctx, 'users', assigneeIds),
     loadDocMap(ctx, 'issueStates', stateIds),
+    // Fetch latest activity event per issue (for timeline dot icon on legacy issues)
+    Promise.all(
+      issues.map(issue =>
+        issue.lastActivityEventType
+          ? Promise.resolve(null)
+          : ctx.db
+              .query('activityEvents')
+              .withIndex('by_issue', q => q.eq('issueId', issue._id))
+              .order('desc')
+              .first(),
+      ),
+    ),
   ]);
+  const latestActivityByIssue = new Map(
+    issues.flatMap((issue, i) => {
+      const event = latestActivityResults[i];
+      return event ? [[issue._id, event] as const] : [];
+    }),
+  );
 
   return issues.flatMap(issue => {
     const project = issue.projectId ? projectMap.get(issue.projectId) : null;
@@ -839,11 +858,14 @@ async function flattenIssueRows(
           ];
 
     const linkedPrs = prLinksByIssue.get(issue._id) ?? [];
+    const latestEvent = latestActivityByIssue.get(issue._id);
 
     return hydratedAssignments.map(assignment => ({
       ...issue,
       id: issue._id,
-      updatedAt: issue._creationTime,
+      updatedAt: issue.updatedAt ?? issue._creationTime,
+      lastActivityEventType:
+        issue.lastActivityEventType ?? latestEvent?.eventType ?? null,
       priorityId: priority?._id,
       priorityName: priority?.name,
       priorityIcon: priority?.icon,

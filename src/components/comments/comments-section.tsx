@@ -21,15 +21,6 @@ import {
   Check,
   ChevronUp,
   ArrowUp,
-  Plus,
-  ArrowRightLeft,
-  Users,
-  FolderOpen,
-  Eye,
-  GitBranch,
-  Type,
-  FileText,
-  CircleDot,
   Sparkles,
 } from 'lucide-react';
 import { formatDateHuman } from '@/lib/date';
@@ -37,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BarsSpinner } from '@/components/bars-spinner';
 import type { ActivityFeedItem } from '@/components/activity/activity-feed-list';
+import { getActivityIcon } from '@/lib/activity-icons';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -656,36 +648,7 @@ function renderActivityDescription(item: ActivityFeedItem) {
   }
 }
 
-function getActivityIcon(eventType: string) {
-  switch (eventType) {
-    case 'issue_created':
-      return { Icon: Plus, color: 'text-violet-500' };
-    case 'issue_workflow_state_changed':
-    case 'issue_assignment_state_changed':
-      return { Icon: CircleDot, color: 'text-green-500' };
-    case 'issue_title_changed':
-    case 'issue_description_changed':
-      return { Icon: Type, color: 'text-muted-foreground' };
-    case 'issue_priority_changed':
-      return { Icon: ArrowRightLeft, color: 'text-orange-500' };
-    case 'issue_assignees_changed':
-      return { Icon: Users, color: 'text-blue-500' };
-    case 'issue_team_changed':
-    case 'issue_team_added':
-    case 'issue_team_removed':
-      return { Icon: Users, color: 'text-muted-foreground' };
-    case 'issue_project_changed':
-    case 'issue_project_added':
-    case 'issue_project_removed':
-      return { Icon: FolderOpen, color: 'text-muted-foreground' };
-    case 'issue_visibility_changed':
-      return { Icon: Eye, color: 'text-muted-foreground' };
-    case 'issue_sub_issue_created':
-      return { Icon: GitBranch, color: 'text-violet-500' };
-    default:
-      return { Icon: FileText, color: 'text-muted-foreground' };
-  }
-}
+// getActivityIcon is imported from @/lib/activity-icons
 
 function CompactActivityRow({
   item,

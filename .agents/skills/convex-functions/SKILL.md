@@ -60,7 +60,7 @@ export const getUser = query({
       name: v.string(),
       email: v.string(),
     }),
-    v.null()
+    v.null(),
   ),
   handler: async (ctx, args) => {
     return await ctx.db.get('users', args.userId);
@@ -76,7 +76,7 @@ export const listUserTasks = query({
       _creationTime: v.number(),
       title: v.string(),
       completed: v.boolean(),
-    })
+    }),
   ),
   handler: async (ctx, args) => {
     return await ctx.db
@@ -314,7 +314,7 @@ export const scheduleReminder = mutation({
     return await ctx.scheduler.runAfter(
       args.delayMs,
       internal.notifications.sendReminder,
-      { userId: args.userId, message: args.message }
+      { userId: args.userId, message: args.message },
     );
   },
 });

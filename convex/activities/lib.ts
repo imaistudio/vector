@@ -12,6 +12,7 @@ export interface ActivityScope {
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
   documentId?: Id<'documents'>;
+  viewId?: Id<'views'>;
 }
 
 export interface ActivityWrite {
@@ -24,6 +25,7 @@ export interface ActivityWrite {
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
   documentId?: Id<'documents'>;
+  viewId?: Id<'views'>;
   subjectUserId?: Id<'users'>;
   details?: {
     field?: ActivityField;
@@ -152,6 +154,22 @@ export function resolveDocumentScope(doc: Doc<'documents'>): ActivityScope {
   };
 }
 
+export function getViewSnapshot(view: Doc<'views'> | null | undefined) {
+  if (!view) return {};
+  return {
+    entityKey: view._id,
+    entityName: view.name,
+  };
+}
+
+export function resolveViewScope(view: Doc<'views'>): ActivityScope {
+  return {
+    organizationId: view.organizationId,
+    viewId: view._id,
+  };
+}
+
+export const snapshotForView = getViewSnapshot;
 export const snapshotForTeam = getTeamSnapshot;
 export const snapshotForProject = getProjectSnapshot;
 export const snapshotForIssue = getIssueSnapshot;
@@ -175,6 +193,7 @@ export async function recordActivity(
     projectId: event.projectId,
     issueId: event.issueId,
     documentId: event.documentId,
+    viewId: event.viewId,
   };
 
   if (!scope.organizationId) {
@@ -190,8 +209,17 @@ export async function recordActivity(
     projectId: scope.projectId,
     issueId: scope.issueId,
     documentId: scope.documentId,
+    viewId: scope.viewId,
     subjectUserId: event.subjectUserId,
     details: event.details ?? {},
     snapshot: event.snapshot ?? {},
   });
+
+  // Touch the issue's updatedAt and cache the latest activity event type
+  if (scope.issueId && event.entityType === 'issue') {
+    await ctx.db.patch('issues', scope.issueId, {
+      updatedAt: Date.now(),
+      lastActivityEventType: event.eventType,
+    });
+  }
 }

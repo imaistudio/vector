@@ -969,7 +969,7 @@ function KanbanCardContent({
         className='size-5 shrink-0'
       />
       <div className='flex min-w-0 items-center gap-1.5 text-[11px]'>
-        <span className='truncate font-medium text-current'>
+        <span className='max-w-[10ch] truncate font-medium text-current'>
           {assigneeLabel}
         </span>
         <span className='text-muted-foreground/60 shrink-0'>·</span>
@@ -1066,9 +1066,9 @@ function KanbanCardContent({
       </Link>
 
       {/* Bottom row: assignees + date */}
-      <div className='mt-2 flex items-center justify-between'>
+      <div className='mt-2 flex min-w-0 flex-wrap items-center justify-between gap-y-1'>
         {onAssigneesChange && currentUserId ? (
-          <div onClick={e => e.stopPropagation()}>
+          <div className='min-w-0' onClick={e => e.stopPropagation()}>
             <MultiAssigneeSelector
               orgSlug={orgSlug}
               selectedAssigneeIds={issue.assigneeIds}
@@ -1088,7 +1088,7 @@ function KanbanCardContent({
           assigneeStateCluster
         )}
 
-        <span className='text-muted-foreground text-[11px]'>
+        <span className='text-muted-foreground shrink-0 text-[11px]'>
           {formatDateHuman(new Date(issue.updatedAt))}
         </span>
       </div>

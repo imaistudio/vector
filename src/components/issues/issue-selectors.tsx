@@ -258,6 +258,8 @@ interface StateSelectorProps {
   states: readonly State[] | State[];
   selectedState: string;
   onStateSelect: (stateId: string) => void;
+  /** Multi-select mode: array of selected IDs. When provided, popover stays open on select. */
+  selectedStates?: string[];
   displayMode?: SelectorDisplayMode;
   trigger?: React.ReactElement;
   className?: string;
@@ -269,6 +271,7 @@ export function StateSelector({
   states,
   selectedState,
   onStateSelect,
+  selectedStates,
   displayMode,
   trigger,
   className,
@@ -276,6 +279,7 @@ export function StateSelector({
 }: StateSelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const isMulti = selectedStates !== undefined;
   const displayState = selectedState;
 
   // Transform states from API into combobox-friendly structure
@@ -305,8 +309,17 @@ export function StateSelector({
 
   const selectedStateData = getSelectedStateData();
 
-  const hasSelection = displayState !== '';
+  const hasSelection = isMulti
+    ? (selectedStates?.length ?? 0) > 0
+    : displayState !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
+
+  const multiLabel =
+    isMulti && selectedStates!.length > 1
+      ? `${selectedStates!.length} states`
+      : isMulti && selectedStates!.length === 1
+        ? (states.find(s => s._id === selectedStates![0])?.name ?? 'State')
+        : null;
 
   const DefaultBtn = (
     <Button
@@ -321,7 +334,7 @@ export function StateSelector({
           style={{ color: selectedStateData.color }}
         />
       )}
-      {showLabel && selectedStateData.name}
+      {showLabel && (isMulti ? multiLabel : selectedStateData.name)}
     </Button>
   );
 
@@ -347,7 +360,7 @@ export function StateSelector({
                     onSelect={() => {
                       if (!viewOnly) {
                         onStateSelect(state.value);
-                        setOpen(false);
+                        if (!isMulti) setOpen(false);
                       }
                     }}
                     disabled={viewOnly}
@@ -355,7 +368,11 @@ export function StateSelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        displayState === state.value
+                        (
+                          isMulti
+                            ? selectedStates!.includes(state.value)
+                            : displayState === state.value
+                        )
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}
@@ -393,6 +410,8 @@ interface PrioritySelectorProps {
   priorities: Priority[];
   selectedPriority: string;
   onPrioritySelect: (priorityId: string) => void;
+  /** Multi-select mode: array of selected IDs. When provided, popover stays open on select. */
+  selectedPriorities?: string[];
   displayMode?: SelectorDisplayMode;
   trigger?: React.ReactElement;
   className?: string;
@@ -404,6 +423,7 @@ export function PrioritySelector({
   priorities,
   selectedPriority,
   onPrioritySelect,
+  selectedPriorities,
   displayMode,
   trigger,
   className,
@@ -411,17 +431,28 @@ export function PrioritySelector({
 }: PrioritySelectorProps & { align?: 'start' | 'center' | 'end' }) {
   const [open, setOpen] = useState(false);
   const { viewOnly } = useAccess();
+  const isMulti = selectedPriorities !== undefined;
   const displayPriority = selectedPriority;
 
   if (priorities.length === 0) return null;
 
-  const hasSelection = displayPriority !== '';
+  const hasSelection = isMulti
+    ? (selectedPriorities?.length ?? 0) > 0
+    : displayPriority !== '';
   const { showIcon, showLabel } = resolveVisibility(displayMode, hasSelection);
 
   const current = priorities.find(p => p._id === displayPriority);
   const currentColor = current?.color || '#94a3b8';
   const currentName = current?.name || 'Priority';
   const currentIconName = current?.icon;
+
+  const multiLabel =
+    isMulti && selectedPriorities!.length > 1
+      ? `${selectedPriorities!.length} priorities`
+      : isMulti && selectedPriorities!.length === 1
+        ? (priorities.find(p => p._id === selectedPriorities![0])?.name ??
+          'Priority')
+        : null;
 
   const DefaultBtn = (
     <Button
@@ -436,7 +467,7 @@ export function PrioritySelector({
           style={{ color: currentColor }}
         />
       )}
-      {showLabel && currentName}
+      {showLabel && (isMulti ? multiLabel : currentName)}
     </Button>
   );
 
@@ -457,7 +488,7 @@ export function PrioritySelector({
                     onSelect={() => {
                       if (!viewOnly) {
                         onPrioritySelect(priority._id);
-                        setOpen(false);
+                        if (!isMulti) setOpen(false);
                       }
                     }}
                     disabled={viewOnly}
@@ -465,7 +496,11 @@ export function PrioritySelector({
                     <Check
                       className={cn(
                         'mr-2 h-4 w-4',
-                        displayPriority === priority._id
+                        (
+                          isMulti
+                            ? selectedPriorities!.includes(priority._id)
+                            : displayPriority === priority._id
+                        )
                           ? 'opacity-100'
                           : 'opacity-0',
                       )}

@@ -209,6 +209,8 @@ export const create = mutation({
         args.data.visibility ?? parentIssue?.visibility ?? 'organization',
       createdBy: userId,
       parentIssueId: args.data.parentIssueId,
+      updatedAt: Date.now(),
+      lastActivityEventType: 'issue_created',
     });
 
     const assigneeStateId = workflowStateId;
