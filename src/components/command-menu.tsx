@@ -50,7 +50,7 @@ function parsePageContext(pathname: string, orgSlug: string): PageContext {
     ? pathname.slice(prefix.length)
     : pathname;
 
-  const issueMatch = rest.match(/^\/issues\/([A-Za-z]+-\d+)$/);
+  const issueMatch = rest.match(/^\/issues\/([A-Za-z0-9-]+-\d+)$/);
   if (issueMatch) return { type: 'issue', issueKey: issueMatch[1] };
 
   const teamMatch = rest.match(/^\/teams\/([A-Za-z0-9_-]+)$/);
@@ -112,11 +112,39 @@ export function CommandMenu() {
       : 'skip',
   );
   const projectData = useQuery(
-    api.projects.queries.getByKey,
+    api.projects.queries.getByKeyOrNull,
     open && pageContext?.type === 'project'
       ? { orgSlug, projectKey: pageContext.projectKey }
       : 'skip',
   );
+
+  const issuePermissionScope = useMemo(() => ({ orgSlug }), [orgSlug]);
+  const teamPermissionScope = useMemo(
+    () => (teamData?._id ? { orgSlug, teamId: teamData._id } : { orgSlug }),
+    [orgSlug, teamData],
+  );
+  const projectPermissionScope = useMemo(
+    () =>
+      projectData?._id ? { orgSlug, projectId: projectData._id } : { orgSlug },
+    [orgSlug, projectData],
+  );
+
+  const {
+    permissions: issuePermissions,
+    isLoading: areIssuePermissionsLoading,
+  } = useScopedPermissions(issuePermissionScope, [
+    PERMISSIONS.ISSUE_EDIT,
+    PERMISSIONS.ISSUE_ASSIGN,
+    PERMISSIONS.ISSUE_RELATION_UPDATE,
+    PERMISSIONS.ISSUE_STATE_UPDATE,
+    PERMISSIONS.ISSUE_PRIORITY_UPDATE,
+  ]);
+  const { permissions: teamPermissions, isLoading: areTeamPermissionsLoading } =
+    useScopedPermissions(teamPermissionScope, [PERMISSIONS.TEAM_EDIT]);
+  const {
+    permissions: projectPermissions,
+    isLoading: areProjectPermissionsLoading,
+  } = useScopedPermissions(projectPermissionScope, [PERMISSIONS.PROJECT_EDIT]);
 
   // Issue mutations
   const changeWorkflowState = useMutation(
@@ -217,6 +245,25 @@ export function CommandMenu() {
     createPermissions[PERMISSIONS.DOCUMENT_CREATE] ?? false;
   const hasCreateCommands =
     canCreateIssue || canCreateProject || canCreateTeam || canCreateDocument;
+  const canChangeIssueStatus =
+    issuePermissions[PERMISSIONS.ISSUE_STATE_UPDATE] ?? false;
+  const canChangeIssuePriority =
+    issuePermissions[PERMISSIONS.ISSUE_PRIORITY_UPDATE] ?? false;
+  const canChangeIssueAssignee =
+    issuePermissions[PERMISSIONS.ISSUE_ASSIGN] ?? false;
+  const canChangeIssueRelations =
+    issuePermissions[PERMISSIONS.ISSUE_RELATION_UPDATE] ?? false;
+  const canEditIssue = issuePermissions[PERMISSIONS.ISSUE_EDIT] ?? false;
+  const hasIssueContextCommands =
+    canChangeIssueStatus ||
+    canChangeIssuePriority ||
+    canChangeIssueAssignee ||
+    canChangeIssueRelations ||
+    canEditIssue;
+  const canEditTeam = teamPermissions[PERMISSIONS.TEAM_EDIT] ?? false;
+  const hasTeamContextCommands = canEditTeam;
+  const canEditProject = projectPermissions[PERMISSIONS.PROJECT_EDIT] ?? false;
+  const hasProjectContextCommands = canEditProject;
 
   // Determine placeholder text based on active sub-page
   const getPlaceholder = () => {
@@ -384,235 +431,262 @@ export function CommandMenu() {
               )}
 
               {/* ── Issue context actions ── */}
-              {pageContext?.type === 'issue' && issueData && (
-                <>
-                  <CommandGroup heading={`Issue ${pageContext.issueKey}`}>
-                    <CommandItem
-                      value='issue-change-status'
-                      onSelect={() => goToSubPage('issue-status')}
-                    >
-                      <Circle className='size-4 shrink-0' />
-                      <span>Change Status...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-change-priority'
-                      onSelect={() => goToSubPage('issue-priority')}
-                    >
-                      <Signal className='size-4 shrink-0' />
-                      <span>Change Priority...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-change-assignee'
-                      onSelect={() => goToSubPage('issue-assignee')}
-                    >
-                      <UserPlus className='size-4 shrink-0' />
-                      <span>Change Assignee...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-change-team'
-                      onSelect={() => goToSubPage('issue-team')}
-                    >
-                      <Users className='size-4 shrink-0' />
-                      <span>Change Team...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-change-project'
-                      onSelect={() => goToSubPage('issue-project')}
-                    >
-                      <FolderOpen className='size-4 shrink-0' />
-                      <span>Change Project...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-change-visibility'
-                      onSelect={() => goToSubPage('issue-visibility')}
-                    >
-                      <Eye className='size-4 shrink-0' />
-                      <span>Change Visibility...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-edit-title'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent('command-menu:edit-issue-title'),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Title</span>
-                    </CommandItem>
-                    <CommandItem
-                      value='issue-edit-description'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent(
-                              'command-menu:edit-issue-description',
-                            ),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Description</span>
-                    </CommandItem>
-                  </CommandGroup>
-                  <CommandSeparator />
-                </>
-              )}
+              {pageContext?.type === 'issue' &&
+                issueData &&
+                !areIssuePermissionsLoading &&
+                hasIssueContextCommands && (
+                  <>
+                    <CommandGroup heading={`Issue ${pageContext.issueKey}`}>
+                      {canChangeIssueStatus && (
+                        <CommandItem
+                          value='issue-change-status'
+                          onSelect={() => goToSubPage('issue-status')}
+                        >
+                          <Circle className='size-4 shrink-0' />
+                          <span>Change Status...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canChangeIssuePriority && (
+                        <CommandItem
+                          value='issue-change-priority'
+                          onSelect={() => goToSubPage('issue-priority')}
+                        >
+                          <Signal className='size-4 shrink-0' />
+                          <span>Change Priority...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canChangeIssueAssignee && (
+                        <CommandItem
+                          value='issue-change-assignee'
+                          onSelect={() => goToSubPage('issue-assignee')}
+                        >
+                          <UserPlus className='size-4 shrink-0' />
+                          <span>Change Assignee...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canChangeIssueRelations && (
+                        <CommandItem
+                          value='issue-change-team'
+                          onSelect={() => goToSubPage('issue-team')}
+                        >
+                          <Users className='size-4 shrink-0' />
+                          <span>Change Team...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canChangeIssueRelations && (
+                        <CommandItem
+                          value='issue-change-project'
+                          onSelect={() => goToSubPage('issue-project')}
+                        >
+                          <FolderOpen className='size-4 shrink-0' />
+                          <span>Change Project...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canEditIssue && (
+                        <CommandItem
+                          value='issue-change-visibility'
+                          onSelect={() => goToSubPage('issue-visibility')}
+                        >
+                          <Eye className='size-4 shrink-0' />
+                          <span>Change Visibility...</span>
+                          <CommandShortcut>
+                            <ArrowRight className='size-3' />
+                          </CommandShortcut>
+                        </CommandItem>
+                      )}
+                      {canEditIssue && (
+                        <CommandItem
+                          value='issue-edit-title'
+                          onSelect={() =>
+                            runCommand(() =>
+                              window.dispatchEvent(
+                                new CustomEvent(
+                                  'command-menu:edit-issue-title',
+                                ),
+                              ),
+                            )
+                          }
+                        >
+                          <Pencil className='size-4 shrink-0' />
+                          <span>Edit Title</span>
+                        </CommandItem>
+                      )}
+                      {canEditIssue && (
+                        <CommandItem
+                          value='issue-edit-description'
+                          onSelect={() =>
+                            runCommand(() =>
+                              window.dispatchEvent(
+                                new CustomEvent(
+                                  'command-menu:edit-issue-description',
+                                ),
+                              ),
+                            )
+                          }
+                        >
+                          <Pencil className='size-4 shrink-0' />
+                          <span>Edit Description</span>
+                        </CommandItem>
+                      )}
+                    </CommandGroup>
+                    <CommandSeparator />
+                  </>
+                )}
 
               {/* ── Team context actions ── */}
-              {pageContext?.type === 'team' && teamData && (
-                <>
-                  <CommandGroup heading={`Team ${teamData.name}`}>
-                    <CommandItem
-                      value='team-change-lead'
-                      onSelect={() => goToSubPage('team-lead')}
-                    >
-                      <Target className='size-4 shrink-0' />
-                      <span>Change Lead...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='team-change-visibility'
-                      onSelect={() => goToSubPage('team-visibility')}
-                    >
-                      <Eye className='size-4 shrink-0' />
-                      <span>Change Visibility...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='team-edit-name'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent('command-menu:edit-team-name'),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Name</span>
-                    </CommandItem>
-                    <CommandItem
-                      value='team-edit-description'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent(
-                              'command-menu:edit-team-description',
+              {pageContext?.type === 'team' &&
+                teamData &&
+                !areTeamPermissionsLoading &&
+                hasTeamContextCommands && (
+                  <>
+                    <CommandGroup heading={`Team ${teamData.name}`}>
+                      <CommandItem
+                        value='team-change-lead'
+                        onSelect={() => goToSubPage('team-lead')}
+                      >
+                        <Target className='size-4 shrink-0' />
+                        <span>Change Lead...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='team-change-visibility'
+                        onSelect={() => goToSubPage('team-visibility')}
+                      >
+                        <Eye className='size-4 shrink-0' />
+                        <span>Change Visibility...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='team-edit-name'
+                        onSelect={() =>
+                          runCommand(() =>
+                            window.dispatchEvent(
+                              new CustomEvent('command-menu:edit-team-name'),
                             ),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Description</span>
-                    </CommandItem>
-                  </CommandGroup>
-                  <CommandSeparator />
-                </>
-              )}
+                          )
+                        }
+                      >
+                        <Pencil className='size-4 shrink-0' />
+                        <span>Edit Name</span>
+                      </CommandItem>
+                      <CommandItem
+                        value='team-edit-description'
+                        onSelect={() =>
+                          runCommand(() =>
+                            window.dispatchEvent(
+                              new CustomEvent(
+                                'command-menu:edit-team-description',
+                              ),
+                            ),
+                          )
+                        }
+                      >
+                        <Pencil className='size-4 shrink-0' />
+                        <span>Edit Description</span>
+                      </CommandItem>
+                    </CommandGroup>
+                    <CommandSeparator />
+                  </>
+                )}
 
               {/* ── Project context actions ── */}
-              {pageContext?.type === 'project' && projectData && (
-                <>
-                  <CommandGroup heading={`Project ${projectData.name}`}>
-                    <CommandItem
-                      value='project-change-status'
-                      onSelect={() => goToSubPage('project-status')}
-                    >
-                      <Circle className='size-4 shrink-0' />
-                      <span>Change Status...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='project-change-team'
-                      onSelect={() => goToSubPage('project-team')}
-                    >
-                      <Users className='size-4 shrink-0' />
-                      <span>Change Team...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='project-change-lead'
-                      onSelect={() => goToSubPage('project-lead')}
-                    >
-                      <Target className='size-4 shrink-0' />
-                      <span>Change Lead...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='project-change-visibility'
-                      onSelect={() => goToSubPage('project-visibility')}
-                    >
-                      <Eye className='size-4 shrink-0' />
-                      <span>Change Visibility...</span>
-                      <CommandShortcut>
-                        <ArrowRight className='size-3' />
-                      </CommandShortcut>
-                    </CommandItem>
-                    <CommandItem
-                      value='project-edit-name'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent('command-menu:edit-project-name'),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Name</span>
-                    </CommandItem>
-                    <CommandItem
-                      value='project-edit-description'
-                      onSelect={() =>
-                        runCommand(() =>
-                          window.dispatchEvent(
-                            new CustomEvent(
-                              'command-menu:edit-project-description',
+              {pageContext?.type === 'project' &&
+                projectData &&
+                !areProjectPermissionsLoading &&
+                hasProjectContextCommands && (
+                  <>
+                    <CommandGroup heading={`Project ${projectData.name}`}>
+                      <CommandItem
+                        value='project-change-status'
+                        onSelect={() => goToSubPage('project-status')}
+                      >
+                        <Circle className='size-4 shrink-0' />
+                        <span>Change Status...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='project-change-team'
+                        onSelect={() => goToSubPage('project-team')}
+                      >
+                        <Users className='size-4 shrink-0' />
+                        <span>Change Team...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='project-change-lead'
+                        onSelect={() => goToSubPage('project-lead')}
+                      >
+                        <Target className='size-4 shrink-0' />
+                        <span>Change Lead...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='project-change-visibility'
+                        onSelect={() => goToSubPage('project-visibility')}
+                      >
+                        <Eye className='size-4 shrink-0' />
+                        <span>Change Visibility...</span>
+                        <CommandShortcut>
+                          <ArrowRight className='size-3' />
+                        </CommandShortcut>
+                      </CommandItem>
+                      <CommandItem
+                        value='project-edit-name'
+                        onSelect={() =>
+                          runCommand(() =>
+                            window.dispatchEvent(
+                              new CustomEvent('command-menu:edit-project-name'),
                             ),
-                          ),
-                        )
-                      }
-                    >
-                      <Pencil className='size-4 shrink-0' />
-                      <span>Edit Description</span>
-                    </CommandItem>
-                  </CommandGroup>
-                  <CommandSeparator />
-                </>
-              )}
+                          )
+                        }
+                      >
+                        <Pencil className='size-4 shrink-0' />
+                        <span>Edit Name</span>
+                      </CommandItem>
+                      <CommandItem
+                        value='project-edit-description'
+                        onSelect={() =>
+                          runCommand(() =>
+                            window.dispatchEvent(
+                              new CustomEvent(
+                                'command-menu:edit-project-description',
+                              ),
+                            ),
+                          )
+                        }
+                      >
+                        <Pencil className='size-4 shrink-0' />
+                        <span>Edit Description</span>
+                      </CommandItem>
+                    </CommandGroup>
+                    <CommandSeparator />
+                  </>
+                )}
 
               {/* Navigation */}
               <CommandGroup heading='Go to'>
@@ -787,227 +861,242 @@ export function CommandMenu() {
           )}
 
           {/* ── Issue: Change Status sub-page ── */}
-          {activePage === 'issue-status' && issueData && workspaceOptions && (
-            <CommandGroup heading='Change Status'>
-              {workspaceOptions.issueStates.map(state => (
-                <CommandItem
-                  key={state._id}
-                  value={`state-${state.name}`}
-                  onSelect={() =>
-                    runCommand(() => {
-                      void changeWorkflowState({
-                        issueId: issueData._id,
-                        stateId: state._id,
-                      }).then(() =>
-                        toast.success(`Status changed to ${state.name}`),
-                      );
-                    })
-                  }
-                >
-                  {state.icon ? (
-                    <DynamicIcon
-                      name={state.icon}
-                      fallback={Circle}
-                      className='size-4 shrink-0'
-                      style={{ color: state.color || '#6b7280' }}
-                    />
-                  ) : (
-                    <Circle
-                      className='size-4 shrink-0'
-                      style={{ color: state.color || '#6b7280' }}
-                    />
-                  )}
-                  <span>{state.name}</span>
-                  {issueData.workflowStateId === state._id && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+          {activePage === 'issue-status' &&
+            issueData &&
+            workspaceOptions &&
+            canChangeIssueStatus && (
+              <CommandGroup heading='Change Status'>
+                {workspaceOptions.issueStates.map(state => (
+                  <CommandItem
+                    key={state._id}
+                    value={`state-${state.name}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void changeWorkflowState({
+                          issueId: issueData._id,
+                          stateId: state._id,
+                        }).then(() =>
+                          toast.success(`Status changed to ${state.name}`),
+                        );
+                      })
+                    }
+                  >
+                    {state.icon ? (
+                      <DynamicIcon
+                        name={state.icon}
+                        fallback={Circle}
+                        className='size-4 shrink-0'
+                        style={{ color: state.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <Circle
+                        className='size-4 shrink-0'
+                        style={{ color: state.color || '#6b7280' }}
+                      />
+                    )}
+                    <span>{state.name}</span>
+                    {issueData.workflowStateId === state._id && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Issue: Change Priority sub-page ── */}
-          {activePage === 'issue-priority' && issueData && workspaceOptions && (
-            <CommandGroup heading='Change Priority'>
-              {workspaceOptions.issuePriorities.map(priority => (
-                <CommandItem
-                  key={priority._id}
-                  value={`priority-${priority.name}`}
-                  onSelect={() =>
-                    runCommand(() => {
-                      void changePriority({
-                        issueId: issueData._id,
-                        priorityId: priority._id,
-                      }).then(() =>
-                        toast.success(`Priority changed to ${priority.name}`),
-                      );
-                    })
-                  }
-                >
-                  {priority.icon ? (
-                    <DynamicIcon
-                      name={priority.icon}
-                      fallback={Signal}
-                      className='size-4 shrink-0'
-                      style={{ color: priority.color || '#6b7280' }}
-                    />
-                  ) : (
-                    <Signal className='size-4 shrink-0' />
-                  )}
-                  <span>{priority.name}</span>
-                  {issueData.priorityId === priority._id && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+          {activePage === 'issue-priority' &&
+            issueData &&
+            workspaceOptions &&
+            canChangeIssuePriority && (
+              <CommandGroup heading='Change Priority'>
+                {workspaceOptions.issuePriorities.map(priority => (
+                  <CommandItem
+                    key={priority._id}
+                    value={`priority-${priority.name}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void changePriority({
+                          issueId: issueData._id,
+                          priorityId: priority._id,
+                        }).then(() =>
+                          toast.success(`Priority changed to ${priority.name}`),
+                        );
+                      })
+                    }
+                  >
+                    {priority.icon ? (
+                      <DynamicIcon
+                        name={priority.icon}
+                        fallback={Signal}
+                        className='size-4 shrink-0'
+                        style={{ color: priority.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <Signal className='size-4 shrink-0' />
+                    )}
+                    <span>{priority.name}</span>
+                    {issueData.priorityId === priority._id && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Issue: Change Assignee sub-page ── */}
-          {activePage === 'issue-assignee' && issueData && workspaceOptions && (
-            <CommandGroup heading='Set Assignee'>
-              <CommandItem
-                value='assignee-none-unassigned'
-                onSelect={() =>
-                  runCommand(() => {
-                    void updateAssignees({
-                      issueId: issueData._id,
-                      assigneeIds: [],
-                    }).then(() => toast.success('Assignees cleared'));
-                  })
-                }
-              >
-                <Circle className='text-muted-foreground size-4 shrink-0' />
-                <span>Unassigned</span>
-              </CommandItem>
-              {workspaceOptions.members.map(member => (
+          {activePage === 'issue-assignee' &&
+            issueData &&
+            workspaceOptions &&
+            canChangeIssueAssignee && (
+              <CommandGroup heading='Set Assignee'>
                 <CommandItem
-                  key={member._id}
-                  value={`assignee-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
+                  value='assignee-none-unassigned'
                   onSelect={() =>
                     runCommand(() => {
                       void updateAssignees({
                         issueId: issueData._id,
-                        assigneeIds: [member.userId],
-                      }).then(() =>
-                        toast.success(
-                          `Assigned to ${member.user?.name || member.user?.email}`,
-                        ),
-                      );
+                        assigneeIds: [],
+                      }).then(() => toast.success('Assignees cleared'));
                     })
                   }
                 >
-                  <UserPlus className='size-4 shrink-0' />
-                  <span>{member.user?.name || member.user?.email}</span>
+                  <Circle className='text-muted-foreground size-4 shrink-0' />
+                  <span>Unassigned</span>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+                {workspaceOptions.members.map(member => (
+                  <CommandItem
+                    key={member._id}
+                    value={`assignee-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void updateAssignees({
+                          issueId: issueData._id,
+                          assigneeIds: [member.userId],
+                        }).then(() =>
+                          toast.success(
+                            `Assigned to ${member.user?.name || member.user?.email}`,
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    <UserPlus className='size-4 shrink-0' />
+                    <span>{member.user?.name || member.user?.email}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Issue: Change Team sub-page ── */}
-          {activePage === 'issue-team' && issueData && workspaceOptions && (
-            <CommandGroup heading='Change Team'>
-              <CommandItem
-                value='team-none-unset'
-                onSelect={() =>
-                  runCommand(() => {
-                    void changeIssueTeam({
-                      issueId: issueData._id,
-                      teamId: null,
-                    }).then(() => toast.success('Team removed'));
-                  })
-                }
-              >
-                <Circle className='text-muted-foreground size-4 shrink-0' />
-                <span>No Team</span>
-              </CommandItem>
-              {workspaceOptions.teams.map(team => (
+          {activePage === 'issue-team' &&
+            issueData &&
+            workspaceOptions &&
+            canChangeIssueRelations && (
+              <CommandGroup heading='Change Team'>
                 <CommandItem
-                  key={team._id}
-                  value={`team-${team.key}-${team.name}`}
+                  value='team-none-unset'
                   onSelect={() =>
                     runCommand(() => {
                       void changeIssueTeam({
                         issueId: issueData._id,
-                        teamId: team._id,
-                      }).then(() =>
-                        toast.success(`Team changed to ${team.name}`),
-                      );
+                        teamId: null,
+                      }).then(() => toast.success('Team removed'));
                     })
                   }
                 >
-                  {team.icon ? (
-                    <DynamicIcon
-                      name={team.icon}
-                      fallback={Users}
-                      className='size-4 shrink-0'
-                      style={{ color: team.color || '#6b7280' }}
-                    />
-                  ) : (
-                    <Users className='size-4 shrink-0' />
-                  )}
-                  <span>{team.name}</span>
-                  {issueData.teamId === team._id && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
+                  <Circle className='text-muted-foreground size-4 shrink-0' />
+                  <span>No Team</span>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+                {workspaceOptions.teams.map(team => (
+                  <CommandItem
+                    key={team._id}
+                    value={`team-${team.key}-${team.name}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void changeIssueTeam({
+                          issueId: issueData._id,
+                          teamId: team._id,
+                        }).then(() =>
+                          toast.success(`Team changed to ${team.name}`),
+                        );
+                      })
+                    }
+                  >
+                    {team.icon ? (
+                      <DynamicIcon
+                        name={team.icon}
+                        fallback={Users}
+                        className='size-4 shrink-0'
+                        style={{ color: team.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <Users className='size-4 shrink-0' />
+                    )}
+                    <span>{team.name}</span>
+                    {issueData.teamId === team._id && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Issue: Change Project sub-page ── */}
-          {activePage === 'issue-project' && issueData && workspaceOptions && (
-            <CommandGroup heading='Change Project'>
-              <CommandItem
-                value='project-none-unset'
-                onSelect={() =>
-                  runCommand(() => {
-                    void changeIssueProject({
-                      issueId: issueData._id,
-                      projectId: null,
-                    }).then(() => toast.success('Project removed'));
-                  })
-                }
-              >
-                <Circle className='text-muted-foreground size-4 shrink-0' />
-                <span>No Project</span>
-              </CommandItem>
-              {workspaceOptions.projects.map(project => (
+          {activePage === 'issue-project' &&
+            issueData &&
+            workspaceOptions &&
+            canChangeIssueRelations && (
+              <CommandGroup heading='Change Project'>
                 <CommandItem
-                  key={project._id}
-                  value={`project-${project.key}-${project.name}`}
+                  value='project-none-unset'
                   onSelect={() =>
                     runCommand(() => {
                       void changeIssueProject({
                         issueId: issueData._id,
-                        projectId: project._id,
-                      }).then(() =>
-                        toast.success(`Project changed to ${project.name}`),
-                      );
+                        projectId: null,
+                      }).then(() => toast.success('Project removed'));
                     })
                   }
                 >
-                  {project.icon ? (
-                    <DynamicIcon
-                      name={project.icon}
-                      fallback={FolderOpen}
-                      className='size-4 shrink-0'
-                      style={{ color: project.color || '#6b7280' }}
-                    />
-                  ) : (
-                    <FolderOpen className='size-4 shrink-0' />
-                  )}
-                  <span>{project.name}</span>
-                  {issueData.projectId === project._id && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
+                  <Circle className='text-muted-foreground size-4 shrink-0' />
+                  <span>No Project</span>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+                {workspaceOptions.projects.map(project => (
+                  <CommandItem
+                    key={project._id}
+                    value={`project-${project.key}-${project.name}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void changeIssueProject({
+                          issueId: issueData._id,
+                          projectId: project._id,
+                        }).then(() =>
+                          toast.success(`Project changed to ${project.name}`),
+                        );
+                      })
+                    }
+                  >
+                    {project.icon ? (
+                      <DynamicIcon
+                        name={project.icon}
+                        fallback={FolderOpen}
+                        className='size-4 shrink-0'
+                        style={{ color: project.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <FolderOpen className='size-4 shrink-0' />
+                    )}
+                    <span>{project.name}</span>
+                    {issueData.projectId === project._id && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Issue: Change Visibility sub-page ── */}
-          {activePage === 'issue-visibility' && issueData && (
+          {activePage === 'issue-visibility' && issueData && canEditIssue && (
             <CommandGroup heading='Change Visibility'>
               {(['private', 'organization', 'public'] as const).map(
                 visibility => (
@@ -1037,37 +1126,40 @@ export function CommandMenu() {
           )}
 
           {/* ── Team: Change Lead sub-page ── */}
-          {activePage === 'team-lead' && teamData && workspaceOptions && (
-            <CommandGroup heading='Change Team Lead'>
-              {workspaceOptions.members.map(member => (
-                <CommandItem
-                  key={member._id}
-                  value={`lead-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
-                  onSelect={() =>
-                    runCommand(() => {
-                      void updateTeam({
-                        teamId: teamData._id,
-                        data: { leadId: member.userId },
-                      }).then(() =>
-                        toast.success(
-                          `Lead changed to ${member.user?.name || member.user?.email}`,
-                        ),
-                      );
-                    })
-                  }
-                >
-                  <Target className='size-4 shrink-0' />
-                  <span>{member.user?.name || member.user?.email}</span>
-                  {teamData.leadId === member.userId && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
+          {activePage === 'team-lead' &&
+            teamData &&
+            workspaceOptions &&
+            canEditTeam && (
+              <CommandGroup heading='Change Team Lead'>
+                {workspaceOptions.members.map(member => (
+                  <CommandItem
+                    key={member._id}
+                    value={`lead-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void updateTeam({
+                          teamId: teamData._id,
+                          data: { leadId: member.userId },
+                        }).then(() =>
+                          toast.success(
+                            `Lead changed to ${member.user?.name || member.user?.email}`,
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    <Target className='size-4 shrink-0' />
+                    <span>{member.user?.name || member.user?.email}</span>
+                    {teamData.leadId === member.userId && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
 
           {/* ── Team: Change Visibility sub-page ── */}
-          {activePage === 'team-visibility' && teamData && (
+          {activePage === 'team-visibility' && teamData && canEditTeam && (
             <CommandGroup heading='Change Visibility'>
               {(['private', 'organization', 'public'] as const).map(
                 visibility => (
@@ -1099,7 +1191,8 @@ export function CommandMenu() {
           {/* ── Project: Change Status sub-page ── */}
           {activePage === 'project-status' &&
             projectData &&
-            workspaceOptions && (
+            workspaceOptions &&
+            canEditProject && (
               <CommandGroup heading='Change Status'>
                 <CommandItem
                   value='status-none-unset'
@@ -1153,129 +1246,139 @@ export function CommandMenu() {
             )}
 
           {/* ── Project: Change Team sub-page ── */}
-          {activePage === 'project-team' && projectData && workspaceOptions && (
-            <CommandGroup heading='Change Team'>
-              <CommandItem
-                value='team-none-unset'
-                onSelect={() =>
-                  runCommand(() => {
-                    void changeProjectTeam({
-                      projectId: projectData._id,
-                      teamId: null,
-                    }).then(() => toast.success('Team removed'));
-                  })
-                }
-              >
-                <Circle className='text-muted-foreground size-4 shrink-0' />
-                <span>No Team</span>
-              </CommandItem>
-              {workspaceOptions.teams.map(team => (
+          {activePage === 'project-team' &&
+            projectData &&
+            workspaceOptions &&
+            canEditProject && (
+              <CommandGroup heading='Change Team'>
                 <CommandItem
-                  key={team._id}
-                  value={`team-${team.key}-${team.name}`}
+                  value='team-none-unset'
                   onSelect={() =>
                     runCommand(() => {
                       void changeProjectTeam({
                         projectId: projectData._id,
-                        teamId: team._id,
-                      }).then(() =>
-                        toast.success(`Team changed to ${team.name}`),
-                      );
+                        teamId: null,
+                      }).then(() => toast.success('Team removed'));
                     })
                   }
                 >
-                  {team.icon ? (
-                    <DynamicIcon
-                      name={team.icon}
-                      fallback={Users}
-                      className='size-4 shrink-0'
-                      style={{ color: team.color || '#6b7280' }}
-                    />
-                  ) : (
-                    <Users className='size-4 shrink-0' />
-                  )}
-                  <span>{team.name}</span>
-                  {projectData.teamId === team._id && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
+                  <Circle className='text-muted-foreground size-4 shrink-0' />
+                  <span>No Team</span>
                 </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-
-          {/* ── Project: Change Lead sub-page ── */}
-          {activePage === 'project-lead' && projectData && workspaceOptions && (
-            <CommandGroup heading='Change Lead'>
-              <CommandItem
-                value='lead-none-unset'
-                onSelect={() =>
-                  runCommand(() => {
-                    void changeProjectLead({
-                      projectId: projectData._id,
-                      leadId: null,
-                    }).then(() => toast.success('Lead removed'));
-                  })
-                }
-              >
-                <Circle className='text-muted-foreground size-4 shrink-0' />
-                <span>No Lead</span>
-              </CommandItem>
-              {workspaceOptions.members.map(member => (
-                <CommandItem
-                  key={member._id}
-                  value={`lead-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
-                  onSelect={() =>
-                    runCommand(() => {
-                      void changeProjectLead({
-                        projectId: projectData._id,
-                        leadId: member.userId,
-                      }).then(() =>
-                        toast.success(
-                          `Lead changed to ${member.user?.name || member.user?.email}`,
-                        ),
-                      );
-                    })
-                  }
-                >
-                  <Target className='size-4 shrink-0' />
-                  <span>{member.user?.name || member.user?.email}</span>
-                  {projectData.leadId === member.userId && (
-                    <Check className='text-muted-foreground ml-auto size-3' />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-
-          {/* ── Project: Change Visibility sub-page ── */}
-          {activePage === 'project-visibility' && projectData && (
-            <CommandGroup heading='Change Visibility'>
-              {(['private', 'organization', 'public'] as const).map(
-                visibility => (
+                {workspaceOptions.teams.map(team => (
                   <CommandItem
-                    key={visibility}
-                    value={`visibility-${visibility}`}
+                    key={team._id}
+                    value={`team-${team.key}-${team.name}`}
                     onSelect={() =>
                       runCommand(() => {
-                        void changeProjectVisibility({
+                        void changeProjectTeam({
                           projectId: projectData._id,
-                          visibility,
+                          teamId: team._id,
                         }).then(() =>
-                          toast.success(`Visibility changed to ${visibility}`),
+                          toast.success(`Team changed to ${team.name}`),
                         );
                       })
                     }
                   >
-                    <Eye className='size-4 shrink-0' />
-                    <span className='capitalize'>{visibility}</span>
-                    {projectData.visibility === visibility && (
+                    {team.icon ? (
+                      <DynamicIcon
+                        name={team.icon}
+                        fallback={Users}
+                        className='size-4 shrink-0'
+                        style={{ color: team.color || '#6b7280' }}
+                      />
+                    ) : (
+                      <Users className='size-4 shrink-0' />
+                    )}
+                    <span>{team.name}</span>
+                    {projectData.teamId === team._id && (
                       <Check className='text-muted-foreground ml-auto size-3' />
                     )}
                   </CommandItem>
-                ),
-              )}
-            </CommandGroup>
-          )}
+                ))}
+              </CommandGroup>
+            )}
+
+          {/* ── Project: Change Lead sub-page ── */}
+          {activePage === 'project-lead' &&
+            projectData &&
+            workspaceOptions &&
+            canEditProject && (
+              <CommandGroup heading='Change Lead'>
+                <CommandItem
+                  value='lead-none-unset'
+                  onSelect={() =>
+                    runCommand(() => {
+                      void changeProjectLead({
+                        projectId: projectData._id,
+                        leadId: null,
+                      }).then(() => toast.success('Lead removed'));
+                    })
+                  }
+                >
+                  <Circle className='text-muted-foreground size-4 shrink-0' />
+                  <span>No Lead</span>
+                </CommandItem>
+                {workspaceOptions.members.map(member => (
+                  <CommandItem
+                    key={member._id}
+                    value={`lead-${member.user?.name ?? ''}-${member.user?.email ?? ''}`}
+                    onSelect={() =>
+                      runCommand(() => {
+                        void changeProjectLead({
+                          projectId: projectData._id,
+                          leadId: member.userId,
+                        }).then(() =>
+                          toast.success(
+                            `Lead changed to ${member.user?.name || member.user?.email}`,
+                          ),
+                        );
+                      })
+                    }
+                  >
+                    <Target className='size-4 shrink-0' />
+                    <span>{member.user?.name || member.user?.email}</span>
+                    {projectData.leadId === member.userId && (
+                      <Check className='text-muted-foreground ml-auto size-3' />
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+          {/* ── Project: Change Visibility sub-page ── */}
+          {activePage === 'project-visibility' &&
+            projectData &&
+            canEditProject && (
+              <CommandGroup heading='Change Visibility'>
+                {(['private', 'organization', 'public'] as const).map(
+                  visibility => (
+                    <CommandItem
+                      key={visibility}
+                      value={`visibility-${visibility}`}
+                      onSelect={() =>
+                        runCommand(() => {
+                          void changeProjectVisibility({
+                            projectId: projectData._id,
+                            visibility,
+                          }).then(() =>
+                            toast.success(
+                              `Visibility changed to ${visibility}`,
+                            ),
+                          );
+                        })
+                      }
+                    >
+                      <Eye className='size-4 shrink-0' />
+                      <span className='capitalize'>{visibility}</span>
+                      {projectData.visibility === visibility && (
+                        <Check className='text-muted-foreground ml-auto size-3' />
+                      )}
+                    </CommandItem>
+                  ),
+                )}
+              </CommandGroup>
+            )}
         </CommandList>
       </Command>
     </CommandDialog>

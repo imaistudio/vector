@@ -253,9 +253,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </div>
         </aside>
-        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-y-auto rounded-md border lg:mb-2 lg:ml-0'>
-          {children}
-        </main>
+        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-y-auto rounded-md border lg:mb-2 lg:ml-0' />
       </div>
     );
   }

@@ -1,4 +1,4 @@
-import { query } from '../_generated/server';
+import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { canViewProject } from '../access';
@@ -9,27 +9,70 @@ import {
 import { isDefined } from '../_shared/typeGuards';
 import { getAuthUserId } from '../authUtils';
 
+async function getProjectForOrgByKey(
+  ctx: QueryCtx,
+  orgSlug: string,
+  projectKey: string,
+) {
+  const org = await ctx.db
+    .query('organizations')
+    .withIndex('by_slug', q => q.eq('slug', orgSlug))
+    .first();
+
+  if (!org) {
+    throw new ConvexError('ORGANIZATION_NOT_FOUND');
+  }
+
+  const project = await ctx.db
+    .query('projects')
+    .withIndex('by_org_key', q =>
+      q.eq('organizationId', org._id).eq('key', projectKey),
+    )
+    .first();
+
+  return project;
+}
+
+async function loadProjectDetails(ctx: QueryCtx, project: Doc<'projects'>) {
+  const { leadId, lead } = await getProjectLeadSummary(ctx, project);
+  return { ...project, leadId, lead };
+}
+
 export const getByKey = query({
   args: {
     orgSlug: v.string(),
     projectKey: v.string(),
   },
   handler: async (ctx, args) => {
-    const org = await ctx.db
-      .query('organizations')
-      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
-      .first();
+    const project = await getProjectForOrgByKey(
+      ctx,
+      args.orgSlug,
+      args.projectKey,
+    );
 
-    if (!org) {
-      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    if (!project) {
+      throw new ConvexError('PROJECT_NOT_FOUND');
     }
 
-    const project = await ctx.db
-      .query('projects')
-      .withIndex('by_org_key', q =>
-        q.eq('organizationId', org._id).eq('key', args.projectKey),
-      )
-      .first();
+    if (!(await canViewProject(ctx, project))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    return loadProjectDetails(ctx, project);
+  },
+});
+
+export const getByKeyOrNull = query({
+  args: {
+    orgSlug: v.string(),
+    projectKey: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const project = await getProjectForOrgByKey(
+      ctx,
+      args.orgSlug,
+      args.projectKey,
+    );
 
     if (!project) {
       return null;
@@ -39,8 +82,7 @@ export const getByKey = query({
       throw new ConvexError('FORBIDDEN');
     }
 
-    const { leadId, lead } = await getProjectLeadSummary(ctx, project);
-    return { ...project, leadId, lead };
+    return loadProjectDetails(ctx, project);
   },
 });
 

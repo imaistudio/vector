@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, RefreshCw, Home, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home, ArrowLeft, LogIn } from 'lucide-react';
 import { Button } from './button';
 
 interface ErrorInfo {
@@ -107,15 +107,22 @@ function DefaultErrorFallback({
   retry,
   goHome,
 }: DefaultErrorFallbackProps) {
-  const isUnauthorized =
+  const isUnauthenticated =
+    error.message.includes('UNAUTHORIZED') ||
+    error.message.includes('Unauthorized');
+
+  const isForbidden =
     error.message.includes('FORBIDDEN') ||
-    error.message.includes('Unauthorized') ||
     error.message.includes('Access denied');
 
   const isNotFound =
     error.message.includes('not found') || error.message.includes('Not found');
 
-  if (isUnauthorized) {
+  if (isUnauthenticated) {
+    return <UnauthenticatedErrorFallback />;
+  }
+
+  if (isForbidden) {
     return <UnauthorizedErrorFallback goHome={goHome} />;
   }
 
@@ -124,6 +131,44 @@ function DefaultErrorFallback({
   }
 
   return <GenericErrorFallback error={error} retry={retry} goHome={goHome} />;
+}
+
+function UnauthenticatedErrorFallback() {
+  const loginUrl = `/auth/login?redirectTo=${encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname : '/')}`;
+
+  return (
+    <div className='bg-background flex min-h-[400px] w-full items-center justify-center p-4'>
+      <div className='max-w-xs space-y-4 text-center'>
+        <div className='space-y-1.5'>
+          <h2 className='text-foreground text-sm font-semibold'>
+            Sign in required
+          </h2>
+          <p className='text-muted-foreground text-xs'>
+            You need to sign in to access this page.
+          </p>
+        </div>
+
+        <div className='flex flex-col gap-2'>
+          <Button asChild size='sm' className='h-8 gap-2 text-xs'>
+            <a href={loginUrl}>
+              <LogIn className='size-3.5' />
+              Sign in
+            </a>
+          </Button>
+
+          <Button
+            variant='ghost'
+            size='sm'
+            onClick={() => window.history.back()}
+            className='h-8 gap-2 text-xs'
+          >
+            <ArrowLeft className='size-3.5' />
+            Go Back
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function UnauthorizedErrorFallback({ goHome }: { goHome: () => void }) {
