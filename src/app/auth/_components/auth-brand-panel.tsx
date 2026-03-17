@@ -1,23 +1,35 @@
 'use client';
 
+import { cn } from '@/lib/utils';
+
 /**
- * Brand header for auth pages — logo mark + wordmark.
- * Centered above the form, no separate panel.
+ * Auth page wrapper — subtle background + centered card container.
  */
-export function AuthBrandHeader() {
+export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className='mb-8 flex flex-col items-center gap-4 lg:mb-10'>
-      {/* Logo icon — uses the full SVG with dark bg so the gradient mark pops */}
+    <div className='relative flex min-h-dvh items-center justify-center px-4 py-12'>
+      {/* Subtle radial glow behind center */}
+      <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,_rgba(68,218,255,0.04)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_at_50%_40%,_rgba(68,218,255,0.06)_0%,_transparent_60%)]' />
+
+      <div className='relative w-full max-w-[400px]'>{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Logo lockup — icon + "Vector" text, used at top of auth cards.
+ */
+export function AuthLogo({ className }: { className?: string }) {
+  return (
+    <div className={cn('flex items-center justify-center gap-2.5', className)}>
       <img
         src='/icons/vector-logo.svg'
         alt='Vector'
-        className='size-14 rounded-2xl shadow-lg shadow-black/10 lg:size-16'
+        className='size-9 rounded-lg'
       />
-      <div className='text-center'>
-        <h2 className='font-title text-foreground/40 text-lg font-semibold tracking-tight'>
-          Vector
-        </h2>
-      </div>
+      <span className='font-title text-foreground text-xl font-semibold tracking-tight'>
+        Vector
+      </span>
     </div>
   );
 }

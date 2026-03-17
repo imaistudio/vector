@@ -15,6 +15,12 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
@@ -27,7 +33,7 @@ import {
   getContrastingTextColor,
   resolveBrandColor,
 } from '@/lib/branding';
-import { AuthBrandHeader } from '../_components/auth-brand-panel';
+import { AuthLogo, AuthShell } from '../_components/auth-brand-panel';
 
 const signInSchema = z.object({
   identifier: z.string().min(1, 'Email or username is required'),
@@ -82,109 +88,109 @@ function LoginForm() {
   };
 
   return (
-    <div className='flex min-h-dvh flex-col items-center justify-center px-6 py-12'>
-      <div className='w-full max-w-sm'>
-        <AuthBrandHeader />
+    <AuthShell>
+      <AuthLogo className='mb-8' />
 
-        <div className='mb-8 text-center'>
-          <h1 className='font-title text-2xl font-semibold tracking-tight'>
-            Welcome back
+      <Card>
+        <CardHeader>
+          <h1 className='font-title text-lg font-semibold tracking-tight'>
+            Sign in
           </h1>
-          <p className='text-muted-foreground mt-1 text-sm'>
-            Sign in to your account
+          <p className='text-muted-foreground text-sm'>
+            Enter your credentials to continue
           </p>
-        </div>
+        </CardHeader>
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(handleSubmit)}
-            className='space-y-4'
-          >
-            <FormField
-              control={form.control}
-              name='identifier'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className='text-xs font-medium'>
-                    Email or Username
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type='text'
-                      placeholder='you@example.com'
-                      autoComplete='email'
-                      disabled={isLoading}
-                      autoFocus
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name='password'
-              render={({ field }) => (
-                <FormItem>
-                  <div className='flex items-center justify-between'>
-                    <FormLabel className='text-xs font-medium'>
-                      Password
-                    </FormLabel>
-                    <Link
-                      href='/auth/forgot-password'
-                      className='text-muted-foreground hover:text-foreground text-xs transition-colors'
-                    >
-                      Forgot password?
-                    </Link>
-                  </div>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      type='password'
-                      placeholder='Enter your password'
-                      autoComplete='current-password'
-                      disabled={isLoading}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <Button
-              type='submit'
-              className='!mt-6 w-full transition-opacity hover:opacity-90'
-              disabled={isLoading}
-              style={{
-                backgroundColor: accentColor,
-                color: accentTextColor,
-              }}
+        <CardContent>
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit(handleSubmit)}
+              className='space-y-4'
             >
-              {isLoading ? (
-                <span className='flex items-center gap-2'>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  Signing in...
-                </span>
-              ) : (
-                'Sign in'
-              )}
-            </Button>
+              <FormField
+                control={form.control}
+                name='identifier'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className='text-xs'>Email or Username</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='text'
+                        placeholder='you@example.com'
+                        autoComplete='email'
+                        disabled={isLoading}
+                        autoFocus
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <p className='text-muted-foreground text-center text-sm'>
-              Don&apos;t have an account?{' '}
-              <Link
-                href='/auth/signup'
-                className='text-foreground font-medium hover:underline'
+              <FormField
+                control={form.control}
+                name='password'
+                render={({ field }) => (
+                  <FormItem>
+                    <div className='flex items-center justify-between'>
+                      <FormLabel className='text-xs'>Password</FormLabel>
+                      <Link
+                        href='/auth/forgot-password'
+                        className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+                      >
+                        Forgot?
+                      </Link>
+                    </div>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='password'
+                        placeholder='Your password'
+                        autoComplete='current-password'
+                        disabled={isLoading}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <Button
+                type='submit'
+                className='!mt-5 w-full transition-opacity hover:opacity-90'
+                disabled={isLoading}
+                style={{
+                  backgroundColor: accentColor,
+                  color: accentTextColor,
+                }}
               >
-                Sign up
-              </Link>
-            </p>
-          </form>
-        </Form>
-      </div>
-    </div>
+                {isLoading ? (
+                  <span className='flex items-center gap-2'>
+                    <Loader2 className='size-3.5 animate-spin' />
+                    Signing in…
+                  </span>
+                ) : (
+                  'Sign in'
+                )}
+              </Button>
+            </form>
+          </Form>
+        </CardContent>
+
+        <CardFooter className='justify-center'>
+          <p className='text-muted-foreground text-sm'>
+            No account?{' '}
+            <Link
+              href='/auth/signup'
+              className='text-foreground font-medium hover:underline'
+            >
+              Create one
+            </Link>
+          </p>
+        </CardFooter>
+      </Card>
+    </AuthShell>
   );
 }
 
@@ -192,30 +198,32 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <div className='flex min-h-dvh flex-col items-center justify-center px-6'>
-          <div className='w-full max-w-sm space-y-8'>
-            <div className='flex flex-col items-center gap-4'>
-              <Skeleton className='size-14 rounded-2xl' />
-              <Skeleton className='h-5 w-16' />
-            </div>
-            <div className='space-y-2 text-center'>
-              <Skeleton className='mx-auto h-8 w-40' />
-              <Skeleton className='mx-auto h-4 w-36' />
-            </div>
-            <div className='space-y-4'>
-              <div className='space-y-2'>
-                <Skeleton className='h-4 w-28' />
-                <Skeleton className='h-10 w-full rounded-md' />
-              </div>
-              <div className='space-y-2'>
-                <Skeleton className='h-4 w-16' />
-                <Skeleton className='h-10 w-full rounded-md' />
-              </div>
-              <Skeleton className='h-10 w-full rounded-md' />
-            </div>
-            <Skeleton className='mx-auto h-4 w-48' />
+        <AuthShell>
+          <div className='mb-8 flex items-center justify-center gap-2.5'>
+            <Skeleton className='size-9 rounded-lg' />
+            <Skeleton className='h-6 w-20' />
           </div>
-        </div>
+          <div className='bg-card ring-foreground/10 flex flex-col gap-4 rounded-xl py-4 ring-1'>
+            <div className='space-y-1 px-4'>
+              <Skeleton className='h-5 w-16' />
+              <Skeleton className='h-4 w-48' />
+            </div>
+            <div className='space-y-4 px-4'>
+              <div className='space-y-2'>
+                <Skeleton className='h-3.5 w-28' />
+                <Skeleton className='h-9 w-full rounded-md' />
+              </div>
+              <div className='space-y-2'>
+                <Skeleton className='h-3.5 w-16' />
+                <Skeleton className='h-9 w-full rounded-md' />
+              </div>
+              <Skeleton className='h-9 w-full rounded-md' />
+            </div>
+            <div className='bg-muted/50 flex justify-center border-t p-4'>
+              <Skeleton className='h-4 w-32' />
+            </div>
+          </div>
+        </AuthShell>
       }
     >
       <LoginForm />
