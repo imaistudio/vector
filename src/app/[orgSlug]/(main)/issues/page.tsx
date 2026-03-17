@@ -1,11 +1,11 @@
 'use client';
 
-import { useQuery, useMutation } from 'convex/react';
+import { usePaginatedQuery, useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useDeferredValue, useEffect, useState } from 'react';
+import { useCallback, useDeferredValue, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { LayoutList, Columns3, Clock, Search, Loader2 } from 'lucide-react';
@@ -154,8 +154,6 @@ export default function IssuesPage() {
   const [selectedTeam, setSelectedTeam] = useState<string>('');
   const [searchText, setSearchText] = useState('');
   const deferredSearch = useDeferredValue(searchText);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 25;
 
   const user = useQuery(api.users.currentUser);
   const currentUserId = user?._id || '';
@@ -176,7 +174,7 @@ export default function IssuesPage() {
   const changeTeamMutation = useMutation(api.issues.mutations.changeTeam);
   const changeProjectMutation = useMutation(api.issues.mutations.changeProject);
   const changeAssignmentStateMutation = useMutation(
-    api.issues.mutations.changeWorkflowState,
+    api.issues.mutations.changeAssignmentState,
   );
   const { isAllowed: canAssignIssues } = usePermissionCheck(
     orgSlug,
@@ -205,53 +203,40 @@ export default function IssuesPage() {
     searchQuery: deferredSearch || undefined,
   };
 
-  const issuesData = useQuery(api.issues.queries.listIssues, {
+  const summary = useQuery(api.issues.queries.getIssueListSummary, {
     ...scopeQueryArgs,
-    assigneeId: scopeTab === 'mine' ? currentUserId || undefined : undefined,
-    relatedOnly: scopeTab === 'related' ? true : undefined,
-    page: isListView ? page : undefined,
-    pageSize: isListView ? PAGE_SIZE : undefined,
-    includeCounts: true,
+    scope: scopeTab,
   });
-  const { issues, total, counts } = issuesData ?? {
-    issues: [],
-    total: 0,
-    counts: {},
-  };
-
-  // Lightweight count queries for inactive scope tabs
-  const mineCountData = useQuery(
+  const paginatedIssues = usePaginatedQuery(
+    api.issues.queries.listIssuesPage,
+    {
+      ...scopeQueryArgs,
+      scope: scopeTab,
+    },
+    { initialNumItems: 20 },
+  );
+  const kanbanIssuesData = useQuery(
     api.issues.queries.listIssues,
-    scopeTab !== 'mine'
+    viewMode === 'kanban'
       ? {
           ...scopeQueryArgs,
-          assigneeId: currentUserId || undefined,
-          page: 1,
-          pageSize: 1,
+          assigneeId:
+            scopeTab === 'mine' ? currentUserId || undefined : undefined,
+          relatedOnly: scopeTab === 'related' ? true : undefined,
+          includeCounts: true,
         }
       : 'skip',
   );
-  const relatedCountData = useQuery(
-    api.issues.queries.listIssues,
-    scopeTab !== 'related'
-      ? { ...scopeQueryArgs, relatedOnly: true, page: 1, pageSize: 1 }
-      : 'skip',
-  );
-  const allCountData = useQuery(
-    api.issues.queries.listIssues,
-    scopeTab !== 'all' ? { ...scopeQueryArgs, page: 1, pageSize: 1 } : 'skip',
-  );
-
-  const scopeCounts = {
-    mine: scopeTab === 'mine' ? total : (mineCountData?.total ?? 0),
-    related: scopeTab === 'related' ? total : (relatedCountData?.total ?? 0),
-    all: scopeTab === 'all' ? total : (allCountData?.total ?? 0),
+  const listIssues = paginatedIssues.results;
+  const issues =
+    viewMode === 'kanban' ? (kanbanIssuesData?.issues ?? []) : listIssues;
+  const total = summary?.total ?? 0;
+  const counts = summary?.counts ?? {};
+  const scopeCounts = summary?.scopeCounts ?? {
+    mine: 0,
+    related: 0,
+    all: 0,
   };
-
-  // Reset page when filters change
-  useEffect(() => {
-    setPage(1);
-  }, [deferredSearch, selectedProject, selectedTeam, activeFilter, scopeTab]);
 
   const handlePriorityChange = (issueId: string, priorityId: string) => {
     if (!user || !priorityId) return;
@@ -294,14 +279,14 @@ export default function IssuesPage() {
   };
 
   const handleAssignmentStateChange = async (
-    issueId: string,
+    assignmentId: string,
     stateId: string,
   ) => {
-    if (!user || !issueId || !stateId) return;
+    if (!user || !assignmentId || !stateId) return;
     setIsUpdatingAssignmentStates(true);
     try {
       await changeAssignmentStateMutation({
-        issueId: issueId as Id<'issues'>,
+        assignmentId: assignmentId as Id<'issueAssignees'>,
         stateId: stateId as Id<'issueStates'>,
       });
     } finally {
@@ -336,7 +321,14 @@ export default function IssuesPage() {
 
   const visibleTabs = updatedTabs.filter(t => t.key === 'all' || t.count > 0);
 
-  if (user === undefined || issuesData === undefined || states === undefined) {
+  if (
+    user === undefined ||
+    summary === undefined ||
+    states === undefined ||
+    (viewMode === 'kanban'
+      ? kanbanIssuesData === undefined
+      : paginatedIssues.status === 'LoadingFirstPage')
+  ) {
     return viewMode === 'kanban' ? (
       <div className='bg-background h-full'>
         <div className='border-b'>
@@ -391,7 +383,6 @@ export default function IssuesPage() {
                 onClick={() => {
                   setScopeTab(tab.key);
                   setActiveFilter('all');
-                  setPage(1);
                 }}
               >
                 <span>{tab.label}</span>
@@ -560,32 +551,18 @@ export default function IssuesPage() {
               />
             </div>
 
-            {/* Pagination controls */}
-            <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
-              <span>
-                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              </span>
-              <div className='flex gap-1'>
+            {paginatedIssues.status === 'CanLoadMore' && (
+              <div className='border-t px-3 py-2'>
                 <Button
-                  variant='ghost'
+                  variant='outline'
                   size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page === 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className='h-7 text-xs'
+                  onClick={() => paginatedIssues.loadMore(20)}
                 >
-                  Prev
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page * PAGE_SIZE >= total}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next
+                  Load more issues
                 </Button>
               </div>
-            </div>
+            )}
           </motion.div>
         ) : viewMode === 'timeline' ? (
           <motion.div
@@ -618,32 +595,18 @@ export default function IssuesPage() {
               />
             </div>
 
-            {/* Pagination controls */}
-            <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
-              <span>
-                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              </span>
-              <div className='flex gap-1'>
+            {paginatedIssues.status === 'CanLoadMore' && (
+              <div className='border-t px-3 py-2'>
                 <Button
-                  variant='ghost'
+                  variant='outline'
                   size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page === 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className='h-7 text-xs'
+                  onClick={() => paginatedIssues.loadMore(20)}
                 >
-                  Prev
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page * PAGE_SIZE >= total}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next
+                  Load more issues
                 </Button>
               </div>
-            </div>
+            )}
           </motion.div>
         ) : (
           <motion.div

@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Id, Doc, DataModel } from '../_generated/dataModel';
@@ -165,6 +166,8 @@ export type IssueListScope = {
   teamId?: Id<'teams'>;
   projectKey?: string;
 };
+
+type IssueScopeTab = 'mine' | 'related' | 'all';
 
 async function loadDocMap<TableName extends keyof DataModel>(
   ctx: QueryCtx,
@@ -514,6 +517,62 @@ export function canUserViewIssueFromAccess(
   return false;
 }
 
+function matchesIssueListScope(
+  access: IssueVisibilityAccess,
+  issue: Doc<'issues'>,
+  scope: IssueScopeTab,
+) {
+  if (scope === 'mine') {
+    return access.assignedIssueIds.has(issue._id);
+  }
+
+  if (scope === 'related') {
+    const inMyTeam = issue.teamId ? access.teamIds.has(issue.teamId) : false;
+    const inMyProject = issue.projectId
+      ? access.projectIds.has(issue.projectId)
+      : false;
+    return inMyTeam || inMyProject;
+  }
+
+  return true;
+}
+
+function matchesScopedProjectFilter(
+  issue: Doc<'issues'>,
+  projectId?: Id<'projects'>,
+  projectKey?: string,
+) {
+  if (!projectId) return true;
+
+  return (
+    issue.projectId === projectId ||
+    (!issue.projectId &&
+      Boolean(projectKey) &&
+      issue.key.startsWith(`${projectKey}-`))
+  );
+}
+
+function matchesIssueListFilters(
+  issue: Doc<'issues'>,
+  filters: {
+    projectId?: Id<'projects'>;
+    teamId?: Id<'teams'>;
+    projectKey?: string;
+  },
+) {
+  if (
+    !matchesScopedProjectFilter(issue, filters.projectId, filters.projectKey)
+  ) {
+    return false;
+  }
+
+  if (filters.teamId && issue.teamId !== filters.teamId) {
+    return false;
+  }
+
+  return true;
+}
+
 function matchesIssueSearch(issue: Doc<'issues'>, searchQuery?: string) {
   const normalized = searchQuery?.trim().toLowerCase();
   if (!normalized) return true;
@@ -527,6 +586,17 @@ function matchesIssueSearch(issue: Doc<'issues'>, searchQuery?: string) {
 
 function dedupeIssues(issues: readonly Doc<'issues'>[]) {
   return Array.from(new Map(issues.map(issue => [issue._id, issue])).values());
+}
+
+function sortIssuesByRecency(issues: readonly Doc<'issues'>[]) {
+  return [...issues].sort((a, b) => {
+    const aUpdatedAt = a.updatedAt ?? a._creationTime;
+    const bUpdatedAt = b.updatedAt ?? b._creationTime;
+    if (aUpdatedAt !== bUpdatedAt) {
+      return bUpdatedAt - aUpdatedAt;
+    }
+    return b._creationTime - a._creationTime;
+  });
 }
 
 async function collectScopedIssues(
@@ -940,6 +1010,208 @@ async function buildIssueCounts(
 
   return counts;
 }
+
+export const getIssueListSummary = query({
+  args: {
+    orgSlug: v.string(),
+    projectId: v.optional(v.string()),
+    teamId: v.optional(v.string()),
+    searchQuery: v.optional(v.string()),
+    scope: v.union(v.literal('mine'), v.literal('related'), v.literal('all')),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    const access = await buildIssueVisibilityAccess(ctx, userId, org._id);
+    const [projectId, teamId] = await Promise.all([
+      resolveProjectId(ctx, org._id, args.projectId),
+      resolveTeamId(ctx, org._id, args.teamId),
+    ]);
+
+    if (projectId === null || teamId === null) {
+      return {
+        total: 0,
+        counts: {},
+        scopeCounts: { mine: 0, related: 0, all: 0 },
+      };
+    }
+
+    const [scopedProject, scopedTeam] = await Promise.all([
+      projectId ? ctx.db.get('projects', projectId) : null,
+      teamId ? ctx.db.get('teams', teamId) : null,
+    ]);
+    const [scopedProjectVisible, scopedTeamVisible] = await Promise.all([
+      scopedProject ? canViewProject(ctx, scopedProject) : false,
+      scopedTeam ? canViewTeam(ctx, scopedTeam) : false,
+    ]);
+
+    const candidateIssues = await collectIssueCandidates(
+      ctx,
+      {
+        organizationId: org._id,
+        projectId: projectId ?? undefined,
+        teamId: teamId ?? undefined,
+        projectKey: scopedProject?.key,
+      },
+      args.searchQuery,
+    );
+
+    const visibleIssues = candidateIssues.filter(issue =>
+      canUserViewIssueFromAccess(access, issue, {
+        scopedProjectId: scopedProjectVisible
+          ? (projectId ?? undefined)
+          : undefined,
+        scopedProjectVisible,
+        scopedTeamId: scopedTeamVisible ? (teamId ?? undefined) : undefined,
+        scopedTeamVisible,
+      }),
+    );
+
+    const mineIssues = visibleIssues.filter(issue =>
+      matchesIssueListScope(access, issue, 'mine'),
+    );
+    const relatedIssues = visibleIssues.filter(issue =>
+      matchesIssueListScope(access, issue, 'related'),
+    );
+    const scopedIssues =
+      args.scope === 'mine'
+        ? mineIssues
+        : args.scope === 'related'
+          ? relatedIssues
+          : visibleIssues;
+
+    return {
+      total: scopedIssues.length,
+      counts: await buildIssueCounts(ctx, org._id, scopedIssues),
+      scopeCounts: {
+        mine: mineIssues.length,
+        related: relatedIssues.length,
+        all: visibleIssues.length,
+      },
+    };
+  },
+});
+
+export const listIssuesPage = query({
+  args: {
+    orgSlug: v.string(),
+    projectId: v.optional(v.string()),
+    teamId: v.optional(v.string()),
+    searchQuery: v.optional(v.string()),
+    scope: v.union(v.literal('mine'), v.literal('related'), v.literal('all')),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    const access = await buildIssueVisibilityAccess(ctx, userId, org._id);
+    const [projectId, teamId] = await Promise.all([
+      resolveProjectId(ctx, org._id, args.projectId),
+      resolveTeamId(ctx, org._id, args.teamId),
+    ]);
+
+    if (projectId === null || teamId === null) {
+      return {
+        page: [],
+        continueCursor: '',
+        isDone: true,
+      };
+    }
+
+    const [scopedProject, scopedTeam] = await Promise.all([
+      projectId ? ctx.db.get('projects', projectId) : null,
+      teamId ? ctx.db.get('teams', teamId) : null,
+    ]);
+    const [scopedProjectVisible, scopedTeamVisible] = await Promise.all([
+      scopedProject ? canViewProject(ctx, scopedProject) : false,
+      scopedTeam ? canViewTeam(ctx, scopedTeam) : false,
+    ]);
+
+    const candidateIssues = await collectIssueCandidates(
+      ctx,
+      {
+        organizationId: org._id,
+        projectId: projectId ?? undefined,
+        teamId: teamId ?? undefined,
+        projectKey: scopedProject?.key,
+      },
+      args.searchQuery,
+    );
+
+    const visibleIssues = sortIssuesByRecency(
+      candidateIssues.filter(issue => {
+        if (
+          !matchesIssueListFilters(issue, {
+            projectId: projectId ?? undefined,
+            teamId: teamId ?? undefined,
+            projectKey: scopedProject?.key,
+          })
+        ) {
+          return false;
+        }
+
+        if (
+          !canUserViewIssueFromAccess(access, issue, {
+            scopedProjectId: scopedProjectVisible
+              ? (projectId ?? undefined)
+              : undefined,
+            scopedProjectVisible,
+            scopedTeamId: scopedTeamVisible ? (teamId ?? undefined) : undefined,
+            scopedTeamVisible,
+          })
+        ) {
+          return false;
+        }
+
+        return matchesIssueListScope(access, issue, args.scope);
+      }),
+    );
+
+    const target = Math.max(1, args.paginationOpts.numItems);
+    const start = Number.parseInt(args.paginationOpts.cursor || '0', 10);
+    const safeStart = Number.isFinite(start) && start >= 0 ? start : 0;
+    const pageIssues = visibleIssues.slice(safeStart, safeStart + target);
+    const nextCursor =
+      safeStart + pageIssues.length < visibleIssues.length
+        ? String(safeStart + pageIssues.length)
+        : '';
+
+    const assignmentsByIssue = await loadAssignmentsByIssue(
+      ctx,
+      pageIssues.map(issue => issue._id),
+    );
+
+    return {
+      page: await flattenIssueRows(ctx, pageIssues, assignmentsByIssue),
+      continueCursor: nextCursor,
+      isDone: nextCursor === '',
+    };
+  },
+});
 
 function buildParentIssueOption(
   issue: Doc<'issues'>,
