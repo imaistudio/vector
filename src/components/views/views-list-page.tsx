@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation } from 'convex/react';
+import { usePaginatedQuery, useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { useParams, useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -57,8 +57,8 @@ const VIEW_MODE_ICON = {
 } as const;
 
 type ViewItem = NonNullable<
-  ReturnType<typeof useQuery<typeof api.views.queries.listViews>>
->[number];
+  ReturnType<typeof useQuery<typeof api.views.queries.listViewsPage>>
+>['page'][number];
 
 export function ViewsListPage() {
   const params = useParams<{ orgSlug: string }>();
@@ -72,16 +72,13 @@ export function ViewsListPage() {
     PERMISSIONS.VIEW_CREATE,
   );
 
-  const views = useQuery(api.views.queries.listViews, { orgSlug });
+  const summary = useQuery(api.views.queries.getListSummary, { orgSlug });
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.views.queries.listViewsPage,
+    { orgSlug, scope },
+    { initialNumItems: 20 },
+  );
   const deleteView = useMutation(api.views.mutations.deleteView);
-
-  const myViews = views?.filter(v => v.visibility === 'private') ?? [];
-  const allViews =
-    views?.filter(
-      v => v.visibility === 'organization' || v.visibility === 'public',
-    ) ?? [];
-
-  const displayViews = scope === 'mine' ? myViews : allViews;
 
   const handleDelete = async (viewId: Id<'views'>, viewName: string) => {
     const confirmed = await confirm({
@@ -97,7 +94,7 @@ export function ViewsListPage() {
     }
   };
 
-  if (!views) {
+  if (!summary || status === 'LoadingFirstPage') {
     return (
       <div className='bg-background h-full overflow-y-auto'>
         <div className='border-b'>
@@ -150,7 +147,7 @@ export function ViewsListPage() {
               >
                 <span>My views</span>
                 <span className='text-muted-foreground text-xs'>
-                  {myViews.length}
+                  {summary?.mineCount ?? 0}
                 </span>
               </Button>
               <Button
@@ -161,7 +158,7 @@ export function ViewsListPage() {
               >
                 <span>Shared</span>
                 <span className='text-muted-foreground text-xs'>
-                  {allViews.length}
+                  {summary?.sharedCount ?? 0}
                 </span>
               </Button>
             </div>
@@ -174,7 +171,7 @@ export function ViewsListPage() {
         </div>
 
         {/* Empty state */}
-        {displayViews.length === 0 ? (
+        {results.length === 0 ? (
           <div className='text-muted-foreground flex flex-col items-center gap-3 py-20 text-center'>
             <LayoutGrid className='size-10 opacity-20' />
             <p className='text-sm font-medium'>
@@ -194,7 +191,7 @@ export function ViewsListPage() {
           </div>
         ) : (
           <div className='divide-border divide-y'>
-            {displayViews.map(view => (
+            {results.map(view => (
               <ViewRow
                 key={view._id}
                 view={view}
@@ -206,6 +203,19 @@ export function ViewsListPage() {
                 }
               />
             ))}
+          </div>
+        )}
+
+        {status === 'CanLoadMore' && (
+          <div className='border-t px-3 py-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 text-xs'
+              onClick={() => loadMore(20)}
+            >
+              Load more views
+            </Button>
           </div>
         )}
       </div>

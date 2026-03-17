@@ -238,32 +238,37 @@ export function IssuesTable({
         className='hover:bg-muted/50 flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors'
       >
         {/* Priority Selector */}
-        <PermissionAware
-          orgSlug={orgSlug}
-          permission={PERMISSIONS.ISSUE_PRIORITY_UPDATE}
-          fallbackMessage="You don't have permission to change issue priority"
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
         >
-          <PrioritySelector
-            priorities={priorities as Priority[]}
-            selectedPriority={issue.priorityId || ''}
-            onPrioritySelect={pid => onPriorityChange(issue.id, pid)}
-            displayMode='labelOnly'
-            trigger={
-              <Button
-                variant='ghost'
-                size='icon'
-                className='size-6 shrink-0 rounded-md'
-                aria-label='Change issue priority'
-              >
-                <PriorityIcon
-                  className='size-4'
-                  style={{ color: priorityColor }}
-                />
-              </Button>
-            }
-            className='border-none bg-transparent p-0 shadow-none'
-          />
-        </PermissionAware>
+          <PermissionAware
+            orgSlug={orgSlug}
+            permission={PERMISSIONS.ISSUE_PRIORITY_UPDATE}
+            fallbackMessage="You don't have permission to change issue priority"
+          >
+            <PrioritySelector
+              priorities={priorities as Priority[]}
+              selectedPriority={issue.priorityId || ''}
+              onPrioritySelect={pid => onPriorityChange(issue.id, pid)}
+              displayMode='labelOnly'
+              trigger={
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='size-6 shrink-0 rounded-md'
+                  aria-label='Change issue priority'
+                >
+                  <PriorityIcon
+                    className='size-4'
+                    style={{ color: priorityColor }}
+                  />
+                </Button>
+              }
+              className='border-none bg-transparent p-0 shadow-none'
+            />
+          </PermissionAware>
+        </div>
 
         {/* Issue Key */}
         <div className='hidden flex-shrink-0 items-center gap-2 sm:flex'>
@@ -281,21 +286,26 @@ export function IssuesTable({
         </div>
 
         {displayAssignmentId && (
-          <PermissionAware
-            orgSlug={orgSlug}
-            permission={PERMISSIONS.ISSUE_STATE_UPDATE}
-            fallbackMessage="You don't have permission to change issue state"
+          <div
+            onPointerDown={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
-            <StateSelector
-              states={states}
-              selectedState={displayStateId || ''}
-              onStateSelect={stateId =>
-                onAssignmentStateChange(displayAssignmentId, stateId)
-              }
-              displayMode='labelOnly'
-              className='border-none bg-transparent p-0 shadow-none'
-            />
-          </PermissionAware>
+            <PermissionAware
+              orgSlug={orgSlug}
+              permission={PERMISSIONS.ISSUE_STATE_UPDATE}
+              fallbackMessage="You don't have permission to change issue state"
+            >
+              <StateSelector
+                states={states}
+                selectedState={displayStateId || ''}
+                onStateSelect={stateId =>
+                  onAssignmentStateChange(displayAssignmentId, stateId)
+                }
+                displayMode='labelOnly'
+                className='border-none bg-transparent p-0 shadow-none'
+              />
+            </PermissionAware>
+          </div>
         )}
 
         {/* Title */}
@@ -311,35 +321,45 @@ export function IssuesTable({
         {/* Team / Project selectors - hidden on mobile */}
         <div className='hidden md:contents'>
           {issue.teamKey && (
-            <PermissionAware
-              orgSlug={orgSlug}
-              permission={PERMISSIONS.ISSUE_EDIT}
-              fallbackMessage="You don't have permission to change issue team"
+            <div
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
             >
-              <TeamSelector
-                teams={teams}
-                selectedTeam={
-                  teams.find(t => t.key === issue.teamKey)?._id || ''
-                }
-                onTeamSelect={tid => onTeamChange(issue.id, tid)}
-              />
-            </PermissionAware>
+              <PermissionAware
+                orgSlug={orgSlug}
+                permission={PERMISSIONS.ISSUE_EDIT}
+                fallbackMessage="You don't have permission to change issue team"
+              >
+                <TeamSelector
+                  teams={teams}
+                  selectedTeam={
+                    teams.find(t => t.key === issue.teamKey)?._id || ''
+                  }
+                  onTeamSelect={tid => onTeamChange(issue.id, tid)}
+                />
+              </PermissionAware>
+            </div>
           )}
 
           {issue.projectKey && (
-            <PermissionAware
-              orgSlug={orgSlug}
-              permission={PERMISSIONS.ISSUE_EDIT}
-              fallbackMessage="You don't have permission to change issue project"
+            <div
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
             >
-              <ProjectSelector
-                projects={projects}
-                selectedProject={
-                  projects.find(p => p.key === issue.projectKey)?._id || ''
-                }
-                onProjectSelect={pid => onProjectChange(issue.id, pid)}
-              />
-            </PermissionAware>
+              <PermissionAware
+                orgSlug={orgSlug}
+                permission={PERMISSIONS.ISSUE_EDIT}
+                fallbackMessage="You don't have permission to change issue project"
+              >
+                <ProjectSelector
+                  projects={projects}
+                  selectedProject={
+                    projects.find(p => p.key === issue.projectKey)?._id || ''
+                  }
+                  onProjectSelect={pid => onProjectChange(issue.id, pid)}
+                />
+              </PermissionAware>
+            </div>
           )}
         </div>
 
@@ -363,17 +383,22 @@ export function IssuesTable({
         </div>
 
         {/* Assignees */}
-        <MultiAssigneeSelector
-          orgSlug={orgSlug}
-          selectedAssigneeIds={assigneeIds}
-          onAssigneesChange={ids => onAssigneesChange(issue.id!, ids)}
-          isLoading={isUpdatingAssignees}
-          highlightAssigneeId={null}
-          assignments={assignments}
-          activeFilter={activeFilter}
-          currentUserId={currentUserId}
-          canManageAll={canManageAssignees}
-        />
+        <div
+          onPointerDown={e => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
+        >
+          <MultiAssigneeSelector
+            orgSlug={orgSlug}
+            selectedAssigneeIds={assigneeIds}
+            onAssigneesChange={ids => onAssigneesChange(issue.id!, ids)}
+            isLoading={isUpdatingAssignees}
+            highlightAssigneeId={null}
+            assignments={assignments}
+            activeFilter={activeFilter}
+            currentUserId={currentUserId}
+            canManageAll={canManageAssignees}
+          />
+        </div>
 
         {/* Actions */}
         <div className='flex-shrink-0'>

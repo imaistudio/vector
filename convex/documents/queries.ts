@@ -1,8 +1,50 @@
-import { query } from '../_generated/server';
+import { paginationOptsValidator } from 'convex/server';
+import { query, type QueryCtx } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
+import type { Doc } from '../_generated/dataModel';
 import { getOrganizationBySlug } from '../authz';
 import { canViewDocument } from '../access';
 import { getAuthUserId } from '../authUtils';
+
+async function hydrateDocuments(
+  ctx: QueryCtx,
+  documents: readonly Doc<'documents'>[],
+) {
+  return Promise.all(
+    documents.map(async doc => {
+      const [author, team, project] = await Promise.all([
+        ctx.db.get('users', doc.createdBy),
+        doc.teamId ? ctx.db.get('teams', doc.teamId) : null,
+        doc.projectId ? ctx.db.get('projects', doc.projectId) : null,
+      ]);
+
+      return {
+        ...doc,
+        author: author
+          ? { _id: author._id, name: author.name, email: author.email }
+          : null,
+        team: team
+          ? {
+              _id: team._id,
+              name: team.name,
+              key: team.key,
+              icon: team.icon,
+              color: team.color,
+            }
+          : null,
+        project: project
+          ? {
+              _id: project._id,
+              name: project.name,
+              key: project.key,
+              icon: project.icon,
+              color: project.color,
+            }
+          : null,
+      };
+    }),
+  );
+}
 
 export const getById = query({
   args: {
@@ -104,41 +146,7 @@ export const list = query({
       }
     }
 
-    // Enrich each doc with related entities
-    return Promise.all(
-      visibleDocs.map(async doc => {
-        const [author, team, project] = await Promise.all([
-          ctx.db.get('users', doc.createdBy),
-          doc.teamId ? ctx.db.get('teams', doc.teamId) : null,
-          doc.projectId ? ctx.db.get('projects', doc.projectId) : null,
-        ]);
-
-        return {
-          ...doc,
-          author: author
-            ? { _id: author._id, name: author.name, email: author.email }
-            : null,
-          team: team
-            ? {
-                _id: team._id,
-                name: team.name,
-                key: team.key,
-                icon: team.icon,
-                color: team.color,
-              }
-            : null,
-          project: project
-            ? {
-                _id: project._id,
-                name: project.name,
-                key: project.key,
-                icon: project.icon,
-                color: project.color,
-              }
-            : null,
-        };
-      }),
-    );
+    return hydrateDocuments(ctx, visibleDocs);
   },
 });
 
@@ -166,41 +174,123 @@ export const listMyDocuments = query({
       }
     }
 
-    // Enrich each doc with related entities
-    return Promise.all(
-      visibleDocs.map(async doc => {
-        const [author, team, project] = await Promise.all([
-          ctx.db.get('users', doc.createdBy),
-          doc.teamId ? ctx.db.get('teams', doc.teamId) : null,
-          doc.projectId ? ctx.db.get('projects', doc.projectId) : null,
-        ]);
+    return hydrateDocuments(ctx, visibleDocs);
+  },
+});
 
-        return {
-          ...doc,
-          author: author
-            ? { _id: author._id, name: author.name, email: author.email }
-            : null,
-          team: team
-            ? {
-                _id: team._id,
-                name: team.name,
-                key: team.key,
-                icon: team.icon,
-                color: team.color,
-              }
-            : null,
-          project: project
-            ? {
-                _id: project._id,
-                name: project.name,
-                key: project.key,
-                icon: project.icon,
-                color: project.color,
-              }
-            : null,
-        };
-      }),
-    );
+export const listPage = query({
+  args: {
+    orgSlug: v.string(),
+    scope: v.union(v.literal('mine'), v.literal('all')),
+    unfiledOnly: v.optional(v.boolean()),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const target = Math.max(1, args.paginationOpts.numItems);
+    const pageItems: Doc<'documents'>[] = [];
+    let cursor = args.paginationOpts.cursor;
+    let isDone = false;
+
+    if (args.scope === 'mine') {
+      const userId = await getAuthUserId(ctx);
+      if (!userId) {
+        return { page: [], continueCursor: '', isDone: true };
+      }
+
+      while (pageItems.length < target && !isDone) {
+        const source = await ctx.db
+          .query('documents')
+          .withIndex('by_org_createdBy', q =>
+            q.eq('organizationId', org._id).eq('createdBy', userId),
+          )
+          .order('desc')
+          .paginate({
+            cursor,
+            numItems: target - pageItems.length,
+          });
+
+        for (const doc of source.page) {
+          if (args.unfiledOnly && doc.folderId) continue;
+          if (await canViewDocument(ctx, doc)) {
+            pageItems.push(doc);
+          }
+        }
+
+        cursor = source.continueCursor;
+        isDone = source.isDone || !source.continueCursor;
+      }
+    } else {
+      while (pageItems.length < target && !isDone) {
+        const source = await ctx.db
+          .query('documents')
+          .withIndex('by_organizationId', q => q.eq('organizationId', org._id))
+          .order('desc')
+          .paginate({
+            cursor,
+            numItems: target - pageItems.length,
+          });
+
+        for (const doc of source.page) {
+          if (args.unfiledOnly && doc.folderId) continue;
+          if (await canViewDocument(ctx, doc)) {
+            pageItems.push(doc);
+          }
+        }
+
+        cursor = source.continueCursor;
+        isDone = source.isDone || !source.continueCursor;
+      }
+    }
+
+    return {
+      page: await hydrateDocuments(ctx, pageItems),
+      continueCursor: cursor ?? '',
+      isDone,
+    };
+  },
+});
+
+export const getListSummary = query({
+  args: {
+    orgSlug: v.string(),
+    unfiledOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const userId = await getAuthUserId(ctx);
+    const [allDocuments, myDocuments] = await Promise.all([
+      ctx.db
+        .query('documents')
+        .withIndex('by_organizationId', q => q.eq('organizationId', org._id))
+        .collect(),
+      userId
+        ? ctx.db
+            .query('documents')
+            .withIndex('by_org_createdBy', q =>
+              q.eq('organizationId', org._id).eq('createdBy', userId),
+            )
+            .collect()
+        : Promise.resolve([]),
+    ]);
+
+    let allCount = 0;
+    for (const doc of allDocuments) {
+      if (args.unfiledOnly && doc.folderId) continue;
+      if (await canViewDocument(ctx, doc)) {
+        allCount += 1;
+      }
+    }
+
+    let mineCount = 0;
+    for (const doc of myDocuments) {
+      if (args.unfiledOnly && doc.folderId) continue;
+      if (await canViewDocument(ctx, doc)) {
+        mineCount += 1;
+      }
+    }
+
+    return { allCount, mineCount };
   },
 });
 

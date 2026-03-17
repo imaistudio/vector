@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
@@ -36,6 +37,120 @@ async function getProjectForOrgByKey(
 async function loadProjectDetails(ctx: QueryCtx, project: Doc<'projects'>) {
   const { leadId, lead } = await getProjectLeadSummary(ctx, project);
   return { ...project, leadId, lead };
+}
+
+async function hydrateProjects(
+  ctx: QueryCtx,
+  projects: readonly Doc<'projects'>[],
+) {
+  const projectMemberships = await Promise.all(
+    projects.map(async project => ({
+      projectId: project._id,
+      members: await ctx.db
+        .query('projectMembers')
+        .withIndex('by_project', q => q.eq('projectId', project._id))
+        .collect(),
+    })),
+  );
+  const projectMembershipMap = new Map(
+    projectMemberships.map(({ projectId, members }) => [projectId, members]),
+  );
+
+  const leadIds = projects
+    .map(project => {
+      const members = projectMembershipMap.get(project._id) ?? [];
+      return getLeadMembershipFromMembers(members)?.userId ?? project.leadId;
+    })
+    .filter(isDefined);
+  const statusIds = projects.map(project => project.statusId).filter(isDefined);
+
+  const [leadUsers, statuses] = await Promise.all([
+    Promise.all(leadIds.map(id => ctx.db.get('users', id))),
+    Promise.all(statusIds.map(id => ctx.db.get('projectStatuses', id))),
+  ]);
+
+  const leadUserMap = new Map(leadIds.map((id, i) => [id, leadUsers[i]]));
+  const statusMap = new Map(statusIds.map((id, i) => [id, statuses[i]]));
+
+  return projects.map(project => {
+    const leadId =
+      getLeadMembershipFromMembers(projectMembershipMap.get(project._id) ?? [])
+        ?.userId ?? project.leadId;
+    const leadUser = leadId ? leadUserMap.get(leadId) : null;
+    const status = project.statusId ? statusMap.get(project.statusId) : null;
+
+    return {
+      ...project,
+      leadId,
+      lead: leadUser,
+      status,
+    };
+  });
+}
+
+async function listVisibleOrgProjects(
+  ctx: QueryCtx,
+  organizationId: Doc<'organizations'>['_id'],
+  teamId?: Doc<'teams'>['_id'],
+) {
+  const allProjects = teamId
+    ? await ctx.db
+        .query('projects')
+        .withIndex('by_org_team', q =>
+          q.eq('organizationId', organizationId).eq('teamId', teamId),
+        )
+        .collect()
+    : await ctx.db
+        .query('projects')
+        .withIndex('by_organization', q =>
+          q.eq('organizationId', organizationId),
+        )
+        .collect();
+
+  const visibleProjects: Doc<'projects'>[] = [];
+  for (const project of allProjects) {
+    if (await canViewProject(ctx, project)) {
+      visibleProjects.push(project);
+    }
+  }
+
+  return visibleProjects;
+}
+
+async function listMyProjectDocs(
+  ctx: QueryCtx,
+  organizationId: Doc<'organizations'>['_id'],
+  userId: Doc<'users'>['_id'],
+) {
+  const myMemberships = await ctx.db
+    .query('projectMembers')
+    .withIndex('by_user', q => q.eq('userId', userId))
+    .collect();
+
+  const projects = (
+    await Promise.all(
+      myMemberships.map(async membership => {
+        const project = await ctx.db.get('projects', membership.projectId);
+        return project && project.organizationId === organizationId
+          ? project
+          : null;
+      }),
+    )
+  ).filter((project): project is Doc<'projects'> => project !== null);
+
+  const allOrgProjects = await ctx.db
+    .query('projects')
+    .withIndex('by_organization', q => q.eq('organizationId', organizationId))
+    .collect();
+  const ownedProjects = allOrgProjects.filter(
+    project =>
+      (project.createdBy === userId || project.leadId === userId) &&
+      !projects.some(myProject => myProject._id === project._id),
+  );
+
+  return [...projects, ...ownedProjects].sort(
+    (a, b) => b._creationTime - a._creationTime,
+  );
 }
 
 export const getByKey = query({
@@ -101,7 +216,7 @@ export const list = query({
       throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
-    let allProjects: Doc<'projects'>[];
+    let resolvedTeamId: Doc<'teams'>['_id'] | undefined;
 
     if (args.teamId) {
       const team = await ctx.db
@@ -115,75 +230,13 @@ export const list = query({
         return [];
       }
 
-      allProjects = await ctx.db
-        .query('projects')
-        .withIndex('by_org_team', q =>
-          q.eq('organizationId', org._id).eq('teamId', team._id),
-        )
-        .collect();
-    } else {
-      allProjects = await ctx.db
-        .query('projects')
-        .withIndex('by_organization', q => q.eq('organizationId', org._id))
-        .collect();
+      resolvedTeamId = team._id;
     }
 
-    const projectPromises = allProjects.map(async project => {
-      const canView = await canViewProject(ctx, project);
-      return canView ? project : null;
-    });
-    const projects = (await Promise.all(projectPromises)).filter(
-      (project): project is Doc<'projects'> => project !== null,
+    return hydrateProjects(
+      ctx,
+      await listVisibleOrgProjects(ctx, org._id, resolvedTeamId),
     );
-
-    const projectMemberships = await Promise.all(
-      projects.map(async project => ({
-        projectId: project._id,
-        members: await ctx.db
-          .query('projectMembers')
-          .withIndex('by_project', q => q.eq('projectId', project._id))
-          .collect(),
-      })),
-    );
-    const projectMembershipMap = new Map(
-      projectMemberships.map(({ projectId, members }) => [projectId, members]),
-    );
-
-    const leadIds = projects
-      .map(project => {
-        const members = projectMembershipMap.get(project._id) ?? [];
-        return getLeadMembershipFromMembers(members)?.userId ?? project.leadId;
-      })
-      .filter(isDefined);
-    const statusIds = projects
-      .map(project => project.statusId)
-      .filter(isDefined);
-
-    const leadUsers = await Promise.all(
-      leadIds.map(id => ctx.db.get('users', id)),
-    );
-    const statuses = await Promise.all(
-      statusIds.map(id => ctx.db.get('projectStatuses', id)),
-    );
-
-    const leadUserMap = new Map(leadIds.map((id, i) => [id, leadUsers[i]]));
-    const statusMap = new Map(statusIds.map((id, i) => [id, statuses[i]]));
-
-    return projects.map(project => {
-      const leadId =
-        getLeadMembershipFromMembers(
-          projectMembershipMap.get(project._id) ?? [],
-        )?.userId ?? project.leadId;
-      const leadUser = leadId ? leadUserMap.get(leadId) : null;
-      const status = project.statusId ? statusMap.get(project.statusId) : null;
-
-      return {
-        ...project,
-        leadId,
-        lead: leadUser,
-        status,
-      };
-    });
   },
 });
 
@@ -209,80 +262,146 @@ export const listMyProjects = query({
       throw new ConvexError('ORGANIZATION_NOT_FOUND');
     }
 
-    const myMemberships = await ctx.db
-      .query('projectMembers')
-      .withIndex('by_user', q => q.eq('userId', userId))
-      .collect();
+    return hydrateProjects(ctx, await listMyProjectDocs(ctx, org._id, userId));
+  },
+});
 
-    const projects = (
-      await Promise.all(
-        myMemberships.map(async membership => {
-          const project = await ctx.db.get('projects', membership.projectId);
-          return project && project.organizationId === org._id ? project : null;
-        }),
-      )
-    ).filter((project): project is Doc<'projects'> => project !== null);
+export const listPage = query({
+  args: {
+    orgSlug: v.string(),
+    scope: v.union(v.literal('mine'), v.literal('all')),
+    statusType: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
 
-    // Keep the legacy field as a fallback until old rows are normalized.
-    const allOrgProjects = await ctx.db
-      .query('projects')
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    const statuses = await ctx.db
+      .query('projectStatuses')
       .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
-    const ownedProjects = allOrgProjects.filter(
-      project =>
-        (project.createdBy === userId || project.leadId === userId) &&
-        !projects.some(myProject => myProject._id === project._id),
+    const statusTypeById = new Map(
+      statuses.map(status => [status._id, status.type]),
     );
-    const combinedProjects = [...projects, ...ownedProjects];
+    const matchesStatus = (project: Doc<'projects'>) =>
+      !args.statusType ||
+      (project.statusId
+        ? statusTypeById.get(project.statusId) === args.statusType
+        : false);
 
-    const projectMemberships = await Promise.all(
-      combinedProjects.map(async project => ({
-        projectId: project._id,
-        members: await ctx.db
-          .query('projectMembers')
-          .withIndex('by_project', q => q.eq('projectId', project._id))
-          .collect(),
-      })),
-    );
-    const projectMembershipMap = new Map(
-      projectMemberships.map(({ projectId, members }) => [projectId, members]),
-    );
+    if (args.scope === 'all') {
+      const target = Math.max(1, args.paginationOpts.numItems);
+      const pageItems: Doc<'projects'>[] = [];
+      let cursor = args.paginationOpts.cursor;
+      let isDone = false;
 
-    const leadIds = combinedProjects
-      .map(project => {
-        const members = projectMembershipMap.get(project._id) ?? [];
-        return getLeadMembershipFromMembers(members)?.userId ?? project.leadId;
-      })
-      .filter(isDefined);
-    const statusIds = combinedProjects
-      .map(project => project.statusId)
-      .filter(isDefined);
+      while (pageItems.length < target && !isDone) {
+        const source = await ctx.db
+          .query('projects')
+          .withIndex('by_organization', q => q.eq('organizationId', org._id))
+          .order('desc')
+          .paginate({
+            cursor,
+            numItems: target - pageItems.length,
+          });
 
-    const leadUsers = await Promise.all(
-      leadIds.map(id => ctx.db.get('users', id)),
-    );
-    const statuses = await Promise.all(
-      statusIds.map(id => ctx.db.get('projectStatuses', id)),
-    );
+        for (const project of source.page) {
+          if (!matchesStatus(project)) continue;
+          if (await canViewProject(ctx, project)) {
+            pageItems.push(project);
+          }
+        }
 
-    const leadUserMap = new Map(leadIds.map((id, i) => [id, leadUsers[i]]));
-    const statusMap = new Map(statusIds.map((id, i) => [id, statuses[i]]));
-
-    return combinedProjects.map(project => {
-      const leadId =
-        getLeadMembershipFromMembers(
-          projectMembershipMap.get(project._id) ?? [],
-        )?.userId ?? project.leadId;
-      const leadUser = leadId ? leadUserMap.get(leadId) : null;
-      const status = project.statusId ? statusMap.get(project.statusId) : null;
+        cursor = source.continueCursor;
+        isDone = source.isDone || !source.continueCursor;
+      }
 
       return {
-        ...project,
-        leadId,
-        lead: leadUser,
-        status,
+        page: await hydrateProjects(ctx, pageItems),
+        continueCursor: cursor ?? '',
+        isDone,
       };
-    });
+    }
+
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const projects = (await listMyProjectDocs(ctx, org._id, userId)).filter(
+      matchesStatus,
+    );
+    const offset = Number.parseInt(args.paginationOpts.cursor ?? '0', 10) || 0;
+    const page = projects.slice(offset, offset + args.paginationOpts.numItems);
+    const nextOffset = offset + page.length;
+
+    return {
+      page: await hydrateProjects(ctx, page),
+      continueCursor: nextOffset >= projects.length ? '' : String(nextOffset),
+      isDone: nextOffset >= projects.length,
+    };
+  },
+});
+
+export const getListSummary = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      throw new ConvexError('ORGANIZATION_NOT_FOUND');
+    }
+
+    const statuses = await ctx.db
+      .query('projectStatuses')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .collect();
+    const statusTypeById = new Map(
+      statuses.map(status => [status._id, status.type]),
+    );
+
+    const [allProjects, myProjects] = await Promise.all([
+      listVisibleOrgProjects(ctx, org._id),
+      listMyProjectDocs(ctx, org._id, userId),
+    ]);
+
+    const buildCounts = (projects: readonly Doc<'projects'>[]) =>
+      projects.reduce(
+        (acc, project) => {
+          const type = project.statusId
+            ? statusTypeById.get(project.statusId)
+            : null;
+          if (type) {
+            acc[type] = (acc[type] ?? 0) + 1;
+          }
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
+
+    return {
+      allCount: allProjects.length,
+      mineCount: myProjects.length,
+      allStatusCounts: buildCounts(allProjects),
+      mineStatusCounts: buildCounts(myProjects),
+    };
   },
 });
 

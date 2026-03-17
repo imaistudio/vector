@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery, useMutation } from 'convex/react';
+import { usePaginatedQuery, useQuery, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -564,13 +564,23 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
   const folders = useQuery(api.documents.folderQueries.listFolders, {
     orgSlug,
   });
-  const allDocuments = useQuery(api.documents.queries.list, {
+  const summary = useQuery(api.documents.queries.getListSummary, {
     orgSlug,
+    unfiledOnly: true,
   });
-  const myDocuments = useQuery(api.documents.queries.listMyDocuments, {
-    orgSlug,
-  });
-  const documents = scopeTab === 'mine' ? myDocuments : allDocuments;
+  const {
+    results: documents,
+    status,
+    loadMore,
+  } = usePaginatedQuery(
+    api.documents.queries.listPage,
+    {
+      orgSlug,
+      scope: scopeTab,
+      unfiledOnly: true,
+    },
+    { initialNumItems: 20 },
+  );
   const removeMutation = useMutation(api.documents.mutations.remove);
   const updateDocMutation = useMutation(api.documents.mutations.update);
   const removeFolderMutation = useMutation(
@@ -578,7 +588,11 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
   );
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
 
-  if (documents === undefined || folders === undefined) {
+  if (
+    folders === undefined ||
+    summary === undefined ||
+    status === 'LoadingFirstPage'
+  ) {
     return (
       <div className='bg-background h-full overflow-y-auto'>
         {/* Header */}
@@ -680,9 +694,6 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
     ? documents.find(d => d._id === draggedDocId)
     : null;
 
-  // Show only unfiled documents on the root page
-  const displayDocs = documents.filter(d => !d.folderId);
-
   return (
     <DndContext
       sensors={sensors}
@@ -720,7 +731,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
               >
                 <span>My docs</span>
                 <span className='text-muted-foreground text-xs'>
-                  {myDocuments?.length ?? 0}
+                  {summary.mineCount}
                 </span>
               </Button>
               <Button
@@ -734,7 +745,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
               >
                 <span>All docs</span>
                 <span className='text-muted-foreground text-xs'>
-                  {allDocuments?.length ?? 0}
+                  {summary.allCount}
                 </span>
               </Button>
             </div>
@@ -795,7 +806,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
         )}
 
         {/* Documents list */}
-        {displayDocs.length === 0 && folders.length === 0 ? (
+        {documents.length === 0 && folders.length === 0 ? (
           <div className='flex flex-col items-center justify-center py-16 text-center'>
             <FileText className='text-muted-foreground mb-4 size-12' />
             <h3 className='text-lg font-medium'>No documents yet</h3>
@@ -803,13 +814,13 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
               Create your first document to get started.
             </p>
           </div>
-        ) : displayDocs.length === 0 ? (
+        ) : documents.length === 0 ? (
           <div className='text-muted-foreground px-3 py-8 text-center text-sm'>
             No unfiled documents.
           </div>
         ) : (
           <div className='divide-y'>
-            {displayDocs.map(doc => (
+            {documents.map(doc => (
               <DraggableDocRow
                 key={doc._id}
                 doc={doc}
@@ -831,6 +842,19 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
                 }}
               />
             ))}
+          </div>
+        )}
+
+        {status === 'CanLoadMore' && (
+          <div className='border-t px-3 py-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              className='h-7 text-xs'
+              onClick={() => loadMore(20)}
+            >
+              Load more documents
+            </Button>
           </div>
         )}
       </div>

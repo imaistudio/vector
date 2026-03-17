@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type SyntheticEvent } from 'react';
 
 // UI primitives
 import { Button } from '@/components/ui/button';
@@ -112,6 +112,10 @@ function resolveVisibility(
   }
 }
 
+function stopPropagation(event: SyntheticEvent) {
+  event.stopPropagation();
+}
+
 // ---------------------------------------------------------------------------
 // Selector components
 // ---------------------------------------------------------------------------
@@ -178,8 +182,21 @@ export function ProjectSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className='w-64 p-0'>
+      <PopoverTrigger asChild>
+        <div
+          className='contents'
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
+          {trigger ?? DefaultBtn}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className='w-64 p-0'
+        onClick={stopPropagation}
+        onPointerDown={stopPropagation}
+      >
         <Command>
           <CommandInput placeholder='Search project...' className='h-9' />
           <CommandList>
@@ -340,8 +357,21 @@ export function StateSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className='w-64 p-0'>
+      <PopoverTrigger asChild>
+        <div
+          className='contents'
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
+          {trigger ?? DefaultBtn}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className='w-64 p-0'
+        onClick={stopPropagation}
+        onPointerDown={stopPropagation}
+      >
         <Command>
           <CommandInput placeholder='Search state...' className='h-9' />
           <CommandList>
@@ -473,8 +503,21 @@ export function PrioritySelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className='w-64 p-0'>
+      <PopoverTrigger asChild>
+        <div
+          className='contents'
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
+          {trigger ?? DefaultBtn}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className='w-64 p-0'
+        onClick={stopPropagation}
+        onPointerDown={stopPropagation}
+      >
         <Command>
           <CommandInput placeholder='Search priority...' className='h-9' />
           <CommandList>
@@ -1124,18 +1167,29 @@ export function MultiAssigneeSelector({
       }}
     >
       <PopoverTrigger asChild>
-        {trigger || (
-          <div
-            className={cn(
-              'flex cursor-pointer items-center gap-1',
-              isLoading && 'pointer-events-none',
-            )}
-          >
-            {getDisplayContent()}
-          </div>
-        )}
+        <div
+          className='contents'
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
+          {trigger || (
+            <div
+              className={cn(
+                'flex cursor-pointer items-center gap-1',
+                isLoading && 'pointer-events-none',
+              )}
+            >
+              {getDisplayContent()}
+            </div>
+          )}
+        </div>
       </PopoverTrigger>
-      <PopoverContent className='w-80 p-0' align='end'>
+      <PopoverContent
+        className='w-80 p-0'
+        align='end'
+        onClick={stopPropagation}
+        onPointerDown={stopPropagation}
+      >
         <Command>
           <CommandInput
             placeholder='Search members…'

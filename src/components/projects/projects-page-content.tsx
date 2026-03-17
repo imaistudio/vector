@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useQuery, useMutation } from 'convex/react';
+import { usePaginatedQuery, useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { ProjectsTable } from './projects-table';
@@ -143,22 +143,29 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     syncUrl: syncViewModeUrl,
   });
 
-  // Pagination constants
-  const PAGE_SIZE = 25;
-  const [page, setPage] = useState(1);
-
   // Queries
-  const allProjectsData = useQuery(api.projects.queries.list, { orgSlug });
-  const myProjectsData = useQuery(api.projects.queries.listMyProjects, {
-    orgSlug,
-  });
+  const summary = useQuery(api.projects.queries.getListSummary, { orgSlug });
+  const paginatedProjects = usePaginatedQuery(
+    api.projects.queries.listPage,
+    {
+      orgSlug,
+      scope: scopeTab,
+      statusType: activeFilter === 'all' ? undefined : activeFilter,
+    },
+    { initialNumItems: 20 },
+  );
+  const allProjectsData = useQuery(
+    api.projects.queries.list,
+    viewMode === 'kanban' ? { orgSlug } : 'skip',
+  );
+  const myProjectsData = useQuery(
+    api.projects.queries.listMyProjects,
+    viewMode === 'kanban' ? { orgSlug } : 'skip',
+  );
   const statusesData = useQuery(api.organizations.queries.listProjectStatuses, {
     orgSlug,
   });
   const teamsData = useQuery(api.organizations.queries.listTeams, { orgSlug });
-  const membersData = useQuery(api.organizations.queries.listMembers, {
-    orgSlug,
-  });
   const teamMetaById = new Map(
     (teamsData ?? []).map(team => [
       team._id,
@@ -201,7 +208,13 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
 
   const allProjects = transformProjects(allProjectsData);
   const myProjects = transformProjects(myProjectsData);
-  const projects = scopeTab === 'mine' ? myProjects : allProjects;
+  const tableProjects = transformProjects(paginatedProjects.results);
+  const projects =
+    viewMode === 'kanban'
+      ? scopeTab === 'mine'
+        ? myProjects
+        : allProjects
+      : tableProjects;
 
   const statuses = (statusesData ?? []).map(status => ({
     _id: status._id,
@@ -292,30 +305,30 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
     });
   };
 
-  // Filter projects based on active filter
-  const filteredProjects = projects.filter(project => {
-    if (activeFilter === 'all') return true;
-    const status = statuses.find(s => s._id === project.statusId);
-    return status?.type === activeFilter;
-  });
+  const filteredProjects =
+    viewMode === 'kanban'
+      ? projects.filter(project => {
+          if (activeFilter === 'all') return true;
+          const status = statuses.find(s => s._id === project.statusId);
+          return status?.type === activeFilter;
+        })
+      : projects;
 
-  // Calculate counts for each status
-  const statusCounts = statusValues.reduce(
-    (acc, statusType) => {
-      const count = projects.filter(project => {
-        const status = statuses.find(s => s._id === project.statusId);
-        return status?.type === statusType;
-      }).length;
-      acc[statusType] = count;
-      return acc;
-    },
-    {} as Record<StatusType, number>,
-  );
+  const statusCounts =
+    scopeTab === 'mine'
+      ? (summary?.mineStatusCounts ?? {})
+      : (summary?.allStatusCounts ?? {});
 
   // Update tabs with counts
   const updatedTabs = filterTabs.map(tab => {
     if (tab.key === 'all') {
-      return { ...tab, count: projects.length };
+      return {
+        ...tab,
+        count:
+          scopeTab === 'mine'
+            ? (summary?.mineCount ?? 0)
+            : (summary?.allCount ?? 0),
+      };
     }
     return { ...tab, count: statusCounts[tab.key as StatusType] || 0 };
   });
@@ -323,13 +336,12 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   const visibleTabs = updatedTabs.filter(t => t.key === 'all' || t.count > 0);
 
   const isLoading =
-    allProjectsData === undefined ||
-    myProjectsData === undefined ||
+    summary === undefined ||
     statusesData === undefined ||
     teamsData === undefined ||
-    membersData === undefined;
-
-  const total = projects.length;
+    (viewMode === 'kanban'
+      ? allProjectsData === undefined || myProjectsData === undefined
+      : paginatedProjects.status === 'LoadingFirstPage');
 
   if (isLoading) {
     return (
@@ -362,12 +374,11 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               onClick={() => {
                 setScopeTab('mine');
                 setActiveFilter('all');
-                setPage(1);
               }}
             >
               <span>My projects</span>
               <span className='text-muted-foreground text-xs'>
-                {myProjects.length}
+                {summary?.mineCount ?? 0}
               </span>
             </Button>
             <Button
@@ -380,12 +391,11 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               onClick={() => {
                 setScopeTab('all');
                 setActiveFilter('all');
-                setPage(1);
               }}
             >
               <span>All projects</span>
               <span className='text-muted-foreground text-xs'>
-                {allProjects.length}
+                {summary?.allCount ?? 0}
               </span>
             </Button>
 
@@ -481,32 +491,18 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               />
             </div>
 
-            {/* Pagination controls */}
-            <div className='text-muted-foreground flex items-center justify-between border-t px-3 py-1.5 text-xs'>
-              <span>
-                Page {page} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
-              </span>
-              <div className='flex gap-1'>
+            {paginatedProjects.status === 'CanLoadMore' && (
+              <div className='border-t px-3 py-2'>
                 <Button
-                  variant='ghost'
+                  variant='outline'
                   size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page === 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  className='h-7 text-xs'
+                  onClick={() => paginatedProjects.loadMore(20)}
                 >
-                  Prev
-                </Button>
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-6 px-2 text-xs'
-                  disabled={page * PAGE_SIZE >= total}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next
+                  Load more projects
                 </Button>
               </div>
-            </div>
+            )}
           </>
         ) : (
           <div className='flex-1 overflow-hidden'>

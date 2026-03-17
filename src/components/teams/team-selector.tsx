@@ -111,6 +111,10 @@ function getTeamId(team: TeamData | ConvexTeamData | LegacyTeamData): string {
   return '_id' in team ? team._id : team.id;
 }
 
+function stopPropagation(event: React.SyntheticEvent) {
+  event.stopPropagation();
+}
+
 /**
  * Shared TeamSelector used across Issues & Projects.
  * Accepts a list of teams and shows a searchable combobox drop-down.
@@ -165,8 +169,21 @@ export function TeamSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>{trigger ?? DefaultBtn}</PopoverTrigger>
-      <PopoverContent align={align} className='w-64 p-0'>
+      <PopoverTrigger asChild>
+        <div
+          className='contents'
+          onClick={stopPropagation}
+          onPointerDown={stopPropagation}
+        >
+          {trigger ?? DefaultBtn}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align={align}
+        className='w-64 p-0'
+        onClick={stopPropagation}
+        onPointerDown={stopPropagation}
+      >
         <Command>
           <CommandInput placeholder='Search teams...' className='h-9' />
           <CommandList>

@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server';
 import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -64,6 +65,63 @@ async function canDeleteView(
     userId,
     PERMISSIONS.VIEW_DELETE,
   );
+}
+
+type ViewListScope = 'mine' | 'all';
+
+function matchesViewScope(
+  view: Doc<'views'>,
+  scope: ViewListScope,
+  userId: Id<'users'>,
+  isOrgMember: boolean,
+) {
+  if (scope === 'mine') {
+    return view.visibility === 'private' && view.createdBy === userId;
+  }
+
+  if (view.visibility === 'public') return true;
+  if (view.visibility === 'organization') return isOrgMember;
+  return false;
+}
+
+async function hydrateViewRows(
+  ctx: QueryCtx,
+  views: readonly Doc<'views'>[],
+  userId: Id<'users'>,
+  hasViewEdit: boolean,
+  hasViewDelete: boolean,
+) {
+  const creatorIds = [...new Set(views.map(v => v.createdBy))];
+  const creators = await Promise.all(
+    creatorIds.map(id => ctx.db.get('users', id)),
+  );
+  const creatorMap = new Map(creatorIds.map((id, i) => [id, creators[i]]));
+
+  return views.map(view => ({
+    _id: view._id,
+    name: view.name,
+    description: view.description,
+    icon: view.icon,
+    color: view.color,
+    filters: view.filters,
+    layout: view.layout,
+    visibility: view.visibility,
+    createdBy: view.createdBy,
+    canEdit: view.createdBy === userId || hasViewEdit,
+    canDelete: view.createdBy === userId || hasViewDelete,
+    updatedAt: view.updatedAt ?? view._creationTime,
+    creator: (() => {
+      const user = creatorMap.get(view.createdBy);
+      return user
+        ? {
+            _id: user._id,
+            name: user.name ?? undefined,
+            email: user.email ?? undefined,
+            image: user.image ?? undefined,
+          }
+        : null;
+    })(),
+  }));
 }
 
 /** Resolve filter entities to display labels for filter chips. */
@@ -414,6 +472,108 @@ export const listViews = query({
           : null;
       })(),
     }));
+  },
+});
+
+export const listViewsPage = query({
+  args: {
+    orgSlug: v.string(),
+    scope: v.union(v.literal('mine'), v.literal('all')),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId),
+      )
+      .first();
+    const [hasViewEdit, hasViewDelete] = await Promise.all([
+      hasScopedPermission(
+        ctx,
+        { organizationId: org._id },
+        userId,
+        PERMISSIONS.VIEW_EDIT,
+      ),
+      hasScopedPermission(
+        ctx,
+        { organizationId: org._id },
+        userId,
+        PERMISSIONS.VIEW_DELETE,
+      ),
+    ]);
+
+    const target = Math.max(1, args.paginationOpts.numItems);
+    const pageItems: Doc<'views'>[] = [];
+    let cursor = args.paginationOpts.cursor;
+    let isDone = false;
+
+    while (pageItems.length < target && !isDone) {
+      const source = await ctx.db
+        .query('views')
+        .withIndex('by_organization', q => q.eq('organizationId', org._id))
+        .order('desc')
+        .paginate({
+          cursor,
+          numItems: target - pageItems.length,
+        });
+
+      for (const view of source.page) {
+        if (matchesViewScope(view, args.scope, userId, Boolean(membership))) {
+          pageItems.push(view);
+        }
+      }
+
+      cursor = source.continueCursor;
+      isDone = source.isDone || !source.continueCursor;
+    }
+
+    return {
+      page: await hydrateViewRows(
+        ctx,
+        pageItems,
+        userId,
+        hasViewEdit,
+        hasViewDelete,
+      ),
+      continueCursor: cursor ?? '',
+      isDone,
+    };
+  },
+});
+
+export const getListSummary = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId),
+      )
+      .first();
+    const allViews = await ctx.db
+      .query('views')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .collect();
+
+    return {
+      mineCount: allViews.filter(view =>
+        matchesViewScope(view, 'mine', userId, Boolean(membership)),
+      ).length,
+      sharedCount: allViews.filter(view =>
+        matchesViewScope(view, 'all', userId, Boolean(membership)),
+      ).length,
+    };
   },
 });
 

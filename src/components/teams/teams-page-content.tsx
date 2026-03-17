@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
-import { useQuery, useMutation } from 'convex/react';
+import { usePaginatedQuery, useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Id } from '@/convex/_generated/dataModel';
 import { cn } from '@/lib/utils';
@@ -25,27 +25,26 @@ export function TeamsPageContent({
 }: TeamsPageContentProps) {
   const [scopeTab, setScopeTab] = useState<ScopeTab>('mine');
 
-  const allTeamsData = useQuery(api.teams.queries.list, { orgSlug });
-  const myTeamsData = useQuery(api.teams.queries.listMyTeams, { orgSlug });
-  const isLoading = allTeamsData === undefined || myTeamsData === undefined;
+  const summary = useQuery(api.teams.queries.getListSummary, { orgSlug });
+  const { results, status, loadMore } = usePaginatedQuery(
+    api.teams.queries.listPage,
+    { orgSlug, scope: scopeTab },
+    { initialNumItems: 20 },
+  );
+  const isLoading = summary === undefined || status === 'LoadingFirstPage';
 
   // Transform data
-  const transformTeams = (data: typeof allTeamsData | typeof myTeamsData) =>
-    (data ?? []).map(team => ({
-      id: team._id,
-      name: team.name,
-      description: team.description,
-      key: team.key,
-      icon: team.icon,
-      color: team.color,
-      createdAt: new Date(team._creationTime),
-      lead: team.lead,
-      memberCount: team.memberCount,
-    }));
-
-  const allTeams = transformTeams(allTeamsData);
-  const myTeams = transformTeams(myTeamsData);
-  const teams = scopeTab === 'mine' ? myTeams : allTeams;
+  const teams = results.map(team => ({
+    id: team._id,
+    name: team.name,
+    description: team.description,
+    key: team.key,
+    icon: team.icon,
+    color: team.color,
+    createdAt: new Date(team._creationTime),
+    lead: team.lead,
+    memberCount: team.memberCount,
+  }));
 
   // --------------------------------------------------
   // Team operations
@@ -59,7 +58,7 @@ export function TeamsPageContent({
   // --------------------------------------------------
   // Render
   // --------------------------------------------------
-  if (isLoading && allTeams.length === 0) {
+  if (isLoading) {
     return (
       <PageSkeleton
         showTabs={true}
@@ -91,7 +90,7 @@ export function TeamsPageContent({
             >
               <span>My teams</span>
               <span className='text-muted-foreground text-xs'>
-                {myTeams.length}
+                {summary?.mineCount ?? 0}
               </span>
             </Button>
             <Button
@@ -107,7 +106,7 @@ export function TeamsPageContent({
             >
               <span>All teams</span>
               <span className='text-muted-foreground text-xs'>
-                {allTeams.length}
+                {summary?.allCount ?? 0}
               </span>
             </Button>
           </div>
@@ -124,6 +123,19 @@ export function TeamsPageContent({
         onDelete={handleDelete}
         deletePending={false}
       />
+
+      {status === 'CanLoadMore' && (
+        <div className='border-t px-3 py-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            className='h-7 text-xs'
+            onClick={() => loadMore(20)}
+          >
+            Load more teams
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
