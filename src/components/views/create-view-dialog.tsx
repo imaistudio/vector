@@ -1,16 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, cloneElement, isValidElement } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
-  ResponsiveDialogTrigger,
 } from '@/components/ui/responsive-dialog';
 import {
   VisibilitySelector,
@@ -32,12 +32,13 @@ interface CreateViewDialogProps {
   className?: string;
 }
 
-export function CreateViewDialog({
+function CreateViewDialogContent({
   orgSlug,
-  trigger,
-  className,
-}: CreateViewDialogProps) {
-  const [open, setOpen] = useState(false);
+  onClose,
+}: {
+  orgSlug: string;
+  onClose: () => void;
+}) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [visibility, setVisibility] =
@@ -60,16 +61,6 @@ export function CreateViewDialog({
   });
 
   const createView = useMutation(api.views.mutations.createView);
-
-  const resetForm = () => {
-    setName('');
-    setDescription('');
-    setVisibility('organization');
-    setSelectedTeam('');
-    setSelectedProject('');
-    setSelectedPriorities([]);
-    setSelectedStates([]);
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,8 +87,7 @@ export function CreateViewDialog({
         visibility,
       });
       toast.success('View created');
-      resetForm();
-      setOpen(false);
+      onClose();
     } catch {
       toast.error('Failed to create view');
     } finally {
@@ -106,48 +96,21 @@ export function CreateViewDialog({
   };
 
   return (
-    <ResponsiveDialog open={open} onOpenChange={setOpen}>
-      <ResponsiveDialogTrigger asChild>
-        {trigger ?? (
-          <Button size='sm' className={className}>
-            <Plus className='size-4' />
-            New View
-          </Button>
-        )}
-      </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent>
-        <ResponsiveDialogHeader>
+    <ResponsiveDialog
+      open
+      onOpenChange={(isOpen: boolean) => !isOpen && onClose()}
+    >
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
           <ResponsiveDialogTitle>Create View</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <form onSubmit={handleSubmit} className='space-y-4 p-2'>
-          <Input
-            placeholder='View name'
-            value={name}
-            onChange={e => setName(e.target.value)}
-            autoFocus
-            maxLength={100}
-          />
-          <Input
-            placeholder='Description (optional)'
-            value={description}
-            onChange={e => setDescription(e.target.value)}
-            maxLength={500}
-          />
 
-          <div className='space-y-2'>
-            <div className='text-muted-foreground text-xs font-medium uppercase'>
-              Visibility
-            </div>
-            <VisibilitySelector
-              value={visibility}
-              onValueChange={setVisibility}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <div className='text-muted-foreground text-xs font-medium uppercase'>
-              Filters
-            </div>
+        <form onSubmit={handleSubmit} className='space-y-2'>
+          {/* Selectors row */}
+          <div className='text-muted-foreground flex items-center gap-2 text-sm'>
             <div className='flex flex-wrap gap-2'>
               <TeamSelector
                 teams={teams ?? []}
@@ -190,27 +153,88 @@ export function CreateViewDialog({
                 displayMode='iconWhenUnselected'
               />
             </div>
+
+            <div className='ml-auto'>
+              <VisibilitySelector
+                value={visibility}
+                onValueChange={setVisibility}
+                displayMode='iconOnly'
+              />
+            </div>
           </div>
 
-          <div className='flex justify-end gap-2 pt-2'>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type='submit'
-              size='sm'
-              disabled={!name.trim() || isSubmitting}
-            >
-              {isSubmitting ? 'Creating...' : 'Create View'}
-            </Button>
+          {/* Name */}
+          <div className='relative'>
+            <Input
+              placeholder='View name'
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className='pr-16 text-base'
+              autoFocus
+              maxLength={100}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Name
+            </span>
+          </div>
+
+          {/* Description */}
+          <div className='relative'>
+            <Textarea
+              placeholder='Add description...'
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className='min-h-[80px] resize-none pr-20'
+              maxLength={500}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Description
+            </span>
           </div>
         </form>
+
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button variant='ghost' size='sm' onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size='sm'
+            disabled={!name.trim() || isSubmitting}
+            onClick={handleSubmit}
+          >
+            {isSubmitting ? 'Creating…' : 'Create view'}
+          </Button>
+        </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
+  );
+}
+
+export function CreateViewDialog({
+  orgSlug,
+  trigger,
+  className,
+}: CreateViewDialogProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      {trigger && isValidElement(trigger) ? (
+        cloneElement(trigger as React.ReactElement<{ onClick?: () => void }>, {
+          onClick: () => setOpen(true),
+        })
+      ) : (
+        <Button size='sm' className={className} onClick={() => setOpen(true)}>
+          <Plus className='size-4' />
+          New View
+        </Button>
+      )}
+      {open && (
+        <CreateViewDialogContent
+          orgSlug={orgSlug}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }
