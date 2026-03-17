@@ -10,6 +10,7 @@ import {
   FileText,
   FolderOpen,
   MessageSquare,
+  Sparkles,
   Target,
   Users,
 } from 'lucide-react';
@@ -56,6 +57,7 @@ export interface ActivityFeedItem {
     commentPreview: string | null;
     addedUserNames: string[];
     removedUserNames: string[];
+    viaAgent?: boolean;
   };
 }
 
@@ -585,6 +587,12 @@ function ActivityRow({
           <span className='text-muted-foreground'>
             {renderActivityDescription(item, orgSlug)}
           </span>
+          {item.details.viaAgent && (
+            <span className='text-muted-foreground/60 inline-flex items-center gap-0.5'>
+              <Sparkles className='inline size-2.5' />
+              <span className='text-[11px]'>via Vector</span>
+            </span>
+          )}
         </div>
 
         {item.details.commentPreview ? (

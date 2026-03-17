@@ -56,6 +56,7 @@ export interface ActivityWrite {
     commentPreview?: string;
     addedUserNames?: string[];
     removedUserNames?: string[];
+    viaAgent?: boolean;
   };
   snapshot?: {
     entityKey?: string;

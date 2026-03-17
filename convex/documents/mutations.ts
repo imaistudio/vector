@@ -2,7 +2,7 @@ import { mutation } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { getOrganizationBySlug, requireAuthUser } from '../authz';
-import { canDeleteDocument, canEditDocument } from '../access';
+import { canDeleteDocument, canEditDocument, canViewDocument } from '../access';
 import {
   recordActivity,
   resolveDocumentScope,
@@ -15,6 +15,7 @@ import {
   isValidDocumentIconName,
 } from '../_shared/document_appearance';
 import { syncDocumentMentions } from './mentions';
+import { getAuthUserId } from '../authUtils';
 
 type DocumentUpdatePatch = Partial<
   Pick<
@@ -414,5 +415,45 @@ export const remove = mutation({
     await ctx.db.delete('documents', doc._id);
 
     return { success: true } as const;
+  },
+});
+
+export const addComment = mutation({
+  args: {
+    documentId: v.id('documents'),
+    body: v.string(),
+    parentId: v.optional(v.id('comments')),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const doc = await ctx.db.get('documents', args.documentId);
+    if (!doc) {
+      throw new ConvexError('DOCUMENT_NOT_FOUND');
+    }
+
+    if (!(await canViewDocument(ctx, doc))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    if (args.parentId) {
+      const parent = await ctx.db.get('comments', args.parentId);
+      if (!parent || parent.documentId !== doc._id) {
+        throw new ConvexError('INVALID_PARENT_COMMENT');
+      }
+    }
+
+    const commentId = await ctx.db.insert('comments', {
+      documentId: doc._id,
+      authorId: userId,
+      body: args.body,
+      deleted: false,
+      parentId: args.parentId,
+    });
+
+    return { commentId } as const;
   },
 });

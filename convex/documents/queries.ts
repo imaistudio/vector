@@ -1,5 +1,5 @@
 import { query } from '../_generated/server';
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { getOrganizationBySlug } from '../authz';
 import { canViewDocument } from '../access';
 import { getAuthUserId } from '../authUtils';
@@ -288,5 +288,40 @@ export const search = query({
       projectId: doc.projectId,
       _creationTime: doc._creationTime,
     }));
+  },
+});
+
+export const listComments = query({
+  args: {
+    documentId: v.id('documents'),
+  },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get('documents', args.documentId);
+    if (!doc) {
+      throw new ConvexError('DOCUMENT_NOT_FOUND');
+    }
+
+    if (!(await canViewDocument(ctx, doc))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const comments = await ctx.db
+      .query('comments')
+      .withIndex('by_document_deleted', q =>
+        q.eq('documentId', doc._id).eq('deleted', false),
+      )
+      .collect();
+
+    const commentsWithAuthors = await Promise.all(
+      comments.map(async comment => {
+        const author = await ctx.db.get('users', comment.authorId);
+        return {
+          ...comment,
+          author,
+        };
+      }),
+    );
+
+    return commentsWithAuthors;
   },
 });

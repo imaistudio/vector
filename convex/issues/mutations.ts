@@ -27,6 +27,7 @@ import {
   resolveMentionedUsers,
 } from '../notifications/lib';
 import { buildIssueSearchText } from './search';
+import { hasAgentMention } from '../ai/comment_agent';
 
 function priorityLabel(
   priority: Doc<'issuePriorities'> | null | undefined,
@@ -501,6 +502,7 @@ export const addComment = mutation({
   args: {
     issueId: v.id('issues'),
     body: v.string(),
+    parentId: v.optional(v.id('comments')),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -517,11 +519,20 @@ export const addComment = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    // Validate parent comment belongs to same issue
+    if (args.parentId) {
+      const parent = await ctx.db.get('comments', args.parentId);
+      if (!parent || parent.issueId !== issue._id) {
+        throw new ConvexError('INVALID_PARENT_COMMENT');
+      }
+    }
+
     const commentId = await ctx.db.insert('comments', {
       issueId: issue._id,
       authorId: userId,
       body: args.body,
       deleted: false,
+      parentId: args.parentId,
     });
 
     await recordActivity(ctx, {
@@ -599,6 +610,33 @@ export const addComment = mutation({
           recipients: [{ userId: assigneeUserId }],
         });
       }
+    }
+
+    // Trigger agent if @Vector was mentioned
+    if (hasAgentMention(args.body) && org) {
+      // Create a placeholder "thinking" comment as a reply
+      const replyParentId = args.parentId ?? commentId;
+      const agentCommentId = await ctx.db.insert('comments', {
+        issueId: issue._id,
+        authorId: userId,
+        body: '',
+        deleted: false,
+        parentId: replyParentId,
+        agentStatus: 'thinking',
+      });
+
+      await ctx.scheduler.runAfter(
+        0,
+        internal.ai.comment_agent.generateCommentResponse,
+        {
+          issueId: issue._id,
+          triggerCommentId: commentId,
+          parentCommentId: args.parentId,
+          orgSlug: org.slug,
+          userId,
+          agentCommentId,
+        },
+      );
     }
 
     return { commentId } as const;
@@ -1449,6 +1487,61 @@ export const changeVisibility = mutation({
         snapshot: snapshotForIssue(issue),
       });
     }
+
+    return { success: true } as const;
+  },
+});
+
+export const editComment = mutation({
+  args: {
+    commentId: v.id('comments'),
+    body: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const comment = await ctx.db.get('comments', args.commentId);
+    if (!comment || comment.deleted) {
+      throw new ConvexError('COMMENT_NOT_FOUND');
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    await ctx.db.patch('comments', args.commentId, {
+      body: args.body,
+    });
+
+    return { success: true } as const;
+  },
+});
+
+export const deleteComment = mutation({
+  args: {
+    commentId: v.id('comments'),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const comment = await ctx.db.get('comments', args.commentId);
+    if (!comment || comment.deleted) {
+      throw new ConvexError('COMMENT_NOT_FOUND');
+    }
+
+    if (comment.authorId !== userId) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    await ctx.db.patch('comments', args.commentId, {
+      deleted: true,
+    });
 
     return { success: true } as const;
   },

@@ -45,7 +45,7 @@ import {
   PermissionAwareSelector,
 } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
-import { IssueActivityFeed } from '@/components/activity/issue-activity-feed';
+import { IssueCommentsSection } from '@/components/comments/comments-section';
 import { LinkedDocuments } from '@/components/documents/linked-documents';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
@@ -58,6 +58,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Command,
   CommandEmpty,
@@ -75,9 +76,10 @@ interface IssueViewPageProps {
 function IssueLoadingSkeleton() {
   return (
     <div className='bg-background h-full overflow-y-auto'>
-      <div className='h-full'>
-        <div>
-          {/* Header Skeleton – matches sticky header bar */}
+      <div className='flex min-h-full flex-col lg:flex-row'>
+        {/* LEFT COLUMN */}
+        <div className='min-w-0 flex-1'>
+          {/* Header bar */}
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
               <Skeleton className='h-4 w-12' />
@@ -88,60 +90,80 @@ function IssueLoadingSkeleton() {
               <span className='text-muted-foreground text-sm'>/</span>
               <Skeleton className='h-4 w-16' />
             </div>
-
             <div className='flex items-center'>
               <Skeleton className='h-6 w-20' />
               <div className='bg-muted-foreground/20 mx-1 h-4 w-px' />
               <Skeleton className='h-6 w-16' />
               <div className='bg-muted-foreground/20 mx-1 h-4 w-px' />
               <Skeleton className='size-6 rounded-md' />
-              <div className='bg-muted-foreground/20 mx-1 h-4 w-px' />
-              <Skeleton className='h-6 w-16' />
             </div>
           </div>
 
-          {/* Main Content Skeleton */}
+          {/* Main content */}
           <div className='mx-auto max-w-5xl px-3 py-3 sm:px-4 sm:py-4'>
-            {/* Issue Header Skeleton */}
+            {/* Key + date */}
             <div className='mb-2 max-w-4xl space-y-2'>
               <div className='flex items-center gap-2'>
                 <Skeleton className='h-3 w-16' />
-                <span className='text-muted-foreground'>•</span>
+                <span className='text-muted-foreground'>·</span>
                 <Skeleton className='h-3 w-24' />
               </div>
-
-              {/* Title Skeleton */}
               <Skeleton className='h-9 w-3/4' />
             </div>
 
-            {/* Description Skeleton */}
-            <div className='mb-6 space-y-3'>
+            {/* Description */}
+            <div className='mb-6 space-y-2'>
               <Skeleton className='h-4 w-full' />
               <Skeleton className='h-4 w-5/6' />
-              <Skeleton className='h-4 w-4/5' />
             </div>
 
-            {/* Assignments skeleton */}
+            {/* Sub-Issues */}
             <div className='mb-6'>
-              <Skeleton className='mb-2 h-5 w-24' />
-              <div className='space-y-2'>
-                {Array.from({ length: 2 }).map((_, i) => (
-                  <div key={i} className='flex items-center gap-2'>
-                    <Skeleton className='size-6 rounded-full' />
-                    <Skeleton className='h-4 w-28' />
-                    <Skeleton className='h-5 w-20 rounded-md' />
-                  </div>
-                ))}
+              <Skeleton className='h-4 w-20' />
+            </div>
+
+            {/* Activity */}
+            <div>
+              <Skeleton className='mb-3 h-4 w-16' />
+              <div className='flex items-center gap-2 pb-3 pl-1'>
+                <Skeleton className='size-[18px] shrink-0 rounded-full' />
+                <Skeleton className='h-3.5 w-48' />
+                <Skeleton className='ml-auto h-3 w-12' />
+              </div>
+              <div className='mt-2 rounded-lg border'>
+                <div className='flex items-center gap-2 px-3 py-2'>
+                  <Skeleton className='size-6 shrink-0 rounded-full' />
+                  <Skeleton className='h-3.5 w-20' />
+                  <Skeleton className='h-3 w-14' />
+                </div>
+                <div className='px-3 pb-3'>
+                  <Skeleton className='h-8 w-3/4 rounded' />
+                </div>
+              </div>
+              <div className='mt-3'>
+                <Skeleton className='h-11 w-full rounded-lg' />
               </div>
             </div>
+          </div>
+        </div>
 
-            {/* Activity Section Skeleton */}
-            <div>
-              <Skeleton className='mb-2 h-5 w-16' />
-              <div className='rounded-lg border p-8'>
-                <div className='flex flex-col items-center gap-2'>
-                  <Skeleton className='h-4 w-48' />
+        {/* RIGHT SIDEBAR */}
+        <div className='bg-background w-full border-t lg:w-80 lg:border-t-0 lg:border-l'>
+          <div className='flex flex-col'>
+            <div className='flex min-h-8 items-center justify-between border-b px-2 py-1'>
+              <Skeleton className='h-4 w-20' />
+              <div className='flex items-center gap-1'>
+                <Skeleton className='h-4 w-16' />
+                <Skeleton className='size-5 rounded' />
+              </div>
+            </div>
+            <div className='space-y-2 p-3'>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-2'>
+                  <Skeleton className='size-6 rounded-full' />
+                  <Skeleton className='h-4 w-24' />
                 </div>
+                <Skeleton className='h-5 w-16 rounded-md' />
               </div>
             </div>
           </div>
@@ -620,7 +642,7 @@ export default function IssueViewClient({ params }: IssueViewPageProps) {
         {/* LEFT COLUMN - Main Content */}
         <div className='min-w-0 flex-1'>
           {/* Header */}
-          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
+          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
               <MobileNavTrigger />
               <Link
@@ -892,7 +914,7 @@ export default function IssueViewClient({ params }: IssueViewPageProps) {
           </div>
 
           {/* Main Content */}
-          <div className='mx-auto max-w-5xl px-3 py-3 sm:px-4 sm:py-4'>
+          <div className='mx-auto max-w-5xl px-3 py-3 pb-[20vh] sm:px-4 sm:py-4 sm:pb-[20vh]'>
             {/* Issue Header */}
             <div className='mb-2 max-w-4xl space-y-2'>
               <div className='text-muted-foreground flex items-center gap-2 text-xs'>
@@ -1171,88 +1193,123 @@ export default function IssueViewClient({ params }: IssueViewPageProps) {
               entityId={issue._id}
             />
 
-            {/* Activity Feed */}
-            <div>
-              <h2 className='mb-2 text-sm font-semibold'>Activity</h2>
-              <IssueActivityFeed
-                orgSlug={resolvedParams.orgSlug}
-                issueId={issue._id}
-              />
-            </div>
+            {/* Comments & Activity */}
+            <IssueCommentsSection
+              orgSlug={resolvedParams.orgSlug}
+              issueId={issue._id}
+              currentUser={
+                user
+                  ? {
+                      _id: user._id,
+                      name: user.name ?? '',
+                      email: user.email ?? null,
+                      image: user.image ?? null,
+                    }
+                  : null
+              }
+            />
           </div>
         </div>
 
         {/* RIGHT SIDEBAR - Assignments */}
-        <div className='bg-background w-full overflow-y-auto border-t lg:w-80 lg:border-t-0 lg:border-l'>
-          <div className='flex h-full flex-col'>
-            {/* Assignments Section with max height */}
-            <div className='max-h-96 overflow-y-auto'>
-              {states && members && (
-                <IssueAssignments
-                  orgSlug={resolvedParams.orgSlug}
-                  issueId={issue._id}
-                  states={states}
-                  members={members}
-                  defaultStateId={
-                    states?.find(s => s.type === 'todo')?._id ||
-                    states?.[0]?._id ||
-                    undefined
-                  }
-                />
-              )}
-            </div>
+        <div className='bg-background w-full border-t lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:border-t-0 lg:border-l'>
+          <ScrollArea className='h-full'>
+            <div className='flex h-full flex-col'>
+              {/* Assignments Section */}
+              <div>
+                {states && members && (
+                  <IssueAssignments
+                    orgSlug={resolvedParams.orgSlug}
+                    issueId={issue._id}
+                    states={states}
+                    members={members}
+                    defaultStateId={
+                      states?.find(s => s.type === 'todo')?._id ||
+                      states?.[0]?._id ||
+                      undefined
+                    }
+                  />
+                )}
+              </div>
 
-            {/* Time Estimates Section */}
-            {estimateStates.length > 0 && (
-              <div className='border-t'>
-                <div className='flex items-center justify-between border-b px-1 py-1 pl-2'>
-                  <h4 className='text-sm'>Time Estimates</h4>
-                </div>
+              {/* Time Estimates Section */}
+              {estimateStates.length > 0 && (
+                <div className='border-t'>
+                  <div className='flex items-center justify-between border-b px-1 py-1 pl-2'>
+                    <h4 className='text-sm'>Time Estimates</h4>
+                  </div>
 
-                <div className='divide-y'>
-                  {estimateStates.map(state => {
-                    const StateIcon = getDynamicIcon(state.icon) || Circle;
-                    const hours = (
-                      issue?.estimatedTimes as Record<string, number>
-                    )?.[state._id];
-                    const isEditing = editingEstimates[state._id];
+                  <div className='divide-y'>
+                    {estimateStates.map(state => {
+                      const StateIcon = getDynamicIcon(state.icon) || Circle;
+                      const hours = (
+                        issue?.estimatedTimes as Record<string, number>
+                      )?.[state._id];
+                      const isEditing = editingEstimates[state._id];
 
-                    return (
-                      <div key={state._id}>
-                        <div className='flex h-10 items-center justify-between px-2 py-2'>
-                          {/* State icon and name - consistent across both states */}
-                          <div className='flex items-center gap-2'>
-                            <StateIcon
-                              className='size-4'
-                              style={{
-                                color: state.color || 'currentColor',
-                              }}
-                            />
-                            <span className='text-sm'>{state.name}</span>
-                          </div>
-
-                          {/* Right side - changes based on edit state */}
-                          {isEditing ? (
-                            <div className='flex items-center gap-1'>
-                              <Input
-                                type='number'
-                                min='0'
-                                step='0.5'
-                                placeholder='Hours'
-                                className='h-7 w-20 text-sm'
-                                value={estimatesValue[state._id] || ''}
-                                onChange={e => {
-                                  const value = parseFloat(e.target.value);
-                                  setEstimatesValue(prev => ({
-                                    ...prev,
-                                    [state._id]: isNaN(value) ? 0 : value,
-                                  }));
+                      return (
+                        <div key={state._id}>
+                          <div className='flex h-10 items-center justify-between px-2 py-2'>
+                            {/* State icon and name - consistent across both states */}
+                            <div className='flex items-center gap-2'>
+                              <StateIcon
+                                className='size-4'
+                                style={{
+                                  color: state.color || 'currentColor',
                                 }}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    void handleEstimatesSave();
-                                  }
-                                  if (e.key === 'Escape') {
+                              />
+                              <span className='text-sm'>{state.name}</span>
+                            </div>
+
+                            {/* Right side - changes based on edit state */}
+                            {isEditing ? (
+                              <div className='flex items-center gap-1'>
+                                <Input
+                                  type='number'
+                                  min='0'
+                                  step='0.5'
+                                  placeholder='Hours'
+                                  className='h-7 w-20 text-sm'
+                                  value={estimatesValue[state._id] || ''}
+                                  onChange={e => {
+                                    const value = parseFloat(e.target.value);
+                                    setEstimatesValue(prev => ({
+                                      ...prev,
+                                      [state._id]: isNaN(value) ? 0 : value,
+                                    }));
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      void handleEstimatesSave();
+                                    }
+                                    if (e.key === 'Escape') {
+                                      setEstimatesValue(
+                                        (issue?.estimatedTimes as Record<
+                                          string,
+                                          number
+                                        >) || {},
+                                      );
+                                      setEditingEstimates(prev => ({
+                                        ...prev,
+                                        [state._id]: false,
+                                      }));
+                                    }
+                                  }}
+                                  autoFocus
+                                />
+                                <Button
+                                  size='sm'
+                                  className='h-7 w-7 cursor-pointer p-0'
+                                  onClick={handleEstimatesSave}
+                                  disabled={isUpdatingEstimates}
+                                >
+                                  <Save className='h-3 w-3' />
+                                </Button>
+                                <Button
+                                  size='sm'
+                                  variant='ghost'
+                                  className='h-7 w-7 cursor-pointer p-0'
+                                  onClick={() => {
                                     setEstimatesValue(
                                       (issue?.estimatedTimes as Record<
                                         string,
@@ -1263,54 +1320,51 @@ export default function IssueViewClient({ params }: IssueViewPageProps) {
                                       ...prev,
                                       [state._id]: false,
                                     }));
+                                  }}
+                                >
+                                  <X className='h-3 w-3' />
+                                </Button>
+                              </div>
+                            ) : (
+                              <PermissionAwareWrapper
+                                orgSlug={resolvedParams.orgSlug}
+                                permission={PERMISSIONS.ISSUE_EDIT}
+                                fallbackMessage="You don't have permission to edit time estimates"
+                              >
+                                <div
+                                  className={cn(
+                                    'flex cursor-pointer items-center gap-2 rounded px-1 py-1 transition-colors',
+                                    canEditIssue
+                                      ? 'hover:bg-muted/50'
+                                      : 'cursor-not-allowed opacity-50',
+                                  )}
+                                  onClick={
+                                    canEditIssue
+                                      ? () => {
+                                          setEstimatesValue(
+                                            (issue?.estimatedTimes as Record<
+                                              string,
+                                              number
+                                            >) || {},
+                                          );
+                                          setEditingEstimates(prev => ({
+                                            ...prev,
+                                            [state._id]: true,
+                                          }));
+                                        }
+                                      : undefined
                                   }
-                                }}
-                                autoFocus
-                              />
-                              <Button
-                                size='sm'
-                                className='h-7 w-7 cursor-pointer p-0'
-                                onClick={handleEstimatesSave}
-                                disabled={isUpdatingEstimates}
-                              >
-                                <Save className='h-3 w-3' />
-                              </Button>
-                              <Button
-                                size='sm'
-                                variant='ghost'
-                                className='h-7 w-7 cursor-pointer p-0'
-                                onClick={() => {
-                                  setEstimatesValue(
-                                    (issue?.estimatedTimes as Record<
-                                      string,
-                                      number
-                                    >) || {},
-                                  );
-                                  setEditingEstimates(prev => ({
-                                    ...prev,
-                                    [state._id]: false,
-                                  }));
-                                }}
-                              >
-                                <X className='h-3 w-3' />
-                              </Button>
-                            </div>
-                          ) : (
-                            <PermissionAwareWrapper
-                              orgSlug={resolvedParams.orgSlug}
-                              permission={PERMISSIONS.ISSUE_EDIT}
-                              fallbackMessage="You don't have permission to edit time estimates"
-                            >
-                              <div
-                                className={cn(
-                                  'flex cursor-pointer items-center gap-2 rounded px-1 py-1 transition-colors',
-                                  canEditIssue
-                                    ? 'hover:bg-muted/50'
-                                    : 'cursor-not-allowed opacity-50',
-                                )}
-                                onClick={
-                                  canEditIssue
-                                    ? () => {
+                                >
+                                  <span className='text-muted-foreground text-sm'>
+                                    {hours ? `${hours}h` : '—'}
+                                  </span>
+                                  {canEditIssue && (
+                                    <Button
+                                      size='sm'
+                                      variant='ghost'
+                                      className='h-4 w-4 cursor-pointer p-0'
+                                      onClick={e => {
+                                        e.stopPropagation();
                                         setEstimatesValue(
                                           (issue?.estimatedTimes as Record<
                                             string,
@@ -1321,52 +1375,29 @@ export default function IssueViewClient({ params }: IssueViewPageProps) {
                                           ...prev,
                                           [state._id]: true,
                                         }));
-                                      }
-                                    : undefined
-                                }
-                              >
-                                <span className='text-muted-foreground text-sm'>
-                                  {hours ? `${hours}h` : '—'}
-                                </span>
-                                {canEditIssue && (
-                                  <Button
-                                    size='sm'
-                                    variant='ghost'
-                                    className='h-4 w-4 cursor-pointer p-0'
-                                    onClick={e => {
-                                      e.stopPropagation();
-                                      setEstimatesValue(
-                                        (issue?.estimatedTimes as Record<
-                                          string,
-                                          number
-                                        >) || {},
-                                      );
-                                      setEditingEstimates(prev => ({
-                                        ...prev,
-                                        [state._id]: true,
-                                      }));
-                                    }}
-                                  >
-                                    <Pencil className='size-3' />
-                                  </Button>
-                                )}
-                              </div>
-                            </PermissionAwareWrapper>
-                          )}
+                                      }}
+                                    >
+                                      <Pencil className='size-3' />
+                                    </Button>
+                                  )}
+                                </div>
+                              </PermissionAwareWrapper>
+                            )}
+                          </div>
                         </div>
+                      );
+                    })}
+                    {(!issue?.estimatedTimes ||
+                      Object.keys(issue.estimatedTimes).length === 0) && (
+                      <div className='text-muted-foreground py-4 text-center text-sm'>
+                        No estimates yet
                       </div>
-                    );
-                  })}
-                  {(!issue?.estimatedTimes ||
-                    Object.keys(issue.estimatedTimes).length === 0) && (
-                    <div className='text-muted-foreground py-4 text-center text-sm'>
-                      No estimates yet
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </ScrollArea>
         </div>
       </div>
       <ConfirmDeleteDialog />

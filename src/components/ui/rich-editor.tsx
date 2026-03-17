@@ -19,6 +19,7 @@ interface RichEditorProps {
 export function RichEditor({
   value,
   onChange,
+  placeholder,
   disabled = false,
   mode = 'compact',
   borderless = false,
@@ -36,6 +37,7 @@ export function RichEditor({
       enableImages={mode === 'full'}
       enableImagePasteDrop={mode === 'full'}
       orgSlug={orgSlug}
+      placeholder={placeholder}
       className={cn(className?.replace('notion-editor', '').trim())}
       editorClassName={cn(
         'prose prose-sm dark:prose-invert max-w-none',

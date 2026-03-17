@@ -515,16 +515,25 @@ export default defineSchema({
     .index('by_type', ['type'])
     .index('by_issue_type', ['issueId', 'type']),
 
-  // Comments (equivalent to Drizzle 'comment' table)
+  // Comments — polymorphic: either issueId or documentId is set
   comments: defineTable({
-    issueId: v.id('issues'),
+    issueId: v.optional(v.id('issues')),
+    documentId: v.optional(v.id('documents')),
     authorId: v.id('users'),
     body: v.string(),
     deleted: v.boolean(),
+    parentId: v.optional(v.id('comments')),
+    // Agent-generated comment: 'thinking' while generating, 'done' when complete, 'error' on failure
+    agentStatus: v.optional(
+      v.union(v.literal('thinking'), v.literal('done'), v.literal('error')),
+    ),
   })
     .index('by_issue', ['issueId'])
+    .index('by_document', ['documentId'])
     .index('by_author', ['authorId'])
-    .index('by_issue_deleted', ['issueId', 'deleted']),
+    .index('by_issue_deleted', ['issueId', 'deleted'])
+    .index('by_document_deleted', ['documentId', 'deleted'])
+    .index('by_parent', ['parentId']),
 
   // Issue label assignments (equivalent to Drizzle 'issueLabelAssignment' table)
   issueLabelAssignments: defineTable({

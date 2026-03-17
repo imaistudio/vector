@@ -109,6 +109,8 @@ export type EditorProps = {
   onPendingUploadsChange?: (count: number) => void;
   /** Pass orgSlug to enable @mentions for teams, users, projects, issues */
   orgSlug?: string;
+  /** Custom placeholder text (defaults to "Press '/' for commands") */
+  placeholder?: string;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'onChange' | 'className'>;
@@ -217,6 +219,7 @@ export function Editor({
   onRequestImage,
   onPendingUploadsChange,
   orgSlug,
+  placeholder: customPlaceholder,
   className,
   editorClassName,
   ...props
@@ -302,8 +305,11 @@ export function Editor({
       TableCell,
       Placeholder.configure({
         placeholder: ({ node }: { node: ProseMirrorNode }): string =>
-          node.type.name === 'paragraph' ? "Press '/' for commands" : '',
-        showOnlyCurrent: true,
+          node.type.name === 'paragraph'
+            ? (customPlaceholder ?? "Press '/' for commands")
+            : '',
+        showOnlyCurrent: !customPlaceholder,
+        showOnlyWhenEditable: false,
         includeChildren: true,
       }),
       Markdown,

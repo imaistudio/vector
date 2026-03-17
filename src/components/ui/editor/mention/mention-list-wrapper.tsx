@@ -52,8 +52,25 @@ const MentionListWrapper = forwardRef<
   );
 
   const mentionItems: MentionItem[] = useMemo(() => {
-    if (!searchResults) return [];
     const items: MentionItem[] = [];
+
+    // Static agent entry — always available, matches "vector" query
+    const lowerQuery = query.trim().toLowerCase();
+    if (
+      !lowerQuery ||
+      'vector'.includes(lowerQuery) ||
+      '@vector'.includes(lowerQuery)
+    ) {
+      items.push({
+        id: 'agent-vector',
+        label: 'Vector',
+        type: 'agent',
+        href: `/${orgSlug}/ai/vector`,
+        subtitle: 'Agent',
+      });
+    }
+
+    if (!searchResults) return items;
 
     for (const user of searchResults.users) {
       items.push({
@@ -116,7 +133,7 @@ const MentionListWrapper = forwardRef<
     }
 
     return items;
-  }, [searchResults, orgSlug]);
+  }, [searchResults, orgSlug, query]);
 
   const hasQuery = query.trim() !== '';
   const isDebouncing = hasQuery && query.trim() !== debouncedQuery;

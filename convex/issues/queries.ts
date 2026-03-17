@@ -1291,7 +1291,9 @@ export const listComments = query({
 
     const comments = await ctx.db
       .query('comments')
-      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .withIndex('by_issue_deleted', q =>
+        q.eq('issueId', issue._id).eq('deleted', false),
+      )
       .collect();
 
     const commentsWithAuthors = await Promise.all(

@@ -11,9 +11,22 @@
  */
 
 import type { LucideIcon } from 'lucide-react';
-import { CheckSquare, FileText, FolderOpen, Users, User } from 'lucide-react';
+import {
+  CheckSquare,
+  FileText,
+  FolderOpen,
+  Users,
+  User,
+  Sparkles,
+} from 'lucide-react';
 
-export type MentionTypeId = 'user' | 'team' | 'project' | 'issue' | 'document';
+export type MentionTypeId =
+  | 'user'
+  | 'team'
+  | 'project'
+  | 'issue'
+  | 'document'
+  | 'agent';
 
 export interface MentionTypeConfig {
   /** Unique type identifier */
@@ -92,6 +105,16 @@ export const MENTION_TYPES: MentionTypeConfig[] = [
     cssClass: 'mention-document',
     textPrefix: '',
     hashEncoding: 'icon',
+    roundIcon: false,
+  },
+  {
+    id: 'agent',
+    label: 'Agent',
+    icon: Sparkles,
+    hrefPattern: /\/ai\/vector$/,
+    cssClass: 'mention-agent',
+    textPrefix: '@',
+    hashEncoding: 'none',
     roundIcon: false,
   },
 ];

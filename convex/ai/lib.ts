@@ -822,10 +822,13 @@ export async function findIssueStateByName(
     .withIndex('by_organization', q => q.eq('organizationId', organizationId))
     .collect();
 
+  const normalize = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, '');
+
   return (
-    states.find(
-      state => state.name.toLowerCase() === stateName.toLowerCase(),
-    ) ?? null
+    states.find(state => normalize(state.name) === normalize(stateName)) ??
+    // Fallback: match by state type (e.g. "todo" matches type "todo")
+    states.find(state => state.type?.toLowerCase() === normalize(stateName)) ??
+    null
   );
 }
 

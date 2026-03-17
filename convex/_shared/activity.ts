@@ -121,6 +121,7 @@ export const activityDetailsValidator = v.object({
   commentPreview: v.optional(v.string()),
   addedUserNames: v.optional(v.array(v.string())),
   removedUserNames: v.optional(v.array(v.string())),
+  viaAgent: v.optional(v.boolean()),
 });
 
 export const activitySnapshotValidator = v.object({

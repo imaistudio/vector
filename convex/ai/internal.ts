@@ -14,6 +14,11 @@ import { buildIssueSearchText } from '../issues/search';
 import { createNotificationEvent } from '../notifications/lib';
 import { syncDocumentMentions } from '../documents/mentions';
 import {
+  recordActivity,
+  resolveIssueScope,
+  snapshotForIssue,
+} from '../activities/lib';
+import {
   AssistantPageContext,
   AssistantPendingAction,
   assistantPageContextValidator,
@@ -1230,6 +1235,109 @@ export const updateIssue = internalMutation({
           actorId: args.userId,
         },
       );
+    }
+
+    // Record activity for field changes
+    if (args.title !== undefined && args.title.trim() !== issue.title) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: args.userId,
+        entityType: 'issue',
+        eventType: 'issue_title_changed',
+        details: {
+          field: 'title',
+          fromLabel: issue.title,
+          toLabel: args.title.trim(),
+          viaAgent: true,
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
+    if (
+      args.description !== undefined &&
+      args.description !== issue.description
+    ) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: args.userId,
+        entityType: 'issue',
+        eventType: 'issue_description_changed',
+        details: { field: 'description', viaAgent: true },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
+    if (priority !== undefined) {
+      const oldPriority = issue.priorityId
+        ? await ctx.db.get('issuePriorities', issue.priorityId)
+        : null;
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: args.userId,
+        entityType: 'issue',
+        eventType: 'issue_priority_changed',
+        details: {
+          field: 'priority',
+          fromLabel: oldPriority?.name ?? 'None',
+          toLabel: priority?.name ?? 'None',
+          viaAgent: true,
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
+    if (args.assigneeName !== undefined) {
+      const memberMatch =
+        args.assigneeName === null
+          ? null
+          : await findMemberByName(ctx, organization._id, args.assigneeName);
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(issue),
+        actorId: args.userId,
+        entityType: 'issue',
+        eventType: 'issue_assignees_changed',
+        details: {
+          viaAgent: true,
+          ...(memberMatch
+            ? {
+                addedUserNames: [
+                  memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown',
+                ],
+              }
+            : { removedUserNames: ['assignee'] }),
+        },
+        snapshot: snapshotForIssue(issue),
+      });
+    }
+    if (args.stateName !== undefined) {
+      const newState = await findIssueStateByName(
+        ctx,
+        organization._id,
+        args.stateName,
+      );
+      if (newState) {
+        // Get the old state name from the existing assignment
+        const currentAssignees = await ctx.db
+          .query('issueAssignees')
+          .withIndex('by_issue', q => q.eq('issueId', issue._id))
+          .collect();
+        const oldStateId = currentAssignees[0]?.stateId;
+        const oldState = oldStateId
+          ? await ctx.db.get('issueStates', oldStateId)
+          : null;
+
+        await recordActivity(ctx, {
+          scope: resolveIssueScope(issue),
+          actorId: args.userId,
+          entityType: 'issue',
+          eventType: 'issue_workflow_state_changed',
+          details: {
+            field: 'workflow_state',
+            fromLabel: oldState?.name ?? 'Unknown',
+            toLabel: newState.name,
+            viaAgent: true,
+          },
+          snapshot: snapshotForIssue(issue),
+        });
+      }
     }
 
     return {
@@ -2668,10 +2776,42 @@ export const assignIssue = internalMutation({
 
     if (!state) throw new ConvexError('NO_DEFAULT_STATE');
 
-    await ctx.db.insert('issueAssignees', {
-      issueId: issue._id,
-      assigneeId: memberMatch.user._id,
-      stateId: state._id,
+    // If there's a single unassigned entry, update it instead of inserting
+    const allAssignments = await ctx.db
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .collect();
+    const unassignedEntry =
+      allAssignments.length === 1 && !allAssignments[0].assigneeId
+        ? allAssignments[0]
+        : null;
+
+    if (unassignedEntry) {
+      await ctx.db.patch('issueAssignees', unassignedEntry._id, {
+        assigneeId: memberMatch.user._id,
+        stateId: state._id,
+      });
+    } else {
+      await ctx.db.insert('issueAssignees', {
+        issueId: issue._id,
+        assigneeId: memberMatch.user._id,
+        stateId: state._id,
+      });
+    }
+
+    // Record activity
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: args.userId,
+      entityType: 'issue',
+      eventType: 'issue_assignees_changed',
+      details: {
+        addedUserNames: [
+          memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown',
+        ],
+        viaAgent: true,
+      },
+      snapshot: snapshotForIssue(issue),
     });
 
     return {
