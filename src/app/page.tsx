@@ -8,14 +8,23 @@ import { Skeleton } from '@/components/ui/skeleton';
 // --- Post-login redirect logic -----------------------------------------------------------
 export default function Home() {
   const router = useRouter();
+  const brandingQuery = useQuery(api.platformAdmin.queries.getBranding, {});
   const userQuery = useQuery(api.users.currentUser);
   const userOrgsQuery = useQuery(api.users.getOrganizations);
 
+  const branding = brandingQuery.data;
   const user = userQuery.data;
   const userOrgs = userOrgsQuery.data;
   const hasOrganizations = userOrgs && userOrgs.length > 0;
 
   useEffect(() => {
+    if (brandingQuery.isPending) return;
+
+    if (branding?.defaultOrgSlug) {
+      router.replace(`/${branding.defaultOrgSlug}`);
+      return;
+    }
+
     if (userQuery.isPending || userOrgsQuery.isPending) return;
 
     if (user === null) {
@@ -37,6 +46,8 @@ export default function Home() {
     router.replace('/org-setup');
   }, [
     user,
+    branding?.defaultOrgSlug,
+    brandingQuery.isPending,
     hasOrganizations,
     router,
     userOrgs,

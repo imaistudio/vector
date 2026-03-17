@@ -27,6 +27,8 @@ import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import type { Id } from '@/convex/_generated/dataModel';
+import { useScopedPermission } from '@/hooks/use-permissions';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +67,10 @@ export function ViewsListPage() {
   const [scope, setScope] = useState<ViewsScope>('mine');
   const [editingViewId, setEditingViewId] = useState<Id<'views'> | null>(null);
   const [confirm, ConfirmDialog] = useConfirm();
+  const { hasPermission: canCreateViews } = useScopedPermission(
+    { orgSlug },
+    PERMISSIONS.VIEW_CREATE,
+  );
 
   const views = useQuery(api.views.queries.listViews, { orgSlug });
   const deleteView = useMutation(api.views.mutations.deleteView);
@@ -160,7 +166,9 @@ export function ViewsListPage() {
               </Button>
             </div>
             <div className='flex items-center gap-1 pr-1'>
-              <CreateViewDialog orgSlug={orgSlug} className='h-6 text-xs' />
+              {canCreateViews && (
+                <CreateViewDialog orgSlug={orgSlug} className='h-6 text-xs' />
+              )}
             </div>
           </div>
         </div>
@@ -177,7 +185,7 @@ export function ViewsListPage() {
                 ? 'Create a view to save a filtered issue list just for you.'
                 : 'Views shared with the org or made public will appear here.'}
             </p>
-            {scope === 'mine' && (
+            {scope === 'mine' && canCreateViews && (
               <CreateViewDialog
                 orgSlug={orgSlug}
                 className='mt-1 h-7 text-xs'
@@ -300,38 +308,44 @@ function ViewRow({
       )}
 
       {/* Actions */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
-          <Button
-            variant='ghost'
-            size='sm'
-            className='h-6 w-6 flex-shrink-0 p-0 opacity-0 group-hover:opacity-100'
-          >
-            <MoreHorizontal className='size-3.5' />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align='end' className='w-40'>
-          <DropdownMenuItem
-            onClick={e => {
-              e.stopPropagation();
-              onEdit();
-            }}
-          >
-            <Pencil className='size-3.5' />
-            Edit view
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant='destructive'
-            onClick={e => {
-              e.stopPropagation();
-              onDelete();
-            }}
-          >
-            <Trash2 className='size-3.5' />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {(view.canEdit || view.canDelete) && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild onClick={e => e.stopPropagation()}>
+            <Button
+              variant='ghost'
+              size='sm'
+              className='h-6 w-6 flex-shrink-0 p-0 opacity-0 group-hover:opacity-100'
+            >
+              <MoreHorizontal className='size-3.5' />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align='end' className='w-40'>
+            {view.canEdit && (
+              <DropdownMenuItem
+                onClick={e => {
+                  e.stopPropagation();
+                  onEdit();
+                }}
+              >
+                <Pencil className='size-3.5' />
+                Edit view
+              </DropdownMenuItem>
+            )}
+            {view.canDelete && (
+              <DropdownMenuItem
+                variant='destructive'
+                onClick={e => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 className='size-3.5' />
+                Delete
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   );
 }

@@ -50,6 +50,22 @@ async function canEditView(
   );
 }
 
+async function canDeleteView(
+  ctx: QueryCtx,
+  view: Doc<'views'>,
+  userId: Id<'users'> | null,
+): Promise<boolean> {
+  if (!userId) return false;
+  if (view.createdBy === userId) return true;
+
+  return hasScopedPermission(
+    ctx,
+    { organizationId: view.organizationId },
+    userId,
+    PERMISSIONS.VIEW_DELETE,
+  );
+}
+
 /** Resolve filter entities to display labels for filter chips. */
 async function resolveFilterMeta(
   ctx: QueryCtx,
@@ -337,6 +353,20 @@ export const listViews = query({
       .query('views')
       .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
+    const [hasViewEdit, hasViewDelete] = await Promise.all([
+      hasScopedPermission(
+        ctx,
+        { organizationId: org._id },
+        userId,
+        PERMISSIONS.VIEW_EDIT,
+      ),
+      hasScopedPermission(
+        ctx,
+        { organizationId: org._id },
+        userId,
+        PERMISSIONS.VIEW_DELETE,
+      ),
+    ]);
 
     // Filter to views user can see
     const visible = allViews.filter(view => {
@@ -369,6 +399,8 @@ export const listViews = query({
       layout: view.layout,
       visibility: view.visibility,
       createdBy: view.createdBy,
+      canEdit: view.createdBy === userId || hasViewEdit,
+      canDelete: view.createdBy === userId || hasViewDelete,
       updatedAt: view.updatedAt ?? view._creationTime,
       creator: (() => {
         const user = creatorMap.get(view.createdBy);

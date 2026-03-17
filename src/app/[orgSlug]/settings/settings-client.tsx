@@ -1,38 +1,309 @@
 'use client';
 
-import { Building } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import type { Id } from '@/convex/_generated/dataModel';
+import { api } from '@/lib/convex';
+import { useMutation, useQuery } from 'convex/react';
+import Markdown from 'react-markdown';
+import {
+  Building,
+  Check,
+  ChevronsUpDown,
+  Github,
+  Globe,
+  Instagram,
+  Linkedin,
+  Plus,
+  Trash2,
+  Twitter,
+  Youtube,
+} from 'lucide-react';
 import Image from 'next/image';
+import { toast } from 'sonner';
 import {
   OrgLogoEditor,
   OrgNameEditor,
   OrgSlugEditor,
 } from '@/components/organization';
+import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { RichEditor } from '@/components/ui/rich-editor';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api } from '@/lib/convex';
-import { useQuery } from 'convex/react';
-import { useParams } from 'next/navigation';
+import {
+  SOCIAL_LINK_LABELS,
+  SOCIAL_LINK_PLATFORMS,
+  type SocialLink,
+  type SocialLinkPlatform,
+} from '@/lib/social-links';
+import { updateQuery } from '@/lib/optimistic-updates';
+
 interface OrgSettingsPageClientProps {
   orgSlug: string;
+}
+
+function SocialIcon({ platform }: { platform: SocialLinkPlatform }) {
+  switch (platform) {
+    case 'github':
+      return <Github className='size-3.5' />;
+    case 'x':
+      return <Twitter className='size-3.5' />;
+    case 'linkedin':
+      return <Linkedin className='size-3.5' />;
+    case 'youtube':
+      return <Youtube className='size-3.5' />;
+    case 'instagram':
+      return <Instagram className='size-3.5' />;
+    case 'website':
+    default:
+      return <Globe className='size-3.5' />;
+  }
+}
+
+function serializeSocialLinks(links: SocialLink[]) {
+  return JSON.stringify(links);
+}
+
+function PublicViewSelector({
+  views,
+  value,
+  disabled,
+  onChange,
+}: {
+  views: Array<{ _id: Id<'views'>; name: string }>;
+  value: Id<'views'> | null;
+  disabled: boolean;
+  onChange: (value: Id<'views'> | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selectedView = views.find(view => view._id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type='button'
+          variant='outline'
+          className='h-8 w-full justify-between px-2 text-sm'
+          disabled={disabled}
+        >
+          <span className='truncate'>
+            {selectedView?.name ?? 'No public landing view'}
+          </span>
+          <ChevronsUpDown className='text-muted-foreground size-3.5' />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className='w-[320px] p-0' align='start'>
+        <Command>
+          <CommandInput placeholder='Search public views...' />
+          <CommandList>
+            <CommandEmpty>No public views found.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value='none'
+                onSelect={() => {
+                  onChange(null);
+                  setOpen(false);
+                }}
+              >
+                <span>No public landing view</span>
+                {value === null ? (
+                  <Check className='text-muted-foreground ml-auto size-3.5' />
+                ) : null}
+              </CommandItem>
+              {views.map(view => (
+                <CommandItem
+                  key={view._id}
+                  value={view.name}
+                  onSelect={() => {
+                    onChange(view._id);
+                    setOpen(false);
+                  }}
+                >
+                  <span className='truncate'>{view.name}</span>
+                  {value === view._id ? (
+                    <Check className='text-muted-foreground ml-auto size-3.5' />
+                  ) : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function SocialPlatformSelector({
+  value,
+  disabled,
+  usedPlatforms,
+  onChange,
+}: {
+  value: SocialLinkPlatform;
+  disabled: boolean;
+  usedPlatforms: SocialLinkPlatform[];
+  onChange: (value: SocialLinkPlatform) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type='button'
+          variant='outline'
+          className='h-8 w-[152px] justify-between px-2'
+          disabled={disabled}
+        >
+          <span className='flex items-center gap-2 truncate'>
+            <SocialIcon platform={value} />
+            <span>{SOCIAL_LINK_LABELS[value]}</span>
+          </span>
+          <ChevronsUpDown className='text-muted-foreground size-3.5' />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className='w-[220px] p-0' align='start'>
+        <Command>
+          <CommandInput placeholder='Select platform...' />
+          <CommandList>
+            <CommandEmpty>No platforms available.</CommandEmpty>
+            <CommandGroup>
+              {SOCIAL_LINK_PLATFORMS.filter(
+                platform =>
+                  platform === value || !usedPlatforms.includes(platform),
+              ).map(platform => (
+                <CommandItem
+                  key={platform}
+                  value={SOCIAL_LINK_LABELS[platform]}
+                  onSelect={() => {
+                    onChange(platform);
+                    setOpen(false);
+                  }}
+                >
+                  <span className='flex items-center gap-2'>
+                    <SocialIcon platform={platform} />
+                    <span>{SOCIAL_LINK_LABELS[platform]}</span>
+                  </span>
+                  {platform === value ? (
+                    <Check className='text-muted-foreground ml-auto size-3.5' />
+                  ) : null}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function OrgSettingsPageClient({
   orgSlug,
 }: OrgSettingsPageClientProps) {
-  const params = useParams();
-  const orgSlugParam = params.orgSlug as string;
   const user = useQuery(api.users.currentUser);
   const org = useQuery(
     api.organizations.queries.getBySlug,
-    user?._id ? { orgSlug: orgSlugParam } : 'skip',
+    user?._id ? { orgSlug } : 'skip',
   );
   const members = useQuery(
     api.organizations.queries.listMembersWithRoles,
-    user?._id ? { orgSlug: orgSlugParam } : 'skip',
+    user?._id ? { orgSlug } : 'skip',
   );
+  const views = useQuery(
+    api.views.queries.listViews,
+    user?._id ? { orgSlug } : 'skip',
+  );
+  const updateOrganization = useMutation(
+    api.organizations.mutations.update,
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.organizations.queries.getBySlug,
+      { orgSlug: args.orgSlug },
+      current => ({
+        ...current,
+        publicDescription:
+          args.data.publicDescription !== undefined
+            ? (args.data.publicDescription ?? undefined)
+            : current.publicDescription,
+        publicLandingViewId:
+          args.data.publicLandingViewId !== undefined
+            ? (args.data.publicLandingViewId ?? undefined)
+            : current.publicLandingViewId,
+        publicSocialLinks:
+          args.data.publicSocialLinks !== undefined
+            ? (args.data.publicSocialLinks ?? undefined)
+            : current.publicSocialLinks,
+      }),
+    );
 
-  const userRole = members?.find(m => m.userId === user?._id)?.role || 'member';
+    updateQuery(
+      store,
+      api.organizations.queries.getPublicProfileBySlug,
+      { orgSlug: args.orgSlug },
+      current => ({
+        ...current,
+        publicDescription:
+          args.data.publicDescription !== undefined
+            ? (args.data.publicDescription ?? null)
+            : current.publicDescription,
+        publicLandingViewId:
+          args.data.publicLandingViewId !== undefined
+            ? (args.data.publicLandingViewId ?? null)
+            : current.publicLandingViewId,
+        publicSocialLinks:
+          args.data.publicSocialLinks !== undefined
+            ? (args.data.publicSocialLinks ?? [])
+            : current.publicSocialLinks,
+      }),
+    );
+  });
+
+  const [publicDescription, setPublicDescription] = useState('');
+  const [publicLandingViewId, setPublicLandingViewId] =
+    useState<Id<'views'> | null>(null);
+  const [publicSocialLinks, setPublicSocialLinks] = useState<SocialLink[]>([]);
+  const [hasPublicEdits, setHasPublicEdits] = useState(false);
+  const [isSavingPublicSettings, setIsSavingPublicSettings] = useState(false);
+
+  useEffect(() => {
+    if (!org || hasPublicEdits) {
+      return;
+    }
+
+    setPublicDescription(org.publicDescription ?? '');
+    setPublicLandingViewId(org.publicLandingViewId ?? null);
+    setPublicSocialLinks(org.publicSocialLinks ?? []);
+  }, [org, hasPublicEdits]);
+
+  const userRole = members?.find(member => member.userId === user?._id)?.role;
   const isOwner = userRole === 'owner';
   const isAdmin = userRole === 'admin' || isOwner;
+  const publicViews = (views ?? [])
+    .filter(view => view.visibility === 'public')
+    .map(view => ({ _id: view._id, name: view.name }));
+
+  const originalDescription = org?.publicDescription ?? '';
+  const originalLandingViewId = org?.publicLandingViewId ?? null;
+  const originalSocialLinks = org?.publicSocialLinks ?? [];
+  const publicSettingsDirty =
+    publicDescription !== originalDescription ||
+    publicLandingViewId !== originalLandingViewId ||
+    serializeSocialLinks(publicSocialLinks) !==
+      serializeSocialLinks(originalSocialLinks);
 
   const header = (
     <div className='border-b'>
@@ -44,6 +315,44 @@ export default function OrgSettingsPageClient({
       </div>
     </div>
   );
+
+  const handleSavePublicSettings = async () => {
+    setIsSavingPublicSettings(true);
+    try {
+      await updateOrganization({
+        orgSlug,
+        data: {
+          publicDescription,
+          publicLandingViewId,
+          publicSocialLinks,
+        },
+      });
+      setHasPublicEdits(false);
+      toast.success('Public site updated');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update public site',
+      );
+    } finally {
+      setIsSavingPublicSettings(false);
+    }
+  };
+
+  const handleAddSocialLink = () => {
+    const nextPlatform = SOCIAL_LINK_PLATFORMS.find(
+      platform => !publicSocialLinks.some(link => link.platform === platform),
+    );
+
+    if (!nextPlatform) {
+      return;
+    }
+
+    setPublicSocialLinks(current => [
+      ...current,
+      { platform: nextPlatform, url: '' },
+    ]);
+    setHasPublicEdits(true);
+  };
 
   if (org === undefined) {
     return (
@@ -65,6 +374,17 @@ export default function OrgSettingsPageClient({
               <Skeleton className='h-4 w-28' />
               <Skeleton className='size-16 rounded border' />
               <Skeleton className='h-3 w-56' />
+            </div>
+          </div>
+          <div className='rounded-md border'>
+            <div className='border-b px-3 py-2'>
+              <Skeleton className='h-4 w-24' />
+              <Skeleton className='mt-2 h-3 w-80' />
+            </div>
+            <div className='space-y-4 p-3'>
+              <Skeleton className='h-8 w-full' />
+              <Skeleton className='h-28 w-full' />
+              <Skeleton className='h-8 w-40' />
             </div>
           </div>
         </div>
@@ -137,6 +457,198 @@ export default function OrgSettingsPageClient({
             <p className='text-muted-foreground text-xs'>
               Upload a square image (PNG, JPG, or SVG). Max 1MB.
             </p>
+          </div>
+        </div>
+
+        <div className='rounded-md border'>
+          <div className='border-b px-3 py-2'>
+            <div className='text-sm font-medium'>Public site</div>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              Configure what visitors see at{' '}
+              <span className='font-mono'>/{orgSlug}</span> and in the public
+              footer.
+            </p>
+          </div>
+
+          <div className='space-y-4 p-3'>
+            <div className='space-y-2'>
+              <label className='text-sm font-medium'>Landing view</label>
+              {isAdmin ? (
+                <PublicViewSelector
+                  views={publicViews}
+                  value={publicLandingViewId}
+                  disabled={publicViews.length === 0}
+                  onChange={value => {
+                    setPublicLandingViewId(value);
+                    setHasPublicEdits(true);
+                  }}
+                />
+              ) : (
+                <div className='rounded-md border px-3 py-2 text-sm'>
+                  {publicViews.find(
+                    view => view._id === org.publicLandingViewId,
+                  )?.name ?? 'No public landing view'}
+                </div>
+              )}
+              <p className='text-muted-foreground text-xs'>
+                Choose a public saved view to render at{' '}
+                <span className='font-mono'>/{orgSlug}</span>. If none is set,
+                the route falls back to the normal workspace redirect.
+              </p>
+              {isAdmin && publicViews.length === 0 ? (
+                <p className='text-muted-foreground text-xs'>
+                  Create a public view first, then select it here.
+                </p>
+              ) : null}
+            </div>
+
+            <div className='space-y-2'>
+              <label className='text-sm font-medium'>
+                Tagline / description
+              </label>
+              {isAdmin ? (
+                <RichEditor
+                  value={publicDescription}
+                  onChange={value => {
+                    setPublicDescription(value);
+                    setHasPublicEdits(true);
+                  }}
+                  placeholder='Write a short public description for your workspace footer...'
+                  className='min-h-[160px]'
+                />
+              ) : publicDescription ? (
+                <div className='prose prose-sm dark:prose-invert max-w-none rounded-md border px-3 py-3'>
+                  <Markdown>{publicDescription}</Markdown>
+                </div>
+              ) : (
+                <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
+                  No public description
+                </div>
+              )}
+            </div>
+
+            <div className='space-y-2'>
+              <div className='flex items-center justify-between gap-2'>
+                <label className='text-sm font-medium'>Social links</label>
+                {isAdmin ? (
+                  <Button
+                    type='button'
+                    variant='outline'
+                    size='sm'
+                    className='h-8'
+                    disabled={
+                      publicSocialLinks.length >= SOCIAL_LINK_PLATFORMS.length
+                    }
+                    onClick={handleAddSocialLink}
+                  >
+                    <Plus className='mr-1.5 size-3.5' />
+                    Add link
+                  </Button>
+                ) : null}
+              </div>
+
+              {publicSocialLinks.length > 0 ? (
+                <div className='space-y-2'>
+                  {publicSocialLinks.map((link, index) => {
+                    const usedPlatforms = publicSocialLinks
+                      .map(item => item.platform)
+                      .filter((_, usedIndex) => usedIndex !== index);
+
+                    return (
+                      <div
+                        key={`${link.platform}-${index}`}
+                        className='flex flex-col gap-2 sm:flex-row sm:items-center'
+                      >
+                        {isAdmin ? (
+                          <>
+                            <SocialPlatformSelector
+                              value={link.platform}
+                              disabled={false}
+                              usedPlatforms={usedPlatforms}
+                              onChange={platform => {
+                                setPublicSocialLinks(current =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, platform }
+                                      : item,
+                                  ),
+                                );
+                                setHasPublicEdits(true);
+                              }}
+                            />
+                            <Input
+                              value={link.url}
+                              onChange={event => {
+                                setPublicSocialLinks(current =>
+                                  current.map((item, itemIndex) =>
+                                    itemIndex === index
+                                      ? { ...item, url: event.target.value }
+                                      : item,
+                                  ),
+                                );
+                                setHasPublicEdits(true);
+                              }}
+                              placeholder='https://example.com'
+                              className='h-8 flex-1'
+                            />
+                            <Button
+                              type='button'
+                              variant='outline'
+                              size='sm'
+                              className='h-8 w-8 p-0'
+                              onClick={() => {
+                                setPublicSocialLinks(current =>
+                                  current.filter(
+                                    (_, itemIndex) => itemIndex !== index,
+                                  ),
+                                );
+                                setHasPublicEdits(true);
+                              }}
+                            >
+                              <Trash2 className='size-3.5' />
+                            </Button>
+                          </>
+                        ) : (
+                          <div className='flex items-center gap-2 rounded-md border px-3 py-2 text-sm'>
+                            <SocialIcon platform={link.platform} />
+                            <span className='min-w-0 flex-1 truncate'>
+                              {link.url}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className='text-muted-foreground rounded-md border px-3 py-2 text-sm'>
+                  No social links configured
+                </div>
+              )}
+
+              <p className='text-muted-foreground text-xs'>
+                These show up as icons in the public footer and open in a new
+                tab.
+              </p>
+            </div>
+
+            {isAdmin ? (
+              <div className='flex items-center gap-2'>
+                <Button
+                  type='button'
+                  className='h-8'
+                  disabled={isSavingPublicSettings || !publicSettingsDirty}
+                  onClick={() => void handleSavePublicSettings()}
+                >
+                  Save public site
+                </Button>
+                {publicSettingsDirty ? (
+                  <span className='text-muted-foreground text-xs'>
+                    Unsaved changes
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

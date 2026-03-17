@@ -24,7 +24,7 @@ import { Id } from '@/convex/_generated/dataModel';
 import { useConfirm } from '@/hooks/use-confirm';
 
 interface PriorityData {
-  id?: Id<'issuePriorities'>;
+  _id?: Id<'issuePriorities'>;
   name: string;
   weight: number;
   color: string | null;
@@ -35,7 +35,7 @@ interface PrioritiesManagementDialogProps {
   priority?: PriorityData;
   existingPriorities: PriorityData[];
   onClose: () => void;
-  onSave: (priority: Omit<PriorityData, 'id'>) => void;
+  onSave: (priority: Omit<PriorityData, '_id'>) => void;
   orgSlug?: string;
 }
 
@@ -138,7 +138,7 @@ export function PrioritiesManagementDialog({
   };
 
   const handleDelete = async () => {
-    if (!priority?.id || !orgSlug) return;
+    if (!priority?._id || !orgSlug) return;
     const ok = await confirmDelete({
       title: 'Delete priority',
       description:
@@ -150,7 +150,7 @@ export function PrioritiesManagementDialog({
 
     setIsDeleting(true);
     try {
-      await deleteMutation({ orgSlug, priorityId: priority.id });
+      await deleteMutation({ orgSlug, priorityId: priority._id });
       onClose();
     } catch (error) {
       console.error('Failed to delete priority:', error);

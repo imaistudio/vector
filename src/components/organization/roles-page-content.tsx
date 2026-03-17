@@ -40,12 +40,13 @@ const BUILT_IN_ROLES = [
       'Teams',
       'Projects',
       'Issues',
+      'Views',
     ],
   },
   {
     key: 'member',
     name: 'Member',
-    description: 'View and contribute to projects and issues',
+    description: 'View and contribute to projects, issues, and views',
     icon: UserCheck,
     color: 'text-green-600',
     permissions: [
@@ -54,6 +55,7 @@ const BUILT_IN_ROLES = [
       'View Issues',
       'View Teams',
       'View Projects',
+      'Create Views',
     ],
   },
 ] as const;

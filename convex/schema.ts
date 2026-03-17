@@ -14,6 +14,7 @@ import {
   notificationEventTypeValidator,
   notificationPayloadValidator,
 } from './notifications/shared';
+import { SOCIAL_LINK_PLATFORMS } from '../src/lib/social-links';
 
 const permissionValidator = v.union(
   ...PERMISSION_VALUES.map(permission => v.literal(permission)),
@@ -27,6 +28,10 @@ const roleScopeTypeValidator = v.union(
 
 const systemRoleKeyValidator = v.union(
   ...Object.values(SYSTEM_ROLE_KEYS).map(key => v.literal(key)),
+);
+
+const socialLinkPlatformValidator = v.union(
+  ...SOCIAL_LINK_PLATFORMS.map(platform => v.literal(platform)),
 );
 
 export default defineSchema({
@@ -78,6 +83,7 @@ export default defineSchema({
     brandLogo: v.optional(v.id('_storage')),
     brandThemeColor: v.optional(v.string()),
     brandAccentColor: v.optional(v.string()),
+    defaultOrgSlug: v.optional(v.string()),
     // WIP: reserved for future GitHub App install/auth flows.
     // Do not treat these as the primary workspace GitHub integration source;
     // workspace webhook/token state lives on githubIntegrations.
@@ -111,6 +117,16 @@ export default defineSchema({
     slug: v.string(),
     logo: v.optional(v.id('_storage')),
     metadata: v.optional(v.string()),
+    publicDescription: v.optional(v.string()),
+    publicLandingViewId: v.optional(v.id('views')),
+    publicSocialLinks: v.optional(
+      v.array(
+        v.object({
+          platform: socialLinkPlatformValidator,
+          url: v.string(),
+        }),
+      ),
+    ),
   }).index('by_slug', ['slug']),
 
   // Organization members (equivalent to Drizzle 'member' table)

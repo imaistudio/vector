@@ -32,7 +32,7 @@ import { Id } from '@/convex/_generated/dataModel';
 import { useConfirm } from '@/hooks/use-confirm';
 
 interface StateData {
-  id?: Id<'issueStates'> | Id<'projectStatuses'>;
+  _id?: Id<'issueStates'> | Id<'projectStatuses'>;
   name: string;
   position: number;
   color: string | null;
@@ -45,7 +45,7 @@ interface StatesManagementDialogProps {
   state?: StateData;
   existingStates: StateData[];
   onClose: () => void;
-  onSave: (state: Omit<StateData, 'id'>) => void;
+  onSave: (state: Omit<StateData, '_id'>) => void;
   orgSlug?: string;
 }
 
@@ -261,7 +261,7 @@ export function StatesManagementDialog({
   };
 
   const handleDelete = async () => {
-    if (!state?.id || !orgSlug) return;
+    if (!state?._id || !orgSlug) return;
     const ok = await confirmDelete({
       title: `Delete ${type === 'issue' ? 'state' : 'status'}`,
       description: 'This will permanently delete it and cannot be undone.',
@@ -275,12 +275,12 @@ export function StatesManagementDialog({
       if (type === 'issue') {
         await deleteIssueState({
           orgSlug,
-          stateId: state.id as Id<'issueStates'>,
+          stateId: state._id as Id<'issueStates'>,
         });
       } else {
         await deleteProjectStatus({
           orgSlug,
-          statusId: state.id as Id<'projectStatuses'>,
+          statusId: state._id as Id<'projectStatuses'>,
         });
       }
       onClose();

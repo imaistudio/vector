@@ -132,6 +132,7 @@ export function PlatformBrandingPage() {
   const [description, setDescription] = useState('');
   const [themeColor, setThemeColor] = useState('#111827');
   const [accentColor, setAccentColor] = useState('#2563eb');
+  const [defaultOrgSlug, setDefaultOrgSlug] = useState('');
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -144,6 +145,7 @@ export function PlatformBrandingPage() {
     setDescription(brandingQuery.data.description);
     setThemeColor(brandingQuery.data.themeColor);
     setAccentColor(brandingQuery.data.accentColor);
+    setDefaultOrgSlug(brandingQuery.data.defaultOrgSlug ?? '');
   }, [brandingQuery.data, hasLocalEdits]);
 
   // Auth guard
@@ -179,7 +181,8 @@ export function PlatformBrandingPage() {
     name !== branding.name ||
     description !== branding.description ||
     themeColor !== branding.themeColor ||
-    accentColor !== branding.accentColor;
+    accentColor !== branding.accentColor ||
+    defaultOrgSlug !== (branding.defaultOrgSlug ?? '');
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -189,6 +192,7 @@ export function PlatformBrandingPage() {
         description,
         themeColor,
         accentColor,
+        defaultOrgSlug,
       });
       setHasLocalEdits(false);
       toast.success('Branding updated');
@@ -398,6 +402,34 @@ export function PlatformBrandingPage() {
                   rows={2}
                   maxLength={200}
                 />
+              </div>
+
+              <div className='space-y-2'>
+                <div className='text-xs font-medium'>
+                  Default organization redirect
+                </div>
+                <div className='bg-background flex max-w-sm items-center rounded-md border'>
+                  <span className='text-muted-foreground border-r px-3 text-sm'>
+                    /
+                  </span>
+                  <Input
+                    value={defaultOrgSlug}
+                    onChange={e => {
+                      setDefaultOrgSlug(
+                        e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''),
+                      );
+                      setHasLocalEdits(true);
+                    }}
+                    placeholder='acme'
+                    className='h-8 border-0 font-mono shadow-none focus-visible:ring-0'
+                    maxLength={50}
+                  />
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  When set, visiting <span className='font-mono'>/</span> sends
+                  visitors to this organization slug. Leave blank to keep the
+                  normal sign-in flow.
+                </p>
               </div>
             </div>
           </div>

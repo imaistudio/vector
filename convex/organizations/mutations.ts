@@ -14,6 +14,19 @@ import {
   ISSUE_STATE_DEFAULTS,
   PROJECT_STATUS_DEFAULTS,
 } from '../../src/lib/defaults';
+import {
+  normalizeSocialLinkUrl,
+  SOCIAL_LINK_PLATFORMS,
+} from '../../src/lib/social-links';
+
+const socialLinkPlatformValidator = v.union(
+  ...SOCIAL_LINK_PLATFORMS.map(platform => v.literal(platform)),
+);
+
+const socialLinkValidator = v.object({
+  platform: socialLinkPlatformValidator,
+  url: v.string(),
+});
 
 async function requireOrgAccess(
   ctx: MutationCtx,
@@ -415,6 +428,11 @@ export const update = mutation({
       name: v.optional(v.string()),
       slug: v.optional(v.string()),
       logo: v.optional(v.id('_storage')),
+      publicDescription: v.optional(v.union(v.string(), v.null())),
+      publicLandingViewId: v.optional(v.union(v.id('views'), v.null())),
+      publicSocialLinks: v.optional(
+        v.union(v.array(socialLinkValidator), v.null()),
+      ),
     }),
   },
   handler: async (ctx, args) => {
@@ -436,6 +454,13 @@ export const update = mutation({
     if (args.data.slug && args.data.slug.length > 50) {
       throw new ConvexError('ORGANIZATION_SLUG_TOO_LONG');
     }
+    if (
+      args.data.publicDescription !== undefined &&
+      args.data.publicDescription !== null &&
+      args.data.publicDescription.trim().length > 10_000
+    ) {
+      throw new ConvexError('PUBLIC_DESCRIPTION_TOO_LONG');
+    }
 
     if (args.data?.slug && args.data.slug.trim() !== org.slug) {
       const existingOrg = await ctx.db
@@ -448,11 +473,51 @@ export const update = mutation({
       }
     }
 
-    const updateData: Partial<{
-      name: string;
-      slug: string;
-      logo: Id<'_storage'>;
-    }> = {};
+    if (args.data.publicLandingViewId) {
+      const landingView = await ctx.db.get(
+        'views',
+        args.data.publicLandingViewId,
+      );
+      if (!landingView || landingView.organizationId !== org._id) {
+        throw new ConvexError('PUBLIC_LANDING_VIEW_NOT_FOUND');
+      }
+      if (landingView.visibility !== 'public') {
+        throw new ConvexError('PUBLIC_LANDING_VIEW_MUST_BE_PUBLIC');
+      }
+    }
+
+    let normalizedSocialLinks:
+      | Array<{
+          platform: (typeof SOCIAL_LINK_PLATFORMS)[number];
+          url: string;
+        }>
+      | undefined;
+    if (args.data.publicSocialLinks !== undefined) {
+      const socialLinks = args.data.publicSocialLinks ?? [];
+      if (socialLinks.length > 6) {
+        throw new ConvexError('TOO_MANY_PUBLIC_SOCIAL_LINKS');
+      }
+
+      const seenPlatforms = new Set<string>();
+      normalizedSocialLinks = socialLinks.map(link => {
+        if (seenPlatforms.has(link.platform)) {
+          throw new ConvexError('DUPLICATE_PUBLIC_SOCIAL_LINK');
+        }
+        seenPlatforms.add(link.platform);
+
+        const normalizedUrl = normalizeSocialLinkUrl(link.url);
+        if (!normalizedUrl) {
+          throw new ConvexError(`INVALID_PUBLIC_SOCIAL_LINK:${link.platform}`);
+        }
+
+        return {
+          platform: link.platform,
+          url: normalizedUrl,
+        };
+      });
+    }
+
+    const updateData: Record<string, unknown> = {};
 
     if (args.data.name !== undefined) {
       updateData.name = args.data.name.trim();
@@ -462,6 +527,20 @@ export const update = mutation({
     }
     if (args.data.logo !== undefined) {
       updateData.logo = args.data.logo;
+    }
+    if (args.data.publicDescription !== undefined) {
+      const trimmed = args.data.publicDescription?.trim() ?? '';
+      updateData.publicDescription = trimmed || undefined;
+    }
+    if (args.data.publicLandingViewId !== undefined) {
+      updateData.publicLandingViewId =
+        args.data.publicLandingViewId ?? undefined;
+    }
+    if (args.data.publicSocialLinks !== undefined) {
+      updateData.publicSocialLinks =
+        normalizedSocialLinks && normalizedSocialLinks.length > 0
+          ? normalizedSocialLinks
+          : undefined;
     }
 
     if (Object.keys(updateData).length > 0) {

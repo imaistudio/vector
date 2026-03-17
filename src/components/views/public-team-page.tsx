@@ -21,7 +21,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
 
   if (team === undefined) {
     return (
-      <PublicLayout>
+      <PublicLayout orgSlug={orgSlug}>
         <div className='mx-auto max-w-4xl space-y-4 p-6'>
           <Skeleton className='h-8 w-48' />
           <Skeleton className='h-4 w-64' />
@@ -35,7 +35,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
 
   if (team === null) {
     return (
-      <PublicLayout>
+      <PublicLayout orgSlug={orgSlug}>
         <div className='flex min-h-[60vh] flex-col items-center justify-center gap-2'>
           <Lock className='text-muted-foreground size-10 opacity-30' />
           <p className='text-muted-foreground text-sm'>
@@ -47,7 +47,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
   }
 
   return (
-    <PublicLayout>
+    <PublicLayout orgSlug={orgSlug}>
       <div className='mx-auto max-w-4xl p-6'>
         {/* Breadcrumb */}
         <div className='text-muted-foreground mb-4 flex items-center gap-1.5 text-xs'>

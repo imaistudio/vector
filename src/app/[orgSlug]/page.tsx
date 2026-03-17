@@ -1,3 +1,7 @@
+import { api } from '@/convex/_generated/api';
+import { PublicLayout } from '@/components/views/public-layout';
+import { PublicViewPage } from '@/components/views/public-view-page';
+import { getConvexClient } from '@/lib/convex-server';
 import { redirect } from 'next/navigation';
 
 interface OrgRootPageProps {
@@ -5,5 +9,27 @@ interface OrgRootPageProps {
 }
 
 export default async function OrgRootPage({ params }: OrgRootPageProps) {
-  redirect(`/${(await params).orgSlug}/issues`);
+  const { orgSlug } = await params;
+
+  try {
+    const publicProfile = await getConvexClient().query(
+      api.organizations.queries.getPublicProfileBySlug,
+      { orgSlug },
+    );
+
+    if (publicProfile?.publicLandingViewId) {
+      return (
+        <PublicLayout orgSlug={orgSlug}>
+          <PublicViewPage
+            orgSlug={orgSlug}
+            viewId={publicProfile.publicLandingViewId}
+          />
+        </PublicLayout>
+      );
+    }
+  } catch (error) {
+    console.error('Failed to load org landing page', error);
+  }
+
+  redirect(`/${orgSlug}/issues`);
 }

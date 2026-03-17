@@ -157,6 +157,7 @@ export const updateBranding = mutation({
     removeLogo: v.optional(v.boolean()),
     themeColor: v.optional(v.string()),
     accentColor: v.optional(v.string()),
+    defaultOrgSlug: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -205,6 +206,31 @@ export const updateBranding = mutation({
 
     if (args.accentColor !== undefined) {
       patch.brandAccentColor = args.accentColor;
+    }
+
+    if (args.defaultOrgSlug !== undefined) {
+      const trimmed = args.defaultOrgSlug.trim();
+
+      if (trimmed.length === 0) {
+        patch.defaultOrgSlug = undefined;
+      } else {
+        if (!/^[a-z0-9-]+$/.test(trimmed)) {
+          throw new ConvexError(
+            'Default organization slug must use lowercase letters, numbers, and hyphens.',
+          );
+        }
+
+        const org = await ctx.db
+          .query('organizations')
+          .withIndex('by_slug', q => q.eq('slug', trimmed))
+          .first();
+
+        if (!org) {
+          throw new ConvexError('DEFAULT_ORG_NOT_FOUND');
+        }
+
+        patch.defaultOrgSlug = trimmed;
+      }
     }
 
     if (Object.keys(patch).length > 0) {

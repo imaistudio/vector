@@ -5,6 +5,7 @@ export interface Branding {
   logoStorageId: string | null;
   themeColor: string;
   accentColor: string;
+  defaultOrgSlug: string | null;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -14,6 +15,7 @@ export const DEFAULT_BRANDING: Branding = {
   logoStorageId: null,
   themeColor: '#111827',
   accentColor: '#2563eb',
+  defaultOrgSlug: null,
 };
 
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}){1,2}$/;

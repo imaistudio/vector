@@ -196,6 +196,40 @@ async function createRoleIfMissing(
     .first();
 
   if (existingRole) {
+    await ctx.db.patch('roles', existingRole._id, {
+      scopeType: args.scopeType,
+      teamId: args.teamId,
+      projectId: args.projectId,
+      name: args.name,
+      description: args.description,
+      system: args.system,
+      systemKey: args.systemKey,
+    });
+
+    const existingPermissions = await ctx.db
+      .query('rolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', existingRole._id))
+      .collect();
+    const desiredPermissions = new Set(args.permissions);
+
+    for (const permission of existingPermissions) {
+      if (!desiredPermissions.has(permission.permission)) {
+        await ctx.db.delete('rolePermissions', permission._id);
+      }
+    }
+
+    const existingPermissionIds = new Set(
+      existingPermissions.map(permission => permission.permission),
+    );
+    for (const permission of args.permissions) {
+      if (!existingPermissionIds.has(permission)) {
+        await ctx.db.insert('rolePermissions', {
+          roleId: existingRole._id,
+          permission,
+        });
+      }
+    }
+
     return existingRole._id;
   }
 
@@ -275,6 +309,10 @@ async function ensureOrganizationSystemRoles(
       PERMISSIONS.ISSUE_RELATION_UPDATE,
       PERMISSIONS.ISSUE_STATE_UPDATE,
       PERMISSIONS.ISSUE_PRIORITY_UPDATE,
+      PERMISSIONS.VIEW_VIEW,
+      PERMISSIONS.VIEW_CREATE,
+      PERMISSIONS.VIEW_EDIT,
+      PERMISSIONS.VIEW_DELETE,
     ],
   });
 
@@ -295,6 +333,8 @@ async function ensureOrganizationSystemRoles(
       PERMISSIONS.ISSUE_EDIT,
       PERMISSIONS.ISSUE_ASSIGN,
       PERMISSIONS.ISSUE_STATE_UPDATE,
+      PERMISSIONS.VIEW_VIEW,
+      PERMISSIONS.VIEW_CREATE,
     ],
   });
 

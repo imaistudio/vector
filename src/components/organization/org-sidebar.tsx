@@ -9,8 +9,16 @@ import {
   FolderOpen,
   Circle,
   LayoutGrid,
+  LayoutList,
+  Columns3,
+  Clock,
+  Globe,
+  Building,
+  Lock,
+  Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { CreateTeamButton } from '@/components/teams/create-team-button';
 import { CreateProjectButton } from '@/components/projects/create-project-button';
@@ -22,6 +30,7 @@ import { withIds } from '@/lib/convex-helpers';
 import type { ReactNode } from 'react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
+import { CreateViewDialog } from '@/components/views/create-view-dialog';
 
 interface NavItem {
   label: string;
@@ -56,6 +65,8 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
     orgSlug: orgSlug,
   });
   const userDocuments = userDocumentsData ?? [];
+  const visibleViewsData = useQuery(api.views.queries.listViews, { orgSlug });
+  const visibleViews = visibleViewsData ?? [];
 
   const navItems: NavItem[] = [
     {
@@ -74,11 +85,6 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
           />
         </ScopedPermissionGate>
       ),
-    },
-    {
-      label: 'Views',
-      href: `/${orgSlug}/views`,
-      icon: LayoutGrid,
     },
   ];
 
@@ -276,6 +282,99 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                 className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
               >
                 +{userProjects.length - 3} more projects
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* Views Section */}
+        <div className='space-y-2'>
+          <div className='flex items-center justify-between px-2'>
+            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
+              Views
+            </span>
+            <div className='flex items-center gap-1'>
+              <Link
+                href={`/${orgSlug}/views`}
+                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
+                onClick={onNavigate}
+              >
+                View All
+              </Link>
+              <ScopedPermissionGate
+                scope={{ orgSlug }}
+                permission={PERMISSIONS.VIEW_CREATE}
+              >
+                <CreateViewDialog
+                  orgSlug={orgSlug}
+                  trigger={
+                    <Button variant='ghost' size='sm' className='h-5 w-5 p-0'>
+                      <Plus className='size-3.5' />
+                    </Button>
+                  }
+                />
+              </ScopedPermissionGate>
+            </div>
+          </div>
+
+          <div className='space-y-1'>
+            {visibleViews.length > 0 ? (
+              visibleViews.slice(0, 3).map(view => {
+                const viewHref = `/${orgSlug}/views/${view._id}`;
+                const isActive =
+                  pathname === viewHref || pathname.startsWith(viewHref + '/');
+                const VisibilityIcon =
+                  view.visibility === 'public'
+                    ? Globe
+                    : view.visibility === 'private'
+                      ? Lock
+                      : Building;
+                const viewMode = view.layout?.viewMode ?? 'table';
+                const ViewModeIcon =
+                  viewMode === 'kanban'
+                    ? Columns3
+                    : viewMode === 'timeline'
+                      ? Clock
+                      : LayoutList;
+
+                return (
+                  <Link
+                    key={view._id}
+                    href={viewHref}
+                    onClick={onNavigate}
+                    className={cn(
+                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                      'hover:bg-foreground/5 text-foreground',
+                      {
+                        'bg-foreground/5': isActive,
+                      },
+                    )}
+                  >
+                    <ViewModeIcon className='text-muted-foreground size-3 flex-shrink-0' />
+                    <span className='flex-1 truncate'>{view.name}</span>
+                    <VisibilityIcon
+                      className={cn('size-3 flex-shrink-0', {
+                        'text-emerald-500': view.visibility === 'public',
+                        'text-purple-500': view.visibility === 'private',
+                        'text-blue-500': view.visibility === 'organization',
+                      })}
+                    />
+                  </Link>
+                );
+              })
+            ) : (
+              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+                No views yet
+              </div>
+            )}
+
+            {visibleViews.length > 3 && (
+              <Link
+                href={`/${orgSlug}/views`}
+                onClick={onNavigate}
+                className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
+              >
+                +{visibleViews.length - 3} more views
               </Link>
             )}
           </div>

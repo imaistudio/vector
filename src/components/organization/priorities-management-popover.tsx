@@ -18,7 +18,7 @@ import type { Id } from '../../../convex/_generated/dataModel';
 import { useConfirm } from '@/hooks/use-confirm';
 
 interface PriorityData {
-  id?: string;
+  _id?: Id<'issuePriorities'>;
   name: string;
   weight: number;
   color: string | null;
@@ -29,7 +29,7 @@ interface PrioritiesManagementPopoverProps {
   priority?: PriorityData;
   existingPriorities: PriorityData[];
   onClose: () => void;
-  onSave: (priority: Omit<PriorityData, 'id'>) => void;
+  onSave: (priority: Omit<PriorityData, '_id'>) => void;
   orgSlug?: string;
   children: React.ReactNode;
 }
@@ -134,7 +134,7 @@ export function PrioritiesManagementPopover({
   };
 
   const handleDelete = async () => {
-    if (!priority?.id || !orgSlug) return;
+    if (!priority?._id || !orgSlug) return;
     const ok = await confirmDelete({
       title: 'Delete priority',
       description:
@@ -148,7 +148,7 @@ export function PrioritiesManagementPopover({
     try {
       await deleteMutation({
         orgSlug,
-        priorityId: priority.id as Id<'issuePriorities'>,
+        priorityId: priority._id,
       });
       onClose();
       setOpen(false);

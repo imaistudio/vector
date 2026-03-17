@@ -121,6 +121,12 @@ export const getBranding = query({
   args: {},
   handler: async ctx => {
     const settings = await getSiteSettings(ctx.db);
+    const defaultOrg = settings?.defaultOrgSlug
+      ? await ctx.db
+          .query('organizations')
+          .withIndex('by_slug', q => q.eq('slug', settings.defaultOrgSlug!))
+          .first()
+      : null;
 
     let logoUrl: string | null = null;
     if (settings?.brandLogo) {
@@ -134,6 +140,7 @@ export const getBranding = query({
       logoStorageId: settings?.brandLogo ?? null,
       themeColor: settings?.brandThemeColor ?? '#111827',
       accentColor: settings?.brandAccentColor ?? '#2563eb',
+      defaultOrgSlug: defaultOrg?.slug ?? null,
     };
   },
 });

@@ -210,11 +210,14 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
     setPriorityDialogState({ isOpen: true });
   };
 
-  const handleSavePriority = (data: Omit<Priority, '_id'>) => {
-    if (priorityDialogState.editingPriority) {
+  const handleSavePriority = (
+    data: Omit<Priority, '_id'>,
+    editingPriority?: Priority,
+  ) => {
+    if (editingPriority) {
       void updatePriority({
         orgSlug,
-        priorityId: priorityDialogState.editingPriority._id,
+        priorityId: editingPriority._id,
         name: data.name,
         weight: data.weight,
         color: data.color ?? '#94a3b8',
@@ -480,7 +483,7 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
               existingPriorities={(priorities as Priority[]) ?? []}
               orgSlug={orgSlug}
               onClose={() => {}}
-              onSave={data => handleSavePriority(data)}
+              onSave={data => handleSavePriority(data, priority as Priority)}
             >
               <button className='bg-background hover:bg-muted/30 group flex w-full cursor-pointer items-center gap-2 rounded border px-2 py-1.5 text-left transition-colors'>
                 {priority.icon ? (
@@ -551,7 +554,9 @@ export function StatesPageContent({ orgSlug }: StatesPageContentProps) {
           priority={priorityDialogState.editingPriority}
           existingPriorities={(priorities as Priority[]) ?? []}
           onClose={closePriorityDialog}
-          onSave={handleSavePriority}
+          onSave={data =>
+            handleSavePriority(data, priorityDialogState.editingPriority)
+          }
           orgSlug={orgSlug}
         />
       )}

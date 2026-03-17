@@ -52,4 +52,13 @@ export const ALL_PERMISSIONS_WITH_GROUP = [
       { id: PERMISSIONS.DOCUMENT_DELETE, label: 'Delete Document' },
     ],
   },
+  {
+    group: 'Views',
+    permissions: [
+      { id: PERMISSIONS.VIEW_CREATE, label: 'Create Views' },
+      { id: PERMISSIONS.VIEW_VIEW, label: 'View Saved Views' },
+      { id: PERMISSIONS.VIEW_EDIT, label: 'Edit Shared Views' },
+      { id: PERMISSIONS.VIEW_DELETE, label: 'Delete Views' },
+    ],
+  },
 ];

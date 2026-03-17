@@ -159,6 +159,42 @@ export const getBySlug = query({
   },
 });
 
+export const getPublicProfileBySlug = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      return null;
+    }
+
+    const publicLandingView = org.publicLandingViewId
+      ? await ctx.db.get('views', org.publicLandingViewId)
+      : null;
+    const logoUrl = org.logo ? await ctx.storage.getUrl(org.logo) : null;
+
+    return {
+      _id: org._id,
+      name: org.name,
+      slug: org.slug,
+      logoUrl,
+      publicDescription: org.publicDescription ?? null,
+      publicLandingViewId:
+        publicLandingView &&
+        publicLandingView.organizationId === org._id &&
+        publicLandingView.visibility === 'public'
+          ? (publicLandingView._id as string)
+          : null,
+      publicSocialLinks: org.publicSocialLinks ?? [],
+    };
+  },
+});
+
 /**
  * List organization members with roles
  */
