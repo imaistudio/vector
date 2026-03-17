@@ -1,15 +1,41 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { Grainient } from '@/components/ui/grainient';
 
 /**
- * Auth page wrapper — subtle background + centered card container.
+ * Auth page wrapper — Grainient animated background + centered card container.
  */
 export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className='relative flex min-h-dvh items-center justify-center px-4 py-12'>
-      {/* Subtle radial glow behind center */}
-      <div className='pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_50%_40%,_rgba(68,218,255,0.04)_0%,_transparent_60%)] dark:bg-[radial-gradient(ellipse_at_50%_40%,_rgba(68,218,255,0.06)_0%,_transparent_60%)]' />
+      {/* Animated grain gradient background */}
+      <div className='pointer-events-none absolute inset-0'>
+        <Grainient
+          color1='#e0f2fe'
+          color2='#f0f9ff'
+          color3='#ecfeff'
+          timeSpeed={0.1}
+          grainAmount={0.06}
+          contrast={1.2}
+          saturation={0.8}
+          warpAmplitude={80}
+          warpSpeed={0.8}
+          className='dark:hidden'
+        />
+        <Grainient
+          color1='#0c1222'
+          color2='#0a0f1a'
+          color3='#0d1525'
+          timeSpeed={0.1}
+          grainAmount={0.08}
+          contrast={1.3}
+          saturation={0.6}
+          warpAmplitude={80}
+          warpSpeed={0.8}
+          className='hidden dark:block'
+        />
+      </div>
 
       <div className='relative w-full max-w-[400px]'>{children}</div>
     </div>
@@ -17,23 +43,23 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Logo lockup — icon + "Vector" text, used at top of auth cards.
+ * Logo lockup — mark + "Vector" text, used at top of auth cards.
+ * Switches between black/white mark based on theme.
  */
 export function AuthLogo({ className }: { className?: string }) {
   return (
-    <div className={cn('flex items-center justify-center gap-2.5', className)}>
-      {/* Black mark for light mode, white mark for dark mode */}
+    <div className={cn('flex items-center justify-center gap-1.5', className)}>
       <img
         src='/icons/vector-mark-black.svg'
         alt='Vector'
-        className='size-9 dark:hidden'
+        className='size-5 dark:hidden'
       />
       <img
         src='/icons/vector-mark-white.svg'
         alt='Vector'
-        className='hidden size-9 dark:block'
+        className='hidden size-5 dark:block'
       />
-      <span className='font-title text-foreground text-xl font-semibold tracking-tight'>
+      <span className='font-title text-foreground text-lg font-semibold tracking-tight'>
         Vector
       </span>
     </div>
