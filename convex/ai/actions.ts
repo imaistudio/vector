@@ -62,19 +62,25 @@ export const clearThreadHistory = action({
       return null;
     }
 
-    await ctx.runAction(components.agent.threads.deleteAllForThreadIdSync, {
-      threadId: row.threadId,
-    });
-    await ctx.runAction(
-      components.agent.streams.deleteAllStreamsForThreadIdSync,
-      {
-        threadId: row.threadId,
-      },
-    );
-
+    // Delete the app-level thread row first so the UI immediately sees it as gone
+    // and so any in-flight generateResponse can no longer update it.
     await ctx.runMutation(internal.ai.internal.deleteAssistantThreadRow, {
       assistantThreadId: row._id,
     });
+
+    // Now clean up the agent component data (messages, thread record, streams).
+    // deleteAllForThreadIdSync handles messages + thread deletion + streams
+    // in one call, so we don't need to call deleteAllStreamsForThreadIdSync separately.
+    try {
+      await ctx.runAction(components.agent.threads.deleteAllForThreadIdSync, {
+        threadId: row.threadId,
+      });
+    } catch (error) {
+      // Best-effort cleanup — the app-level row is already deleted,
+      // so the user won't see the old conversation. Component data
+      // will be orphaned but harmless.
+      console.error('[clearThreadHistory] component cleanup error:', error);
+    }
 
     return { deleted: true };
   },

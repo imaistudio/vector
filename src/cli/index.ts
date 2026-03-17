@@ -1255,6 +1255,94 @@ const activityCommand = program
   .description('Activity feed');
 
 activityCommand
+  .command('list')
+  .description(
+    'List org-wide activity with optional filters by entity type, event type, and time range',
+  )
+  .option(
+    '--entity-type <type>',
+    'Filter by entity type: issue, project, team, document',
+  )
+  .option(
+    '--event-type <type>',
+    'Filter by event type (e.g. issue_created, issue_priority_changed)',
+  )
+  .option(
+    '--since <datetime>',
+    'Start of time range (ISO date or shorthand: today, yesterday, 7d, 30d)',
+  )
+  .option(
+    '--until <datetime>',
+    'End of time range (ISO date or shorthand: today, now)',
+  )
+  .option('--limit <n>')
+  .option('--cursor <cursor>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+
+    function parseTimeArg(
+      value: string | undefined,
+      bound: 'start' | 'end',
+    ): number | undefined {
+      if (!value) return undefined;
+      const now = new Date();
+      const startOfToday = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+      const endOfToday = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999,
+      );
+      switch (value) {
+        case 'now':
+          return now.getTime();
+        case 'today':
+          return bound === 'start'
+            ? startOfToday.getTime()
+            : endOfToday.getTime();
+        case 'yesterday':
+          return bound === 'start'
+            ? startOfToday.getTime() - 86400000
+            : startOfToday.getTime() - 1;
+        default: {
+          const daysMatch = value.match(/^(\d+)d$/);
+          if (daysMatch) {
+            return now.getTime() - Number(daysMatch[1]) * 86400000;
+          }
+          const parsed = new Date(value).getTime();
+          if (Number.isNaN(parsed)) {
+            throw new Error(`Invalid time value: ${value}`);
+          }
+          return parsed;
+        }
+      }
+    }
+
+    const result = await runQuery(
+      client,
+      api.activities.queries.listOrgActivity,
+      {
+        orgSlug,
+        entityType: options.entityType ?? undefined,
+        eventType: options.eventType ?? undefined,
+        since: parseTimeArg(options.since, 'start'),
+        until: parseTimeArg(options.until, 'end'),
+        limit: optionalNumber(options.limit, 'limit') ?? undefined,
+        cursor: options.cursor ?? undefined,
+      },
+    );
+    printOutput(result, runtime.json);
+  });
+
+activityCommand
   .command('project <projectKey>')
   .option('--limit <n>')
   .option('--cursor <cursor>')
@@ -2177,6 +2265,7 @@ issueCommand
   .command('list [slug]')
   .option('--project <projectKey>')
   .option('--team <teamKey>')
+  .option('--assignee <name>', 'Filter by assignee name or email')
   .option('--limit <n>')
   .option('--created-after <date>', 'Filter: created on or after date (ISO)')
   .option('--created-before <date>', 'Filter: created on or before date (ISO)')
@@ -2189,6 +2278,7 @@ issueCommand
       orgSlug,
       projectKey: options.project,
       teamKey: options.team,
+      assigneeName: options.assignee,
     });
     const filtered = applyListFilters(raw, options);
     const result = addEntityUrls(filtered, runtime.appUrl, orgSlug, 'issues');

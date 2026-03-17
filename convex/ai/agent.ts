@@ -20,6 +20,7 @@ import {
   getProject,
   getTeam,
   inviteOrgMember,
+  listActivity,
   linkGitHubArtifactToIssue,
   listDocuments,
   listFolders,
@@ -94,6 +95,11 @@ Icons:
 - Use searchIcons to find valid icon values by keyword before setting icons on teams, projects, documents, or folders
 - Never guess icon values — always search first to get the exact stored value
 
+Activity:
+- List and filter organization activity by entity type (issue/project/team/document), event type, and time range
+- Answer questions like "what happened today?", "what issues were created this week?", "show recent activity"
+- Use listActivity with since/until ISO date strings and optional entityType/eventType filters
+
 Client actions:
 - Navigate the user to any page (e.g. after creating an issue, navigate them to it)
 - Open links in new tabs
@@ -156,6 +162,8 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     addProjectMember,
     removeProjectMember,
     changeProjectLead,
+    // Activity feed
+    listActivity,
     // Issue delegation
     assignIssue,
     unassignIssue,

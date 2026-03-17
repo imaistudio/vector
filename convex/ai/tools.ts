@@ -2,6 +2,7 @@ import { createTool, type ToolCtx } from '@convex-dev/agent';
 import { z } from 'zod';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type { ActivityEventType } from '../_shared/activity';
 import { searchAvailableIcons } from './icons';
 import type { AssistantPageContext } from './lib';
 
@@ -148,10 +149,16 @@ export const requestDeleteDocument: any = createTool({
 
 export const listIssues: any = createTool({
   description:
-    'List issues with key details. If projectKey or teamKey is omitted, the current project or team page scope is used when available. Returns key, title, priority, state, assignee, dates, and parent for each issue.',
+    'List issues with key details. If projectKey or teamKey is omitted, the current project or team page scope is used when available. Filter by assignee using assigneeName. Returns key, title, priority, state, assignee, dates, and parent for each issue.',
   args: z.object({
     projectKey: z.string().optional(),
     teamKey: z.string().optional(),
+    assigneeName: z
+      .string()
+      .optional()
+      .describe(
+        'Filter by assignee name or email. Use listWorkspaceReferenceData to look up member names.',
+      ),
     limit: z.number().int().positive().max(50).optional(),
   }),
   handler: async (ctx: AssistantToolCtx, args) => {
@@ -795,6 +802,10 @@ export const showIssues: any = createTool({
   args: z.object({
     projectKey: z.string().optional(),
     teamKey: z.string().optional(),
+    assigneeName: z
+      .string()
+      .optional()
+      .describe('Filter by assignee name or email'),
     limit: z.number().int().positive().max(10).optional(),
   }),
   handler: async (ctx: AssistantToolCtx, args) => {
@@ -975,6 +986,64 @@ export const updateOrgMemberRole: any = createTool({
       userId: ctx.userId,
       memberName: args.memberName,
       role: args.role,
+    });
+  },
+});
+
+// ──── Activity feed ────
+
+export const listActivity: any = createTool({
+  description:
+    'List recent activity across the organization. Filter by entity type (issue, project, team, document), specific event type (e.g. issue_created, issue_priority_changed), and time range. Use this to answer questions like "what happened today?", "what issues were created this week?", or "show me recent activity".',
+  args: z.object({
+    entityType: z
+      .enum(['issue', 'project', 'team', 'document'])
+      .optional()
+      .describe('Filter by entity type'),
+    eventType: z
+      .string()
+      .optional()
+      .describe(
+        'Filter by specific event type (e.g. issue_created, issue_priority_changed, project_status_changed, document_created)',
+      ),
+    since: z
+      .string()
+      .optional()
+      .describe(
+        'ISO date string for start of time range (e.g. "2026-03-17T00:00:00Z")',
+      ),
+    until: z
+      .string()
+      .optional()
+      .describe(
+        'ISO date string for end of time range (e.g. "2026-03-17T23:59:59Z")',
+      ),
+    limit: z.number().int().positive().max(100).optional(),
+    cursor: z
+      .string()
+      .optional()
+      .describe('Pagination cursor from previous call'),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: {
+      entityType?: 'issue' | 'project' | 'team' | 'document';
+      eventType?: string;
+      since?: string;
+      until?: string;
+      limit?: number;
+      cursor?: string;
+    },
+  ) => {
+    return await ctx.runQuery(internal.ai.internal.listActivity, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      entityType: args.entityType,
+      eventType: args.eventType as ActivityEventType | undefined,
+      since: args.since ? new Date(args.since).getTime() : undefined,
+      until: args.until ? new Date(args.until).getTime() : undefined,
+      limit: args.limit,
+      cursor: args.cursor,
     });
   },
 });

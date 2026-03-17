@@ -8,7 +8,12 @@ import {
   canViewProject,
   canViewTeam,
 } from '../access';
+import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { getUserDisplayName } from './lib';
+import {
+  activityEntityTypeValidator,
+  activityEventTypeValidator,
+} from '../_shared/activity';
 
 type ActivityEventDoc = Doc<'activityEvents'>;
 
@@ -274,6 +279,83 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
   );
 }
 
+function matchesOrgActivityFilters(
+  event: ActivityEventDoc,
+  args: {
+    entityType?: ActivityEventDoc['entityType'];
+    eventType?: ActivityEventDoc['eventType'];
+    actorId?: Id<'users'>;
+    since?: number;
+    until?: number;
+  },
+) {
+  if (args.since != null && event._creationTime < args.since) {
+    return false;
+  }
+
+  if (args.until != null && event._creationTime > args.until) {
+    return false;
+  }
+
+  if (args.entityType && event.entityType !== args.entityType) {
+    return false;
+  }
+
+  if (args.eventType && event.eventType !== args.eventType) {
+    return false;
+  }
+
+  if (args.actorId && event.actorId !== args.actorId) {
+    return false;
+  }
+
+  return true;
+}
+
+async function collectOrgActivityItems(
+  ctx: QueryCtx,
+  organizationId: Id<'organizations'>,
+  args: {
+    entityType?: ActivityEventDoc['entityType'];
+    eventType?: ActivityEventDoc['eventType'];
+    actorId?: Id<'users'>;
+    since?: number;
+    until?: number;
+    limit?: number;
+    cursor?: string;
+  },
+) {
+  const limit = Math.min(args.limit ?? 50, 100);
+  const items: Awaited<ReturnType<typeof enrichEvents>> = [];
+  let cursor = args.cursor ?? null;
+  let isDone = false;
+
+  while (items.length < limit && !isDone) {
+    const page = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization', q => q.eq('organizationId', organizationId))
+      .order('desc')
+      .paginate({
+        cursor,
+        numItems: limit - items.length,
+      });
+
+    const matchingEvents = page.page.filter(event =>
+      matchesOrgActivityFilters(event, args),
+    );
+
+    items.push(...(await enrichEvents(ctx, matchingEvents)));
+
+    cursor = page.continueCursor;
+    isDone = page.isDone || !page.continueCursor;
+  }
+
+  return {
+    items,
+    nextCursor: isDone ? null : cursor,
+  };
+}
+
 export const listProjectActivity = query({
   args: {
     projectId: v.id('projects'),
@@ -382,6 +464,33 @@ export const listDocumentActivity = query({
     return {
       ...result,
       page: await enrichEvents(ctx, result.page),
+    };
+  },
+});
+
+/**
+ * List activity across an entire organization with optional filters.
+ * Supports filtering by entity type, event type, actor, and time range.
+ */
+export const listOrgActivity = query({
+  args: {
+    orgSlug: v.string(),
+    entityType: v.optional(activityEntityTypeValidator),
+    eventType: v.optional(activityEventTypeValidator),
+    actorId: v.optional(v.id('users')),
+    since: v.optional(v.number()),
+    until: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    await requireOrganizationMember(ctx, org._id);
+    const result = await collectOrgActivityItems(ctx, org._id, args);
+
+    return {
+      items: result.items,
+      nextCursor: result.nextCursor,
     };
   },
 });

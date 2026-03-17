@@ -1,6 +1,11 @@
 import { internal } from '../_generated/api';
-import { internalMutation, internalQuery } from '../_generated/server';
+import {
+  internalMutation,
+  internalQuery,
+  type QueryCtx,
+} from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
   setProjectLeadMemberRole,
   setTeamLeadMemberRole,
@@ -18,6 +23,10 @@ import {
   resolveIssueScope,
   snapshotForIssue,
 } from '../activities/lib';
+import {
+  activityEntityTypeValidator,
+  activityEventTypeValidator,
+} from '../_shared/activity';
 import {
   AssistantPageContext,
   AssistantPendingAction,
@@ -656,6 +665,7 @@ export const listIssues = internalQuery({
     pageContext: v.optional(assistantPageContextValidator),
     projectKey: v.optional(v.string()),
     teamKey: v.optional(v.string()),
+    assigneeName: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -683,6 +693,24 @@ export const listIssues = internalQuery({
           ).catch(() => null)
         : null;
 
+    // Resolve assignee filter by name/email
+    let assigneeIssueIds: Set<string> | null = null;
+    if (args.assigneeName) {
+      const member = await findMemberByName(
+        ctx,
+        organization._id,
+        args.assigneeName,
+      );
+      if (!member) {
+        return [];
+      }
+      const assignments = await ctx.db
+        .query('issueAssignees')
+        .withIndex('by_assignee', q => q.eq('assigneeId', member.user._id))
+        .collect();
+      assigneeIssueIds = new Set(assignments.map(a => String(a.issueId)));
+    }
+
     let issues = project
       ? await ctx.db
           .query('issues')
@@ -697,6 +725,10 @@ export const listIssues = internalQuery({
 
     if (team) {
       issues = issues.filter(issue => issue.teamId === team._id);
+    }
+
+    if (assigneeIssueIds) {
+      issues = issues.filter(issue => assigneeIssueIds!.has(String(issue._id)));
     }
 
     const visible = [];
@@ -3485,5 +3517,179 @@ export const updateOrgMemberRole = internalMutation({
       userName: displayName,
       role: args.role,
     };
+  },
+});
+
+// ──── Activity feed ────
+
+type ActivityEventDoc = Doc<'activityEvents'>;
+
+function matchesAssistantActivityFilters(
+  event: ActivityEventDoc,
+  args: {
+    entityType?: ActivityEventDoc['entityType'];
+    eventType?: ActivityEventDoc['eventType'];
+    since?: number;
+    until?: number;
+  },
+) {
+  if (args.since != null && event._creationTime < args.since) {
+    return false;
+  }
+
+  if (args.until != null && event._creationTime > args.until) {
+    return false;
+  }
+
+  if (args.entityType && event.entityType !== args.entityType) {
+    return false;
+  }
+
+  if (args.eventType && event.eventType !== args.eventType) {
+    return false;
+  }
+
+  return true;
+}
+
+async function canUserViewActivityEvent(
+  ctx: QueryCtx,
+  userId: Id<'users'>,
+  event: ActivityEventDoc,
+) {
+  switch (event.entityType) {
+    case 'issue': {
+      if (!event.issueId) return false;
+      const issue = await ctx.db.get('issues', event.issueId);
+      return issue ? await canViewEntity(ctx, userId, issue, 'issue') : false;
+    }
+    case 'project': {
+      if (!event.projectId) return false;
+      const project = await ctx.db.get('projects', event.projectId);
+      return project
+        ? await canViewEntity(ctx, userId, project, 'project')
+        : false;
+    }
+    case 'document': {
+      if (!event.documentId) return false;
+      const document = await ctx.db.get('documents', event.documentId);
+      return document
+        ? await canViewEntity(ctx, userId, document, 'document')
+        : false;
+    }
+    case 'team': {
+      if (!event.teamId) return false;
+      const team = await ctx.db.get('teams', event.teamId);
+      return team ? await canViewEntity(ctx, userId, team, 'team') : false;
+    }
+  }
+}
+
+async function collectAssistantActivityPage(
+  ctx: QueryCtx,
+  organizationId: Id<'organizations'>,
+  args: {
+    userId: Id<'users'>;
+    entityType?: ActivityEventDoc['entityType'];
+    eventType?: ActivityEventDoc['eventType'];
+    since?: number;
+    until?: number;
+    limit?: number;
+    cursor?: string;
+  },
+) {
+  const limit = Math.min(args.limit ?? 25, 100);
+  const events: ActivityEventDoc[] = [];
+  let cursor = args.cursor ?? null;
+  let isDone = false;
+
+  while (events.length < limit && !isDone) {
+    const page = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization', q => q.eq('organizationId', organizationId))
+      .order('desc')
+      .paginate({
+        cursor,
+        numItems: limit - events.length,
+      });
+
+    const matchingEvents = page.page.filter(event =>
+      matchesAssistantActivityFilters(event, args),
+    );
+    const visibility = await Promise.all(
+      matchingEvents.map(event =>
+        canUserViewActivityEvent(ctx, args.userId, event),
+      ),
+    );
+
+    events.push(
+      ...matchingEvents.filter((_, index) => visibility[index] === true),
+    );
+
+    cursor = page.continueCursor;
+    isDone = page.isDone || !page.continueCursor;
+  }
+
+  return {
+    events,
+    nextCursor: isDone ? null : cursor,
+  };
+}
+
+export const listActivity = internalQuery({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    entityType: v.optional(activityEntityTypeValidator),
+    eventType: v.optional(activityEventTypeValidator),
+    since: v.optional(v.number()),
+    until: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const result = await collectAssistantActivityPage(ctx, organization._id, {
+      ...args,
+      userId: args.userId,
+    });
+
+    // Hydrate actors
+    const actorIds = [...new Set(result.events.map(e => e.actorId))];
+    const actors = await Promise.all(
+      actorIds.map(id => ctx.db.get('users', id)),
+    );
+    const actorMap = new Map(
+      actorIds.flatMap((id, i) => (actors[i] ? [[id, actors[i]]] : [])),
+    );
+
+    const items = result.events.map(e => {
+      const actor = actorMap.get(e.actorId);
+      return {
+        id: String(e._id),
+        createdAt: new Date(e._creationTime).toISOString(),
+        entityType: e.entityType,
+        eventType: e.eventType,
+        actor: actor
+          ? { name: actor.name ?? actor.username ?? actor.email ?? 'Unknown' }
+          : null,
+        target: {
+          key: e.snapshot.entityKey ?? null,
+          name: e.snapshot.entityName ?? null,
+        },
+        details: {
+          field: e.details.field ?? null,
+          fromLabel: e.details.fromLabel ?? null,
+          toLabel: e.details.toLabel ?? null,
+          commentPreview: e.details.commentPreview ?? null,
+        },
+      };
+    });
+
+    return { items, nextCursor: result.nextCursor };
   },
 });

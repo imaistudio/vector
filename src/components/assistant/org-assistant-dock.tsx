@@ -21,7 +21,14 @@ import {
 } from './assistant-input';
 import { BarsSpinner } from '@/components/bars-spinner';
 import { cn } from '@/lib/utils';
-import { ArrowUp, ChevronsDown, ChevronsUp, Trash2, X } from 'lucide-react';
+import {
+  ArrowUp,
+  ChevronsDown,
+  ChevronsUp,
+  Loader2,
+  Trash2,
+  X,
+} from 'lucide-react';
 import {
   type UIMessage,
   optimisticallySendMessage,
@@ -97,6 +104,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const [confirmAction, ConfirmActionDialog] = useConfirm();
   const inputRef = useRef<AssistantInputHandle>(null);
 
@@ -437,6 +445,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     });
     if (!ok) return;
 
+    setIsClearing(true);
     try {
       await clearThreadHistory({ orgSlug });
       setIsExpanded(false);
@@ -444,6 +453,8 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to clear history',
       );
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -626,10 +637,15 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                   <button
                     type='button'
                     onClick={() => void handleClearHistory()}
-                    className='text-muted-foreground/40 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors'
+                    disabled={isClearing}
+                    className='text-muted-foreground/40 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-30'
                     aria-label='Clear conversation'
                   >
-                    <Trash2 className='size-2.5' />
+                    {isClearing ? (
+                      <Loader2 className='size-2.5 animate-spin' />
+                    ) : (
+                      <Trash2 className='size-2.5' />
+                    )}
                   </button>
                 ) : null}
                 <Button

@@ -162,6 +162,7 @@ export const listIssues: any = action({
     orgSlug: v.string(),
     projectKey: v.optional(v.string()),
     teamKey: v.optional(v.string()),
+    assigneeName: v.optional(v.string()),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {

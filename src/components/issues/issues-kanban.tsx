@@ -995,7 +995,7 @@ function KanbanCardContent({
           : 'hover:border-border/80 hover:shadow-sm',
       )}
     >
-      {/* Issue key + priority */}
+      {/* Issue key + priority + PR link */}
       <div className='mb-1.5 flex items-center gap-2'>
         {onPriorityChange && priorities ? (
           <div onClick={e => e.stopPropagation()}>
@@ -1035,6 +1035,21 @@ function KanbanCardContent({
         >
           {issue.key}
         </Link>
+        {issue.linkedPrs && issue.linkedPrs.length > 0 ? (
+          <Link
+            href={issue.linkedPrs[0].url}
+            target='_blank'
+            rel='noreferrer'
+            onClick={e => {
+              if (isDragging) e.preventDefault();
+              e.stopPropagation();
+            }}
+            className='text-muted-foreground hover:text-foreground ml-auto flex items-center gap-0.5 text-[11px] transition-colors'
+          >
+            <GitPullRequest className='size-3' />
+            <span className='font-mono'>#{issue.linkedPrs[0].number}</span>
+          </Link>
+        ) : null}
       </div>
 
       {/* Title */}
@@ -1073,26 +1088,9 @@ function KanbanCardContent({
           assigneeStateCluster
         )}
 
-        <div className='flex items-center gap-2'>
-          {issue.linkedPrs && issue.linkedPrs.length > 0 ? (
-            <Link
-              href={issue.linkedPrs[0].url}
-              target='_blank'
-              rel='noreferrer'
-              onClick={e => {
-                if (isDragging) e.preventDefault();
-                e.stopPropagation();
-              }}
-              className='text-muted-foreground hover:text-foreground flex items-center gap-0.5 text-[11px] transition-colors'
-            >
-              <GitPullRequest className='size-3' />
-              <span className='font-mono'>#{issue.linkedPrs[0].number}</span>
-            </Link>
-          ) : null}
-          <span className='text-muted-foreground text-[11px]'>
-            {formatDateHuman(new Date(issue.updatedAt))}
-          </span>
-        </div>
+        <span className='text-muted-foreground text-[11px]'>
+          {formatDateHuman(new Date(issue.updatedAt))}
+        </span>
       </div>
     </div>
   );

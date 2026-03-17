@@ -246,6 +246,8 @@ export const setThreadCompleted = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const row = await ctx.db.get('assistantThreads', args.assistantThreadId);
+    if (!row) return null; // Thread was cleared while generating
     await ctx.db.patch('assistantThreads', args.assistantThreadId, {
       threadStatus: 'completed',
       errorMessage: undefined,
@@ -262,6 +264,8 @@ export const setThreadError = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const row = await ctx.db.get('assistantThreads', args.assistantThreadId);
+    if (!row) return null; // Thread was cleared while generating
     await ctx.db.patch('assistantThreads', args.assistantThreadId, {
       threadStatus: 'error',
       errorMessage: args.errorMessage,
