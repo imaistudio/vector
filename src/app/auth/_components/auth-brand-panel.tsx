@@ -1,7 +1,14 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { Grainient } from '@/components/ui/grainient';
+import dynamic from 'next/dynamic';
+
+// Lazy-load WebGL component — renders nothing on server
+const Grainient = dynamic(
+  () =>
+    import('@/components/ui/grainient').then(m => ({ default: m.Grainient })),
+  { ssr: false },
+);
 
 /**
  * Auth page wrapper — Grainient animated background + centered card container.
@@ -10,31 +17,31 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
   return (
     <div className='relative flex min-h-dvh items-center justify-center px-4 py-12'>
       {/* Light mode background */}
-      <div className='pointer-events-none absolute inset-0 dark:hidden'>
+      <div className='pointer-events-none absolute inset-0 overflow-hidden dark:hidden'>
         <Grainient
-          color1='#e0f2fe'
-          color2='#f0f9ff'
-          color3='#ecfeff'
-          timeSpeed={0.1}
-          grainAmount={0.06}
-          contrast={1.2}
-          saturation={0.8}
-          warpAmplitude={80}
-          warpSpeed={0.8}
+          color1='#c4b5fd'
+          color2='#e0e7ff'
+          color3='#a5f3fc'
+          timeSpeed={0.15}
+          grainAmount={0.1}
+          contrast={1.4}
+          saturation={1.0}
+          warpAmplitude={60}
+          warpSpeed={1.0}
         />
       </div>
       {/* Dark mode background */}
-      <div className='pointer-events-none absolute inset-0 hidden dark:block'>
+      <div className='pointer-events-none absolute inset-0 hidden overflow-hidden dark:block'>
         <Grainient
-          color1='#0c1222'
-          color2='#0a0f1a'
-          color3='#0d1525'
-          timeSpeed={0.1}
-          grainAmount={0.08}
-          contrast={1.3}
-          saturation={0.6}
-          warpAmplitude={80}
-          warpSpeed={0.8}
+          color1='#1e1b4b'
+          color2='#0f172a'
+          color3='#164e63'
+          timeSpeed={0.15}
+          grainAmount={0.12}
+          contrast={1.4}
+          saturation={0.8}
+          warpAmplitude={60}
+          warpSpeed={1.0}
         />
       </div>
 
