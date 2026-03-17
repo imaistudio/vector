@@ -21,6 +21,7 @@ import type * as activities_lib from "../activities/lib.js";
 import type * as activities_queries from "../activities/queries.js";
 import type * as ai_actions from "../ai/actions.js";
 import type * as ai_agent from "../ai/agent.js";
+import type * as ai_comment_agent from "../ai/comment_agent.js";
 import type * as ai_icons from "../ai/icons.js";
 import type * as ai_internal from "../ai/internal.js";
 import type * as ai_language_model_wrappers from "../ai/language_model_wrappers.js";
@@ -94,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   "activities/queries": typeof activities_queries;
   "ai/actions": typeof ai_actions;
   "ai/agent": typeof ai_agent;
+  "ai/comment_agent": typeof ai_comment_agent;
   "ai/icons": typeof ai_icons;
   "ai/internal": typeof ai_internal;
   "ai/language_model_wrappers": typeof ai_language_model_wrappers;
