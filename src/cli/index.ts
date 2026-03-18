@@ -2884,20 +2884,40 @@ serviceCommand
 serviceCommand
   .command('logs')
   .description('Show bridge service logs')
-  .action(() => {
-    const { existsSync: exists, readFileSync: read } = require('fs');
-    const logPath = require('path').join(
-      require('os').homedir(),
-      '.vector',
-      'bridge.log',
-    );
-    if (exists(logPath)) {
-      const content = read(logPath, 'utf-8');
+  .action(async () => {
+    const fs = await import('fs');
+    const os = await import('os');
+    const p = await import('path');
+    const logPath = p.join(os.homedir(), '.vector', 'bridge.log');
+    if (fs.existsSync(logPath)) {
+      const content = fs.readFileSync(logPath, 'utf-8');
       const lines = content.split('\n');
       console.log(lines.slice(-50).join('\n'));
     } else {
       console.log('No log file found at ~/.vector/bridge.log');
     }
+  });
+
+serviceCommand
+  .command('enable')
+  .description('Enable bridge to start at login (macOS LaunchAgent)')
+  .action(async () => {
+    if (osPlatform() !== 'darwin') {
+      console.error('Login item is macOS only.');
+      return;
+    }
+    const vcliPath = process.argv[1] ?? 'vcli';
+    installLaunchAgent(vcliPath);
+    loadLaunchAgent();
+    console.log('Bridge will start automatically on login.');
+  });
+
+serviceCommand
+  .command('disable')
+  .description('Disable bridge from starting at login')
+  .action(() => {
+    uninstallLaunchAgent();
+    console.log('Bridge will no longer start at login.');
   });
 
 // `vcli bridge` — top-level shortcut commands

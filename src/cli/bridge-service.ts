@@ -415,16 +415,15 @@ export function installLaunchAgent(vcliPath: string): void {
 </dict>
 </plist>`;
 
-  // Also install the menu bar helper LaunchAgent if the binary exists
-  const menuBarBinary = join(
-    __dirname,
-    '..',
-    '..',
-    'cli',
-    'macos',
-    'VectorMenuBar',
-  );
-  if (existsSync(menuBarBinary)) {
+  // Also install the menu bar helper LaunchAgent if the binary exists.
+  // Search common locations for the compiled VectorMenuBar binary.
+  const menuBarCandidates = [
+    join(CONFIG_DIR, 'VectorMenuBar'),
+    '/usr/local/bin/VectorMenuBar',
+    join(homedir(), '.local', 'bin', 'VectorMenuBar'),
+  ];
+  const menuBarBinary = menuBarCandidates.find(p => existsSync(p));
+  if (menuBarBinary) {
     const menuBarPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
