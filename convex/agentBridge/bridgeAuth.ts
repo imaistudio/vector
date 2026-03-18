@@ -243,6 +243,7 @@ export const reportProcess = internalMutation({
     deviceId: v.string(),
     provider: v.string(),
     providerLabel: v.optional(v.string()),
+    localProcessId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
     cwd: v.optional(v.string()),
     repoRoot: v.optional(v.string()),
