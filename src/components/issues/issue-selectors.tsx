@@ -130,7 +130,7 @@ function renderGuardedTrigger(trigger: ReactElement) {
         trigger.props as { onPointerDown?: (e: React.PointerEvent) => void }
       ).onPointerDown?.(e);
     },
-  });
+  } as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------------------

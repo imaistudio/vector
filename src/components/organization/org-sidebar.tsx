@@ -8,7 +8,6 @@ import {
   FileText,
   FolderOpen,
   Circle,
-  LayoutGrid,
   LayoutList,
   Columns3,
   Clock,
@@ -16,6 +15,7 @@ import {
   Building,
   Lock,
   Plus,
+  ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ import { ScopedPermissionGate } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { api, useCachedQuery } from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 import { CreateViewDialog } from '@/components/views/create-view-dialog';
@@ -42,6 +42,44 @@ interface NavItem {
 interface OrgSidebarProps {
   orgSlug: string;
   onNavigate?: () => void;
+}
+
+/** Collapsible sidebar section with chevron toggle. */
+function SidebarSection({
+  label,
+  action,
+  children,
+  defaultOpen = true,
+}: {
+  label: string;
+  action: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className='space-y-1'>
+      <div className='flex items-center justify-between px-2'>
+        <button
+          type='button'
+          onClick={() => setOpen(o => !o)}
+          className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs font-normal tracking-wider uppercase transition-colors'
+        >
+          <ChevronRight
+            className={cn(
+              'size-3 transition-transform duration-150',
+              open && 'rotate-90',
+            )}
+          />
+          {label}
+        </button>
+        <div className='flex items-center gap-1'>{action}</div>
+      </div>
+
+      {open && <div className='space-y-1'>{children}</div>}
+    </div>
+  );
 }
 
 export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
@@ -140,322 +178,265 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
         </div>
 
         {/* Teams Section */}
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between px-2'>
-            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
-              My Teams
-            </span>
-            <div className='flex items-center gap-1'>
-              <Link
-                href={`/${orgSlug}/teams`}
-                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
-                onClick={onNavigate}
-              >
-                View All
-              </Link>
-              <CreateTeamButton
-                orgSlug={orgSlug}
-                size='sm'
-                className='h-5 w-5'
-              />
+        <SidebarSection
+          label='My Teams'
+          action={
+            <CreateTeamButton orgSlug={orgSlug} size='sm' className='h-5 w-5' />
+          }
+        >
+          {userTeams.length > 0 ? (
+            userTeams.slice(0, 3).map(team => {
+              const teamHref = `/${orgSlug}/teams/${team.key}`;
+              const isActive =
+                pathname === teamHref || pathname.startsWith(teamHref + '/');
+
+              return (
+                <Link
+                  key={team.id}
+                  href={teamHref}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                    'hover:bg-foreground/5 text-foreground',
+                    {
+                      'bg-foreground/5': isActive,
+                    },
+                  )}
+                >
+                  <DynamicIcon
+                    name={team.icon}
+                    fallback={Circle}
+                    className='size-3 flex-shrink-0'
+                    style={{ color: team.color || '#6b7280' }}
+                  />
+                  <span className='truncate'>{team.name}</span>
+                </Link>
+              );
+            })
+          ) : (
+            <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+              No teams yet
             </div>
-          </div>
+          )}
 
-          <div className='space-y-1'>
-            {userTeams.length > 0 ? (
-              userTeams.slice(0, 3).map(team => {
-                const teamHref = `/${orgSlug}/teams/${team.key}`;
-                const isActive =
-                  pathname === teamHref || pathname.startsWith(teamHref + '/');
-
-                return (
-                  <Link
-                    key={team.id}
-                    href={teamHref}
-                    onClick={onNavigate}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
-                      'hover:bg-foreground/5 text-foreground',
-                      {
-                        'bg-foreground/5': isActive,
-                      },
-                    )}
-                  >
-                    <DynamicIcon
-                      name={team.icon}
-                      fallback={Circle}
-                      className='size-3 flex-shrink-0'
-                      style={{ color: team.color || '#6b7280' }}
-                    />
-                    <span className='truncate'>{team.name}</span>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
-                No teams yet
-              </div>
-            )}
-
-            {userTeams.length > 3 && (
-              <Link
-                href={`/${orgSlug}/teams`}
-                onClick={onNavigate}
-                className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
-              >
-                +{userTeams.length - 3} more teams
-              </Link>
-            )}
-          </div>
-        </div>
+          {userTeams.length > 3 && (
+            <Link
+              href={`/${orgSlug}/teams`}
+              onClick={onNavigate}
+              className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
+            >
+              +{userTeams.length - 3} more teams
+            </Link>
+          )}
+        </SidebarSection>
 
         {/* Projects Section */}
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between px-2'>
-            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
-              My Projects
-            </span>
-            <div className='flex items-center gap-1'>
-              <Link
-                href={`/${orgSlug}/projects`}
-                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
-                onClick={onNavigate}
-              >
-                View All
-              </Link>
-              <CreateProjectButton
-                orgSlug={orgSlug}
-                size='sm'
-                className='h-5 w-5'
-              />
-            </div>
-          </div>
+        <SidebarSection
+          label='My Projects'
+          action={
+            <CreateProjectButton
+              orgSlug={orgSlug}
+              size='sm'
+              className='h-5 w-5'
+            />
+          }
+        >
+          {userProjects.length > 0 ? (
+            userProjects.slice(0, 3).map(project => {
+              const projectHref = `/${orgSlug}/projects/${project.key}`;
+              const isActive =
+                pathname === projectHref ||
+                pathname.startsWith(projectHref + '/');
 
-          <div className='space-y-1'>
-            {userProjects.length > 0 ? (
-              userProjects.slice(0, 3).map(project => {
-                const projectHref = `/${orgSlug}/projects/${project.key}`;
-                const isActive =
-                  pathname === projectHref ||
-                  pathname.startsWith(projectHref + '/');
-
-                return (
-                  <Link
-                    key={project.id}
-                    href={projectHref}
-                    onClick={onNavigate}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
-                      'hover:bg-foreground/5 text-foreground',
-                      {
-                        'bg-foreground/5': isActive,
-                      },
-                    )}
-                  >
+              return (
+                <Link
+                  key={project.id}
+                  href={projectHref}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                    'hover:bg-foreground/5 text-foreground',
+                    {
+                      'bg-foreground/5': isActive,
+                    },
+                  )}
+                >
+                  <DynamicIcon
+                    name={project.icon || project.status?.icon}
+                    fallback={FolderOpen}
+                    className='size-3 flex-shrink-0'
+                    style={{
+                      color:
+                        project.color || project.status?.color || '#6b7280',
+                    }}
+                  />
+                  <span className='flex-1 truncate'>{project.name}</span>
+                  {project.status?.icon && (
                     <DynamicIcon
-                      name={project.icon || project.status?.icon}
-                      fallback={FolderOpen}
-                      className='size-3 flex-shrink-0'
-                      style={{
-                        color:
-                          project.color || project.status?.color || '#6b7280',
-                      }}
+                      name={project.status.icon}
+                      className='ml-auto size-3 flex-shrink-0'
+                      style={{ color: project.status.color || '#6b7280' }}
                     />
-                    <span className='flex-1 truncate'>{project.name}</span>
-                    {/* Status icon on the right */}
-                    {project.status?.icon && (
-                      <DynamicIcon
-                        name={project.status.icon}
-                        className='ml-auto size-3 flex-shrink-0'
-                        style={{ color: project.status.color || '#6b7280' }}
-                      />
-                    )}
-                  </Link>
-                );
-              })
-            ) : (
-              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
-                No projects yet
-              </div>
-            )}
+                  )}
+                </Link>
+              );
+            })
+          ) : (
+            <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+              No projects yet
+            </div>
+          )}
 
-            {userProjects.length > 3 && (
-              <Link
-                href={`/${orgSlug}/projects`}
-                onClick={onNavigate}
-                className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
-              >
-                +{userProjects.length - 3} more projects
-              </Link>
-            )}
-          </div>
-        </div>
+          {userProjects.length > 3 && (
+            <Link
+              href={`/${orgSlug}/projects`}
+              onClick={onNavigate}
+              className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
+            >
+              +{userProjects.length - 3} more projects
+            </Link>
+          )}
+        </SidebarSection>
 
         {/* Views Section */}
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between px-2'>
-            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
-              Views
-            </span>
-            <div className='flex items-center gap-1'>
-              <Link
-                href={`/${orgSlug}/views`}
-                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
-                onClick={onNavigate}
-              >
-                View All
-              </Link>
-              <ScopedPermissionGate
-                scope={{ orgSlug }}
-                permission={PERMISSIONS.VIEW_CREATE}
-              >
-                <CreateViewDialog
-                  orgSlug={orgSlug}
-                  trigger={
-                    <Button variant='ghost' size='sm' className='h-5 w-5 p-0'>
-                      <Plus className='size-3.5' />
-                    </Button>
-                  }
-                />
-              </ScopedPermissionGate>
+        <SidebarSection
+          label='Views'
+          action={
+            <ScopedPermissionGate
+              scope={{ orgSlug }}
+              permission={PERMISSIONS.VIEW_CREATE}
+            >
+              <CreateViewDialog
+                orgSlug={orgSlug}
+                trigger={
+                  <Button variant='ghost' size='sm' className='h-5 w-5 p-0'>
+                    <Plus className='size-3.5' />
+                  </Button>
+                }
+              />
+            </ScopedPermissionGate>
+          }
+        >
+          {visibleViews.length > 0 ? (
+            visibleViews.slice(0, 3).map(view => {
+              const viewHref = `/${orgSlug}/views/${view._id}`;
+              const isActive =
+                pathname === viewHref || pathname.startsWith(viewHref + '/');
+              const VisibilityIcon =
+                view.visibility === 'public'
+                  ? Globe
+                  : view.visibility === 'private'
+                    ? Lock
+                    : Building;
+              const viewMode = view.layout?.viewMode ?? 'table';
+              const ViewModeIcon =
+                viewMode === 'kanban'
+                  ? Columns3
+                  : viewMode === 'timeline'
+                    ? Clock
+                    : LayoutList;
+
+              return (
+                <Link
+                  key={view._id}
+                  href={viewHref}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                    'hover:bg-foreground/5 text-foreground',
+                    {
+                      'bg-foreground/5': isActive,
+                    },
+                  )}
+                >
+                  <ViewModeIcon className='text-muted-foreground size-3 flex-shrink-0' />
+                  <span className='flex-1 truncate'>{view.name}</span>
+                  <VisibilityIcon
+                    className={cn('size-3 flex-shrink-0', {
+                      'text-emerald-500': view.visibility === 'public',
+                      'text-purple-500': view.visibility === 'private',
+                      'text-blue-500': view.visibility === 'organization',
+                    })}
+                  />
+                </Link>
+              );
+            })
+          ) : (
+            <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+              No views yet
             </div>
-          </div>
+          )}
 
-          <div className='space-y-1'>
-            {visibleViews.length > 0 ? (
-              visibleViews.slice(0, 3).map(view => {
-                const viewHref = `/${orgSlug}/views/${view._id}`;
-                const isActive =
-                  pathname === viewHref || pathname.startsWith(viewHref + '/');
-                const VisibilityIcon =
-                  view.visibility === 'public'
-                    ? Globe
-                    : view.visibility === 'private'
-                      ? Lock
-                      : Building;
-                const viewMode = view.layout?.viewMode ?? 'table';
-                const ViewModeIcon =
-                  viewMode === 'kanban'
-                    ? Columns3
-                    : viewMode === 'timeline'
-                      ? Clock
-                      : LayoutList;
-
-                return (
-                  <Link
-                    key={view._id}
-                    href={viewHref}
-                    onClick={onNavigate}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
-                      'hover:bg-foreground/5 text-foreground',
-                      {
-                        'bg-foreground/5': isActive,
-                      },
-                    )}
-                  >
-                    <ViewModeIcon className='text-muted-foreground size-3 flex-shrink-0' />
-                    <span className='flex-1 truncate'>{view.name}</span>
-                    <VisibilityIcon
-                      className={cn('size-3 flex-shrink-0', {
-                        'text-emerald-500': view.visibility === 'public',
-                        'text-purple-500': view.visibility === 'private',
-                        'text-blue-500': view.visibility === 'organization',
-                      })}
-                    />
-                  </Link>
-                );
-              })
-            ) : (
-              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
-                No views yet
-              </div>
-            )}
-
-            {visibleViews.length > 3 && (
-              <Link
-                href={`/${orgSlug}/views`}
-                onClick={onNavigate}
-                className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
-              >
-                +{visibleViews.length - 3} more views
-              </Link>
-            )}
-          </div>
-        </div>
+          {visibleViews.length > 3 && (
+            <Link
+              href={`/${orgSlug}/views`}
+              onClick={onNavigate}
+              className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
+            >
+              +{visibleViews.length - 3} more views
+            </Link>
+          )}
+        </SidebarSection>
 
         {/* Documents Section */}
-        <div className='space-y-2'>
-          <div className='flex items-center justify-between px-2'>
-            <span className='text-muted-foreground text-xs font-normal tracking-wider uppercase'>
-              My Docs
-            </span>
-            <div className='flex items-center gap-1'>
-              <Link
-                href={`/${orgSlug}/documents`}
-                className='text-muted-foreground hover:text-foreground text-xs transition-colors'
-                onClick={onNavigate}
-              >
-                View All
-              </Link>
-              <CreateDocumentDialog orgSlug={orgSlug} className='h-5 w-5' />
+        <SidebarSection
+          label='My Docs'
+          action={
+            <CreateDocumentDialog orgSlug={orgSlug} className='h-5 w-5' />
+          }
+        >
+          {userDocuments.length > 0 ? (
+            userDocuments.slice(0, 3).map(doc => {
+              const docHref = `/${orgSlug}/documents/${doc._id}`;
+              const isActive =
+                pathname === docHref || pathname.startsWith(docHref + '/');
+
+              return (
+                <Link
+                  key={doc._id}
+                  href={docHref}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
+                    'hover:bg-foreground/5 text-foreground',
+                    {
+                      'bg-foreground/5': isActive,
+                    },
+                  )}
+                >
+                  {doc.icon ? (
+                    <DynamicIcon
+                      name={doc.icon}
+                      fallback={FileText}
+                      className='size-3 flex-shrink-0'
+                      style={{ color: doc.color || '#6b7280' }}
+                    />
+                  ) : (
+                    <FileText
+                      className='size-3 flex-shrink-0'
+                      style={{ color: doc.color || '#6b7280' }}
+                    />
+                  )}
+                  <span className='truncate'>{doc.title}</span>
+                </Link>
+              );
+            })
+          ) : (
+            <div className='text-muted-foreground px-2 py-1.5 text-xs'>
+              No documents yet
             </div>
-          </div>
+          )}
 
-          <div className='space-y-1'>
-            {userDocuments.length > 0 ? (
-              userDocuments.slice(0, 3).map(doc => {
-                const docHref = `/${orgSlug}/documents/${doc._id}`;
-                const isActive =
-                  pathname === docHref || pathname.startsWith(docHref + '/');
-
-                return (
-                  <Link
-                    key={doc._id}
-                    href={docHref}
-                    onClick={onNavigate}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-colors',
-                      'hover:bg-foreground/5 text-foreground',
-                      {
-                        'bg-foreground/5': isActive,
-                      },
-                    )}
-                  >
-                    {doc.icon ? (
-                      <DynamicIcon
-                        name={doc.icon}
-                        fallback={FileText}
-                        className='size-3 flex-shrink-0'
-                        style={{ color: doc.color || '#6b7280' }}
-                      />
-                    ) : (
-                      <FileText
-                        className='size-3 flex-shrink-0'
-                        style={{ color: doc.color || '#6b7280' }}
-                      />
-                    )}
-                    <span className='truncate'>{doc.title}</span>
-                  </Link>
-                );
-              })
-            ) : (
-              <div className='text-muted-foreground px-2 py-1.5 text-xs'>
-                No documents yet
-              </div>
-            )}
-
-            {userDocuments.length > 3 && (
-              <Link
-                href={`/${orgSlug}/documents`}
-                onClick={onNavigate}
-                className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
-              >
-                +{userDocuments.length - 3} more documents
-              </Link>
-            )}
-          </div>
-        </div>
+          {userDocuments.length > 3 && (
+            <Link
+              href={`/${orgSlug}/documents`}
+              onClick={onNavigate}
+              className='text-muted-foreground hover:text-foreground block px-2 py-1.5 text-xs transition-colors'
+            >
+              +{userDocuments.length - 3} more documents
+            </Link>
+          )}
+        </SidebarSection>
       </nav>
     </>
   );

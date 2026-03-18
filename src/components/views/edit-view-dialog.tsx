@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -20,7 +21,6 @@ import {
   StateSelector,
   PrioritySelector,
 } from '@/components/issues/issue-selectors';
-import { RichEditor } from '@/components/ui/rich-editor';
 import { toast } from 'sonner';
 import type { Id } from '@/convex/_generated/dataModel';
 
@@ -115,48 +115,17 @@ export function EditViewDialog({
 
   return (
     <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
-      <ResponsiveDialogContent>
-        <ResponsiveDialogHeader>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
           <ResponsiveDialogTitle>Edit View</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <form onSubmit={handleSubmit} className='space-y-4 p-2'>
-          <Input
-            placeholder='View name'
-            value={name}
-            onChange={e => setName(e.target.value)}
-            autoFocus
-            maxLength={100}
-          />
 
-          {/* Rich text description */}
-          <div className='space-y-1'>
-            <div className='text-muted-foreground text-xs font-medium uppercase'>
-              Description
-            </div>
-            <RichEditor
-              value={description}
-              onChange={setDescription}
-              placeholder='Describe this view...'
-              mode='compact'
-              borderless
-              className='notion-editor'
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <div className='text-muted-foreground text-xs font-medium uppercase'>
-              Visibility
-            </div>
-            <VisibilitySelector
-              value={visibility}
-              onValueChange={setVisibility}
-            />
-          </div>
-
-          <div className='space-y-2'>
-            <div className='text-muted-foreground text-xs font-medium uppercase'>
-              Filters
-            </div>
+        <form onSubmit={handleSubmit} className='space-y-2'>
+          {/* Selectors row */}
+          <div className='text-muted-foreground flex items-center gap-2 text-sm'>
             <div className='flex flex-wrap gap-2'>
               <TeamSelector
                 teams={teams ?? []}
@@ -199,26 +168,58 @@ export function EditViewDialog({
                 displayMode='iconWhenUnselected'
               />
             </div>
+
+            <div className='ml-auto'>
+              <VisibilitySelector
+                value={visibility}
+                onValueChange={setVisibility}
+                displayMode='iconOnly'
+              />
+            </div>
           </div>
 
-          <div className='flex justify-end gap-2 pt-2'>
-            <Button
-              type='button'
-              variant='outline'
-              size='sm'
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type='submit'
-              size='sm'
-              disabled={!name.trim() || isSubmitting}
-            >
-              {isSubmitting ? 'Saving...' : 'Save Changes'}
-            </Button>
+          {/* Name */}
+          <div className='relative'>
+            <Input
+              placeholder='View name'
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className='pr-16 text-base'
+              autoFocus
+              maxLength={100}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Name
+            </span>
+          </div>
+
+          {/* Description */}
+          <div className='relative'>
+            <Textarea
+              placeholder='Add description...'
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className='min-h-[80px] resize-none pr-20'
+              maxLength={500}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Description
+            </span>
           </div>
         </form>
+
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button variant='ghost' size='sm' onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            size='sm'
+            disabled={!name.trim() || isSubmitting}
+            onClick={handleSubmit}
+          >
+            {isSubmitting ? 'Saving...' : 'Save changes'}
+          </Button>
+        </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );
