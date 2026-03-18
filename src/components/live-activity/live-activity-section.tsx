@@ -71,8 +71,8 @@ function SectionHeader({
         )}
       </div>
       <div className='flex items-center gap-1'>
-        <AttachProcessButton issueId={issueId} />
-        <DelegateRunButton issueId={issueId} />
+        <AttachProcessPopover issueId={issueId} />
+        <DelegateRunPopover issueId={issueId} />
       </div>
     </div>
   );
@@ -80,8 +80,20 @@ function SectionHeader({
 
 // ── Attach Process Button ───────────────────────────────────────────────────
 
-function AttachProcessButton({ issueId }: { issueId: Id<'issues'> }) {
-  const [open, setOpen] = useState(false);
+export function AttachProcessPopover({
+  issueId,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  children,
+}: {
+  issueId: Id<'issues'>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const devicesWithProcesses = useCachedQuery(
     api.agentBridge.queries.listProcessesForAttach,
     open ? {} : 'skip',
@@ -114,10 +126,12 @@ function AttachProcessButton({ issueId }: { issueId: Id<'issues'> }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
-          <Plus className='size-3' />
-          <span className='text-xs'>Attach</span>
-        </Button>
+        {children ?? (
+          <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
+            <Plus className='size-3' />
+            <span className='text-xs'>Attach</span>
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className='w-80 p-0' align='end'>
         <Command>
@@ -189,8 +203,20 @@ function AttachProcessButton({ issueId }: { issueId: Id<'issues'> }) {
 
 // ── Delegate Run Button ─────────────────────────────────────────────────────
 
-function DelegateRunButton({ issueId }: { issueId: Id<'issues'> }) {
-  const [open, setOpen] = useState(false);
+export function DelegateRunPopover({
+  issueId,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
+  children,
+}: {
+  issueId: Id<'issues'>;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: React.ReactNode;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [selectedDeviceId, setSelectedDeviceId] =
     useState<Id<'agentDevices'> | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<
@@ -238,10 +264,12 @@ function DelegateRunButton({ issueId }: { issueId: Id<'issues'> }) {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
-          <Play className='size-3' />
-          <span className='text-xs'>Run on device</span>
-        </Button>
+        {children ?? (
+          <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
+            <Play className='size-3' />
+            <span className='text-xs'>Run on device</span>
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent className='w-80 p-0' align='end'>
         {!selectedDeviceId ? (
@@ -435,14 +463,9 @@ export function IssueLiveActivitySection({
     activities?.filter(a => TERMINAL_STATUSES.has(a.status)) ?? [];
   const activeCount = activeActivities.length;
 
-  // Don't render section at all if no activities and loading is done
+  // Don't render anything when empty — actions are in the 3-dot menu instead
   if (activities !== undefined && activities.length === 0) {
-    // Still show the header with attach/delegate buttons
-    return (
-      <div className='border-t'>
-        <SectionHeader count={0} issueId={issueId} />
-      </div>
-    );
+    return null;
   }
 
   return (

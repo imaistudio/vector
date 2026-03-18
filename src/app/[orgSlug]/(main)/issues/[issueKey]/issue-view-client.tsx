@@ -14,6 +14,9 @@ import {
   Trash2,
   MoreHorizontal,
   GitPullRequest,
+  Activity,
+  Cpu,
+  Play,
 } from 'lucide-react';
 import { MobileNavTrigger } from '../../layout';
 import { useCachedQuery, useMutation, useAction } from '@/lib/convex';
@@ -50,6 +53,10 @@ import { LinkedDocuments } from '@/components/documents/linked-documents';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
 import { IssueLiveActivitySection } from '@/components/live-activity';
+import {
+  AttachProcessPopover,
+  DelegateRunPopover,
+} from '@/components/live-activity/live-activity-section';
 import { IssueViewVisibilityCallout } from '@/components/issues/issue-view-visibility-callout';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
@@ -208,6 +215,8 @@ export default function IssueViewClient({
   const [isUpdatingEstimates, setIsUpdatingEstimates] = useState(false);
   const [isDeletingIssue, setIsDeletingIssue] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [attachProcessOpen, setAttachProcessOpen] = useState(false);
+  const [delegateRunOpen, setDelegateRunOpen] = useState(false);
   const [linkGithubOpen, setLinkGithubOpen] = useState(false);
   const [linkGithubUrl, setLinkGithubUrl] = useState('');
   const [isLinkingGithub, setIsLinkingGithub] = useState(false);
@@ -787,6 +796,7 @@ export default function IssueViewClient({
                   publicLinkUrl={publicIssueUrl}
                 />
               </PermissionAwareSelector>
+              <IssueViewVisibilityCallout issueId={issue._id as Id<'issues'>} />
               <Popover open={actionsOpen} onOpenChange={setActionsOpen}>
                 <PopoverTrigger asChild>
                   <Button variant='ghost' size='sm' className='h-6 w-6 p-0'>
@@ -862,6 +872,38 @@ export default function IssueViewClient({
                             </div>
                           </CommandItem>
                         ) : null}
+                        <CommandItem
+                          value='Attach process'
+                          className='cursor-pointer'
+                          onSelect={() => {
+                            setActionsOpen(false);
+                            setAttachProcessOpen(true);
+                          }}
+                        >
+                          <Activity className='mr-2 h-4 w-4' />
+                          <div className='flex-1'>
+                            <div className='font-medium'>Attach process</div>
+                            <div className='text-muted-foreground text-xs'>
+                              Attach a local agent to this issue
+                            </div>
+                          </div>
+                        </CommandItem>
+                        <CommandItem
+                          value='Run on device'
+                          className='cursor-pointer'
+                          onSelect={() => {
+                            setActionsOpen(false);
+                            setDelegateRunOpen(true);
+                          }}
+                        >
+                          <Play className='mr-2 h-4 w-4' />
+                          <div className='flex-1'>
+                            <div className='font-medium'>Run on device</div>
+                            <div className='text-muted-foreground text-xs'>
+                              Delegate this issue to an agent on your device
+                            </div>
+                          </div>
+                        </CommandItem>
                         <PermissionAwareSelector
                           orgSlug={params.orgSlug}
                           permission={PERMISSIONS.ISSUE_DELETE}
@@ -890,6 +932,24 @@ export default function IssueViewClient({
                   </Command>
                 </PopoverContent>
               </Popover>
+
+              {/* Attach Process popover (triggered from 3-dot menu) */}
+              <AttachProcessPopover
+                issueId={issue._id}
+                open={attachProcessOpen}
+                onOpenChange={setAttachProcessOpen}
+              >
+                <span />
+              </AttachProcessPopover>
+
+              {/* Delegate Run popover (triggered from 3-dot menu) */}
+              <DelegateRunPopover
+                issueId={issue._id}
+                open={delegateRunOpen}
+                onOpenChange={setDelegateRunOpen}
+              >
+                <span />
+              </DelegateRunPopover>
 
               {/* Link GitHub URL popover */}
               <Popover open={linkGithubOpen} onOpenChange={setLinkGithubOpen}>
@@ -1001,9 +1061,6 @@ export default function IssueViewClient({
                 </PermissionAwareWrapper>
               )}
             </div>
-
-            {/* View visibility callout */}
-            <IssueViewVisibilityCallout issueId={issue._id as Id<'issues'>} />
 
             {/* Schedule Info */}
             <div className='flex items-center gap-4'>
