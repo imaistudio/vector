@@ -2970,9 +2970,11 @@ serviceCommand
 
 serviceCommand
   .command('uninstall')
-  .description('Uninstall the bridge system service')
+  .description('Stop the bridge and uninstall the system service')
   .action(() => {
+    stopBridge();
     uninstallLaunchAgent();
+    console.log('Bridge stopped and service uninstalled.');
   });
 
 serviceCommand

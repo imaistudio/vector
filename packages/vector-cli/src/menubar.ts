@@ -3,7 +3,14 @@
  * No native compilation required.
  */
 
-import SysTray from 'systray2';
+import SysTrayModule from 'systray2';
+
+// Handle CJS default export in ESM context
+const SysTray =
+  typeof (SysTrayModule as unknown as { default: typeof SysTrayModule })
+    .default === 'function'
+    ? (SysTrayModule as unknown as { default: typeof SysTrayModule }).default
+    : SysTrayModule;
 import { existsSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
