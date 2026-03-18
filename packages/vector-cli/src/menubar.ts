@@ -270,6 +270,24 @@ function buildMenu(): {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 export async function startMenuBar(): Promise<void> {
+  // Ensure the systray binary is executable (npm doesn't preserve +x)
+  try {
+    const { fileURLToPath } = await import('url');
+    const { dirname, join: pjoin } = await import('path');
+    const { chmodSync } = await import('fs');
+    const systrayIndex = fileURLToPath(import.meta.resolve('systray2'));
+    const binName =
+      process.platform === 'darwin'
+        ? 'tray_darwin_release'
+        : process.platform === 'win32'
+          ? 'tray_windows_release.exe'
+          : 'tray_linux_release';
+    const trayBin = pjoin(dirname(systrayIndex), 'traybin', binName);
+    chmodSync(trayBin, 0o755);
+  } catch {
+    // Best effort
+  }
+
   const icon = loadIconBase64();
   const { items, actions } = buildMenu();
 
