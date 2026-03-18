@@ -6,6 +6,7 @@ import {
   useCachedPaginatedQuery,
   useMutation,
 } from '@/lib/convex';
+import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -849,18 +850,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
           </div>
         )}
 
-        {status === 'CanLoadMore' && (
-          <div className='border-t px-3 py-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 text-xs'
-              onClick={() => loadMore(20)}
-            >
-              Load more documents
-            </Button>
-          </div>
-        )}
+        <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
       </div>
 
       {/* Drag overlay */}

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CreateTeamButton, TeamsTable } from '@/components/teams';
 import { Button } from '@/components/ui/button';
+import { AutoLoadMore } from '@/components/ui/auto-load-more';
 
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
@@ -130,18 +131,7 @@ export function TeamsPageContent({
         deletePending={false}
       />
 
-      {status === 'CanLoadMore' && (
-        <div className='border-t px-3 py-2'>
-          <Button
-            variant='outline'
-            size='sm'
-            className='h-7 text-xs'
-            onClick={() => loadMore(20)}
-          >
-            Load more teams
-          </Button>
-        </div>
-      )}
+      <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
     </div>
   );
 }

@@ -1011,6 +1011,55 @@ async function buildIssueCounts(
   return counts;
 }
 
+async function filterIssuesByWorkflowStateType(
+  ctx: QueryCtx,
+  issues: readonly Doc<'issues'>[],
+  workflowStateType?: string,
+) {
+  if (!workflowStateType || issues.length === 0) {
+    return issues;
+  }
+
+  const issueStateIds = issues
+    .map(issue => issue.workflowStateId)
+    .filter((id): id is Id<'issueStates'> => Boolean(id));
+  const issueStateMap =
+    issueStateIds.length > 0
+      ? await loadDocMap(ctx, 'issueStates', issueStateIds)
+      : new Map<Id<'issueStates'>, Doc<'issueStates'>>();
+
+  const unresolvedIssueIds = issues
+    .filter(issue => !issue.workflowStateId)
+    .map(issue => issue._id);
+  const assignmentsByIssue =
+    unresolvedIssueIds.length > 0
+      ? await loadAssignmentsByIssue(ctx, unresolvedIssueIds)
+      : new Map<Id<'issues'>, Doc<'issueAssignees'>[]>();
+  const fallbackStateIds = Array.from(
+    new Set(
+      Array.from(assignmentsByIssue.values())
+        .flat()
+        .map(assignment => assignment.stateId)
+        .filter((id): id is Id<'issueStates'> => Boolean(id)),
+    ),
+  );
+  const fallbackStateMap =
+    fallbackStateIds.length > 0
+      ? await loadDocMap(ctx, 'issueStates', fallbackStateIds)
+      : new Map<Id<'issueStates'>, Doc<'issueStates'>>();
+
+  return issues.filter(issue => {
+    const state = issue.workflowStateId
+      ? (issueStateMap.get(issue.workflowStateId) ?? null)
+      : resolveWorkflowStateFromAssignments(
+          assignmentsByIssue.get(issue._id) ?? [],
+          fallbackStateMap,
+        );
+
+    return state?.type === workflowStateType;
+  });
+}
+
 export const getIssueListSummary = query({
   args: {
     orgSlug: v.string(),
@@ -1110,6 +1159,7 @@ export const listIssuesPage = query({
     projectId: v.optional(v.string()),
     teamId: v.optional(v.string()),
     searchQuery: v.optional(v.string()),
+    workflowStateType: v.optional(v.string()),
     scope: v.union(v.literal('mine'), v.literal('related'), v.literal('all')),
     paginationOpts: paginationOptsValidator,
   },
@@ -1163,32 +1213,38 @@ export const listIssuesPage = query({
     );
 
     const visibleIssues = sortIssuesByRecency(
-      candidateIssues.filter(issue => {
-        if (
-          !matchesIssueListFilters(issue, {
-            projectId: projectId ?? undefined,
-            teamId: teamId ?? undefined,
-            projectKey: scopedProject?.key,
-          })
-        ) {
-          return false;
-        }
+      await filterIssuesByWorkflowStateType(
+        ctx,
+        candidateIssues.filter(issue => {
+          if (
+            !matchesIssueListFilters(issue, {
+              projectId: projectId ?? undefined,
+              teamId: teamId ?? undefined,
+              projectKey: scopedProject?.key,
+            })
+          ) {
+            return false;
+          }
 
-        if (
-          !canUserViewIssueFromAccess(access, issue, {
-            scopedProjectId: scopedProjectVisible
-              ? (projectId ?? undefined)
-              : undefined,
-            scopedProjectVisible,
-            scopedTeamId: scopedTeamVisible ? (teamId ?? undefined) : undefined,
-            scopedTeamVisible,
-          })
-        ) {
-          return false;
-        }
+          if (
+            !canUserViewIssueFromAccess(access, issue, {
+              scopedProjectId: scopedProjectVisible
+                ? (projectId ?? undefined)
+                : undefined,
+              scopedProjectVisible,
+              scopedTeamId: scopedTeamVisible
+                ? (teamId ?? undefined)
+                : undefined,
+              scopedTeamVisible,
+            })
+          ) {
+            return false;
+          }
 
-        return matchesIssueListScope(access, issue, args.scope);
-      }),
+          return matchesIssueListScope(access, issue, args.scope);
+        }),
+        args.workflowStateType,
+      ),
     );
 
     const target = Math.max(1, args.paginationOpts.numItems);

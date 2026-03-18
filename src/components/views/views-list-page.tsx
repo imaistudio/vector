@@ -23,6 +23,7 @@ import {
 import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { CreateViewDialog } from './create-view-dialog';
 import { EditViewDialog } from './edit-view-dialog';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
@@ -213,18 +214,7 @@ export function ViewsListPage() {
           </div>
         )}
 
-        {status === 'CanLoadMore' && (
-          <div className='border-t px-3 py-2'>
-            <Button
-              variant='outline'
-              size='sm'
-              className='h-7 text-xs'
-              onClick={() => loadMore(20)}
-            >
-              Load more views
-            </Button>
-          </div>
-        )}
+        <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
       </div>
     </>
   );

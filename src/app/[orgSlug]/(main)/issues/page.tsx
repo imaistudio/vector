@@ -6,6 +6,7 @@ import {
   useCachedPaginatedQuery,
   useMutation,
 } from '@/lib/convex';
+import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { Button } from '@/components/ui/button';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { useParams, useSearchParams } from 'next/navigation';
@@ -220,6 +221,8 @@ export default function IssuesPage() {
     api.issues.queries.listIssuesPage,
     {
       ...scopeQueryArgs,
+      workflowStateType:
+        isListView && activeFilter !== 'all' ? activeFilter : undefined,
       scope: scopeTab,
     },
     { initialNumItems: 20 },
@@ -559,19 +562,11 @@ export default function IssuesPage() {
                 groupBy={tableGroupBy}
               />
             </div>
-
-            {paginatedIssues.status === 'CanLoadMore' && (
-              <div className='border-t px-3 py-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-7 text-xs'
-                  onClick={() => paginatedIssues.loadMore(20)}
-                >
-                  Load more issues
-                </Button>
-              </div>
-            )}
+            <AutoLoadMore
+              status={paginatedIssues.status}
+              loadMore={paginatedIssues.loadMore}
+              pageSize={20}
+            />
           </motion.div>
         ) : viewMode === 'timeline' ? (
           <motion.div
@@ -603,19 +598,11 @@ export default function IssuesPage() {
                 isUpdatingAssignees={isUpdatingAssignees}
               />
             </div>
-
-            {paginatedIssues.status === 'CanLoadMore' && (
-              <div className='border-t px-3 py-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-7 text-xs'
-                  onClick={() => paginatedIssues.loadMore(20)}
-                >
-                  Load more issues
-                </Button>
-              </div>
-            )}
+            <AutoLoadMore
+              status={paginatedIssues.status}
+              loadMore={paginatedIssues.loadMore}
+              pageSize={20}
+            />
           </motion.div>
         ) : (
           <motion.div

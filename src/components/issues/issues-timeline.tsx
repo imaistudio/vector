@@ -152,15 +152,8 @@ export function IssuesTimeline({
 
   // Filter by state tab, sort by most recently updated
   const sorted = React.useMemo(
-    () =>
-      [...groupedIssues]
-        .filter(item =>
-          activeFilter === 'all'
-            ? true
-            : item.row.workflowStateType === activeFilter,
-        )
-        .sort((a, b) => b.sortTime - a.sortTime),
-    [groupedIssues, activeFilter],
+    () => [...groupedIssues].sort((a, b) => b.sortTime - a.sortTime),
+    [groupedIssues],
   );
 
   // Group by day (based on updatedAt)

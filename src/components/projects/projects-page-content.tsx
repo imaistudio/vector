@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import {
   api,
   useCachedQuery,
@@ -502,18 +503,11 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               />
             </div>
 
-            {paginatedProjects.status === 'CanLoadMore' && (
-              <div className='border-t px-3 py-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-7 text-xs'
-                  onClick={() => paginatedProjects.loadMore(20)}
-                >
-                  Load more projects
-                </Button>
-              </div>
-            )}
+            <AutoLoadMore
+              status={paginatedProjects.status}
+              loadMore={paginatedProjects.loadMore}
+              pageSize={20}
+            />
           </>
         ) : (
           <div className='flex-1 overflow-hidden'>

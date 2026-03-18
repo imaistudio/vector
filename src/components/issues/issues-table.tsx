@@ -171,15 +171,8 @@ export function IssuesTable({
   }, [issues, currentUserId]);
 
   const sortedGrouped = React.useMemo(
-    () =>
-      [...groupedIssues]
-        .filter(item =>
-          activeFilter === 'all'
-            ? true
-            : item.row.workflowStateType === activeFilter,
-        )
-        .sort((a, b) => b.row.updatedAt - a.row.updatedAt),
-    [groupedIssues, activeFilter],
+    () => [...groupedIssues].sort((a, b) => b.row.updatedAt - a.row.updatedAt),
+    [groupedIssues],
   );
 
   const groups = React.useMemo(() => {
