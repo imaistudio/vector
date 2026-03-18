@@ -7,8 +7,8 @@
  */
 
 import { ConvexHttpClient } from 'convex/browser';
-import { api } from '../../convex/_generated/api';
-import type { Id } from '../../convex/_generated/dataModel';
+import { api } from '../../../convex/_generated/api';
+import type { Id } from '../../../convex/_generated/dataModel';
 import { execSync } from 'child_process';
 import {
   existsSync,

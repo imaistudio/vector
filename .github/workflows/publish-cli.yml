@@ -7,7 +7,6 @@ on:
     paths:
       - '.github/workflows/publish-cli.yml'
       - 'packages/vector-cli/**'
-      - 'src/cli/**'
       - 'convex/_generated/api.d.ts'
       - 'convex/_shared/agentBridge.ts'
       - 'convex/agentBridge/**'

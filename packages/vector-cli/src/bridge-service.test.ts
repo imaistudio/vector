@@ -64,7 +64,7 @@ describe('BridgeConfig persistence', () => {
 describe('Process discovery helpers', () => {
   it('getGitInfo returns branch and repoRoot for a git repo', () => {
     // We're in the vector repo, so this should work
-    const repoRoot = path.resolve(__dirname, '..', '..');
+    const repoRoot = path.resolve(__dirname, '..', '..', '..');
     const { execSync } = require('child_process');
 
     let branch: string;
@@ -143,8 +143,8 @@ describe('Reply generation', () => {
 
 // ── CLI integration tests for bridge commands ────────────────────────────────
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const cliEntrypoint = path.join(repoRoot, 'src/cli/index.ts');
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
+const cliEntrypoint = path.join(__dirname, 'index.ts');
 const tsxBin = path.join(repoRoot, 'node_modules/.bin/tsx');
 
 function runCliRaw(args: string[], env?: NodeJS.ProcessEnv) {

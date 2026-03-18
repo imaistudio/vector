@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const repoRoot = path.resolve(__dirname, '..', '..');
-const cliEntrypoint = path.join(repoRoot, 'src/cli/index.ts');
+const repoRoot = path.resolve(__dirname, '..', '..', '..');
+const cliEntrypoint = path.join(__dirname, 'index.ts');
 const tsxBin = path.join(repoRoot, 'node_modules/.bin/tsx');
 
 function runCliRaw(

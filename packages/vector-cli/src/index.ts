@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
 import { makeFunctionReference } from 'convex/server';
-import { api } from '../../convex/_generated/api';
-import type { Id } from '../../convex/_generated/dataModel';
-import type { Permission } from '../../convex/_shared/permissions';
+import { api } from '../../../convex/_generated/api';
+import type { Id } from '../../../convex/_generated/dataModel';
+import type { Permission } from '../../../convex/_shared/permissions';
 import {
   fetchAuthSession,
   loginWithPassword,

@@ -326,6 +326,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.5.0
+      systray2:
+        specifier: ^2.1.4
+        version: 2.1.4
 
 packages:
   '@ai-sdk/gateway@2.0.56':
