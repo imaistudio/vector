@@ -44,16 +44,21 @@ interface OrgSidebarProps {
   onNavigate?: () => void;
 }
 
-/** Collapsible sidebar section with chevron toggle. */
+/** Collapsible sidebar section with chevron toggle and linked label. */
 function SidebarSection({
   label,
+  href,
   action,
   children,
+  onNavigate,
   defaultOpen = true,
 }: {
   label: string;
+  /** URL the section label links to (the "view all" page). */
+  href: string;
   action: ReactNode;
   children: ReactNode;
+  onNavigate?: () => void;
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -61,19 +66,27 @@ function SidebarSection({
   return (
     <div className='space-y-1'>
       <div className='flex items-center justify-between px-2'>
-        <button
-          type='button'
-          onClick={() => setOpen(o => !o)}
-          className='text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs font-normal tracking-wider uppercase transition-colors'
-        >
-          {label}
-          <ChevronRight
-            className={cn(
-              'size-3 transition-transform duration-150',
-              open && 'rotate-90',
-            )}
-          />
-        </button>
+        <div className='flex items-center gap-1'>
+          <Link
+            href={href}
+            onClick={onNavigate}
+            className='text-muted-foreground hover:text-foreground text-xs font-normal tracking-wider uppercase transition-colors'
+          >
+            {label}
+          </Link>
+          <button
+            type='button'
+            onClick={() => setOpen(o => !o)}
+            className='text-muted-foreground hover:text-foreground transition-colors'
+          >
+            <ChevronRight
+              className={cn(
+                'size-3 transition-transform duration-150',
+                open && 'rotate-90',
+              )}
+            />
+          </button>
+        </div>
         <div className='flex items-center gap-1'>{action}</div>
       </div>
 
@@ -143,7 +156,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <div
                 key={item.href}
                 className={cn(
-                  'group flex h-8 items-center justify-between gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors',
+                  'group flex h-8 items-center justify-between gap-2 rounded-md py-1 pr-1 pl-2 text-sm font-medium transition-colors',
                   'hover:bg-foreground/5 text-foreground',
                   {
                     'bg-foreground/5': isActive,
@@ -180,6 +193,8 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
         {/* Teams Section */}
         <SidebarSection
           label='My Teams'
+          href={`/${orgSlug}/teams`}
+          onNavigate={onNavigate}
           action={
             <CreateTeamButton
               orgSlug={orgSlug}
@@ -237,6 +252,8 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
         {/* Projects Section */}
         <SidebarSection
           label='My Projects'
+          href={`/${orgSlug}/projects`}
+          onNavigate={onNavigate}
           action={
             <CreateProjectButton
               orgSlug={orgSlug}
@@ -305,6 +322,8 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
         {/* Views Section */}
         <SidebarSection
           label='Views'
+          href={`/${orgSlug}/views`}
+          onNavigate={onNavigate}
           action={
             <ScopedPermissionGate
               scope={{ orgSlug }}
@@ -389,6 +408,8 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
         {/* Documents Section */}
         <SidebarSection
           label='My Docs'
+          href={`/${orgSlug}/documents`}
+          onNavigate={onNavigate}
           action={
             <CreateDocumentDialog
               orgSlug={orgSlug}

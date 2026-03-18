@@ -588,7 +588,7 @@ export function CreateIssueDialog({
         variant='outline'
         fallbackMessage="You don't have permission to create issues"
       >
-        <Plus className='size-3' />
+        <Plus className='size-3.5' />
       </PermissionAwareButton>
     );
 

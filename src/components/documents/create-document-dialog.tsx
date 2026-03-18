@@ -66,7 +66,7 @@ export function CreateDocumentDialog({
       className={cn('gap-1 text-xs', className)}
       variant='outline'
     >
-      <Plus className='size-3' />
+      <Plus className='size-3.5' />
     </Button>
   );
 }

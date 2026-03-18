@@ -263,7 +263,7 @@ export function CreateTeamDialog({
         className={cn('gap-1 rounded-sm text-sm', className)}
         variant='outline'
       >
-        <Plus className='size-4' />
+        <Plus className='size-3.5' />
       </Button>
     );
 
