@@ -143,7 +143,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <div
                 key={item.href}
                 className={cn(
-                  'group flex h-8 items-center justify-between gap-2 rounded-md px-2 py-1 pr-1 text-sm font-medium transition-colors',
+                  'group flex h-8 items-center justify-between gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors',
                   'hover:bg-foreground/5 text-foreground',
                   {
                     'bg-foreground/5': isActive,
@@ -313,7 +313,11 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <CreateViewDialog
                 orgSlug={orgSlug}
                 trigger={
-                  <Button variant='ghost' size='sm' className='h-6 w-6 p-0'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='h-6 w-6 border-0 p-0 shadow-none'
+                  >
                     <Plus className='size-3.5' />
                   </Button>
                 }

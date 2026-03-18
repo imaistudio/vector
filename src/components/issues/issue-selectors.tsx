@@ -442,7 +442,7 @@ export function StateSelector({
 
 // Priority Selector ----------------------------------------------------------
 interface PrioritySelectorProps {
-  priorities: Priority[];
+  priorities: readonly Priority[] | Priority[];
   selectedPriority: string;
   onPrioritySelect: (priorityId: string) => void;
   /** Multi-select mode: array of selected IDs. When provided, popover stays open on select. */
