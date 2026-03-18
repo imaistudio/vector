@@ -2942,6 +2942,7 @@ serviceCommand
     const vcliPath = process.argv[1] ?? 'vcli';
     installLaunchAgent(vcliPath);
     loadLaunchAgent();
+    await launchMenuBar();
     console.log(
       'Bridge installed and running. Will start automatically on login.',
     );
