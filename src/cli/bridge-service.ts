@@ -397,7 +397,7 @@ export function installLaunchAgent(vcliPath: string): void {
   <array>
     <string>${vcliPath}</string>
     <string>service</string>
-    <string>start</string>
+    <string>run</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -484,6 +484,32 @@ export function uninstallLaunchAgent(): void {
     console.log('LaunchAgent removed.');
   } catch {
     /* already gone */
+  }
+}
+
+// ── Menu Bar ────────────────────────────────────────────────────────────────
+
+export async function launchMenuBar(): Promise<void> {
+  if (platform() !== 'darwin') return;
+
+  const candidates = [
+    join(CONFIG_DIR, 'VectorMenuBar'),
+    '/usr/local/bin/VectorMenuBar',
+    join(homedir(), '.local', 'bin', 'VectorMenuBar'),
+  ];
+  const binary = candidates.find(p => existsSync(p));
+  if (!binary) {
+    // Not installed — that's fine, skip silently
+    return;
+  }
+
+  try {
+    const { spawn: spawnProcess } = await import('child_process');
+    const child = spawnProcess(binary, [], { detached: true, stdio: 'ignore' });
+    child.unref();
+    console.log('Menu bar started.');
+  } catch {
+    // Non-critical
   }
 }
 

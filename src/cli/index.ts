@@ -2790,12 +2790,14 @@ import {
   BridgeService,
   getBridgeStatus,
   installLaunchAgent,
+  launchMenuBar,
   loadBridgeConfig,
   loadLaunchAgent,
   saveBridgeConfig,
   setupBridgeDevice,
   stopBridge,
   uninstallLaunchAgent,
+  unloadLaunchAgent,
 } from './bridge-service';
 import { platform as osPlatform } from 'os';
 
@@ -2805,12 +2807,18 @@ const serviceCommand = program
 
 serviceCommand
   .command('start')
-  .description('Run the bridge service in the foreground')
+  .description('Start the bridge service via LaunchAgent (macOS) or foreground')
   .action(async (_options, command) => {
-    let config = loadBridgeConfig();
+    // Check if already running
+    const existing = getBridgeStatus();
+    if (existing.running) {
+      console.log(`Bridge is already running (PID ${existing.pid}).`);
+      return;
+    }
 
+    // Ensure device is registered
+    let config = loadBridgeConfig();
     if (!config) {
-      // Need to set up first — get convex URL and user
       const runtime = await getRuntime(command);
       const session = requireSession(runtime);
       const client = await createConvexClient(
@@ -2820,9 +2828,49 @@ serviceCommand
       );
       const user = await runQuery(client, api.users.currentUser);
       if (!user) throw new Error('Not logged in. Run `vcli auth login` first.');
-
       config = await setupBridgeDevice(runtime.convexUrl, user._id);
-      console.log(`Device registered: ${config.deviceId}`);
+      console.log(
+        `Device registered: ${config.displayName} (${config.deviceId})`,
+      );
+    }
+
+    if (osPlatform() === 'darwin') {
+      // Install LaunchAgent if not already present, then load it
+      const vcliPath = process.argv[1] ?? 'vcli';
+      installLaunchAgent(vcliPath);
+      loadLaunchAgent();
+      await launchMenuBar();
+      console.log('Bridge service started.');
+      console.log('');
+      console.log('Run `vcli service status` to check.');
+      console.log('Run `vcli service stop` to stop.');
+    } else {
+      // Linux / other: run in foreground
+      console.log(
+        'Starting bridge in foreground (use systemd for background)...',
+      );
+      const bridge = new BridgeService(config);
+      await bridge.run();
+    }
+  });
+
+serviceCommand
+  .command('run')
+  .description('Run the bridge service in the foreground (used by LaunchAgent)')
+  .action(async (_options, command) => {
+    let config = loadBridgeConfig();
+
+    if (!config) {
+      const runtime = await getRuntime(command);
+      const session = requireSession(runtime);
+      const client = await createConvexClient(
+        session,
+        runtime.appUrl,
+        runtime.convexUrl,
+      );
+      const user = await runQuery(client, api.users.currentUser);
+      if (!user) throw new Error('Not logged in. Run `vcli auth login` first.');
+      config = await setupBridgeDevice(runtime.convexUrl, user._id);
     }
 
     const bridge = new BridgeService(config);
@@ -2831,11 +2879,14 @@ serviceCommand
 
 serviceCommand
   .command('stop')
-  .description('Stop the running bridge service')
+  .description('Stop the bridge service and menu bar')
   .action(() => {
+    if (osPlatform() === 'darwin') {
+      unloadLaunchAgent();
+    }
     if (stopBridge()) {
       console.log('Bridge stopped.');
-    } else {
+    } else if (osPlatform() !== 'darwin') {
       console.log('Bridge is not running.');
     }
   });
