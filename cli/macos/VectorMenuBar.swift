@@ -58,6 +58,22 @@ func isBridgeRunning() -> (running: Bool, pid: Int?) {
     return (result == 0, pid)
 }
 
+func isLaunchAgentLoaded() -> Bool {
+    let task = Process()
+    task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+    task.arguments = ["list", "com.vector.bridge"]
+    let pipe = Pipe()
+    task.standardOutput = pipe
+    task.standardError = pipe
+    do {
+        try task.run()
+        task.waitUntilExit()
+        return task.terminationStatus == 0
+    } catch {
+        return false
+    }
+}
+
 func providerLabel(_ provider: String) -> String {
     switch provider {
     case "claude_code": return "Claude"
@@ -155,7 +171,8 @@ class VectorMenuBarApp: NSObject, NSApplicationDelegate {
             deviceItem.isEnabled = false
             menu.addItem(deviceItem)
         } else if config != nil {
-            let headerItem = NSMenuItem(title: "Vector Bridge — Offline", action: nil, keyEquivalent: "")
+            let stateLabel = isLaunchAgentLoaded() ? "Starting..." : "Offline"
+            let headerItem = NSMenuItem(title: "Vector Bridge — \(stateLabel)", action: nil, keyEquivalent: "")
             headerItem.isEnabled = false
             menu.addItem(headerItem)
         } else {
@@ -201,9 +218,17 @@ class VectorMenuBarApp: NSObject, NSApplicationDelegate {
             restartItem.target = self
             menu.addItem(restartItem)
         } else if config != nil {
-            let startItem = NSMenuItem(title: "Start Bridge", action: #selector(startBridge), keyEquivalent: "")
-            startItem.target = self
-            menu.addItem(startItem)
+            // Show "Starting..." if LaunchAgent is loaded but PID not yet written
+            let isStarting = isLaunchAgentLoaded()
+            if isStarting {
+                let startingItem = NSMenuItem(title: "Bridge Starting...", action: nil, keyEquivalent: "")
+                startingItem.isEnabled = false
+                menu.addItem(startingItem)
+            } else {
+                let startItem = NSMenuItem(title: "Start Bridge", action: #selector(startBridge), keyEquivalent: "")
+                startItem.target = self
+                menu.addItem(startItem)
+            }
         }
 
         menu.addItem(NSMenuItem.separator())
@@ -218,7 +243,7 @@ class VectorMenuBarApp: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "Quit Menu Bar", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "Quit Vector", action: #selector(quitApp), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -279,6 +304,18 @@ class VectorMenuBarApp: NSObject, NSApplicationDelegate {
     }
 
     @objc func quitApp() {
+        // Stop the bridge before quitting
+        let (running, pid) = isBridgeRunning()
+        if running, let pid = pid {
+            kill(Int32(pid), SIGTERM)
+        }
+        // Also unload the LaunchAgent so it doesn't restart
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        task.arguments = ["unload", NSHomeDirectory() + "/Library/LaunchAgents/com.vector.bridge.plist"]
+        try? task.run()
+        task.waitUntilExit()
+
         NSApplication.shared.terminate(nil)
     }
 }
