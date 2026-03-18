@@ -2869,9 +2869,29 @@ serviceCommand
       console.error('On Linux, use systemd --user manually for now.');
       return;
     }
+
+    // Ensure device is registered before installing
+    let config = loadBridgeConfig();
+    if (!config) {
+      const runtime = await getRuntime(command);
+      const session = requireSession(runtime);
+      const client = await createConvexClient(
+        session,
+        runtime.appUrl,
+        runtime.convexUrl,
+      );
+      const user = await runQuery(client, api.users.currentUser);
+      if (!user) throw new Error('Not logged in. Run `vcli auth login` first.');
+      config = await setupBridgeDevice(runtime.convexUrl, user._id);
+      console.log(
+        `Device registered: ${config.displayName} (${config.deviceId})`,
+      );
+    }
+
     const vcliPath = process.argv[1] ?? 'vcli';
     installLaunchAgent(vcliPath);
     loadLaunchAgent();
+    console.log('Bridge is now running and will start automatically on login.');
   });
 
 serviceCommand
