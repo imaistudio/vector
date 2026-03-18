@@ -16,58 +16,6 @@ function errorResponse(message: string, status = 400) {
   return jsonResponse({ error: message }, status);
 }
 
-// ── POST /api/bridge/setup ──────────────────────────────────────────────────
-// First-time device registration. Requires a one-time setup token (userId).
-// In production, this would use a device code flow.
-
-export const setup = httpAction(async (ctx, request) => {
-  const body = await request.json();
-  const {
-    userId,
-    deviceKey,
-    deviceSecret,
-    displayName,
-    hostname,
-    platform,
-    serviceType,
-    cliVersion,
-    capabilities,
-  } = body as {
-    userId: string;
-    deviceKey: string;
-    deviceSecret: string;
-    displayName: string;
-    hostname?: string;
-    platform?: string;
-    serviceType?: string;
-    cliVersion?: string;
-    capabilities?: string[];
-  };
-
-  if (!userId || !deviceKey || !deviceSecret || !displayName) {
-    return errorResponse(
-      'Missing required fields: userId, deviceKey, deviceSecret, displayName',
-    );
-  }
-
-  const result = await ctx.runMutation(
-    internal.agentBridge.bridgeAuth.setupDevice,
-    {
-      userId,
-      deviceKey,
-      deviceSecret,
-      displayName,
-      hostname,
-      platform,
-      serviceType: serviceType ?? 'foreground',
-      cliVersion,
-      capabilities,
-    },
-  );
-
-  return jsonResponse(result);
-});
-
 // ── POST /api/bridge/heartbeat ──────────────────────────────────────────────
 
 export const heartbeat = httpAction(async (ctx, request) => {

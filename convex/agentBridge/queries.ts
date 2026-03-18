@@ -134,12 +134,19 @@ export const listProcessesForAttach = query({
 
     const result = await Promise.all(
       devices.map(async device => {
-        const processes = await ctx.db
+        const allProcesses = await ctx.db
           .query('agentProcesses')
-          .withIndex('by_device_status', q =>
-            q.eq('deviceId', device._id).eq('status', 'running'),
-          )
+          .withIndex('by_device', q => q.eq('deviceId', device._id))
           .collect();
+
+        const processes = allProcesses
+          .filter(
+            p =>
+              p.supportsInboundMessages &&
+              !p.endedAt &&
+              !['failed', 'disconnected'].includes(p.status),
+          )
+          .sort((a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt);
 
         return {
           device,

@@ -11,10 +11,12 @@ export type CliSession = {
   bearerToken?: string;
 };
 
-const SESSION_ROOT = path.join(homedir(), '.vector');
+function getSessionRoot() {
+  return process.env.VECTOR_HOME?.trim() || path.join(homedir(), '.vector');
+}
 
 export function getSessionPath(profile = 'default') {
-  return path.join(SESSION_ROOT, `cli-${profile}.json`);
+  return path.join(getSessionRoot(), `cli-${profile}.json`);
 }
 
 export async function readSession(profile = 'default') {
@@ -32,7 +34,7 @@ export async function readSession(profile = 'default') {
 }
 
 export async function writeSession(session: CliSession, profile = 'default') {
-  await mkdir(SESSION_ROOT, { recursive: true });
+  await mkdir(getSessionRoot(), { recursive: true });
   await writeFile(
     getSessionPath(profile),
     `${JSON.stringify(session, null, 2)}\n`,

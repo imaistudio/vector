@@ -9,7 +9,7 @@
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import {
   existsSync,
   mkdirSync,
@@ -20,16 +20,31 @@ import {
 import { homedir, hostname, platform } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import type { AgentProvider } from '../../../convex/_shared/agentBridge';
+import {
+  discoverAttachableSessions,
+  launchProviderSession,
+  resumeProviderSession,
+  type BridgeProvider,
+  type SessionProcessRecord,
+  type SessionRunResult,
+} from './agent-adapters';
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const CONFIG_DIR = join(homedir(), '.vector');
+const CONFIG_DIR =
+  process.env.VECTOR_HOME?.trim() || join(homedir(), '.vector');
 const BRIDGE_CONFIG_FILE = join(CONFIG_DIR, 'bridge.json');
 const PID_FILE = join(CONFIG_DIR, 'bridge.pid');
 const LIVE_ACTIVITIES_CACHE = join(CONFIG_DIR, 'live-activities.json');
 const LAUNCHAGENT_DIR = join(homedir(), 'Library', 'LaunchAgents');
 const LAUNCHAGENT_PLIST = join(LAUNCHAGENT_DIR, 'com.vector.bridge.plist');
 const LAUNCHAGENT_LABEL = 'com.vector.bridge';
+const LEGACY_MENUBAR_LAUNCHAGENT_LABEL = 'com.vector.menubar';
+const LEGACY_MENUBAR_LAUNCHAGENT_PLIST = join(
+  LAUNCHAGENT_DIR,
+  `${LEGACY_MENUBAR_LAUNCHAGENT_LABEL}.plist`,
+);
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const COMMAND_POLL_INTERVAL_MS = 5_000;
@@ -61,113 +76,40 @@ export function saveBridgeConfig(config: BridgeConfig): void {
   writeFileSync(BRIDGE_CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
-// ── Process Discovery ───────────────────────────────────────────────────────
-
-interface DiscoveredProcess {
-  provider: 'claude_code' | 'codex';
-  providerLabel: string;
-  localProcessId: string;
-  sessionKey: string;
-  cwd?: string;
-  repoRoot?: string;
-  branch?: string;
-  mode: 'observed';
-  status: 'observed';
-  supportsInboundMessages: false;
+function writeLiveActivitiesCache(activities: unknown[]): void {
+  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(LIVE_ACTIVITIES_CACHE, JSON.stringify(activities, null, 2));
 }
 
-function discoverLocalProcesses(): DiscoveredProcess[] {
-  const processes: DiscoveredProcess[] = [];
-
-  const patterns: Array<{
-    grep: string;
-    provider: 'claude_code' | 'codex';
-    label: string;
-    prefix: string;
-  }> = [
-    {
-      grep: '[c]laude',
-      provider: 'claude_code',
-      label: 'Claude',
-      prefix: 'claude',
-    },
-    { grep: '[c]odex', provider: 'codex', label: 'Codex', prefix: 'codex' },
-  ];
-
-  for (const { grep, provider, label, prefix } of patterns) {
-    try {
-      const ps = execSync(
-        `ps aux | grep -E '${grep}' | grep -v vector-bridge | grep -v grep`,
-        { encoding: 'utf-8', timeout: 5000 },
-      );
-      for (const line of ps.trim().split('\n').filter(Boolean)) {
-        const pid = line.split(/\s+/)[1];
-        if (!pid) continue;
-
-        let cwd: string | undefined;
-        try {
-          cwd =
-            execSync(
-              `lsof -p ${pid} 2>/dev/null | grep cwd | awk '{print $NF}'`,
-              { encoding: 'utf-8', timeout: 3000 },
-            ).trim() || undefined;
-        } catch {
-          /* skip */
-        }
-
-        const gitInfo = cwd ? getGitInfo(cwd) : {};
-        processes.push({
-          provider,
-          providerLabel: label,
-          localProcessId: pid,
-          sessionKey: `${prefix}-${pid}`,
-          cwd,
-          ...gitInfo,
-          mode: 'observed',
-          status: 'observed',
-          supportsInboundMessages: false,
-        });
-      }
-    } catch {
-      /* no processes */
-    }
-  }
-
-  return processes;
-}
-
-function getGitInfo(cwd: string): { repoRoot?: string; branch?: string } {
-  try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', {
-      encoding: 'utf-8',
-      cwd,
-      timeout: 3000,
-    }).trim();
-    const repoRoot = execSync('git rev-parse --show-toplevel', {
-      encoding: 'utf-8',
-      cwd,
-      timeout: 3000,
-    }).trim();
-    return { branch, repoRoot };
-  } catch {
-    return {};
-  }
-}
-
-// ── Reply generation (placeholder until real agent integration) ─────────────
-
-function generateReply(userMessage: string): string {
-  const lower = userMessage.toLowerCase().trim();
-  if (['hey', 'hi', 'hello'].includes(lower)) {
-    return "Hey! I'm running on your local machine via the Vector bridge. What would you like me to work on?";
-  }
-  if (lower.includes('status') || lower.includes('progress')) {
-    return "I'm making good progress. Currently reviewing the changes and running tests.";
-  }
-  if (lower.includes('stop') || lower.includes('cancel')) {
-    return 'Understood — wrapping up the current step.';
-  }
-  return `Got it — "${userMessage}". I'll incorporate that into my current work.`;
+interface PendingBridgeCommand {
+  _id: Id<'agentCommands'>;
+  kind: string;
+  payload?: unknown;
+  liveActivityId?: Id<'issueLiveActivities'>;
+  processId?: Id<'agentProcesses'>;
+  liveActivity?: {
+    _id: Id<'issueLiveActivities'>;
+    issueId: Id<'issues'>;
+    issueKey?: string;
+    issueTitle?: string;
+    provider: AgentProvider;
+    title?: string;
+    status: string;
+  } | null;
+  process?: {
+    _id: Id<'agentProcesses'>;
+    provider: AgentProvider;
+    providerLabel?: string;
+    sessionKey?: string;
+    cwd?: string;
+    repoRoot?: string;
+    branch?: string;
+    title?: string;
+    model?: string;
+    mode: string;
+    status: string;
+    supportsInboundMessages: boolean;
+  } | null;
 }
 
 // ── Bridge Service Class ────────────────────────────────────────────────────
@@ -207,56 +149,56 @@ export class BridgeService {
     }
   }
 
-  private async handleCommand(cmd: {
-    _id: Id<'agentCommands'>;
-    kind: string;
-    payload?: unknown;
-    liveActivityId?: Id<'issueLiveActivities'>;
-  }): Promise<void> {
-    console.log(`  ${cmd.kind}: ${cmd._id}`);
-
-    if (cmd.kind === 'message' && cmd.liveActivityId) {
-      const payload = cmd.payload as { body?: string } | undefined;
-      const body = payload?.body ?? '';
-      console.log(`  > "${body}"`);
-
-      const reply = generateReply(body);
-      await this.client.mutation(
-        api.agentBridge.bridgePublic.postAgentMessage,
-        {
-          deviceId: this.config.deviceId as Id<'agentDevices'>,
-          deviceSecret: this.config.deviceSecret,
-          liveActivityId: cmd.liveActivityId,
-          role: 'assistant',
-          body: reply,
-        },
-      );
-      console.log(`  < "${reply.slice(0, 60)}..."`);
+  private async handleCommand(cmd: PendingBridgeCommand): Promise<void> {
+    const claimed = await this.client.mutation(
+      api.agentBridge.bridgePublic.claimCommand,
+      {
+        deviceId: this.config.deviceId as Id<'agentDevices'>,
+        deviceSecret: this.config.deviceSecret,
+        commandId: cmd._id,
+      },
+    );
+    if (!claimed) {
+      return;
     }
 
-    await this.client.mutation(api.agentBridge.bridgePublic.completeCommand, {
-      deviceId: this.config.deviceId as Id<'agentDevices'>,
-      deviceSecret: this.config.deviceSecret,
-      commandId: cmd._id,
-      status: 'delivered',
-    });
+    console.log(`  ${cmd.kind}: ${cmd._id}`);
+
+    try {
+      switch (cmd.kind) {
+        case 'message':
+          await this.handleMessageCommand(cmd);
+          await this.completeCommand(cmd._id, 'delivered');
+          return;
+        case 'launch':
+          await this.handleLaunchCommand(cmd);
+          await this.completeCommand(cmd._id, 'delivered');
+          return;
+        default:
+          throw new Error(`Unsupported bridge command: ${cmd.kind}`);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Unknown bridge error';
+      console.error(`  ! ${message}`);
+      await this.postCommandError(cmd, message);
+      await this.completeCommand(cmd._id, 'failed');
+    }
   }
 
   async reportProcesses(): Promise<void> {
-    const processes = discoverLocalProcesses();
+    const processes = discoverAttachableSessions();
     for (const proc of processes) {
       try {
-        await this.client.mutation(api.agentBridge.bridgePublic.reportProcess, {
-          deviceId: this.config.deviceId as Id<'agentDevices'>,
-          deviceSecret: this.config.deviceSecret,
-          ...proc,
-        });
+        await this.reportProcess(proc);
       } catch {
         /* skip individual failures */
       }
     }
     if (processes.length > 0) {
-      console.log(`[${ts()}] Discovered ${processes.length} local process(es)`);
+      console.log(
+        `[${ts()}] Discovered ${processes.length} attachable session(s)`,
+      );
     }
   }
 
@@ -269,8 +211,7 @@ export class BridgeService {
           deviceSecret: this.config.deviceSecret,
         },
       );
-      // Write cache for the menu bar app to read
-      writeFileSync(LIVE_ACTIVITIES_CACHE, JSON.stringify(activities, null, 2));
+      writeLiveActivitiesCache(activities);
     } catch {
       /* non-critical */
     }
@@ -330,6 +271,11 @@ export class BridgeService {
       } catch {
         /* ok */
       }
+      try {
+        writeLiveActivitiesCache([]);
+      } catch {
+        /* ok */
+      }
       process.exit(0);
     };
     process.on('SIGINT', shutdown);
@@ -338,28 +284,291 @@ export class BridgeService {
     // Keep alive
     await new Promise(() => {});
   }
+
+  private async handleMessageCommand(cmd: PendingBridgeCommand): Promise<void> {
+    if (!cmd.liveActivityId) {
+      throw new Error('Message command is missing liveActivityId');
+    }
+
+    const payload = cmd.payload as { body?: string } | undefined;
+    const body = payload?.body?.trim();
+    if (!body) {
+      throw new Error('Message command is missing a body');
+    }
+
+    const process = cmd.process;
+    if (
+      !process ||
+      !process.supportsInboundMessages ||
+      !process.sessionKey ||
+      !process.cwd ||
+      !isBridgeProvider(process.provider)
+    ) {
+      throw new Error('No resumable local session is attached to this issue');
+    }
+
+    console.log(`  > "${truncateForLog(body)}"`);
+
+    await this.reportProcess({
+      provider: process.provider,
+      providerLabel: process.providerLabel ?? providerLabel(process.provider),
+      sessionKey: process.sessionKey,
+      cwd: process.cwd,
+      repoRoot: process.repoRoot,
+      branch: process.branch,
+      title: process.title,
+      model: process.model,
+      mode: 'managed',
+      status: 'waiting',
+      supportsInboundMessages: true,
+    });
+
+    await this.updateLiveActivity(cmd.liveActivityId, {
+      status: 'active',
+      processId: process._id,
+      title: cmd.liveActivity?.title ?? process.title,
+    });
+
+    const result = await resumeProviderSession(
+      process.provider,
+      process.sessionKey,
+      process.cwd,
+      body,
+    );
+    const processId = await this.reportProcess(result);
+
+    if (result.responseText) {
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'assistant',
+        result.responseText,
+      );
+      console.log(`  < "${truncateForLog(result.responseText)}"`);
+    }
+
+    await this.updateLiveActivity(cmd.liveActivityId, {
+      processId,
+      status: 'waiting_for_input',
+      latestSummary: summarizeMessage(result.responseText),
+      title: cmd.liveActivity?.title ?? process.title,
+    });
+  }
+
+  private async handleLaunchCommand(cmd: PendingBridgeCommand): Promise<void> {
+    if (!cmd.liveActivityId) {
+      throw new Error('Launch command is missing liveActivityId');
+    }
+
+    const payload = cmd.payload as
+      | {
+          issueKey?: string;
+          issueTitle?: string;
+          provider?: AgentProvider;
+          workspacePath?: string;
+          workspaceLabel?: string;
+          delegatedRunId?: Id<'delegatedRuns'>;
+          liveActivityId?: Id<'issueLiveActivities'>;
+        }
+      | undefined;
+
+    const workspacePath = payload?.workspacePath?.trim();
+    if (!workspacePath) {
+      throw new Error('Launch command is missing workspacePath');
+    }
+    if (!payload?.provider || !isBridgeProvider(payload.provider)) {
+      throw new Error('Launch command is missing a supported provider');
+    }
+
+    const provider = payload.provider;
+    const issueKey = payload.issueKey ?? cmd.liveActivity?.issueKey ?? 'ISSUE';
+    const issueTitle =
+      payload.issueTitle ?? cmd.liveActivity?.issueTitle ?? 'Untitled issue';
+    const prompt = buildLaunchPrompt(issueKey, issueTitle, workspacePath);
+
+    await this.updateLiveActivity(cmd.liveActivityId, {
+      status: 'active',
+      latestSummary: `Launching ${providerLabel(provider)} in ${workspacePath}`,
+      delegatedRunId: payload.delegatedRunId,
+      launchStatus: 'launching',
+      title: `${providerLabel(provider)} on ${this.config.displayName}`,
+    });
+    await this.postAgentMessage(
+      cmd.liveActivityId,
+      'status',
+      `Launching ${providerLabel(provider)} in ${workspacePath}`,
+    );
+
+    const result = await launchProviderSession(provider, workspacePath, prompt);
+    const processId = await this.reportProcess({
+      ...result,
+      title: `${issueKey}: ${issueTitle}`,
+    });
+
+    await this.updateLiveActivity(cmd.liveActivityId, {
+      processId,
+      status: 'waiting_for_input',
+      latestSummary: summarizeMessage(result.responseText),
+      delegatedRunId: payload.delegatedRunId,
+      launchStatus: 'running',
+      title: `${providerLabel(provider)} on ${this.config.displayName}`,
+    });
+
+    if (result.responseText) {
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'assistant',
+        result.responseText,
+      );
+      console.log(`  < "${truncateForLog(result.responseText)}"`);
+    }
+  }
+
+  private async reportProcess(
+    process: SessionProcessRecord,
+  ): Promise<Id<'agentProcesses'>> {
+    const {
+      provider,
+      providerLabel,
+      localProcessId,
+      sessionKey,
+      cwd,
+      repoRoot,
+      branch,
+      title,
+      model,
+      mode,
+      status,
+      supportsInboundMessages,
+    } = process;
+
+    return await this.client.mutation(
+      api.agentBridge.bridgePublic.reportProcess,
+      {
+        deviceId: this.config.deviceId as Id<'agentDevices'>,
+        deviceSecret: this.config.deviceSecret,
+        provider,
+        providerLabel,
+        localProcessId,
+        sessionKey,
+        cwd,
+        repoRoot,
+        branch,
+        title,
+        model,
+        mode,
+        status,
+        supportsInboundMessages,
+      },
+    );
+  }
+
+  private async updateLiveActivity(
+    liveActivityId: Id<'issueLiveActivities'>,
+    args: {
+      status:
+        | 'active'
+        | 'waiting_for_input'
+        | 'paused'
+        | 'completed'
+        | 'failed'
+        | 'canceled'
+        | 'disconnected';
+      latestSummary?: string;
+      title?: string;
+      processId?: Id<'agentProcesses'>;
+      delegatedRunId?: Id<'delegatedRuns'>;
+      launchStatus?:
+        | 'pending'
+        | 'launching'
+        | 'running'
+        | 'completed'
+        | 'failed'
+        | 'canceled';
+    },
+  ): Promise<void> {
+    await this.client.mutation(
+      api.agentBridge.bridgePublic.updateLiveActivityState,
+      {
+        deviceId: this.config.deviceId as Id<'agentDevices'>,
+        deviceSecret: this.config.deviceSecret,
+        liveActivityId,
+        ...args,
+      },
+    );
+  }
+
+  private async postAgentMessage(
+    liveActivityId: Id<'issueLiveActivities'>,
+    role: 'status' | 'assistant',
+    body: string,
+  ): Promise<void> {
+    await this.client.mutation(api.agentBridge.bridgePublic.postAgentMessage, {
+      deviceId: this.config.deviceId as Id<'agentDevices'>,
+      deviceSecret: this.config.deviceSecret,
+      liveActivityId,
+      role,
+      body,
+    });
+  }
+
+  private async completeCommand(
+    commandId: Id<'agentCommands'>,
+    status: 'delivered' | 'failed',
+  ): Promise<void> {
+    await this.client.mutation(api.agentBridge.bridgePublic.completeCommand, {
+      deviceId: this.config.deviceId as Id<'agentDevices'>,
+      deviceSecret: this.config.deviceSecret,
+      commandId,
+      status,
+    });
+  }
+
+  private async postCommandError(
+    cmd: PendingBridgeCommand,
+    errorMessage: string,
+  ): Promise<void> {
+    if (cmd.kind === 'launch' && cmd.liveActivityId) {
+      const payload = cmd.payload as
+        | { delegatedRunId?: Id<'delegatedRuns'> }
+        | undefined;
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'failed',
+        latestSummary: errorMessage,
+        delegatedRunId: payload?.delegatedRunId,
+        launchStatus: 'failed',
+      });
+      await this.postAgentMessage(cmd.liveActivityId, 'status', errorMessage);
+      return;
+    }
+
+    if (cmd.kind === 'message' && cmd.liveActivityId) {
+      await this.postAgentMessage(cmd.liveActivityId, 'status', errorMessage);
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'waiting_for_input',
+        latestSummary: errorMessage,
+      });
+    }
+  }
 }
 
 // ── Device Setup ────────────────────────────────────────────────────────────
 
 export async function setupBridgeDevice(
+  client: ConvexHttpClient,
   convexUrl: string,
   userId: string,
 ): Promise<BridgeConfig> {
-  const client = new ConvexHttpClient(convexUrl);
   const deviceKey = `${hostname()}-${randomUUID().slice(0, 8)}`;
-  const deviceSecret = randomUUID();
   const displayName = `${process.env.USER ?? 'user'}'s ${platform() === 'darwin' ? 'Mac' : 'machine'}`;
 
   const result = await client.mutation(
-    api.agentBridge.bridgePublic.setupDevice,
+    api.agentBridge.mutations.registerBridgeDevice,
     {
-      userId: userId as Id<'users'>,
       deviceKey,
-      deviceSecret,
       displayName,
       hostname: hostname(),
       platform: platform(),
+      serviceType: 'foreground',
       cliVersion: '0.1.0',
       capabilities: ['codex', 'claude_code'],
     },
@@ -368,7 +577,7 @@ export async function setupBridgeDevice(
   const config: BridgeConfig = {
     deviceId: result.deviceId,
     deviceKey,
-    deviceSecret,
+    deviceSecret: result.deviceSecret,
     userId,
     displayName,
     convexUrl,
@@ -379,6 +588,41 @@ export async function setupBridgeDevice(
   return config;
 }
 
+function buildLaunchPrompt(
+  issueKey: string,
+  issueTitle: string,
+  workspacePath: string,
+): string {
+  return [
+    `You are working on Vector issue ${issueKey}: ${issueTitle}.`,
+    `The repository is already checked out at ${workspacePath}.`,
+    'Inspect the codebase, identify the relevant implementation area, and start the work.',
+    'In your first reply, summarize your plan and the first concrete step you are taking.',
+  ].join('\n\n');
+}
+
+function summarizeMessage(message: string | undefined): string | undefined {
+  if (!message) {
+    return undefined;
+  }
+
+  return message.length > 120
+    ? `${message.slice(0, 117).trimEnd()}...`
+    : message;
+}
+
+function truncateForLog(message: string): string {
+  return message.length > 80 ? `${message.slice(0, 77).trimEnd()}...` : message;
+}
+
+function isBridgeProvider(provider: AgentProvider): provider is BridgeProvider {
+  return provider === 'codex' || provider === 'claude_code';
+}
+
+function providerLabel(provider: BridgeProvider): string {
+  return provider === 'codex' ? 'Codex' : 'Claude';
+}
+
 // ── LaunchAgent (macOS) ─────────────────────────────────────────────────────
 
 export function installLaunchAgent(vcliPath: string): void {
@@ -387,6 +631,18 @@ export function installLaunchAgent(vcliPath: string): void {
     return;
   }
 
+  const programArguments = getLaunchAgentProgramArguments(vcliPath);
+  const environmentVariables = [
+    '  <key>PATH</key>',
+    '  <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>',
+    ...(process.env.VECTOR_HOME?.trim()
+      ? [
+          '  <key>VECTOR_HOME</key>',
+          `  <string>${process.env.VECTOR_HOME.trim()}</string>`,
+        ]
+      : []),
+  ].join('\n');
+
   const plist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -394,11 +650,7 @@ export function installLaunchAgent(vcliPath: string): void {
   <key>Label</key>
   <string>${LAUNCHAGENT_LABEL}</string>
   <key>ProgramArguments</key>
-  <array>
-    <string>${vcliPath}</string>
-    <string>service</string>
-    <string>run</string>
-  </array>
+  ${programArguments}
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
@@ -409,76 +661,101 @@ export function installLaunchAgent(vcliPath: string): void {
   <string>${CONFIG_DIR}/bridge.err.log</string>
   <key>EnvironmentVariables</key>
   <dict>
-    <key>PATH</key>
-    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+${environmentVariables}
   </dict>
 </dict>
 </plist>`;
 
-  // Also install the menu bar helper LaunchAgent if the binary exists.
-  // Search common locations for the compiled VectorMenuBar binary.
-  const menuBarCandidates = [
-    join(CONFIG_DIR, 'VectorMenuBar'),
-    '/usr/local/bin/VectorMenuBar',
-    join(homedir(), '.local', 'bin', 'VectorMenuBar'),
-  ];
-  const menuBarBinary = menuBarCandidates.find(p => existsSync(p));
-  if (menuBarBinary) {
-    const menuBarPlist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>com.vector.menubar</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>${menuBarBinary}</string>
-  </array>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>KeepAlive</key>
-  <false/>
-</dict>
-</plist>`;
-    const menuBarPlistPath = join(LAUNCHAGENT_DIR, 'com.vector.menubar.plist');
-    writeFileSync(menuBarPlistPath, menuBarPlist);
-    try {
-      execSync(`launchctl load ${menuBarPlistPath}`, { stdio: 'pipe' });
-      console.log('Menu bar helper installed.');
-    } catch {
-      // Already loaded or failed — non-critical
-    }
-  }
-
   if (!existsSync(LAUNCHAGENT_DIR)) {
     mkdirSync(LAUNCHAGENT_DIR, { recursive: true });
   }
+  removeLegacyMenuBarLaunchAgent();
   writeFileSync(LAUNCHAGENT_PLIST, plist);
   console.log(`Installed LaunchAgent: ${LAUNCHAGENT_PLIST}`);
 }
 
+function getLaunchAgentProgramArguments(vcliPath: string): string {
+  const args = resolveCliInvocation(vcliPath);
+  return [
+    '<array>',
+    ...args.map(arg => `    <string>${arg}</string>`),
+    '    <string>service</string>',
+    '    <string>run</string>',
+    '  </array>',
+  ].join('\n');
+}
+
+function resolveCliInvocation(vcliPath: string): string[] {
+  if (vcliPath.endsWith('.js')) {
+    return [process.execPath, vcliPath];
+  }
+
+  if (vcliPath.endsWith('.ts')) {
+    const tsxPath = join(
+      import.meta.dirname ?? process.cwd(),
+      '..',
+      '..',
+      '..',
+      'node_modules',
+      '.bin',
+      'tsx',
+    );
+
+    if (existsSync(tsxPath)) {
+      return [tsxPath, vcliPath];
+    }
+  }
+
+  return [vcliPath];
+}
+
 export function loadLaunchAgent(): void {
-  try {
-    execSync(`launchctl load ${LAUNCHAGENT_PLIST}`, { stdio: 'inherit' });
+  if (runLaunchctl(['bootstrap', launchctlGuiDomain(), LAUNCHAGENT_PLIST])) {
+    runLaunchctl([
+      'kickstart',
+      '-k',
+      `${launchctlGuiDomain()}/${LAUNCHAGENT_LABEL}`,
+    ]);
     console.log(
       'LaunchAgent loaded. Bridge will start automatically on login.',
     );
-  } catch {
-    console.error('Failed to load LaunchAgent');
+    return;
   }
+
+  if (
+    runLaunchctl([
+      'kickstart',
+      '-k',
+      `${launchctlGuiDomain()}/${LAUNCHAGENT_LABEL}`,
+    ]) ||
+    runLaunchctl(['load', LAUNCHAGENT_PLIST])
+  ) {
+    console.log(
+      'LaunchAgent loaded. Bridge will start automatically on login.',
+    );
+    return;
+  }
+
+  console.error('Failed to load LaunchAgent');
 }
 
-export function unloadLaunchAgent(): void {
-  try {
-    execSync(`launchctl unload ${LAUNCHAGENT_PLIST}`, { stdio: 'inherit' });
+export function unloadLaunchAgent(): boolean {
+  if (
+    runLaunchctl(['bootout', `${launchctlGuiDomain()}/${LAUNCHAGENT_LABEL}`]) ||
+    runLaunchctl(['bootout', launchctlGuiDomain(), LAUNCHAGENT_PLIST]) ||
+    runLaunchctl(['unload', LAUNCHAGENT_PLIST])
+  ) {
     console.log('LaunchAgent unloaded.');
-  } catch {
-    console.error('Failed to unload LaunchAgent (may not be loaded)');
+    return true;
   }
+
+  console.error('Failed to unload LaunchAgent (may not be loaded)');
+  return false;
 }
 
 export function uninstallLaunchAgent(): void {
   unloadLaunchAgent();
+  removeLegacyMenuBarLaunchAgent();
   try {
     unlinkSync(LAUNCHAGENT_PLIST);
     console.log('LaunchAgent removed.');
@@ -489,84 +766,173 @@ export function uninstallLaunchAgent(): void {
 
 // ── Menu Bar ────────────────────────────────────────────────────────────────
 
-const MENUBAR_BINARY = join(CONFIG_DIR, 'VectorMenuBar');
-const MENUBAR_SWIFT_URL =
-  'https://raw.githubusercontent.com/xrehpicx/vector/main/cli/macos/VectorMenuBar.swift';
+const MENUBAR_PID_FILE = join(CONFIG_DIR, 'menubar.pid');
 
-/** Ensure the native menu bar binary exists, compiling if needed. */
-async function ensureMenuBarBinary(): Promise<string | null> {
-  if (platform() !== 'darwin') return null;
-  if (existsSync(MENUBAR_BINARY)) return MENUBAR_BINARY;
-
-  // Check for Swift compiler
-  try {
-    execSync('which swiftc', { stdio: 'pipe' });
-  } catch {
-    return null;
+function removeLegacyMenuBarLaunchAgent(): void {
+  if (
+    platform() !== 'darwin' ||
+    !existsSync(LEGACY_MENUBAR_LAUNCHAGENT_PLIST)
+  ) {
+    return;
   }
 
-  // Try local source first (dev), then download from GitHub
-  const localSource = join(
-    process.cwd(),
-    'cli',
-    'macos',
-    'VectorMenuBar.swift',
-  );
-  let swiftSource: string;
+  try {
+    execSync(`launchctl unload ${LEGACY_MENUBAR_LAUNCHAGENT_PLIST}`, {
+      stdio: 'pipe',
+    });
+  } catch {
+    /* may already be unloaded */
+  }
 
-  if (existsSync(localSource)) {
-    swiftSource = localSource;
-  } else {
-    // Download the Swift source
-    const downloadPath = join(CONFIG_DIR, 'VectorMenuBar.swift');
-    try {
-      execSync(`curl -fsSL "${MENUBAR_SWIFT_URL}" -o "${downloadPath}"`, {
-        stdio: 'pipe',
-        timeout: 15000,
-      });
-      swiftSource = downloadPath;
-    } catch {
-      return null;
+  try {
+    unlinkSync(LEGACY_MENUBAR_LAUNCHAGENT_PLIST);
+  } catch {
+    /* already gone */
+  }
+}
+
+function launchctlGuiDomain(): string {
+  const uid =
+    typeof process.getuid === 'function'
+      ? process.getuid()
+      : typeof process.geteuid === 'function'
+        ? process.geteuid()
+        : 0;
+  return `gui/${uid}`;
+}
+
+function runLaunchctl(args: string[]): boolean {
+  try {
+    execFileSync('launchctl', args, {
+      stdio: 'ignore',
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findCliEntrypoint(): string | null {
+  const candidates = [
+    join(import.meta.dirname ?? '', 'index.js'),
+    join(import.meta.dirname ?? '', 'index.ts'),
+    join(import.meta.dirname ?? '', '..', 'dist', 'index.js'),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+function getCurrentCliInvocation(): string[] | null {
+  const entrypoint = findCliEntrypoint();
+  if (!entrypoint) {
+    return null;
+  }
+  return resolveCliInvocation(entrypoint);
+}
+
+function findMenuBarExecutable(): string | null {
+  const candidates = [
+    join(
+      import.meta.dirname ?? '',
+      '..',
+      'native',
+      'VectorMenuBar.app',
+      'Contents',
+      'MacOS',
+      'VectorMenuBar',
+    ),
+    join(
+      import.meta.dirname ?? '',
+      'native',
+      'VectorMenuBar.app',
+      'Contents',
+      'MacOS',
+      'VectorMenuBar',
+    ),
+  ];
+
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      return p;
     }
   }
 
-  // Compile
+  return null;
+}
+
+function isKnownMenuBarProcess(pid: number): boolean {
   try {
-    execSync(
-      `swiftc -o "${MENUBAR_BINARY}" "${swiftSource}" -framework AppKit`,
-      { stdio: 'pipe', timeout: 30000 },
+    const command = execSync(`ps -p ${pid} -o args=`, {
+      encoding: 'utf-8',
+      timeout: 3000,
+    });
+    return (
+      command.includes('menubar.js') ||
+      command.includes('menubar.ts') ||
+      command.includes('VectorMenuBar')
     );
-    // Copy icon assets if available
-    const assetsSource = join(swiftSource, '..', 'assets');
-    const assetsDest = join(CONFIG_DIR, 'assets');
-    if (existsSync(assetsSource)) {
-      mkdirSync(assetsDest, { recursive: true });
-      for (const f of ['vector-menubar.png', 'vector-menubar@2x.png']) {
-        const src = join(assetsSource, f);
-        if (existsSync(src))
-          writeFileSync(join(assetsDest, f), readFileSync(src));
-      }
-    }
-    return MENUBAR_BINARY;
   } catch {
-    return null;
+    return false;
+  }
+}
+
+/** Kill any existing menu bar process. */
+function killExistingMenuBar(): void {
+  if (existsSync(MENUBAR_PID_FILE)) {
+    try {
+      const pid = Number(readFileSync(MENUBAR_PID_FILE, 'utf-8').trim());
+      if (Number.isFinite(pid) && pid > 0 && isKnownMenuBarProcess(pid)) {
+        process.kill(pid, 'SIGTERM');
+      }
+    } catch {
+      // Already dead
+    }
+    try {
+      unlinkSync(MENUBAR_PID_FILE);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
 export async function launchMenuBar(): Promise<void> {
   if (platform() !== 'darwin') return;
 
-  const binary = await ensureMenuBarBinary();
-  if (!binary) return;
+  removeLegacyMenuBarLaunchAgent();
+
+  const executable = findMenuBarExecutable();
+  const cliInvocation = getCurrentCliInvocation();
+  if (!executable || !cliInvocation) return;
+
+  // Kill any existing menu bar first
+  killExistingMenuBar();
 
   try {
     const { spawn: spawnChild } = await import('child_process');
-    const child = spawnChild(binary, [], { detached: true, stdio: 'ignore' });
+    const child = spawnChild(executable, [], {
+      detached: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        VECTOR_CLI_COMMAND: cliInvocation[0],
+        VECTOR_CLI_ARGS_JSON: JSON.stringify(cliInvocation.slice(1)),
+      },
+    });
     child.unref();
-    console.log('Menu bar started.');
+
+    // Save the PID so we can kill it later
+    if (child.pid) {
+      writeFileSync(MENUBAR_PID_FILE, String(child.pid));
+    }
   } catch {
-    // Non-critical
+    // Non-critical — menu bar is optional
   }
+}
+
+export function stopMenuBar(): void {
+  killExistingMenuBar();
 }
 
 // ── Status ──────────────────────────────────────────────────────────────────
@@ -597,23 +963,23 @@ export function getBridgeStatus(): {
 
   // Check if LaunchAgent is loaded but PID file not yet written (starting up)
   if (!running && platform() === 'darwin') {
-    try {
-      const result = execSync(
-        `launchctl list ${LAUNCHAGENT_LABEL} 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 3000 },
-      );
-      if (result.includes(LAUNCHAGENT_LABEL)) {
-        starting = true;
-      }
-    } catch {
-      // Not loaded
-    }
+    starting =
+      runLaunchctl(['print', `${launchctlGuiDomain()}/${LAUNCHAGENT_LABEL}`]) ||
+      runLaunchctl(['list', LAUNCHAGENT_LABEL]);
   }
 
   return { configured: true, running, starting, pid, config };
 }
 
-export function stopBridge(): boolean {
+export function stopBridge(options?: { includeMenuBar?: boolean }): boolean {
+  if (options?.includeMenuBar) {
+    killExistingMenuBar();
+  }
+  try {
+    writeLiveActivitiesCache([]);
+  } catch {
+    /* ok */
+  }
   if (!existsSync(PID_FILE)) return false;
   const pid = Number(readFileSync(PID_FILE, 'utf-8').trim());
   try {

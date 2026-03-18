@@ -3,7 +3,6 @@ import { httpAction } from './_generated/server';
 import { internal } from './_generated/api';
 import { authComponent, createAuth } from './auth';
 import {
-  setup as bridgeSetup,
   heartbeat as bridgeHeartbeat,
   commands as bridgeCommands,
   completeCommand as bridgeCompleteCommand,
@@ -33,7 +32,6 @@ http.route({
 
 // ── Agent Bridge HTTP endpoints ──────────────────────────────────────────────
 
-http.route({ path: '/api/bridge/setup', method: 'POST', handler: bridgeSetup });
 http.route({
   path: '/api/bridge/heartbeat',
   method: 'POST',

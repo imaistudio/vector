@@ -147,7 +147,7 @@ export function AttachProcessPopover({
                 </div>
               ) : (
                 <span className='text-muted-foreground text-sm'>
-                  No running processes found
+                  No attachable sessions found
                 </span>
               )}
             </CommandEmpty>

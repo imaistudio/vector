@@ -21,6 +21,8 @@
 # production
 /build
 /packages/vector-cli/dist
+/packages/vector-cli/native
+/packages/vector-cli/*.tgz
 
 # misc
 .DS_Store

@@ -28,70 +28,6 @@ async function validateDevice(
   }
 }
 
-// ── Setup ───────────────────────────────────────────────────────────────────
-
-export const setupDevice = internalMutation({
-  args: {
-    userId: v.string(),
-    deviceKey: v.string(),
-    deviceSecret: v.string(),
-    displayName: v.string(),
-    hostname: v.optional(v.string()),
-    platform: v.optional(v.string()),
-    serviceType: v.string(),
-    cliVersion: v.optional(v.string()),
-    capabilities: v.optional(v.array(v.string())),
-  },
-  handler: async (ctx, args) => {
-    const userId = ctx.db.normalizeId('users', args.userId);
-    if (!userId) throw new Error('Invalid userId');
-
-    const now = Date.now();
-
-    // Check if device already exists
-    const existing = await ctx.db
-      .query('agentDevices')
-      .withIndex('by_user_device_key', q =>
-        q.eq('userId', userId).eq('deviceKey', args.deviceKey),
-      )
-      .first();
-
-    if (existing) {
-      await ctx.db.patch('agentDevices', existing._id, {
-        deviceSecret: args.deviceSecret,
-        displayName: args.displayName,
-        hostname: args.hostname,
-        platform: args.platform,
-        serviceType: args.serviceType as any,
-        cliVersion: args.cliVersion,
-        capabilities: args.capabilities,
-        status: 'online',
-        lastSeenAt: now,
-        updatedAt: now,
-      });
-      return { deviceId: existing._id, userId, status: 'updated' };
-    }
-
-    const deviceId = await ctx.db.insert('agentDevices', {
-      userId,
-      deviceKey: args.deviceKey,
-      deviceSecret: args.deviceSecret,
-      displayName: args.displayName,
-      hostname: args.hostname,
-      platform: args.platform,
-      serviceType: args.serviceType as any,
-      cliVersion: args.cliVersion,
-      capabilities: args.capabilities,
-      status: 'online',
-      lastSeenAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return { deviceId, userId, status: 'created' };
-  },
-});
-
 // ── Heartbeat ───────────────────────────────────────────────────────────────
 
 export const heartbeat = internalMutation({
@@ -250,6 +186,8 @@ export const reportProcess = internalMutation({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    responseText: v.optional(v.string()),
+    launchCommand: v.optional(v.string()),
     mode: v.string(),
     status: v.string(),
     supportsInboundMessages: v.boolean(),

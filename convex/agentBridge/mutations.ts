@@ -79,6 +79,76 @@ export const upsertDevice = mutation({
   },
 });
 
+/** Register or refresh the bridge device and rotate its bridge secret. */
+export const registerBridgeDevice = mutation({
+  args: {
+    deviceKey: v.string(),
+    displayName: v.string(),
+    hostname: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    serviceType: agentDeviceServiceTypeValidator,
+    cliVersion: v.optional(v.string()),
+    capabilities: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const now = Date.now();
+    const deviceSecret = crypto.randomUUID();
+
+    const existing = await ctx.db
+      .query('agentDevices')
+      .withIndex('by_user_device_key', q =>
+        q.eq('userId', userId).eq('deviceKey', args.deviceKey),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch('agentDevices', existing._id, {
+        deviceSecret,
+        displayName: args.displayName,
+        hostname: args.hostname,
+        platform: args.platform,
+        serviceType: args.serviceType,
+        cliVersion: args.cliVersion,
+        capabilities: args.capabilities,
+        status: 'online',
+        lastSeenAt: now,
+        updatedAt: now,
+      });
+
+      return {
+        deviceId: existing._id,
+        deviceSecret,
+        userId,
+        status: 'updated' as const,
+      };
+    }
+
+    const deviceId = await ctx.db.insert('agentDevices', {
+      userId,
+      deviceKey: args.deviceKey,
+      deviceSecret,
+      displayName: args.displayName,
+      hostname: args.hostname,
+      platform: args.platform,
+      serviceType: args.serviceType,
+      cliVersion: args.cliVersion,
+      capabilities: args.capabilities,
+      status: 'online',
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      deviceId,
+      deviceSecret,
+      userId,
+      status: 'created' as const,
+    };
+  },
+});
+
 /** Revoke a device — clears secret and marks offline. */
 export const revokeDevice = mutation({
   args: { deviceId: v.id('agentDevices') },
@@ -234,6 +304,8 @@ export const reportProcess = mutation({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    responseText: v.optional(v.string()),
+    launchCommand: v.optional(v.string()),
     mode: agentProcessModeValidator,
     status: agentProcessStatusValidator,
     supportsInboundMessages: v.boolean(),
@@ -349,6 +421,16 @@ export const attachLiveActivity = mutation({
     const device = await ctx.db.get('agentDevices', args.deviceId);
     if (!device || device.userId !== userId) {
       throw new ConvexError('DEVICE_NOT_FOUND');
+    }
+
+    if (args.processId) {
+      const process = await ctx.db.get('agentProcesses', args.processId);
+      if (!process || process.deviceId !== args.deviceId) {
+        throw new ConvexError('PROCESS_NOT_FOUND');
+      }
+      if (process.provider !== args.provider) {
+        throw new ConvexError('PROCESS_PROVIDER_MISMATCH');
+      }
     }
 
     const now = Date.now();
@@ -536,14 +618,13 @@ export const appendLiveMessage = mutation({
     );
     if (!activity) throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
 
-    // Only the owner can append agent->vector messages; issue viewers can send vector->agent
+    // Only the owner can drive the attached local session from Vector.
     if (args.direction === 'agent_to_vector') {
       if (activity.ownerUserId !== userId) {
         throw new ConvexError('FORBIDDEN');
       }
     } else {
-      const issue = await ctx.db.get('issues', activity.issueId);
-      if (!issue || !(await canViewIssue(ctx, issue))) {
+      if (activity.ownerUserId !== userId) {
         throw new ConvexError('FORBIDDEN');
       }
     }
@@ -568,26 +649,16 @@ export const appendLiveMessage = mutation({
 
     // If this is a user message to the agent, create a command
     if (args.direction === 'vector_to_agent') {
-      const commandId = await ctx.db.insert('agentCommands', {
+      await ctx.db.insert('agentCommands', {
         deviceId: activity.deviceId,
         processId: activity.processId,
         liveActivityId: args.liveActivityId,
         senderUserId: userId,
         kind: 'message',
-        payload: { body: args.body },
+        payload: { body: args.body, messageId },
         status: 'pending',
         createdAt: now,
       });
-
-      // Schedule simulated bridge reply (dev/demo — replaced by real bridge later)
-      await ctx.scheduler.runAfter(
-        0,
-        internal.agentBridge.internal.scheduleBridgeReply,
-        {
-          commandId,
-          liveActivityId: args.liveActivityId,
-        },
-      );
     }
 
     return messageId;

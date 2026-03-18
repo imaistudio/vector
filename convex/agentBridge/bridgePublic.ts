@@ -23,69 +23,6 @@ async function validateDeviceSecret(
   return device;
 }
 
-// ── Setup ───────────────────────────────────────────────────────────────────
-
-export const setupDevice = mutation({
-  args: {
-    userId: v.id('users'),
-    deviceKey: v.string(),
-    deviceSecret: v.string(),
-    displayName: v.string(),
-    hostname: v.optional(v.string()),
-    platform: v.optional(v.string()),
-    cliVersion: v.optional(v.string()),
-    capabilities: v.optional(v.array(v.string())),
-  },
-  handler: async (ctx, args) => {
-    // Verify user exists
-    const user = await ctx.db.get('users', args.userId);
-    if (!user) throw new ConvexError('USER_NOT_FOUND');
-
-    const now = Date.now();
-
-    // Upsert by deviceKey
-    const existing = await ctx.db
-      .query('agentDevices')
-      .withIndex('by_user_device_key', q =>
-        q.eq('userId', args.userId).eq('deviceKey', args.deviceKey),
-      )
-      .first();
-
-    if (existing) {
-      await ctx.db.patch('agentDevices', existing._id, {
-        deviceSecret: args.deviceSecret,
-        displayName: args.displayName,
-        hostname: args.hostname,
-        platform: args.platform,
-        cliVersion: args.cliVersion,
-        capabilities: args.capabilities,
-        status: 'online',
-        lastSeenAt: now,
-        updatedAt: now,
-      });
-      return { deviceId: existing._id, status: 'updated' as const };
-    }
-
-    const deviceId = await ctx.db.insert('agentDevices', {
-      userId: args.userId,
-      deviceKey: args.deviceKey,
-      deviceSecret: args.deviceSecret,
-      displayName: args.displayName,
-      hostname: args.hostname,
-      platform: args.platform,
-      serviceType: 'foreground',
-      cliVersion: args.cliVersion,
-      capabilities: args.capabilities,
-      status: 'online',
-      lastSeenAt: now,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return { deviceId, status: 'created' as const };
-  },
-});
-
 // ── Heartbeat ───────────────────────────────────────────────────────────────
 
 export const heartbeat = mutation({
@@ -114,16 +51,94 @@ export const getPendingCommands = query({
   handler: async (ctx, args) => {
     await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
 
-    return ctx.db
+    const commands = await ctx.db
       .query('agentCommands')
       .withIndex('by_device_status', q =>
         q.eq('deviceId', args.deviceId).eq('status', 'pending'),
       )
       .collect();
+
+    return Promise.all(
+      commands.map(async command => {
+        const liveActivity = command.liveActivityId
+          ? await ctx.db.get('issueLiveActivities', command.liveActivityId)
+          : null;
+        const issue = liveActivity
+          ? await ctx.db.get('issues', liveActivity.issueId)
+          : null;
+        const resolvedProcessId = command.processId ?? liveActivity?.processId;
+        const process = resolvedProcessId
+          ? await ctx.db.get('agentProcesses', resolvedProcessId)
+          : null;
+
+        return {
+          _id: command._id,
+          kind: command.kind,
+          payload: command.payload,
+          liveActivityId: command.liveActivityId,
+          processId: resolvedProcessId,
+          createdAt: command.createdAt,
+          liveActivity: liveActivity
+            ? {
+                _id: liveActivity._id,
+                issueId: liveActivity.issueId,
+                issueKey: issue?.key,
+                issueTitle: issue?.title,
+                provider: liveActivity.provider,
+                title: liveActivity.title,
+                status: liveActivity.status,
+              }
+            : null,
+          process: process
+            ? {
+                _id: process._id,
+                provider: process.provider,
+                providerLabel: process.providerLabel,
+                sessionKey: process.sessionKey,
+                cwd: process.cwd,
+                repoRoot: process.repoRoot,
+                branch: process.branch,
+                title: process.title,
+                model: process.model,
+                mode: process.mode,
+                status: process.status,
+                supportsInboundMessages: process.supportsInboundMessages,
+              }
+            : null,
+        };
+      }),
+    );
   },
 });
 
 // ── Complete Command ────────────────────────────────────────────────────────
+
+export const claimCommand = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    commandId: v.id('agentCommands'),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const cmd = await ctx.db.get('agentCommands', args.commandId);
+    if (!cmd || cmd.deviceId !== args.deviceId) {
+      throw new ConvexError('COMMAND_NOT_FOUND');
+    }
+
+    if (cmd.status !== 'pending') {
+      return false;
+    }
+
+    await ctx.db.patch('agentCommands', args.commandId, {
+      status: 'claimed',
+      claimedAt: Date.now(),
+    });
+
+    return true;
+  },
+});
 
 export const completeCommand = mutation({
   args: {
@@ -140,11 +155,28 @@ export const completeCommand = mutation({
       throw new ConvexError('COMMAND_NOT_FOUND');
     }
 
+    const now = Date.now();
+
     await ctx.db.patch('agentCommands', args.commandId, {
       status: args.status,
-      claimedAt: Date.now(),
-      completedAt: Date.now(),
+      claimedAt: now,
+      completedAt: now,
     });
+
+    const messageId = (cmd.payload as { messageId?: Id<'issueLiveMessages'> })
+      ?.messageId;
+    if (messageId) {
+      const message = await ctx.db.get('issueLiveMessages', messageId);
+      if (
+        message &&
+        message.liveActivityId === cmd.liveActivityId &&
+        message.direction === 'vector_to_agent'
+      ) {
+        await ctx.db.patch('issueLiveMessages', messageId, {
+          deliveryStatus: args.status === 'delivered' ? 'delivered' : 'failed',
+        });
+      }
+    }
   },
 });
 
@@ -211,6 +243,9 @@ export const getDeviceLiveActivities = query({
         .filter(a => !a.endedAt)
         .map(async a => {
           const issue = await ctx.db.get('issues', a.issueId);
+          const process = a.processId
+            ? await ctx.db.get('agentProcesses', a.processId)
+            : null;
           return {
             _id: a._id,
             issueId: a.issueId,
@@ -222,6 +257,9 @@ export const getDeviceLiveActivities = query({
             latestSummary: a.latestSummary,
             startedAt: a.startedAt,
             lastEventAt: a.lastEventAt,
+            cwd: process?.cwd,
+            repoRoot: process?.repoRoot,
+            branch: process?.branch,
           };
         }),
     );
@@ -249,6 +287,8 @@ export const reportProcess = mutation({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    responseText: v.optional(v.string()),
+    launchCommand: v.optional(v.string()),
     mode: v.union(v.literal('observed'), v.literal('managed')),
     status: v.union(
       v.literal('observed'),
@@ -278,11 +318,25 @@ export const reportProcess = mutation({
 
       if (existing && existing.deviceId === args.deviceId) {
         await ctx.db.patch('agentProcesses', existing._id, {
+          provider: args.provider,
+          providerLabel: args.providerLabel,
+          localProcessId: args.localProcessId,
+          sessionKey: args.sessionKey,
+          repoRoot: args.repoRoot,
           status: args.status,
+          model: args.model,
+          mode: args.mode,
+          supportsInboundMessages: args.supportsInboundMessages,
           title: args.title,
           cwd: args.cwd,
           branch: args.branch,
           lastHeartbeatAt: now,
+          endedAt:
+            args.status === 'completed' ||
+            args.status === 'failed' ||
+            args.status === 'disconnected'
+              ? now
+              : undefined,
         });
         return existing._id;
       }
@@ -306,5 +360,96 @@ export const reportProcess = mutation({
       startedAt: now,
       lastHeartbeatAt: now,
     });
+  },
+});
+
+// ── Live Activity / Delegated Run Sync ──────────────────────────────────────
+
+export const updateLiveActivityState = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    liveActivityId: v.id('issueLiveActivities'),
+    status: v.union(
+      v.literal('active'),
+      v.literal('waiting_for_input'),
+      v.literal('paused'),
+      v.literal('completed'),
+      v.literal('failed'),
+      v.literal('canceled'),
+      v.literal('disconnected'),
+    ),
+    latestSummary: v.optional(v.string()),
+    title: v.optional(v.string()),
+    processId: v.optional(v.id('agentProcesses')),
+    delegatedRunId: v.optional(v.id('delegatedRuns')),
+    launchStatus: v.optional(
+      v.union(
+        v.literal('pending'),
+        v.literal('launching'),
+        v.literal('running'),
+        v.literal('completed'),
+        v.literal('failed'),
+        v.literal('canceled'),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const activity = await ctx.db.get(
+      'issueLiveActivities',
+      args.liveActivityId,
+    );
+    if (!activity || activity.deviceId !== args.deviceId) {
+      throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
+    }
+
+    if (args.processId) {
+      const process = await ctx.db.get('agentProcesses', args.processId);
+      if (!process || process.deviceId !== args.deviceId) {
+        throw new ConvexError('PROCESS_NOT_FOUND');
+      }
+    }
+
+    const now = Date.now();
+    const isTerminal = [
+      'completed',
+      'failed',
+      'canceled',
+      'disconnected',
+    ].includes(args.status);
+
+    await ctx.db.patch('issueLiveActivities', args.liveActivityId, {
+      status: args.status,
+      ...(args.latestSummary !== undefined && {
+        latestSummary: args.latestSummary,
+      }),
+      ...(args.title !== undefined && { title: args.title }),
+      ...(args.processId && { processId: args.processId }),
+      lastEventAt: now,
+      ...(isTerminal && { endedAt: now }),
+    });
+
+    if (args.delegatedRunId) {
+      const run = await ctx.db.get('delegatedRuns', args.delegatedRunId);
+      if (
+        !run ||
+        run.deviceId !== args.deviceId ||
+        run.liveActivityId !== args.liveActivityId
+      ) {
+        throw new ConvexError('DELEGATED_RUN_NOT_FOUND');
+      }
+
+      const isTerminalLaunch =
+        args.launchStatus &&
+        ['completed', 'failed', 'canceled'].includes(args.launchStatus);
+
+      await ctx.db.patch('delegatedRuns', args.delegatedRunId, {
+        ...(args.launchStatus && { launchStatus: args.launchStatus }),
+        ...(args.launchStatus === 'running' && { launchedAt: now }),
+        ...(isTerminalLaunch && { endedAt: now }),
+      });
+    }
   },
 });

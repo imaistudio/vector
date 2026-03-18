@@ -158,6 +158,7 @@ export function LiveActivityCard({
       {expanded && (
         <TranscriptBody
           liveActivityId={activity._id}
+          isOwner={currentUser?._id === activity.ownerUserId}
           status={activity.status as LiveActivityStatus}
           isTerminal={isTerminal}
           currentUser={currentUser}
@@ -171,11 +172,13 @@ export function LiveActivityCard({
 
 function TranscriptBody({
   liveActivityId,
+  isOwner,
   status,
   isTerminal,
   currentUser,
 }: {
   liveActivityId: Id<'issueLiveActivities'>;
+  isOwner: boolean;
   status: LiveActivityStatus;
   isTerminal: boolean;
   currentUser?: {
@@ -201,7 +204,7 @@ function TranscriptBody({
   const [sending, setSending] = useState(false);
   const [composerFocused, setComposerFocused] = useState(false);
 
-  const canSendMessage = !isTerminal;
+  const canSendMessage = isOwner && !isTerminal;
 
   const handleSend = async () => {
     const body = messageInput.trim();

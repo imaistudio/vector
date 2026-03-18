@@ -2796,10 +2796,14 @@ import {
   saveBridgeConfig,
   setupBridgeDevice,
   stopBridge,
+  stopMenuBar,
   uninstallLaunchAgent,
   unloadLaunchAgent,
 } from './bridge-service';
 import { platform as osPlatform } from 'os';
+
+const VECTOR_HOME =
+  process.env.VECTOR_HOME?.trim() || `${process.env.HOME ?? '~'}/.vector`;
 
 const serviceCommand = program
   .command('service')
@@ -2835,7 +2839,7 @@ serviceCommand
         s.stop('Failed');
         throw new Error('Not logged in. Run `vcli auth login` first.');
       }
-      config = await setupBridgeDevice(runtime.convexUrl, user._id);
+      config = await setupBridgeDevice(client, runtime.convexUrl, user._id);
       s.stop(`Device registered: ${config.displayName}`);
     }
 
@@ -2844,7 +2848,6 @@ serviceCommand
       const vcliPath = process.argv[1] ?? 'vcli';
       installLaunchAgent(vcliPath);
       loadLaunchAgent();
-      await launchMenuBar();
       s.stop('Bridge service started.');
     } else {
       // Linux / other: run in foreground
@@ -2872,7 +2875,11 @@ serviceCommand
       );
       const user = await runQuery(client, api.users.currentUser);
       if (!user) throw new Error('Not logged in. Run `vcli auth login` first.');
-      config = await setupBridgeDevice(runtime.convexUrl, user._id);
+      config = await setupBridgeDevice(client, runtime.convexUrl, user._id);
+    }
+
+    if (osPlatform() === 'darwin') {
+      await launchMenuBar();
     }
 
     const bridge = new BridgeService(config);
@@ -2881,14 +2888,17 @@ serviceCommand
 
 serviceCommand
   .command('stop')
-  .description('Stop the bridge service and menu bar')
+  .description('Stop the bridge service')
   .action(() => {
+    let unloaded = false;
     if (osPlatform() === 'darwin') {
-      unloadLaunchAgent();
+      unloaded = unloadLaunchAgent();
     }
-    if (stopBridge()) {
+    if (stopBridge() || unloaded) {
       console.log('Bridge stopped.');
     } else if (osPlatform() !== 'darwin') {
+      console.log('Bridge is not running.');
+    } else {
       console.log('Bridge is not running.');
     }
   });
@@ -2913,7 +2923,7 @@ serviceCommand
         ? 'Starting...'
         : 'Not running';
     console.log(`  Status:  ${statusLabel}`);
-    console.log(`  Config:  ~/.vector/bridge.json`);
+    console.log(`  Config:  ${VECTOR_HOME}/bridge.json`);
   });
 
 serviceCommand
@@ -2945,7 +2955,7 @@ serviceCommand
         s.stop('Failed');
         throw new Error('Not logged in. Run `vcli auth login` first.');
       }
-      config = await setupBridgeDevice(runtime.convexUrl, user._id);
+      config = await setupBridgeDevice(client, runtime.convexUrl, user._id);
       s.stop(`Device registered: ${config.displayName}`);
     }
 
@@ -2958,10 +2968,6 @@ serviceCommand
     loadLaunchAgent();
     s.stop('Bridge service started');
 
-    s.start('Launching menu bar...');
-    await launchMenuBar();
-    s.stop('Menu bar ready');
-
     console.log('');
     console.log(
       'Bridge installed and running. Will start automatically on login.',
@@ -2972,8 +2978,9 @@ serviceCommand
   .command('uninstall')
   .description('Stop the bridge and uninstall the system service')
   .action(() => {
-    stopBridge();
+    stopBridge({ includeMenuBar: true });
     uninstallLaunchAgent();
+    stopMenuBar();
     console.log('Bridge stopped and service uninstalled.');
   });
 
@@ -2982,15 +2989,14 @@ serviceCommand
   .description('Show bridge service logs')
   .action(async () => {
     const fs = await import('fs');
-    const os = await import('os');
     const p = await import('path');
-    const logPath = p.join(os.homedir(), '.vector', 'bridge.log');
+    const logPath = p.join(VECTOR_HOME, 'bridge.log');
     if (fs.existsSync(logPath)) {
       const content = fs.readFileSync(logPath, 'utf-8');
       const lines = content.split('\n');
       console.log(lines.slice(-50).join('\n'));
     } else {
-      console.log('No log file found at ~/.vector/bridge.log');
+      console.log(`No log file found at ${logPath}`);
     }
   });
 
@@ -3013,6 +3019,7 @@ serviceCommand
   .description('Disable bridge from starting at login')
   .action(() => {
     uninstallLaunchAgent();
+    stopMenuBar();
     console.log('Bridge will no longer start at login.');
   });
 
@@ -3038,7 +3045,7 @@ bridgeCommand
       const user = await runQuery(client, api.users.currentUser);
       if (!user) throw new Error('Not logged in. Run `vcli auth login` first.');
 
-      config = await setupBridgeDevice(runtime.convexUrl, user._id);
+      config = await setupBridgeDevice(client, runtime.convexUrl, user._id);
       console.log(
         `Device registered: ${config.displayName} (${config.deviceId})`,
       );
@@ -3062,10 +3069,12 @@ bridgeCommand
   .command('stop')
   .description('Stop the bridge service')
   .action(() => {
+    let unloaded = false;
     if (osPlatform() === 'darwin') {
       uninstallLaunchAgent();
+      unloaded = true;
     }
-    if (stopBridge()) {
+    if (stopBridge() || unloaded) {
       console.log('Bridge stopped.');
     } else {
       console.log('Bridge is not running.');
