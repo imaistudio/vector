@@ -6,6 +6,7 @@ import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { UserAvatar } from '@/components/user-avatar';
+import { PublicListView } from '@/components/views/public-issues';
 
 interface PublicProjectPageProps {
   orgSlug: string;
@@ -118,10 +119,12 @@ export function PublicProjectPage({
           <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
             Issues
           </h2>
-          <div className='divide-border divide-y rounded-lg border'>
-            {project.issues.map(issue => (
-              <IssueRow key={issue._id} issue={issue} orgSlug={orgSlug} />
-            ))}
+          <div className='rounded-lg border p-2'>
+            <PublicListView
+              issues={project.issues}
+              orgSlug={orgSlug}
+              groupBy='none'
+            />
           </div>
         </div>
       ) : (
@@ -131,73 +134,4 @@ export function PublicProjectPage({
       )}
     </div>
   );
-}
-
-function IssueRow({
-  issue,
-  orgSlug,
-}: {
-  issue: {
-    _id: string;
-    key: string;
-    title: string;
-    isPublic: boolean;
-    status: {
-      name: string;
-      color: string | null;
-      type: string;
-      icon: string | null;
-    } | null;
-  };
-  orgSlug: string;
-}) {
-  const content = (
-    <div className='flex items-center gap-3 px-3 py-2.5'>
-      {issue.status && (
-        <div style={{ color: issue.status.color ?? undefined }}>
-          {issue.status.icon ? (
-            <DynamicIcon name={issue.status.icon} className='size-4' />
-          ) : (
-            <div
-              className='size-2.5 rounded-full border-2'
-              style={{ borderColor: issue.status.color ?? '#888' }}
-            />
-          )}
-        </div>
-      )}
-      <span className='text-muted-foreground flex-shrink-0 text-xs font-medium'>
-        {issue.key}
-      </span>
-      <span className='min-w-0 flex-1 truncate text-sm'>{issue.title}</span>
-      {issue.status && (
-        <span
-          className='flex-shrink-0 rounded px-1.5 py-0.5 text-xs font-medium'
-          style={{
-            color: issue.status.color ?? undefined,
-            backgroundColor: issue.status.color
-              ? `${issue.status.color}15`
-              : undefined,
-          }}
-        >
-          {issue.status.name}
-        </span>
-      )}
-      {!issue.isPublic && (
-        <Lock className='text-muted-foreground size-3 flex-shrink-0 opacity-50' />
-      )}
-    </div>
-  );
-
-  if (issue.isPublic) {
-    return (
-      <a
-        href={`/${orgSlug}/issues/${issue.key}/public`}
-        className='hover:bg-muted/50 block transition-colors'
-      >
-        {content}
-      </a>
-    );
-  }
-
-  return <div>{content}</div>;
 }

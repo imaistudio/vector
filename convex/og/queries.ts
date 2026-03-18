@@ -292,20 +292,31 @@ export const getPublicProjectFull = query({
       .collect();
 
     // Show all issues — full detail for public, limited for others
-    const issueStates = await Promise.all(
-      allIssues.map(i =>
-        i.workflowStateId ? ctx.db.get('issueStates', i.workflowStateId) : null,
+    const [issueStates, issuePriorities] = await Promise.all([
+      Promise.all(
+        allIssues.map(i =>
+          i.workflowStateId
+            ? ctx.db.get('issueStates', i.workflowStateId)
+            : null,
+        ),
       ),
-    );
+      Promise.all(
+        allIssues.map(i =>
+          i.priorityId ? ctx.db.get('issuePriorities', i.priorityId) : null,
+        ),
+      ),
+    ]);
 
     const issues = allIssues.map((issue, idx) => {
       const isPublic = issue.visibility === 'public';
       const s = issueStates[idx];
+      const priority = issuePriorities[idx];
       return {
         _id: issue._id,
         key: issue.key,
         title: issue.title,
         isPublic,
+        description: isPublic ? (issue.description ?? null) : null,
         status: s
           ? {
               name: s.name,
@@ -314,6 +325,14 @@ export const getPublicProjectFull = query({
               icon: s.icon ?? null,
             }
           : null,
+        priority:
+          isPublic && priority
+            ? {
+                name: priority.name,
+                color: priority.color ?? null,
+                icon: priority.icon ?? null,
+              }
+            : null,
       };
     });
 
@@ -399,20 +418,31 @@ export const getPublicTeamFull = query({
       .query('issues')
       .withIndex('by_team', q => q.eq('teamId', team._id))
       .collect();
-    const issueStates = await Promise.all(
-      allIssues.map(i =>
-        i.workflowStateId ? ctx.db.get('issueStates', i.workflowStateId) : null,
+    const [issueStates, issuePriorities] = await Promise.all([
+      Promise.all(
+        allIssues.map(i =>
+          i.workflowStateId
+            ? ctx.db.get('issueStates', i.workflowStateId)
+            : null,
+        ),
       ),
-    );
+      Promise.all(
+        allIssues.map(i =>
+          i.priorityId ? ctx.db.get('issuePriorities', i.priorityId) : null,
+        ),
+      ),
+    ]);
 
     const issues = allIssues.map((issue, idx) => {
       const isPublic = issue.visibility === 'public';
       const s = issueStates[idx];
+      const priority = issuePriorities[idx];
       return {
         _id: issue._id,
         key: issue.key,
         title: issue.title,
         isPublic,
+        description: isPublic ? (issue.description ?? null) : null,
         status: s
           ? {
               name: s.name,
@@ -421,6 +451,14 @@ export const getPublicTeamFull = query({
               icon: s.icon ?? null,
             }
           : null,
+        priority:
+          isPublic && priority
+            ? {
+                name: priority.name,
+                color: priority.color ?? null,
+                icon: priority.icon ?? null,
+              }
+            : null,
       };
     });
 
