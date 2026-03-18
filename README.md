@@ -1,14 +1,11 @@
-<p align="center">
+<div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark.png">
     <img alt="Vector" src="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark.png" width="220">
   </picture>
-</p>
-
-<p align="center">
-  Open source issue tracking and project management built because there was no truly open source alternative to Linear.
-</p>
+  <p>Open source issue tracking and project management built because there was no truly open source alternative to Linear.</p>
+</div>
 
 Vector exists because I wanted the speed and focus of Linear, but without giving up source access, self-hosting, or the ability to shape the product for my own team.
 
