@@ -79,6 +79,38 @@ export const upsertDevice = mutation({
   },
 });
 
+/** Revoke a device — clears secret and marks offline. */
+export const revokeDevice = mutation({
+  args: { deviceId: v.id('agentDevices') },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const device = await ctx.db.get('agentDevices', args.deviceId);
+    if (!device || device.userId !== userId) {
+      throw new ConvexError('DEVICE_NOT_FOUND');
+    }
+
+    await ctx.db.patch('agentDevices', args.deviceId, {
+      deviceSecret: undefined,
+      status: 'offline',
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/** Remove a device entirely. */
+export const removeDevice = mutation({
+  args: { deviceId: v.id('agentDevices') },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const device = await ctx.db.get('agentDevices', args.deviceId);
+    if (!device || device.userId !== userId) {
+      throw new ConvexError('DEVICE_NOT_FOUND');
+    }
+
+    await ctx.db.delete('agentDevices', args.deviceId);
+  },
+});
+
 /** Device heartbeat — update lastSeenAt and status. */
 export const deviceHeartbeat = mutation({
   args: { deviceId: v.id('agentDevices') },

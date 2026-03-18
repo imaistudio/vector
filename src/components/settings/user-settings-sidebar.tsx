@@ -2,7 +2,14 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { User, Mail, Bell, Settings, type LucideIcon } from 'lucide-react';
+import {
+  User,
+  Mail,
+  Bell,
+  Settings,
+  Monitor,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, useQuery } from '@/lib/convex';
 
@@ -41,6 +48,12 @@ export function UserSettingsSidebar() {
       href: '/settings/notifications',
       icon: Bell,
       description: 'Notification preferences and push devices',
+    },
+    {
+      label: 'Devices',
+      href: '/settings/devices',
+      icon: Monitor,
+      description: 'Manage connected devices and sessions',
     },
   ];
 
