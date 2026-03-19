@@ -1366,12 +1366,13 @@ export const sendTerminalSignal = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
-    // Clear old signals of the same type from the same sender when sending offer/answer
-    if (args.type === 'offer' || args.type === 'answer') {
+    // When sending an offer, clear ALL old signals (fresh negotiation)
+    // When sending an answer, only clear previous answers
+    if (args.type === 'offer') {
       const old = await ctx.db
         .query('terminalSignals')
-        .withIndex('by_work_session_from', q =>
-          q.eq('workSessionId', args.workSessionId).eq('from', args.from),
+        .withIndex('by_work_session', q =>
+          q.eq('workSessionId', args.workSessionId),
         )
         .collect();
       for (const signal of old) {

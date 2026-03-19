@@ -645,7 +645,7 @@ export const sendTerminalSignal = mutation({
       throw new ConvexError('WORK_SESSION_NOT_FOUND');
     }
 
-    // Clear old signals of the same type when sending an answer
+    // Clear only previous answers (not candidates) when sending a new answer
     if (args.type === 'answer') {
       const old = await ctx.db
         .query('terminalSignals')
@@ -654,7 +654,9 @@ export const sendTerminalSignal = mutation({
         )
         .collect();
       for (const signal of old) {
-        await ctx.db.delete('terminalSignals', signal._id);
+        if (signal.type === 'answer') {
+          await ctx.db.delete('terminalSignals', signal._id);
+        }
       }
     }
 
