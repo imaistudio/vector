@@ -897,6 +897,30 @@ function killExistingMenuBar(): void {
   }
 }
 
+function getRunningMenuBarPid(): number | null {
+  if (!existsSync(MENUBAR_PID_FILE)) {
+    return null;
+  }
+
+  try {
+    const pid = Number(readFileSync(MENUBAR_PID_FILE, 'utf-8').trim());
+    if (Number.isFinite(pid) && pid > 0 && isKnownMenuBarProcess(pid)) {
+      process.kill(pid, 0);
+      return pid;
+    }
+  } catch {
+    /* stale pid */
+  }
+
+  try {
+    unlinkSync(MENUBAR_PID_FILE);
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
+
 export async function launchMenuBar(): Promise<void> {
   if (platform() !== 'darwin') return;
 
@@ -906,7 +930,11 @@ export async function launchMenuBar(): Promise<void> {
   const cliInvocation = getCurrentCliInvocation();
   if (!executable || !cliInvocation) return;
 
-  // Kill any existing menu bar first
+  const existingPid = getRunningMenuBarPid();
+  if (existingPid) {
+    return;
+  }
+
   killExistingMenuBar();
 
   try {

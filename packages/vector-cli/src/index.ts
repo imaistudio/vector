@@ -373,6 +373,83 @@ function requireOrg(runtime: Runtime, explicit?: string) {
   return orgSlug;
 }
 
+function readJsonFile<T>(path: string, fallback: T): T {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function hostForAppUrl(appUrl?: string) {
+  if (!appUrl) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(appUrl);
+    return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function decodeSessionClaims(session: CliSession | null): {
+  email?: string;
+  userId?: string;
+} {
+  const jwt = session?.cookies?.['__Secure-better-auth.convex_jwt'];
+  if (!jwt) {
+    return {};
+  }
+
+  const parts = jwt.split('.');
+  if (parts.length < 2) {
+    return {};
+  }
+
+  let payload = parts[1]!.replace(/-/g, '+').replace(/_/g, '/');
+  while (payload.length % 4 !== 0) {
+    payload += '=';
+  }
+
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(payload, 'base64').toString('utf8'),
+    ) as {
+      email?: string;
+      sub?: string;
+      userId?: string;
+    };
+    return {
+      email: decoded.email,
+      userId: decoded.sub ?? decoded.userId,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function buildMenuSessionInfo(session: CliSession | null) {
+  const claims = decodeSessionClaims(session);
+  return {
+    orgSlug: session?.activeOrgSlug ?? 'oss-lab',
+    appUrl: session?.appUrl,
+    appDomain: hostForAppUrl(session?.appUrl),
+    email: claims.email,
+    userId: claims.userId,
+  };
+}
+
+function parseAgentProvider(
+  value: string,
+): 'codex' | 'claude_code' | 'vector_cli' {
+  if (value === 'codex' || value === 'claude_code' || value === 'vector_cli') {
+    return value;
+  }
+  throw new Error('provider must be one of: codex, claude_code, vector_cli');
+}
+
 async function getClient(command: Command) {
   const runtime = await getRuntime(command);
   const session = requireSession(runtime);
@@ -2924,6 +3001,97 @@ serviceCommand
         : 'Not running';
     console.log(`  Status:  ${statusLabel}`);
     console.log(`  Config:  ${VECTOR_HOME}/bridge.json`);
+  });
+
+serviceCommand
+  .command('menu-state')
+  .description('Return JSON state for the macOS tray')
+  .action(async (_options, command) => {
+    const status = getBridgeStatus();
+    const profile =
+      command.optsWithGlobals<GlobalOptions>().profile ?? 'default';
+    const session = await readSession(profile);
+    const liveActivities = readJsonFile(
+      join(VECTOR_HOME, 'live-activities.json'),
+      [] as unknown[],
+    );
+    let processes: unknown[] = [];
+
+    try {
+      const runtime = await getRuntime(command);
+      if (runtime.session && status.config?.deviceId) {
+        const client = await createConvexClient(
+          runtime.session,
+          runtime.appUrl,
+          runtime.convexUrl,
+        );
+        const devices = await runQuery(
+          client,
+          api.agentBridge.queries.listProcessesForAttach,
+          {},
+        );
+        const currentDevice = devices.find(
+          (entry: { device: { _id: string } }) =>
+            entry.device._id === status.config?.deviceId,
+        );
+        processes = currentDevice?.processes ?? [];
+      }
+    } catch {
+      processes = [];
+    }
+
+    printOutput(
+      {
+        configured: status.configured,
+        running: status.running,
+        starting: status.starting,
+        pid: status.pid,
+        config: status.config,
+        sessionInfo: buildMenuSessionInfo(session),
+        liveActivities,
+        processes,
+      },
+      Boolean(command.optsWithGlobals<GlobalOptions>().json),
+    );
+  });
+
+serviceCommand
+  .command('search-issues <query>')
+  .description('Search issues for tray attach actions')
+  .option('--limit <n>')
+  .action(async (query, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const result = await runQuery(client, api.search.queries.searchEntities, {
+      orgSlug,
+      query,
+      limit: optionalNumber(options.limit, 'limit') ?? 8,
+    });
+    printOutput(result.issues ?? [], runtime.json);
+  });
+
+serviceCommand
+  .command('attach-process')
+  .description('Attach a detected local process to an issue')
+  .requiredOption('--issue-id <id>')
+  .requiredOption('--device-id <id>')
+  .requiredOption('--process-id <id>')
+  .requiredOption('--provider <provider>')
+  .option('--title <title>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const liveActivityId = await runMutation(
+      client,
+      api.agentBridge.mutations.attachLiveActivity,
+      {
+        issueId: options.issueId as Id<'issues'>,
+        deviceId: options.deviceId as Id<'agentDevices'>,
+        processId: options.processId as Id<'agentProcesses'>,
+        provider: parseAgentProvider(options.provider),
+        title: options.title?.trim() || undefined,
+      },
+    );
+    printOutput({ ok: true, liveActivityId }, runtime.json);
   });
 
 serviceCommand

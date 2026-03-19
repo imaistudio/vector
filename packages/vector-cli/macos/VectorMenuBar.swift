@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 
 struct BridgeConfig: Decodable {
   let deviceId: String
@@ -7,7 +8,7 @@ struct BridgeConfig: Decodable {
   let userId: String
 }
 
-struct LiveActivity: Decodable {
+struct LiveActivity: Decodable, Identifiable {
   let _id: String
   let issueKey: String
   let issueTitle: String
@@ -17,19 +18,93 @@ struct LiveActivity: Decodable {
   let cwd: String?
   let repoRoot: String?
   let branch: String?
+
+  var id: String { _id }
 }
 
-struct SessionFile: Decodable {
-  let activeOrgSlug: String?
-  let appUrl: String?
-  let cookies: [String: String]?
-}
-
-struct SessionInfo {
+struct SessionInfo: Decodable {
   let orgSlug: String
   let appUrl: String?
   let appDomain: String?
   let email: String?
+  let userId: String?
+}
+
+struct AttachableProcess: Decodable, Identifiable {
+  let _id: String
+  let provider: String
+  let providerLabel: String?
+  let cwd: String?
+  let repoRoot: String?
+  let branch: String?
+  let title: String?
+  let mode: String
+  let status: String
+
+  var id: String { _id }
+
+  var resolvedProviderLabel: String {
+    if let providerLabel, !providerLabel.isEmpty {
+      return providerLabel
+    }
+    switch provider {
+    case "codex":
+      return "Codex"
+    case "claude_code":
+      return "Claude"
+    default:
+      return provider
+    }
+  }
+
+  var workspaceLabel: String {
+    let source = repoRoot ?? cwd ?? title ?? "Unknown workspace"
+    if source.contains("/") {
+      return URL(fileURLWithPath: source).lastPathComponent
+    }
+    return source
+  }
+
+  var attachTitle: String? {
+    title ?? cwd ?? repoRoot
+  }
+}
+
+struct IssueSearchResult: Decodable, Identifiable {
+  let _id: String
+  let key: String
+  let title: String
+  let stateColor: String?
+
+  var id: String { _id }
+}
+
+struct MenuStateSnapshot: Decodable {
+  let configured: Bool
+  let running: Bool
+  let starting: Bool
+  let pid: Int32?
+  let config: BridgeConfig?
+  let sessionInfo: SessionInfo
+  let liveActivities: [LiveActivity]
+  let processes: [AttachableProcess]
+
+  static let empty = MenuStateSnapshot(
+    configured: false,
+    running: false,
+    starting: false,
+    pid: nil,
+    config: nil,
+    sessionInfo: SessionInfo(
+      orgSlug: "oss-lab",
+      appUrl: nil,
+      appDomain: nil,
+      email: nil,
+      userId: nil
+    ),
+    liveActivities: [],
+    processes: []
+  )
 }
 
 enum BridgeTransition {
@@ -49,19 +124,27 @@ enum BridgeTransition {
   }
 }
 
-final class MenuBarController: NSObject, NSApplicationDelegate {
+final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject {
   private let configDir: URL
   private let cliCommand: String
   private let cliArgs: [String]
   private let logURL: URL
-
   private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+  private let popover = NSPopover()
   private var refreshTimer: Timer?
   private var blinkTimer: Timer?
-  private var transition: BridgeTransition?
   private var transitionDeadline = Date.distantPast
   private var blinkVisible = true
+  private var isRefreshing = false
+  private var searchTasks: [String: DispatchWorkItem] = [:]
   private lazy var brandIcon = loadBrandIcon()
+
+  @Published private(set) var snapshot = MenuStateSnapshot.empty
+  @Published private(set) var transition: BridgeTransition?
+  @Published var issueSearchText: [String: String] = [:]
+  @Published private(set) var issueResults: [String: [IssueSearchResult]] = [:]
+  @Published private(set) var searchingProcessIds: Set<String> = []
+  @Published private(set) var attachingProcessIds: Set<String> = []
 
   init(configDir: URL, cliCommand: String, cliArgs: [String]) {
     self.configDir = configDir
@@ -73,11 +156,13 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     NSApp.setActivationPolicy(.accessory)
+    configureStatusItem()
+    configurePopover()
     log("menu bar launched")
-    refreshMenu()
+    refreshState()
 
-    refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-      self?.refreshMenu()
+    refreshTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+      self?.refreshState()
     }
     blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
       guard let self else { return }
@@ -92,24 +177,231 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     blinkTimer?.invalidate()
   }
 
-  private func refreshMenu() {
+  func statusTitle() -> String {
+    if let transition {
+      return "Vector Bridge — \(transition.label)"
+    }
+    if snapshot.running, let pid = snapshot.pid {
+      return "Vector Bridge — Running (PID \(pid))"
+    }
+    if snapshot.starting {
+      return "Vector Bridge — Starting..."
+    }
+    if snapshot.configured {
+      return "Vector Bridge — Offline"
+    }
+    return "Vector Bridge — Not Configured"
+  }
+
+  func metadataLine() -> String {
+    guard let config = snapshot.config else {
+      return "Run vcli service start to configure this device"
+    }
+    return buildMetadataLine(
+      config: config,
+      sessionInfo: snapshot.sessionInfo,
+      activities: snapshot.liveActivities
+    )
+  }
+
+  func issueSearchBinding(for processId: String) -> Binding<String> {
+    Binding(
+      get: { self.issueSearchText[processId] ?? "" },
+      set: { self.updateIssueSearch(processId: processId, query: $0) }
+    )
+  }
+
+  func isSearching(processId: String) -> Bool {
+    searchingProcessIds.contains(processId)
+  }
+
+  func isAttaching(processId: String) -> Bool {
+    attachingProcessIds.contains(processId)
+  }
+
+  func results(for processId: String) -> [IssueSearchResult] {
+    issueResults[processId] ?? []
+  }
+
+  func openIssue(_ activity: LiveActivity) {
+    guard
+      let raw = buildIssueUrl(sessionInfo: snapshot.sessionInfo, issueKey: activity.issueKey),
+      let url = URL(string: raw)
+    else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  func openVector() {
+    guard
+      let appUrl = snapshot.sessionInfo.appUrl,
+      let url = URL(string: appUrl)
+    else {
+      return
+    }
+    NSWorkspace.shared.open(url)
+  }
+
+  func startBridge() {
+    beginTransition(.starting)
+    runCLI(arguments: ["service", "start"])
+  }
+
+  func stopBridge() {
+    beginTransition(.stopping)
+    runCLI(arguments: ["service", "stop"])
+  }
+
+  func restartBridge() {
+    beginTransition(.restarting)
+    runCLI(arguments: ["service", "stop"]) { [weak self] success, _ in
+      guard let self else { return }
+      guard success else {
+        self.transition = nil
+        self.refreshState()
+        return
+      }
+      self.transition = .starting
+      self.transitionDeadline = Date().addingTimeInterval(20)
+      self.runCLI(arguments: ["service", "start"])
+    }
+  }
+
+  func quitVector() {
+    log("quit vector clicked")
+    runCLI(arguments: ["service", "stop"]) { _ , _ in
+      DispatchQueue.main.async {
+        self.popover.performClose(nil)
+        NSApp.terminate(nil)
+      }
+    }
+  }
+
+  func updateIssueSearch(processId: String, query: String) {
+    issueSearchText[processId] = query
+    searchTasks[processId]?.cancel()
+
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.count >= 2 else {
+      searchingProcessIds.remove(processId)
+      issueResults[processId] = []
+      return
+    }
+
+    let workItem = DispatchWorkItem { [weak self] in
+      self?.performIssueSearch(processId: processId, query: trimmed)
+    }
+    searchTasks[processId] = workItem
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: workItem)
+  }
+
+  func attach(process: AttachableProcess, to issue: IssueSearchResult) {
+    guard let deviceId = snapshot.config?.deviceId else {
+      return
+    }
+
+    attachingProcessIds.insert(process.id)
+
+    var args = [
+      "--json",
+      "service",
+      "attach-process",
+      "--issue-id",
+      issue._id,
+      "--device-id",
+      deviceId,
+      "--process-id",
+      process._id,
+      "--provider",
+      process.provider,
+    ]
+    if let title = process.attachTitle, !title.isEmpty {
+      args.append(contentsOf: ["--title", title])
+    }
+
+    runCLI(arguments: args) { [weak self] success, _ in
+      guard let self else { return }
+      self.attachingProcessIds.remove(process.id)
+      if success {
+        self.issueSearchText[process.id] = ""
+        self.issueResults[process.id] = []
+      }
+      self.refreshState()
+    }
+  }
+
+  private func configureStatusItem() {
+    guard let button = statusItem.button else { return }
+    button.target = self
+    button.action = #selector(togglePopover)
+    button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    updateStatusButton()
+  }
+
+  private func configurePopover() {
+    popover.behavior = .transient
+    popover.animates = false
+    popover.contentSize = NSSize(width: 460, height: 560)
+    popover.contentViewController = NSHostingController(
+      rootView: TrayPopoverView(controller: self)
+    )
+  }
+
+  @objc private func togglePopover() {
+    guard let button = statusItem.button else { return }
+    if popover.isShown {
+      popover.performClose(nil)
+      return
+    }
+    refreshState()
+    popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    popover.contentViewController?.view.window?.becomeKey()
+  }
+
+  private func beginTransition(_ nextTransition: BridgeTransition) {
+    transition = nextTransition
+    transitionDeadline = Date().addingTimeInterval(20)
+    blinkVisible = true
+    updateStatusButton()
+  }
+
+  private func refreshState() {
+    if isRefreshing {
+      return
+    }
+    isRefreshing = true
+
+    runCLI(arguments: ["--json", "service", "menu-state"], captureOutput: true) { [weak self] success, output in
+      guard let self else { return }
+      defer { self.isRefreshing = false }
+
+      if success,
+         let data = output.data(using: .utf8),
+         let state = try? JSONDecoder().decode(MenuStateSnapshot.self, from: data) {
+        self.snapshot = state
+      }
+
+      self.reconcileTransition()
+      self.updateStatusButton()
+    }
+  }
+
+  private func reconcileTransition() {
     if transition != nil && Date() > transitionDeadline {
       transition = nil
       blinkVisible = true
     }
 
-    let state = loadState()
-    if transition == .stopping && !state.running {
-      transition = nil
-      blinkVisible = true
-    }
-    if (transition == .starting || transition == .restarting) && state.running {
+    if transition == .stopping && !snapshot.running {
       transition = nil
       blinkVisible = true
     }
 
-    updateStatusButton()
-    statusItem.menu = buildMenu(state: state)
+    if (transition == .starting || transition == .restarting) && snapshot.running {
+      transition = nil
+      blinkVisible = true
+    }
   }
 
   private func updateStatusButton() {
@@ -125,159 +417,57 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     button.image?.isTemplate = false
   }
 
-  private func buildMenu(state: BridgeState) -> NSMenu {
-    let menu = NSMenu()
-
-    let statusTitle: String
-    if let transition {
-      statusTitle = "Vector Bridge — \(transition.label)"
-    } else if state.running, let pid = state.pid {
-      statusTitle = "Vector Bridge — Running (PID \(pid))"
-    } else if state.config != nil {
-      statusTitle = "Vector Bridge — Offline"
-    } else {
-      statusTitle = "Vector Bridge — Not Configured"
-    }
-
-    let headerItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-    headerItem.isEnabled = false
-    menu.addItem(headerItem)
-
-    if let config = state.config {
-      let metadataLine = buildMetadataLine(config: config, sessionInfo: state.sessionInfo, activities: state.activities)
-      if !metadataLine.isEmpty {
-        let metadataItem = NSMenuItem(title: "  \(metadataLine)", action: nil, keyEquivalent: "")
-        metadataItem.isEnabled = false
-        menu.addItem(metadataItem)
-      }
-    } else {
-      let setupItem = NSMenuItem(title: "  Run: vcli service start", action: nil, keyEquivalent: "")
-      setupItem.isEnabled = false
-      menu.addItem(setupItem)
-    }
-
-    if !state.activities.isEmpty {
-      menu.addItem(.separator())
-
-      let sessionsHeader = NSMenuItem(title: "Active Sessions", action: nil, keyEquivalent: "")
-      sessionsHeader.isEnabled = false
-      menu.addItem(sessionsHeader)
-
-      for activity in state.activities {
-        let item = NSMenuItem(title: buildActivityLabel(activity), action: #selector(openIssue(_:)), keyEquivalent: "")
-        item.target = self
-        item.representedObject = buildIssueUrl(sessionInfo: state.sessionInfo, issueKey: activity.issueKey)
-        item.toolTip = buildActivityTooltip(activity)
-        menu.addItem(item)
-      }
-    }
-
-    menu.addItem(.separator())
-
-    if transition != nil {
-      let transitionItem = NSMenuItem(title: transition!.label, action: nil, keyEquivalent: "")
-      transitionItem.isEnabled = false
-      menu.addItem(transitionItem)
-    } else if state.running {
-      menu.addItem(makeActionItem(title: "Stop Bridge", action: #selector(stopBridgeAction)))
-      menu.addItem(makeActionItem(title: "Restart Bridge", action: #selector(restartBridgeAction)))
-    } else if state.config != nil {
-      menu.addItem(makeActionItem(title: "Start Bridge", action: #selector(startBridgeAction)))
-    }
-
-    menu.addItem(.separator())
-    menu.addItem(makeActionItem(title: "Open Vector", action: #selector(openVector)))
-    menu.addItem(makeActionItem(title: "Quit Vector", action: #selector(quitVector)))
-
-    return menu
-  }
-
-  private func makeActionItem(title: String, action: Selector) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-    item.target = self
-    return item
-  }
-
-  @objc private func openIssue(_ sender: NSMenuItem) {
-    guard
-      let raw = sender.representedObject as? String,
-      let url = URL(string: raw)
-    else {
-      return
-    }
-    NSWorkspace.shared.open(url)
-  }
-
-  @objc private func openVector() {
-    let state = loadState()
-    guard
-      let appUrl = state.sessionInfo.appUrl,
-      let url = URL(string: appUrl)
-    else {
-      return
-    }
-    NSWorkspace.shared.open(url)
-  }
-
-  @objc private func stopBridgeAction() {
-    log("stop bridge clicked")
-    transition = .stopping
-    transitionDeadline = Date().addingTimeInterval(15)
-    blinkVisible = true
-    refreshMenu()
-    runCLI(arguments: ["service", "stop"])
-  }
-
-  @objc private func startBridgeAction() {
-    log("start bridge clicked")
-    transition = .starting
-    transitionDeadline = Date().addingTimeInterval(15)
-    blinkVisible = true
-    refreshMenu()
-    runCLI(arguments: ["service", "start"])
-  }
-
-  @objc private func restartBridgeAction() {
-    log("restart bridge clicked")
-    transition = .restarting
-    transitionDeadline = Date().addingTimeInterval(15)
-    blinkVisible = true
-    refreshMenu()
-    runCLI(arguments: ["service", "stop"]) { [weak self] success in
+  private func performIssueSearch(processId: String, query: String) {
+    searchingProcessIds.insert(processId)
+    runCLI(
+      arguments: ["--json", "service", "search-issues", query, "--limit", "8"],
+      captureOutput: true
+    ) { [weak self] success, output in
       guard let self else { return }
-      guard success else {
-        self.transition = nil
-        self.refreshMenu()
+      self.searchingProcessIds.remove(processId)
+
+      guard success,
+            let data = output.data(using: .utf8),
+            let issues = try? JSONDecoder().decode([IssueSearchResult].self, from: data)
+      else {
+        self.issueResults[processId] = []
         return
       }
-      self.transition = .starting
-      self.transitionDeadline = Date().addingTimeInterval(15)
-      self.runCLI(arguments: ["service", "start"])
+
+      self.issueResults[processId] = issues
     }
   }
 
-  @objc private func quitVector() {
-    log("quit vector clicked")
-    runCLI(arguments: ["service", "stop"]) { _ in
-      DispatchQueue.main.async {
-        NSApp.terminate(nil)
-      }
-    }
-  }
-
-  private func runCLI(arguments: [String], completion: ((Bool) -> Void)? = nil) {
+  private func runCLI(
+    arguments: [String],
+    captureOutput: Bool = false,
+    completion: ((Bool, String) -> Void)? = nil
+  ) {
     log("running CLI: \(arguments.joined(separator: " "))")
+
     let process = Process()
     process.executableURL = URL(fileURLWithPath: cliCommand)
     process.arguments = cliArgs + arguments
     process.environment = ProcessInfo.processInfo.environment
-    process.standardOutput = nil
-    process.standardError = nil
+
+    let stdoutPipe = captureOutput ? Pipe() : nil
+    let stderrPipe = captureOutput ? Pipe() : nil
+    process.standardOutput = stdoutPipe
+    process.standardError = stderrPipe
+
     process.terminationHandler = { process in
+      let stdout = stdoutPipe.flatMap { pipe in
+        String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+      } ?? ""
+      let stderr = stderrPipe.flatMap { pipe in
+        String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+      } ?? ""
+      let output = !stdout.isEmpty ? stdout : stderr
+
       DispatchQueue.main.async {
         self.log("CLI finished (\(process.terminationStatus)): \(arguments.joined(separator: " "))")
-        completion?(process.terminationStatus == 0)
-        self.refreshMenu()
+        completion?(process.terminationStatus == 0, output)
+        self.refreshState()
       }
     }
 
@@ -286,26 +476,10 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     } catch {
       log("CLI failed to start: \(arguments.joined(separator: " "))")
       transition = nil
-      refreshMenu()
-      completion?(false)
+      blinkVisible = true
+      updateStatusButton()
+      completion?(false, "")
     }
-  }
-
-  private func loadState() -> BridgeState {
-    let config = decodeJSON(BridgeConfig.self, from: configDir.appendingPathComponent("bridge.json"))
-    let pidPath = configDir.appendingPathComponent("bridge.pid")
-    let runningPid = readRunningPID(from: pidPath)
-
-    let activities = decodeJSON([LiveActivity].self, from: configDir.appendingPathComponent("live-activities.json")) ?? []
-    let sessionInfo = loadSessionInfo(config: config)
-
-    return BridgeState(
-      config: config,
-      pid: runningPid,
-      running: runningPid != nil,
-      activities: activities,
-      sessionInfo: sessionInfo
-    )
   }
 
   private func loadBrandIcon() -> NSImage? {
@@ -332,7 +506,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     let symbolName: String
     if transition != nil {
       symbolName = "bolt.circle"
-    } else if loadState().running {
+    } else if snapshot.running {
       symbolName = "bolt.circle.fill"
     } else {
       symbolName = "bolt.circle"
@@ -357,92 +531,320 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
 
     try? data.write(to: logURL)
   }
+}
 
-  private func loadSessionInfo(config: BridgeConfig?) -> SessionInfo {
-    let sessions = listSessionFiles()
-    let matchingSession = sessions.first { session in
-      guard let config else { return false }
-      return decodeJWTClaims(session.cookies).userId == config.userId
-    } ?? sessions.first
+struct TrayPopoverView: View {
+  @ObservedObject var controller: MenuBarController
+  @State private var liveActivitiesExpanded = true
+  @State private var processesExpanded = true
+  @State private var expandedProcessIds: Set<String> = []
 
-    guard let session = matchingSession else {
-      return SessionInfo(orgSlug: "oss-lab", appUrl: nil, appDomain: nil, email: nil)
+  var body: some View {
+    VStack(alignment: .leading, spacing: 12) {
+      VStack(alignment: .leading, spacing: 4) {
+        Text(controller.statusTitle())
+          .font(.system(size: 15, weight: .semibold))
+        Text(controller.metadataLine())
+          .font(.system(size: 11, weight: .medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+
+      Divider()
+
+      ScrollView {
+        VStack(alignment: .leading, spacing: 12) {
+          DisclosureGroup(isExpanded: $liveActivitiesExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+              if controller.snapshot.liveActivities.isEmpty {
+                EmptySectionLabel(text: "No live activities on this device.")
+              } else {
+                ForEach(controller.snapshot.liveActivities) { activity in
+                  Button(action: { controller.openIssue(activity) }) {
+                    HStack(alignment: .top, spacing: 10) {
+                      Circle()
+                        .fill(providerColor(activity.provider))
+                        .frame(width: 8, height: 8)
+                        .padding(.top, 6)
+                      VStack(alignment: .leading, spacing: 3) {
+                        Text("\(activity.issueKey) — \(activity.issueTitle)")
+                          .font(.system(size: 12, weight: .semibold))
+                          .foregroundStyle(.primary)
+                          .lineLimit(2)
+                        Text(activityMeta(activity))
+                          .font(.system(size: 11))
+                          .foregroundStyle(.secondary)
+                          .lineLimit(1)
+                        if let latestSummary = activity.latestSummary, !latestSummary.isEmpty {
+                          Text(latestSummary)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        }
+                      }
+                      Spacer(minLength: 0)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+                  }
+                  .buttonStyle(.plain)
+                  .help(buildActivityTooltip(activity))
+                }
+              }
+            }
+            .padding(.top, 8)
+          } label: {
+            SectionLabel(title: "Live Activities", count: controller.snapshot.liveActivities.count)
+          }
+
+          DisclosureGroup(isExpanded: $processesExpanded) {
+            VStack(alignment: .leading, spacing: 8) {
+              if controller.snapshot.processes.isEmpty {
+                EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
+              } else {
+                ForEach(controller.snapshot.processes) { process in
+                  let binding = Binding(
+                    get: { expandedProcessIds.contains(process.id) },
+                    set: { isExpanded in
+                      if isExpanded {
+                        expandedProcessIds.insert(process.id)
+                      } else {
+                        expandedProcessIds.remove(process.id)
+                      }
+                    }
+                  )
+
+                  DisclosureGroup(isExpanded: binding) {
+                    VStack(alignment: .leading, spacing: 8) {
+                      TextField(
+                        "Search issue key or title...",
+                        text: controller.issueSearchBinding(for: process.id)
+                      )
+                      .textFieldStyle(.roundedBorder)
+                      .font(.system(size: 12))
+
+                      if controller.isSearching(processId: process.id) {
+                        HStack(spacing: 8) {
+                          ProgressView()
+                            .controlSize(.small)
+                          Text("Searching issues")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        }
+                      } else if controller.results(for: process.id).isEmpty {
+                        EmptySectionLabel(
+                          text: (controller.issueSearchText[process.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+                            ? "No matching issues."
+                            : "Type at least 2 characters to search."
+                        )
+                      } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                          ForEach(controller.results(for: process.id)) { issue in
+                            HStack(alignment: .center, spacing: 8) {
+                              Circle()
+                                .fill(color(from: issue.stateColor))
+                                .frame(width: 8, height: 8)
+                              VStack(alignment: .leading, spacing: 2) {
+                                Text(issue.key)
+                                  .font(.system(size: 11, weight: .semibold))
+                                Text(issue.title)
+                                  .font(.system(size: 11))
+                                  .foregroundStyle(.secondary)
+                                  .lineLimit(2)
+                              }
+                              Spacer(minLength: 0)
+                              Button(controller.isAttaching(processId: process.id) ? "Attaching..." : "Attach") {
+                                controller.attach(process: process, to: issue)
+                              }
+                              .buttonStyle(.borderedProminent)
+                              .controlSize(.small)
+                              .disabled(controller.isAttaching(processId: process.id))
+                            }
+                            .padding(.vertical, 2)
+                          }
+                        }
+                      }
+                    }
+                    .padding(.top, 8)
+                  } label: {
+                    ProcessRow(process: process)
+                  }
+                  .padding(10)
+                  .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+                }
+              }
+            }
+            .padding(.top, 8)
+          } label: {
+            SectionLabel(title: "Detected Sessions", count: controller.snapshot.processes.count)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .frame(maxHeight: 360)
+
+      Divider()
+
+      HStack(spacing: 8) {
+        if let transition = controller.transition {
+          StatusChip(text: transition.label)
+        } else if controller.snapshot.running {
+          Button("Stop Bridge") {
+            controller.stopBridge()
+          }
+          .buttonStyle(.bordered)
+
+          Button("Restart Bridge") {
+            controller.restartBridge()
+          }
+          .buttonStyle(.bordered)
+        } else if controller.snapshot.configured {
+          Button("Start Bridge") {
+            controller.startBridge()
+          }
+          .buttonStyle(.borderedProminent)
+        }
+
+        Spacer(minLength: 0)
+
+        Button("Open Vector") {
+          controller.openVector()
+        }
+        .buttonStyle(.bordered)
+
+        Button("Quit") {
+          controller.quitVector()
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+      }
     }
-
-    let claims = decodeJWTClaims(session.cookies)
-    return SessionInfo(
-      orgSlug: session.activeOrgSlug ?? "oss-lab",
-      appUrl: session.appUrl,
-      appDomain: host(for: session.appUrl),
-      email: claims.email
-    )
+    .padding(14)
+    .frame(width: 460)
   }
+}
 
-  private func listSessionFiles() -> [SessionFile] {
-    guard let entries = try? FileManager.default.contentsOfDirectory(at: configDir, includingPropertiesForKeys: nil) else {
-      return []
+struct SectionLabel: View {
+  let title: String
+  let count: Int
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text(title)
+        .font(.system(size: 12, weight: .semibold))
+      Text("\(count)")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Capsule().fill(Color(NSColor.quaternaryLabelColor).opacity(0.15)))
     }
-
-    return entries
-      .filter { $0.lastPathComponent.hasPrefix("cli-") && $0.pathExtension == "json" }
-      .sorted { $0.lastPathComponent < $1.lastPathComponent }
-      .compactMap { decodeJSON(SessionFile.self, from: $0) }
   }
 }
 
-struct BridgeState {
-  let config: BridgeConfig?
-  let pid: Int32?
-  let running: Bool
-  let activities: [LiveActivity]
-  let sessionInfo: SessionInfo
+struct EmptySectionLabel: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .font(.system(size: 11))
+      .foregroundStyle(.secondary)
+      .padding(.vertical, 2)
+  }
 }
 
-func decodeJSON<T: Decodable>(_ type: T.Type, from url: URL) -> T? {
-  guard let data = try? Data(contentsOf: url) else {
-    return nil
+struct StatusChip: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .font(.system(size: 11, weight: .semibold))
+      .padding(.horizontal, 10)
+      .padding(.vertical, 6)
+      .background(Capsule().fill(Color(NSColor.selectedControlColor).opacity(0.12)))
   }
-  return try? JSONDecoder().decode(T.self, from: data)
 }
 
-func readRunningPID(from url: URL) -> Int32? {
-  guard
-    let raw = try? String(contentsOf: url, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
-    let pid = Int32(raw),
-    kill(pid, 0) == 0
-  else {
-    return nil
+struct ProcessRow: View {
+  let process: AttachableProcess
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Circle()
+        .fill(providerColor(process.provider))
+        .frame(width: 8, height: 8)
+        .padding(.top, 6)
+      VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 6) {
+          Text(process.resolvedProviderLabel)
+            .font(.system(size: 12, weight: .semibold))
+          Text(process.workspaceLabel)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        Text(processMeta(process))
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+      Spacer(minLength: 0)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
-  return pid
 }
 
-func decodeJWTClaims(_ cookies: [String: String]?) -> (email: String?, userId: String?) {
-  guard
-    let jwt = cookies?["__Secure-better-auth.convex_jwt"]
-  else {
-    return (nil, nil)
+func providerColor(_ provider: String) -> Color {
+  switch provider {
+  case "claude_code":
+    return Color(red: 0.95, green: 0.55, blue: 0.28)
+  case "codex":
+    return Color(red: 0.22, green: 0.62, blue: 0.96)
+  default:
+    return Color.gray
+  }
+}
+
+func color(from hex: String?) -> Color {
+  guard let hex else {
+    return .gray
   }
 
-  let parts = jwt.split(separator: ".")
-  guard parts.count > 1 else {
-    return (nil, nil)
+  let sanitized = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+  guard let value = Int(sanitized, radix: 16) else {
+    return .gray
   }
 
-  var payload = String(parts[1])
-    .replacingOccurrences(of: "-", with: "+")
-    .replacingOccurrences(of: "_", with: "/")
-  while payload.count % 4 != 0 {
-    payload.append("=")
-  }
+  let red = Double((value >> 16) & 0xFF) / 255.0
+  let green = Double((value >> 8) & 0xFF) / 255.0
+  let blue = Double(value & 0xFF) / 255.0
+  return Color(red: red, green: green, blue: blue)
+}
 
-  guard
-    let data = Data(base64Encoded: payload),
-    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-  else {
-    return (nil, nil)
-  }
+func processMeta(_ process: AttachableProcess) -> String {
+  [process.repoRoot ?? process.cwd, process.branch, process.mode]
+    .compactMap { value in
+      guard let value, !value.isEmpty else { return nil }
+      if value.contains("/") {
+        return URL(fileURLWithPath: value).lastPathComponent
+      }
+      return value
+    }
+    .joined(separator: " · ")
+}
 
-  return (object["email"] as? String, (object["sub"] as? String) ?? (object["userId"] as? String))
+func activityMeta(_ activity: LiveActivity) -> String {
+  let provider = activity.provider == "claude_code"
+    ? "Claude"
+    : activity.provider == "codex"
+      ? "Codex"
+      : activity.provider
+  let workspaceSource = activity.repoRoot ?? activity.cwd ?? activity.title ?? activity.issueTitle
+  let workspace = workspaceSource.contains("/")
+    ? URL(fileURLWithPath: workspaceSource).lastPathComponent
+    : workspaceSource
+  return [provider, workspace, activity.branch].compactMap { $0 }.joined(separator: " · ")
 }
 
 func buildMetadataLine(config: BridgeConfig, sessionInfo: SessionInfo, activities: [LiveActivity]) -> String {
@@ -450,7 +852,10 @@ func buildMetadataLine(config: BridgeConfig, sessionInfo: SessionInfo, activitie
   let workspaceLabel = summarizeWorkspace(activities)
   let orgLabel = sessionInfo.appDomain.map { "\(sessionInfo.orgSlug) @ \($0)" } ?? sessionInfo.orgSlug
   return [userLabel, config.displayName, workspaceLabel, orgLabel]
-    .compactMap { $0 }
+    .compactMap { value in
+      guard let value, !value.isEmpty else { return nil }
+      return value
+    }
     .joined(separator: " | ")
 }
 
@@ -459,7 +864,7 @@ func summarizeWorkspace(_ activities: [LiveActivity]) -> String? {
     let path = activity.repoRoot ?? activity.cwd
     guard let path else { return nil }
     return URL(fileURLWithPath: path).lastPathComponent
-  }))
+  })).sorted()
 
   guard !workspaces.isEmpty else { return nil }
   if workspaces.count == 1 {
@@ -468,17 +873,12 @@ func summarizeWorkspace(_ activities: [LiveActivity]) -> String? {
   return "\(workspaces.count) workspaces"
 }
 
-func buildActivityLabel(_ activity: LiveActivity) -> String {
-  let workspaceSource = activity.repoRoot ?? activity.cwd ?? activity.title ?? activity.issueTitle
-  let workspace = URL(fileURLWithPath: workspaceSource).lastPathComponent
-  let provider = activity.provider == "claude_code" ? "Claude" : activity.provider == "codex" ? "Codex" : activity.provider
-  let parts = [provider, workspace, activity.branch].compactMap { $0 }.joined(separator: " · ")
-  return "\(activity.issueKey) — \(parts)"
-}
-
 func buildActivityTooltip(_ activity: LiveActivity) -> String {
   [activity.title ?? activity.issueTitle, activity.latestSummary]
-    .compactMap { $0 }
+    .compactMap { value in
+      guard let value, !value.isEmpty else { return nil }
+      return value
+    }
     .joined(separator: "\n")
 }
 
@@ -490,21 +890,6 @@ func buildIssueUrl(sessionInfo: SessionInfo, issueKey: String) -> String? {
     return nil
   }
   return base.appending(path: "\(sessionInfo.orgSlug)/issues/\(issueKey)").absoluteString
-}
-
-func host(for appUrl: String?) -> String? {
-  guard
-    let appUrl,
-    let url = URL(string: appUrl)
-  else {
-    return nil
-  }
-  return url.host.map { host in
-    if let port = url.port {
-      return "\(host):\(port)"
-    }
-    return host
-  }
 }
 
 let environment = ProcessInfo.processInfo.environment
