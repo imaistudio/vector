@@ -66,6 +66,9 @@ export const getPendingCommands = query({
         const issue = liveActivity
           ? await ctx.db.get('issues', liveActivity.issueId)
           : null;
+        const workSession = liveActivity?.workSessionId
+          ? await ctx.db.get('workSessions', liveActivity.workSessionId)
+          : null;
         const resolvedProcessId = command.processId ?? liveActivity?.processId;
         const process = resolvedProcessId
           ? await ctx.db.get('agentProcesses', resolvedProcessId)
@@ -87,6 +90,22 @@ export const getPendingCommands = query({
                 provider: liveActivity.provider,
                 title: liveActivity.title,
                 status: liveActivity.status,
+                workSessionId: liveActivity.workSessionId,
+              }
+            : null,
+          workSession: workSession
+            ? {
+                _id: workSession._id,
+                tmuxSessionName: workSession.tmuxSessionName,
+                tmuxWindowName: workSession.tmuxWindowName,
+                tmuxPaneId: workSession.tmuxPaneId,
+                workspacePath: workSession.workspacePath,
+                cwd: workSession.cwd,
+                repoRoot: workSession.repoRoot,
+                branch: workSession.branch,
+                terminalSnapshot: workSession.terminalSnapshot,
+                agentProvider: workSession.agentProvider,
+                agentSessionKey: workSession.agentSessionKey,
               }
             : null,
           process: process
@@ -246,6 +265,9 @@ export const getDeviceLiveActivities = query({
           const process = a.processId
             ? await ctx.db.get('agentProcesses', a.processId)
             : null;
+          const workSession = a.workSessionId
+            ? await ctx.db.get('workSessions', a.workSessionId)
+            : null;
           return {
             _id: a._id,
             issueId: a.issueId,
@@ -257,9 +279,16 @@ export const getDeviceLiveActivities = query({
             latestSummary: a.latestSummary,
             startedAt: a.startedAt,
             lastEventAt: a.lastEventAt,
-            cwd: process?.cwd,
-            repoRoot: process?.repoRoot,
-            branch: process?.branch,
+            cwd: workSession?.cwd ?? process?.cwd,
+            repoRoot: workSession?.repoRoot ?? process?.repoRoot,
+            branch: workSession?.branch ?? process?.branch,
+            workSessionId: a.workSessionId,
+            workspacePath: workSession?.workspacePath,
+            terminalSnapshot: workSession?.terminalSnapshot,
+            tmuxPaneId: workSession?.tmuxPaneId,
+            agentProvider: workSession?.agentProvider,
+            agentProcessId: workSession?.agentProcessId,
+            agentSessionKey: workSession?.agentSessionKey,
           };
         }),
     );
@@ -504,6 +533,16 @@ export const updateLiveActivityState = mutation({
       ...(isTerminal && { endedAt: now }),
     });
 
+    if (activity.workSessionId) {
+      await ctx.db.patch('workSessions', activity.workSessionId, {
+        status: args.status,
+        ...(args.title !== undefined && { title: args.title }),
+        ...(args.processId && { agentProcessId: args.processId }),
+        lastEventAt: now,
+        ...(isTerminal && { endedAt: now }),
+      });
+    }
+
     if (args.delegatedRunId) {
       const run = await ctx.db.get('delegatedRuns', args.delegatedRunId);
       if (
@@ -524,5 +563,55 @@ export const updateLiveActivityState = mutation({
         ...(isTerminalLaunch && { endedAt: now }),
       });
     }
+  },
+});
+
+export const updateWorkSessionTerminal = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+    terminalSnapshot: v.string(),
+    tmuxSessionName: v.optional(v.string()),
+    tmuxWindowName: v.optional(v.string()),
+    tmuxPaneId: v.optional(v.string()),
+    cwd: v.optional(v.string()),
+    repoRoot: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    agentProvider: v.optional(
+      v.union(
+        v.literal('codex'),
+        v.literal('claude_code'),
+        v.literal('vector_cli'),
+      ),
+    ),
+    agentSessionKey: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession || workSession.deviceId !== args.deviceId) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+
+    const now = Date.now();
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      terminalSnapshot: args.terminalSnapshot,
+      terminalUpdatedAt: now,
+      lastEventAt: now,
+      ...(args.tmuxSessionName && { tmuxSessionName: args.tmuxSessionName }),
+      ...(args.tmuxWindowName && { tmuxWindowName: args.tmuxWindowName }),
+      ...(args.tmuxPaneId && { tmuxPaneId: args.tmuxPaneId }),
+      ...(args.cwd !== undefined && { cwd: args.cwd }),
+      ...(args.repoRoot !== undefined && { repoRoot: args.repoRoot }),
+      ...(args.branch !== undefined && { branch: args.branch }),
+      ...(args.agentProvider !== undefined && {
+        agentProvider: args.agentProvider,
+      }),
+      ...(args.agentSessionKey !== undefined && {
+        agentSessionKey: args.agentSessionKey,
+      }),
+    });
   },
 });

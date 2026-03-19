@@ -162,6 +162,16 @@ export const delegatedRunLaunchStatusValidator = v.union(
   ...DELEGATED_RUN_LAUNCH_STATUSES.map(s => v.literal(s)),
 );
 
+// ── Work Sessions ───────────────────────────────────────────────────────────
+
+export const WORK_SESSION_ACCESS_LEVELS = ['viewer', 'controller'] as const;
+export type WorkSessionAccessLevel =
+  (typeof WORK_SESSION_ACCESS_LEVELS)[number];
+
+export const workSessionAccessLevelValidator = v.union(
+  ...WORK_SESSION_ACCESS_LEVELS.map(level => v.literal(level)),
+);
+
 // ── Comment Author Kind ─────────────────────────────────────────────────────
 
 export const COMMENT_AUTHOR_KINDS = ['user', 'agent'] as const;

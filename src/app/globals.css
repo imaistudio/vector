@@ -2,8 +2,18 @@
 @import 'tw-animate-css';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+@import '@xterm/xterm/css/xterm.css';
 
 @plugin "@tailwindcss/typography";
+
+.vector-terminal .xterm {
+  padding: 0;
+}
+
+.vector-terminal .xterm-viewport {
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 30%, transparent)
+    transparent;
+}
 
 @custom-variant dark (&:is(.dark *));
 

@@ -26,6 +26,7 @@ import type * as agentBridge_httpEndpoints from "../agentBridge/httpEndpoints.js
 import type * as agentBridge_internal from "../agentBridge/internal.js";
 import type * as agentBridge_mutations from "../agentBridge/mutations.js";
 import type * as agentBridge_queries from "../agentBridge/queries.js";
+import type * as agentBridge_workSessions from "../agentBridge/workSessions.js";
 import type * as ai_actions from "../ai/actions.js";
 import type * as ai_agent from "../ai/agent.js";
 import type * as ai_comment_agent from "../ai/comment_agent.js";
@@ -109,6 +110,7 @@ declare const fullApi: ApiFromModules<{
   "agentBridge/internal": typeof agentBridge_internal;
   "agentBridge/mutations": typeof agentBridge_mutations;
   "agentBridge/queries": typeof agentBridge_queries;
+  "agentBridge/workSessions": typeof agentBridge_workSessions;
   "ai/actions": typeof ai_actions;
   "ai/agent": typeof ai_agent;
   "ai/comment_agent": typeof ai_comment_agent;

@@ -1,10 +1,11 @@
 import { paginationOptsValidator } from 'convex/server';
-import { query } from '../_generated/server';
+import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import { getAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
 import { AGENT_PROVIDER_LABELS } from '../_shared/agentBridge';
 import type { Doc } from '../_generated/dataModel';
+import { getWorkSessionAccess } from './workSessions';
 
 function deviceDedupKey(device: Doc<'agentDevices'>): string {
   return [
@@ -91,6 +92,57 @@ function collapseDuplicateProcesses(
   return [...canonicalByKey.values()].sort(
     (a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt,
   );
+}
+
+async function hydrateWorkSession(
+  ctx: QueryCtx,
+  workSessionId: Doc<'workSessions'>['_id'] | undefined,
+) {
+  const access = await getWorkSessionAccess(ctx, workSessionId);
+  if (!access.workSession) {
+    return null;
+  }
+
+  const [issue, liveActivity] = await Promise.all([
+    ctx.db.get('issues', access.workSession.issueId),
+    access.workSession.liveActivityId
+      ? ctx.db.get('issueLiveActivities', access.workSession.liveActivityId)
+      : Promise.resolve(null),
+  ]);
+
+  const shares = await ctx.db
+    .query('workSessionShares')
+    .withIndex('by_work_session', q =>
+      q.eq('workSessionId', access.workSession!._id),
+    )
+    .collect();
+
+  const sharedMembers = await Promise.all(
+    shares.map(async share => {
+      const user = await ctx.db.get('users', share.userId);
+      return user
+        ? {
+            userId: user._id,
+            name: user.name ?? user.username ?? user.email ?? 'Unknown',
+            email: user.email,
+            image: user.image,
+            accessLevel: share.accessLevel,
+          }
+        : null;
+    }),
+  );
+
+  return {
+    ...access.workSession,
+    issueKey: issue?.key,
+    issueTitle: issue?.title,
+    liveActivityStatus: liveActivity?.status,
+    latestSummary: liveActivity?.latestSummary,
+    canInteract: access.canInteract,
+    canManage: access.canManage,
+    shareAccessLevel: access.shareAccessLevel,
+    sharedMembers: sharedMembers.filter(Boolean),
+  };
 }
 
 // ── Agent Devices ───────────────────────────────────────────────────────────
@@ -279,19 +331,30 @@ export const listIssueLiveActivities = query({
       .collect();
 
     // Enrich with device names and provider labels
-    return Promise.all(
+    const hydrated = await Promise.all(
       activities.map(async activity => {
         const device = await ctx.db.get('agentDevices', activity.deviceId);
         const owner = await ctx.db.get('users', activity.ownerUserId);
+        const workSession = await hydrateWorkSession(
+          ctx,
+          activity.workSessionId,
+        );
         return {
           ...activity,
           deviceName: device?.displayName ?? 'Unknown device',
           ownerName: owner?.name ?? owner?.username ?? 'Unknown',
           providerLabel:
             AGENT_PROVIDER_LABELS[activity.provider] ?? activity.provider,
+          workSession,
+          canInteract:
+            workSession?.canInteract ?? activity.ownerUserId === userId,
+          canManageSession:
+            workSession?.canManage ?? activity.ownerUserId === userId,
         };
       }),
     );
+
+    return hydrated.sort((a, b) => b.lastEventAt - a.lastEventAt);
   },
 });
 
@@ -313,6 +376,7 @@ export const getLiveActivity = query({
 
     const device = await ctx.db.get('agentDevices', activity.deviceId);
     const owner = await ctx.db.get('users', activity.ownerUserId);
+    const workSession = await hydrateWorkSession(ctx, activity.workSessionId);
 
     return {
       ...activity,
@@ -320,7 +384,47 @@ export const getLiveActivity = query({
       ownerName: owner?.name ?? owner?.username ?? 'Unknown',
       providerLabel:
         AGENT_PROVIDER_LABELS[activity.provider] ?? activity.provider,
+      workSession,
+      canInteract: workSession?.canInteract ?? activity.ownerUserId === userId,
+      canManageSession:
+        workSession?.canManage ?? activity.ownerUserId === userId,
     };
+  },
+});
+
+export const listDeviceWorkSessions = query({
+  args: { deviceId: v.id('agentDevices') },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    const device = await ctx.db.get('agentDevices', args.deviceId);
+    if (!device || device.userId !== userId) {
+      return [];
+    }
+
+    const sessions = await ctx.db
+      .query('workSessions')
+      .withIndex('by_device', q => q.eq('deviceId', args.deviceId))
+      .collect();
+
+    const visible: Awaited<ReturnType<typeof hydrateWorkSession>>[] = [];
+    for (const session of sessions) {
+      const access = await hydrateWorkSession(ctx, session._id);
+      if (access) {
+        visible.push(access);
+      }
+    }
+
+    return visible
+      .filter(
+        (
+          session,
+        ): session is NonNullable<
+          Awaited<ReturnType<typeof hydrateWorkSession>>
+        > => !!session && !session.endedAt,
+      )
+      .sort((a, b) => b.lastEventAt - a.lastEventAt);
   },
 });
 
@@ -347,6 +451,16 @@ export const listLiveMessages = query({
     const issue = await ctx.db.get('issues', activity.issueId);
     if (!issue || !(await canViewIssue(ctx, issue))) {
       return { page: [], isDone: true, continueCursor: '' };
+    }
+
+    if (activity.workSessionId) {
+      const workSessionAccess = await getWorkSessionAccess(
+        ctx,
+        activity.workSessionId,
+      );
+      if (!workSessionAccess.workSession) {
+        return { page: [], isDone: true, continueCursor: '' };
+      }
     }
 
     return ctx.db

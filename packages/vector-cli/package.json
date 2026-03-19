@@ -36,6 +36,7 @@
     "build": "node scripts/build-menubar-app.js && tsup --config tsup.config.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.79",
     "@clack/prompts": "^1.1.0",
     "commander": "^14.0.3",
     "convex": "^1.33.1",

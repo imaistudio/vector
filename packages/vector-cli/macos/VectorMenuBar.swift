@@ -8,18 +8,67 @@ struct BridgeConfig: Decodable {
   let userId: String
 }
 
-struct LiveActivity: Decodable, Identifiable {
+struct WorkSessionSummary: Decodable, Identifiable {
   let _id: String
-  let issueKey: String
-  let issueTitle: String
-  let provider: String
+  let issueKey: String?
+  let issueTitle: String?
   let title: String?
+  let status: String
   let latestSummary: String?
+  let workspacePath: String?
   let cwd: String?
   let repoRoot: String?
   let branch: String?
+  let tmuxPaneId: String?
+  let agentProvider: String?
 
   var id: String { _id }
+
+  var providerLabel: String {
+    switch agentProvider {
+    case "codex":
+      return "Codex"
+    case "claude_code":
+      return "Claude"
+    default:
+      return "Shell"
+    }
+  }
+
+  var workspaceLabel: String {
+    let source = repoRoot ?? cwd ?? workspacePath ?? issueTitle ?? "Work session"
+    if source.contains("/") {
+      return URL(fileURLWithPath: source).lastPathComponent
+    }
+    return source
+  }
+
+  var primaryLabel: String {
+    let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !trimmed.isEmpty {
+      return trimmed
+    }
+    if let issueTitle, !issueTitle.isEmpty {
+      return issueTitle
+    }
+    return workspaceLabel
+  }
+
+  var issueLabel: String? {
+    guard let issueKey, !issueKey.isEmpty else {
+      return issueTitle
+    }
+
+    if let issueTitle, !issueTitle.isEmpty {
+      return "\(issueKey) · \(issueTitle)"
+    }
+
+    return issueKey
+  }
+
+  var repoPathLabel: String? {
+    repoRoot ?? cwd ?? workspacePath
+  }
 }
 
 struct SessionInfo: Decodable {
@@ -98,8 +147,8 @@ struct MenuStateSnapshot: Decodable {
   let pid: Int32?
   let config: BridgeConfig?
   let sessionInfo: SessionInfo
-  let liveActivities: [LiveActivity]
-  let processes: [AttachableProcess]
+  let workSessions: [WorkSessionSummary]
+  let detectedSessions: [AttachableProcess]
 
   static let empty = MenuStateSnapshot(
     configured: false,
@@ -114,8 +163,8 @@ struct MenuStateSnapshot: Decodable {
       email: nil,
       userId: nil
     ),
-    liveActivities: [],
-    processes: []
+    workSessions: [],
+    detectedSessions: []
   )
 }
 
@@ -212,7 +261,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
     return buildMetadataLine(
       config: config,
       sessionInfo: snapshot.sessionInfo,
-      activities: snapshot.liveActivities
+      workSessions: snapshot.workSessions
     )
   }
 
@@ -235,9 +284,10 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
     issueResults[processId] ?? []
   }
 
-  func openIssue(_ activity: LiveActivity) {
+  func openIssue(_ workSession: WorkSessionSummary) {
     guard
-      let raw = buildIssueUrl(sessionInfo: snapshot.sessionInfo, issueKey: activity.issueKey),
+      let issueKey = workSession.issueKey,
+      let raw = buildIssueUrl(sessionInfo: snapshot.sessionInfo, issueKey: issueKey),
       let url = URL(string: raw)
     else {
       return
@@ -542,9 +592,14 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
 
 struct TrayPopoverView: View {
   @ObservedObject var controller: MenuBarController
-  @State private var liveActivitiesExpanded = true
+  @State private var workSessionsExpanded = true
   @State private var processesExpanded = true
   @State private var expandedProcessIds: Set<String> = []
+  @State private var workSessionFilter: WorkSessionFilter = .all
+
+  private var filteredWorkSessions: [WorkSessionSummary] {
+    controller.snapshot.workSessions.filter { workSessionFilter.matches($0) }
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -563,52 +618,54 @@ struct TrayPopoverView: View {
         VStack(alignment: .leading, spacing: 12) {
           VStack(alignment: .leading, spacing: 8) {
             Button {
-              liveActivitiesExpanded.toggle()
+              workSessionsExpanded.toggle()
             } label: {
               SectionLabel(
-                title: "Live Activities",
-                count: controller.snapshot.liveActivities.count,
-                expanded: liveActivitiesExpanded
+                title: "Work Sessions",
+                count: controller.snapshot.workSessions.count,
+                expanded: workSessionsExpanded
               )
             }
             .buttonStyle(.plain)
 
-            if liveActivitiesExpanded {
+            if workSessionsExpanded {
               VStack(alignment: .leading, spacing: 8) {
-                if controller.snapshot.liveActivities.isEmpty {
-                  EmptySectionLabel(text: "No live activities on this device.")
-                } else {
-                  ForEach(controller.snapshot.liveActivities) { activity in
-                    Button(action: { controller.openIssue(activity) }) {
-                      HStack(alignment: .top, spacing: 10) {
-                        Circle()
-                          .fill(providerColor(activity.provider))
-                          .frame(width: 8, height: 8)
-                          .padding(.top, 6)
-                        VStack(alignment: .leading, spacing: 3) {
-                          Text("\(activity.issueKey) — \(activity.issueTitle)")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(2)
-                          Text(activityMeta(activity))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                          if let latestSummary = activity.latestSummary, !latestSummary.isEmpty {
-                            Text(latestSummary)
-                              .font(.system(size: 11))
-                              .foregroundStyle(.secondary)
-                              .lineLimit(2)
-                          }
-                        }
-                        Spacer(minLength: 0)
-                      }
-                      .padding(10)
-                      .frame(maxWidth: .infinity, alignment: .leading)
-                      .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+                HStack(spacing: 6) {
+                  ForEach(WorkSessionFilter.allCases) { filter in
+                    Button {
+                      workSessionFilter = filter
+                    } label: {
+                      Text(filter.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(workSessionFilter == filter ? .primary : .secondary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 5)
+                        .background(
+                          Capsule(style: .continuous)
+                            .fill(
+                              workSessionFilter == filter
+                                ? Color.white.opacity(0.11)
+                                : Color.white.opacity(0.035)
+                            )
+                        )
                     }
                     .buttonStyle(.plain)
-                    .help(buildActivityTooltip(activity))
+                  }
+                }
+
+                if filteredWorkSessions.isEmpty {
+                  EmptySectionLabel(
+                    text: controller.snapshot.workSessions.isEmpty
+                      ? "No work sessions on this device."
+                      : "No work sessions match this filter."
+                  )
+                } else {
+                  ForEach(filteredWorkSessions) { workSession in
+                    Button(action: { controller.openIssue(workSession) }) {
+                      WorkSessionRow(workSession: workSession)
+                    }
+                    .buttonStyle(.plain)
+                    .help(buildWorkSessionTooltip(workSession))
                   }
                 }
               }
@@ -621,7 +678,7 @@ struct TrayPopoverView: View {
             } label: {
               SectionLabel(
                 title: "Detected Sessions",
-                count: controller.snapshot.processes.count,
+                count: controller.snapshot.detectedSessions.count,
                 expanded: processesExpanded
               )
             }
@@ -629,10 +686,10 @@ struct TrayPopoverView: View {
 
             if processesExpanded {
               VStack(alignment: .leading, spacing: 8) {
-                if controller.snapshot.processes.isEmpty {
+                if controller.snapshot.detectedSessions.isEmpty {
                   EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
                 } else {
-                  ForEach(controller.snapshot.processes) { process in
+                  ForEach(controller.snapshot.detectedSessions) { process in
                     let isExpanded = expandedProcessIds.contains(process.id)
 
                     VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
@@ -800,6 +857,100 @@ struct StatusChip: View {
   }
 }
 
+enum WorkSessionFilter: String, CaseIterable, Identifiable {
+  case all
+  case agent
+  case manual
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .all:
+      return "All"
+    case .agent:
+      return "Agent"
+    case .manual:
+      return "Manual"
+    }
+  }
+
+  func matches(_ session: WorkSessionSummary) -> Bool {
+    switch self {
+    case .all:
+      return true
+    case .agent:
+      return session.agentProvider == "codex" || session.agentProvider == "claude_code"
+    case .manual:
+      return session.agentProvider == nil || session.agentProvider == "vector_cli"
+    }
+  }
+}
+
+struct WorkSessionRow: View {
+  let workSession: WorkSessionSummary
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Circle()
+        .fill(providerColor(workSession.agentProvider))
+        .frame(width: 8, height: 8)
+        .padding(.top, 6)
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 8) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text(workSession.primaryLabel)
+              .font(.system(size: 12, weight: .semibold))
+              .foregroundStyle(.primary)
+              .lineLimit(2)
+              .fixedSize(horizontal: false, vertical: true)
+            if let issueLabel = workSession.issueLabel, !issueLabel.isEmpty {
+              Text(issueLabel)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+          }
+          Spacer(minLength: 0)
+          HStack(spacing: 8) {
+            Text(workSession.providerLabel)
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundStyle(providerColor(workSession.agentProvider))
+              .padding(.horizontal, 7)
+              .padding(.vertical, 4)
+              .background(
+                Capsule(style: .continuous)
+                  .fill(providerColor(workSession.agentProvider).opacity(0.16))
+              )
+            Text(workSession.status.replacingOccurrences(of: "_", with: " "))
+              .font(.system(size: 10, weight: .medium))
+              .foregroundStyle(.secondary)
+          }
+        }
+        Text(workSessionMeta(workSession))
+          .font(.system(size: 11))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        if let repoPathLabel = workSession.repoPathLabel, !repoPathLabel.isEmpty {
+          Text(repoPathLabel)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
+        if let latestSummary = workSession.latestSummary, !latestSummary.isEmpty {
+          Text(latestSummary)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
+      }
+    }
+    .padding(12)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(SessionCardBackground(isExpanded: false))
+  }
+}
+
 struct ProcessRow: View {
   let process: AttachableProcess
   let expanded: Bool
@@ -871,12 +1022,14 @@ struct SessionCardBackground: View {
   }
 }
 
-func providerColor(_ provider: String) -> Color {
+func providerColor(_ provider: String?) -> Color {
   switch provider {
   case "claude_code":
     return Color(red: 0.95, green: 0.55, blue: 0.28)
   case "codex":
     return Color(red: 0.22, green: 0.62, blue: 0.96)
+  case "vector_cli", nil:
+    return Color(red: 0.58, green: 0.62, blue: 0.7)
   default:
     return Color.gray
   }
@@ -930,22 +1083,25 @@ func normalizeProcessLabel(_ value: String) -> String {
   value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 }
 
-func activityMeta(_ activity: LiveActivity) -> String {
-  let provider = activity.provider == "claude_code"
-    ? "Claude"
-    : activity.provider == "codex"
-      ? "Codex"
-      : activity.provider
-  let workspaceSource = activity.repoRoot ?? activity.cwd ?? activity.title ?? activity.issueTitle
-  let workspace = workspaceSource.contains("/")
-    ? URL(fileURLWithPath: workspaceSource).lastPathComponent
-    : workspaceSource
-  return [provider, workspace, activity.branch].compactMap { $0 }.joined(separator: " · ")
+func workSessionMeta(_ workSession: WorkSessionSummary) -> String {
+  let workspace = summarizeWorkspacePath(
+    workSession.repoRoot ?? workSession.cwd ?? workSession.workspacePath
+  )
+  return [workspace, workSession.branch, workSession.tmuxPaneId]
+    .compactMap { value in
+      guard let value, !value.isEmpty else { return nil }
+      return value
+    }
+    .joined(separator: " · ")
 }
 
-func buildMetadataLine(config: BridgeConfig, sessionInfo: SessionInfo, activities: [LiveActivity]) -> String {
+func buildMetadataLine(
+  config: BridgeConfig,
+  sessionInfo: SessionInfo,
+  workSessions: [WorkSessionSummary]
+) -> String {
   let userLabel = sessionInfo.email?.split(separator: "@").first.map(String.init)
-  let workspaceLabel = summarizeWorkspace(activities)
+  let workspaceLabel = summarizeWorkspace(workSessions)
   let orgLabel = sessionInfo.appDomain.map { "\(sessionInfo.orgSlug) @ \($0)" } ?? sessionInfo.orgSlug
   return [userLabel, config.displayName, workspaceLabel, orgLabel]
     .compactMap { value in
@@ -955,9 +1111,9 @@ func buildMetadataLine(config: BridgeConfig, sessionInfo: SessionInfo, activitie
     .joined(separator: " | ")
 }
 
-func summarizeWorkspace(_ activities: [LiveActivity]) -> String? {
-  let workspaces = Array(Set<String>(activities.compactMap { activity in
-    let path = activity.repoRoot ?? activity.cwd
+func summarizeWorkspace(_ workSessions: [WorkSessionSummary]) -> String? {
+  let workspaces = Array(Set<String>(workSessions.compactMap { workSession in
+    let path = workSession.repoRoot ?? workSession.cwd ?? workSession.workspacePath
     guard let path else { return nil }
     return URL(fileURLWithPath: path).lastPathComponent
   })).sorted()
@@ -969,8 +1125,8 @@ func summarizeWorkspace(_ activities: [LiveActivity]) -> String? {
   return "\(workspaces.count) workspaces"
 }
 
-func buildActivityTooltip(_ activity: LiveActivity) -> String {
-  [activity.title ?? activity.issueTitle, activity.latestSummary]
+func buildWorkSessionTooltip(_ workSession: WorkSessionSummary) -> String {
+  [workSession.issueLabel, workSession.title, workSession.latestSummary]
     .compactMap { value in
       guard let value, !value.isEmpty else { return nil }
       return value

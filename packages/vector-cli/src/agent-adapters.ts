@@ -26,6 +26,7 @@ export interface SessionRunResult extends SessionProcessRecord {
 }
 
 const LSOF_PATHS = ['/usr/sbin/lsof', '/usr/bin/lsof'];
+const VECTOR_BRIDGE_CLIENT_VERSION = '0.1.0';
 
 export function discoverAttachableSessions(): SessionProcessRecord[] {
   return dedupeSessions([
@@ -40,16 +41,18 @@ export async function launchProviderSession(
   prompt: string,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
-    const stdout = await runCommand('codex', ['exec', '--json', prompt], cwd);
-    return parseCodexRunResult(stdout, cwd, 'codex exec --json');
+    return runCodexAppServerTurn({
+      cwd,
+      prompt,
+      launchCommand: 'codex app-server',
+    });
   }
 
-  const stdout = await runCommand(
-    'claude',
-    ['-p', '--output-format', 'json', prompt],
+  return runClaudeSdkTurn({
     cwd,
-  );
-  return parseClaudeRunResult(stdout, cwd, 'claude -p --output-format json');
+    prompt,
+    launchCommand: '@anthropic-ai/claude-agent-sdk query()',
+  });
 }
 
 export async function resumeProviderSession(
@@ -59,59 +62,344 @@ export async function resumeProviderSession(
   prompt: string,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
-    const stdout = await runCommand(
-      'codex',
-      ['exec', 'resume', '--json', sessionKey, prompt],
+    return runCodexAppServerTurn({
       cwd,
-    );
-    return parseCodexRunResult(stdout, cwd, 'codex exec resume --json');
+      prompt,
+      sessionKey,
+      launchCommand: 'codex app-server (thread/resume)',
+    });
   }
 
-  const stdout = await runCommand(
-    'claude',
-    ['-p', '--resume', sessionKey, '--output-format', 'json', prompt],
+  return runClaudeSdkTurn({
     cwd,
-  );
-  return parseClaudeRunResult(
-    stdout,
-    cwd,
-    'claude -p --resume --output-format json',
-  );
+    prompt,
+    sessionKey,
+    launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
+  });
 }
 
-async function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-): Promise<string> {
-  const child = spawn(command, args, {
-    cwd,
+async function runCodexAppServerTurn(args: {
+  cwd: string;
+  prompt: string;
+  sessionKey?: string;
+  launchCommand: string;
+}): Promise<SessionRunResult> {
+  const child = spawn('codex', ['app-server'], {
+    cwd: args.cwd,
     env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  let stdout = '';
   let stderr = '';
+  let stdoutBuffer = '';
+  let sessionKey = args.sessionKey;
+  let finalAssistantText = '';
+  let completed = false;
+  let nextRequestId = 1;
+  const pending = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+  let completeTurn: (() => void) | undefined;
+  let failTurn: ((error: Error) => void) | undefined;
+  const turnCompleted = new Promise<void>((resolve, reject) => {
+    completeTurn = () => {
+      completed = true;
+      resolve();
+    };
+    failTurn = error => {
+      completed = true;
+      reject(error);
+    };
+  });
 
   child.stdout.on('data', chunk => {
-    stdout += chunk.toString();
+    stdoutBuffer += chunk.toString();
+
+    while (true) {
+      const newlineIndex = stdoutBuffer.indexOf('\n');
+      if (newlineIndex < 0) {
+        break;
+      }
+
+      const line = stdoutBuffer.slice(0, newlineIndex).trim();
+      stdoutBuffer = stdoutBuffer.slice(newlineIndex + 1);
+      if (!line) {
+        continue;
+      }
+
+      const payload = tryParseJson(line);
+      if (!payload || typeof payload !== 'object') {
+        continue;
+      }
+
+      const responseId = (payload as { id?: unknown }).id;
+      if (typeof responseId === 'number' && pending.has(responseId)) {
+        const entry = pending.get(responseId)!;
+        pending.delete(responseId);
+        const errorRecord = asObject((payload as { error?: unknown }).error);
+        if (errorRecord) {
+          entry.reject(
+            new Error(
+              `codex app-server error: ${asString(errorRecord.message) ?? 'Unknown JSON-RPC error'}`,
+            ),
+          );
+          continue;
+        }
+
+        entry.resolve((payload as { result?: unknown }).result);
+        continue;
+      }
+
+      const method = asString((payload as { method?: unknown }).method);
+      const params = asObject((payload as { params?: unknown }).params);
+      if (!method || !params) {
+        continue;
+      }
+
+      if (method === 'thread/started') {
+        sessionKey =
+          asString(asObject(params.thread)?.id) ??
+          asString(asObject(params.thread)?.threadId) ??
+          sessionKey;
+        continue;
+      }
+
+      if (method === 'item/agentMessage/delta') {
+        finalAssistantText += asString(params.delta) ?? '';
+        continue;
+      }
+
+      if (method === 'item/completed') {
+        const item = asObject(params.item);
+        if (asString(item?.type) === 'agentMessage') {
+          finalAssistantText = asString(item?.text) ?? finalAssistantText;
+        }
+        continue;
+      }
+
+      if (method === 'turn/completed') {
+        const turn = asObject(params.turn);
+        const status = asString(turn?.status);
+        if (status === 'failed') {
+          const turnError = asObject(turn?.error);
+          failTurn?.(
+            new Error(
+              asString(turnError?.message) ??
+                'Codex turn failed without an error message',
+            ),
+          );
+        } else if (status === 'interrupted') {
+          failTurn?.(new Error('Codex turn was interrupted'));
+        } else {
+          completeTurn?.();
+        }
+      }
+    }
   });
+
   child.stderr.on('data', chunk => {
     stderr += chunk.toString();
   });
 
-  return await new Promise((resolve, reject) => {
-    child.on('error', reject);
-    child.on('close', code => {
-      if (code === 0) {
-        resolve(stdout);
-        return;
-      }
+  const request = (method: string, params?: unknown): Promise<unknown> =>
+    new Promise((resolve, reject) => {
+      const id = nextRequestId++;
+      pending.set(id, { resolve, reject });
+      child.stdin.write(`${JSON.stringify({ method, id, params })}\n`);
+    });
 
-      const detail = stderr.trim() || stdout.trim() || `exit code ${code}`;
-      reject(new Error(`${command} failed: ${detail}`));
+  const notify = (method: string, params?: unknown): void => {
+    child.stdin.write(`${JSON.stringify({ method, params })}\n`);
+  };
+
+  const waitForExit = new Promise<never>((_, reject) => {
+    child.on('error', error => reject(error));
+    child.on('close', code => {
+      if (!completed) {
+        const detail =
+          stderr.trim() || `codex app-server exited with code ${code}`;
+        reject(new Error(detail));
+      }
     });
   });
+
+  try {
+    await Promise.race([
+      request('initialize', {
+        clientInfo: {
+          name: 'vector_bridge',
+          title: 'Vector Bridge',
+          version: VECTOR_BRIDGE_CLIENT_VERSION,
+        },
+      }),
+      waitForExit,
+    ]);
+    notify('initialized', {});
+
+    const threadResult = (await Promise.race([
+      args.sessionKey
+        ? request('thread/resume', {
+            threadId: args.sessionKey,
+            cwd: args.cwd,
+            approvalPolicy: 'never',
+            personality: 'pragmatic',
+          })
+        : request('thread/start', {
+            cwd: args.cwd,
+            approvalPolicy: 'never',
+            personality: 'pragmatic',
+            serviceName: 'vector_bridge',
+          }),
+      waitForExit,
+    ])) as { thread?: unknown };
+
+    sessionKey =
+      asString(asObject(threadResult.thread)?.id) ??
+      asString(asObject(threadResult.thread)?.threadId) ??
+      sessionKey;
+
+    if (!sessionKey) {
+      throw new Error('Codex app-server did not return a thread id');
+    }
+
+    await Promise.race([
+      request('turn/start', {
+        threadId: sessionKey,
+        input: [{ type: 'text', text: args.prompt }],
+        cwd: args.cwd,
+        approvalPolicy: 'never',
+        personality: 'pragmatic',
+      }),
+      waitForExit,
+    ]);
+
+    await Promise.race([turnCompleted, waitForExit]);
+
+    const gitInfo = getGitInfo(args.cwd);
+
+    return {
+      provider: 'codex',
+      providerLabel: 'Codex',
+      sessionKey,
+      cwd: args.cwd,
+      ...gitInfo,
+      title: summarizeTitle(undefined, args.cwd),
+      mode: 'managed',
+      status: 'waiting',
+      supportsInboundMessages: true,
+      responseText: finalAssistantText.trim() || undefined,
+      launchCommand: args.launchCommand,
+    };
+  } finally {
+    for (const entry of pending.values()) {
+      entry.reject(
+        new Error('codex app-server closed before request resolved'),
+      );
+    }
+    pending.clear();
+    child.kill();
+  }
+}
+
+async function runClaudeSdkTurn(args: {
+  cwd: string;
+  prompt: string;
+  sessionKey?: string;
+  launchCommand: string;
+}): Promise<SessionRunResult> {
+  const { query } = await import('@anthropic-ai/claude-agent-sdk');
+
+  const stream = query({
+    prompt: args.prompt,
+    options: {
+      cwd: args.cwd,
+      resume: args.sessionKey,
+      persistSession: true,
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+      env: {
+        ...process.env,
+        CLAUDE_AGENT_SDK_CLIENT_APP: `vector-bridge/${VECTOR_BRIDGE_CLIENT_VERSION}`,
+      },
+    },
+  });
+
+  let sessionKey = args.sessionKey;
+  let responseText = '';
+  let model: string | undefined;
+
+  try {
+    for await (const message of stream) {
+      if (!message || typeof message !== 'object') {
+        continue;
+      }
+
+      sessionKey =
+        asString((message as { session_id?: unknown }).session_id) ??
+        sessionKey;
+
+      if ((message as { type?: unknown }).type === 'assistant') {
+        const assistantText = extractClaudeMessageTexts(
+          (message as { message?: unknown }).message,
+        )
+          .join('\n\n')
+          .trim();
+        if (assistantText) {
+          responseText = assistantText;
+        }
+        continue;
+      }
+
+      if ((message as { type?: unknown }).type !== 'result') {
+        continue;
+      }
+
+      if ((message as { subtype?: unknown }).subtype === 'success') {
+        const resultText = asString((message as { result?: unknown }).result);
+        if (resultText) {
+          responseText = resultText;
+        }
+        model = firstObjectKey(
+          (message as { modelUsage?: unknown }).modelUsage,
+        );
+        continue;
+      }
+
+      const errors = (message as { errors?: unknown }).errors;
+      const detail =
+        Array.isArray(errors) && errors.length > 0
+          ? errors.join('\n')
+          : 'Claude execution failed';
+      throw new Error(detail);
+    }
+  } finally {
+    stream.close();
+  }
+
+  if (!sessionKey) {
+    throw new Error('Claude Agent SDK did not return a session id');
+  }
+
+  const gitInfo = getGitInfo(args.cwd);
+
+  return {
+    provider: 'claude_code',
+    providerLabel: 'Claude',
+    sessionKey,
+    cwd: args.cwd,
+    ...gitInfo,
+    title: summarizeTitle(undefined, args.cwd),
+    model,
+    mode: 'managed',
+    status: 'waiting',
+    supportsInboundMessages: true,
+    responseText: responseText.trim() || undefined,
+    launchCommand: args.launchCommand,
+  };
 }
 
 function discoverCodexSessions(): SessionProcessRecord[] {
@@ -156,106 +444,6 @@ function discoverClaudeSessions(): SessionProcessRecord[] {
       return parsed ? [parsed] : [];
     })
     .sort(compareObservedSessions);
-}
-
-function parseCodexRunResult(
-  stdout: string,
-  cwd: string,
-  launchCommand: string,
-): SessionRunResult {
-  let sessionKey: string | undefined;
-  const responseParts: string[] = [];
-
-  for (const line of stdout
-    .split('\n')
-    .map(part => part.trim())
-    .filter(Boolean)) {
-    const payload = tryParseJson(line);
-    if (!payload) continue;
-
-    if (payload.type === 'thread.started') {
-      sessionKey = asString(payload.thread_id) ?? sessionKey;
-    }
-
-    if (
-      payload.type === 'item.completed' &&
-      payload.item?.type === 'agent_message' &&
-      typeof payload.item.text === 'string'
-    ) {
-      responseParts.push(payload.item.text.trim());
-    }
-
-    if (
-      payload.type === 'response_item' &&
-      payload.payload?.type === 'message' &&
-      payload.payload?.role === 'assistant'
-    ) {
-      const responseText = extractCodexResponseText(payload.payload?.content);
-      if (responseText) {
-        responseParts.push(responseText);
-      }
-    }
-  }
-
-  if (!sessionKey) {
-    throw new Error('Codex did not return a thread id');
-  }
-
-  const gitInfo = getGitInfo(cwd);
-  const responseText = responseParts.filter(Boolean).join('\n\n') || undefined;
-
-  return {
-    provider: 'codex',
-    providerLabel: 'Codex',
-    sessionKey,
-    cwd,
-    ...gitInfo,
-    title: summarizeTitle(undefined, cwd),
-    mode: 'managed',
-    status: 'waiting',
-    supportsInboundMessages: true,
-    responseText,
-    launchCommand,
-  };
-}
-
-function parseClaudeRunResult(
-  stdout: string,
-  cwd: string,
-  launchCommand: string,
-): SessionRunResult {
-  const payload = stdout
-    .split('\n')
-    .map(line => tryParseJson(line))
-    .filter(Boolean)
-    .pop();
-
-  if (!payload) {
-    throw new Error('Claude did not return JSON output');
-  }
-
-  const sessionKey = asString(payload.session_id);
-  if (!sessionKey) {
-    throw new Error('Claude did not return a session id');
-  }
-
-  const gitInfo = getGitInfo(cwd);
-  const model = firstObjectKey(payload.modelUsage);
-
-  return {
-    provider: 'claude_code',
-    providerLabel: 'Claude',
-    sessionKey,
-    cwd,
-    ...gitInfo,
-    title: summarizeTitle(undefined, cwd),
-    model,
-    mode: 'managed',
-    status: 'waiting',
-    supportsInboundMessages: true,
-    responseText: asString(payload.result) ?? undefined,
-    launchCommand,
-  };
 }
 
 function getCodexSessionsDir(): string {
@@ -434,7 +622,7 @@ function findJsonlFileByStem(root: string, stem: string): string | undefined {
   return undefined;
 }
 
-function readJsonLines(path: string): any[] {
+function readJsonLines(path: string): unknown[] {
   try {
     return readFileSync(path, 'utf-8')
       .split('\n')
@@ -447,7 +635,7 @@ function readJsonLines(path: string): any[] {
   }
 }
 
-function tryParseJson(value: string): any | null {
+function tryParseJson(value: string): unknown | null {
   try {
     return JSON.parse(value);
   } catch {
@@ -488,34 +676,50 @@ function parseObservedCodexSession(
   const userMessages: string[] = [];
   const assistantMessages: string[] = [];
 
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    const entry = asObject(rawEntry);
+    if (!entry) {
+      continue;
+    }
+
     if (entry.type === 'session_meta') {
-      sessionKey = asString(entry.payload?.id) ?? sessionKey;
-      cwd = asString(entry.payload?.cwd) ?? cwd;
+      const payload = asObject(entry.payload);
+      sessionKey = asString(payload?.id) ?? sessionKey;
+      cwd = asString(payload?.cwd) ?? cwd;
     }
 
-    if (entry.type === 'event_msg' && entry.payload?.type === 'user_message') {
-      pushIfPresent(userMessages, entry.payload?.message);
-    }
-
-    if (
-      entry.type === 'response_item' &&
-      entry.payload?.type === 'message' &&
-      entry.payload?.role === 'user'
-    ) {
-      userMessages.push(...extractTextSegments(entry.payload?.content));
-    }
-
-    if (entry.type === 'event_msg' && entry.payload?.type === 'agent_message') {
-      pushIfPresent(assistantMessages, entry.payload?.message);
+    if (entry.type === 'event_msg') {
+      const payload = asObject(entry.payload);
+      if (payload?.type === 'user_message') {
+        pushIfPresent(userMessages, payload.message);
+      }
     }
 
     if (
       entry.type === 'response_item' &&
-      entry.payload?.type === 'message' &&
-      entry.payload?.role === 'assistant'
+      asObject(entry.payload)?.type === 'message' &&
+      asObject(entry.payload)?.role === 'user'
     ) {
-      assistantMessages.push(...extractTextSegments(entry.payload?.content));
+      userMessages.push(
+        ...extractTextSegments(asObject(entry.payload)?.content),
+      );
+    }
+
+    if (entry.type === 'event_msg') {
+      const payload = asObject(entry.payload);
+      if (payload?.type === 'agent_message') {
+        pushIfPresent(assistantMessages, payload.message);
+      }
+    }
+
+    if (
+      entry.type === 'response_item' &&
+      asObject(entry.payload)?.type === 'message' &&
+      asObject(entry.payload)?.role === 'assistant'
+    ) {
+      assistantMessages.push(
+        ...extractTextSegments(asObject(entry.payload)?.content),
+      );
     }
   }
 
@@ -560,7 +764,12 @@ function parseObservedClaudeSession(
   const userMessages: string[] = [];
   const assistantMessages: string[] = [];
 
-  for (const entry of entries) {
+  for (const rawEntry of entries) {
+    const entry = asObject(rawEntry);
+    if (!entry) {
+      continue;
+    }
+
     cwd = asString(entry.cwd) ?? cwd;
     branch = asString(entry.gitBranch) ?? branch;
 
@@ -569,7 +778,8 @@ function parseObservedClaudeSession(
     }
 
     if (entry.type === 'assistant') {
-      model = asString(entry.message?.model) ?? model;
+      const message = asObject(entry.message);
+      model = asString(message?.model) ?? model;
       assistantMessages.push(...extractClaudeMessageTexts(entry.message));
     }
   }
@@ -642,7 +852,20 @@ function firstObjectKey(value: unknown): string | undefined {
   }
 
   const [firstKey] = Object.keys(value);
-  return firstKey;
+  return firstKey ? normalizeModelKey(firstKey) : undefined;
+}
+
+function normalizeModelKey(value: string): string | undefined {
+  const normalized = stripAnsi(value)
+    .replace(/\[\d+(?:;\d+)*m$/g, '')
+    .trim();
+  return normalized || undefined;
+}
+
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function asString(value: unknown): string | undefined {
@@ -718,7 +941,12 @@ function isIgnoredContentBlockType(blockType: string): boolean {
 function buildCodexHistoryIndex(): Map<string, string[]> {
   const historyBySession = new Map<string, string[]>();
 
-  for (const entry of readJsonLines(getCodexHistoryFile())) {
+  for (const rawEntry of readJsonLines(getCodexHistoryFile())) {
+    const entry = asObject(rawEntry);
+    if (!entry) {
+      continue;
+    }
+
     const sessionId = asString(entry.session_id);
     const text = asString(entry.text);
     if (!sessionId || !text) {
@@ -734,7 +962,12 @@ function buildCodexHistoryIndex(): Map<string, string[]> {
 function buildClaudeHistoryIndex(): Map<string, string[]> {
   const historyBySession = new Map<string, string[]>();
 
-  for (const entry of readJsonLines(getClaudeHistoryFile())) {
+  for (const rawEntry of readJsonLines(getClaudeHistoryFile())) {
+    const entry = asObject(rawEntry);
+    if (!entry) {
+      continue;
+    }
+
     const sessionId = asString(entry.sessionId);
     if (!sessionId) {
       continue;
@@ -840,7 +1073,7 @@ function cleanSessionTitleCandidate(message: string): string | undefined {
 }
 
 function looksLikeGeneratedTagEnvelope(value: string): boolean {
-  return /^<[\w:-]+>.*<\/[\w:-]+>$/s.test(value);
+  return /^<[\w:-]+>[\s\S]*<\/[\w:-]+>$/.test(value);
 }
 
 function looksLikeGeneratedImageSummary(value: string): boolean {

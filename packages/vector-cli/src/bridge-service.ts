@@ -20,14 +20,15 @@ import {
 import { homedir, hostname, platform } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
-import type { AgentProvider } from '../../../convex/_shared/agentBridge';
+import type {
+  AgentProvider,
+  LiveActivityStatus,
+} from '../../../convex/_shared/agentBridge';
 import {
   discoverAttachableSessions,
-  launchProviderSession,
   resumeProviderSession,
   type BridgeProvider,
   type SessionProcessRecord,
-  type SessionRunResult,
 } from './agent-adapters';
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -49,6 +50,7 @@ const LEGACY_MENUBAR_LAUNCHAGENT_PLIST = join(
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const COMMAND_POLL_INTERVAL_MS = 5_000;
+const LIVE_ACTIVITY_SYNC_INTERVAL_MS = 5_000;
 const PROCESS_DISCOVERY_INTERVAL_MS = 60_000;
 
 export interface BridgeConfig {
@@ -97,6 +99,20 @@ interface PendingBridgeCommand {
     provider: AgentProvider;
     title?: string;
     status: string;
+    workSessionId?: Id<'workSessions'>;
+  } | null;
+  workSession?: {
+    _id: Id<'workSessions'>;
+    tmuxSessionName?: string;
+    tmuxWindowName?: string;
+    tmuxPaneId?: string;
+    workspacePath?: string;
+    cwd?: string;
+    repoRoot?: string;
+    branch?: string;
+    terminalSnapshot?: string;
+    agentProvider?: AgentProvider;
+    agentSessionKey?: string;
   } | null;
   process?: {
     _id: Id<'agentProcesses'>;
@@ -236,9 +252,142 @@ export class BridgeService {
         },
       );
       writeLiveActivitiesCache(activities);
+      await this.syncWorkSessionTerminals(activities);
     } catch {
       /* non-critical */
     }
+  }
+
+  private async syncWorkSessionTerminals(
+    activities: Array<{
+      _id: Id<'issueLiveActivities'>;
+      title?: string;
+      workSessionId?: Id<'workSessions'>;
+      workspacePath?: string;
+      tmuxPaneId?: string;
+      cwd?: string;
+      repoRoot?: string;
+      branch?: string;
+      agentProvider?: AgentProvider;
+      agentProcessId?: Id<'agentProcesses'>;
+      agentSessionKey?: string;
+    }>,
+  ): Promise<void> {
+    for (const activity of activities) {
+      if (!activity.workSessionId || !activity.tmuxPaneId) {
+        continue;
+      }
+
+      try {
+        await this.refreshWorkSessionTerminal(activity.workSessionId, {
+          tmuxPaneId: activity.tmuxPaneId,
+          cwd: activity.cwd,
+          repoRoot: activity.repoRoot,
+          branch: activity.branch,
+          agentProvider: activity.agentProvider,
+          agentSessionKey: activity.agentSessionKey,
+        });
+        await this.verifyManagedWorkSession(activity);
+      } catch {
+        /* best effort */
+      }
+    }
+  }
+
+  private async verifyManagedWorkSession(activity: {
+    _id: Id<'issueLiveActivities'>;
+    title?: string;
+    workSessionId?: Id<'workSessions'>;
+    workspacePath?: string;
+    tmuxPaneId?: string;
+    cwd?: string;
+    repoRoot?: string;
+    branch?: string;
+    agentProvider?: AgentProvider;
+    agentProcessId?: Id<'agentProcesses'>;
+    agentSessionKey?: string;
+  }): Promise<void> {
+    if (
+      !activity.workSessionId ||
+      !activity.tmuxPaneId ||
+      !activity.agentProvider ||
+      !isBridgeProvider(activity.agentProvider) ||
+      activity.agentProcessId
+    ) {
+      return;
+    }
+
+    const workspacePath =
+      activity.workspacePath ?? activity.cwd ?? activity.repoRoot;
+    if (!workspacePath) {
+      return;
+    }
+
+    const attachedSession = await this.attachObservedAgentSession(
+      activity.agentProvider,
+      workspacePath,
+    );
+    if (!attachedSession) {
+      return;
+    }
+
+    await this.refreshWorkSessionTerminal(activity.workSessionId, {
+      tmuxPaneId: activity.tmuxPaneId,
+      cwd: attachedSession.process.cwd ?? activity.cwd ?? workspacePath,
+      repoRoot:
+        attachedSession.process.repoRoot ?? activity.repoRoot ?? workspacePath,
+      branch: attachedSession.process.branch ?? activity.branch,
+      agentProvider: attachedSession.process.provider,
+      agentSessionKey: attachedSession.process.sessionKey,
+    });
+    await this.postAgentMessage(
+      activity._id,
+      'status',
+      `Verified ${providerLabel(attachedSession.process.provider)} in ${activity.tmuxPaneId}`,
+    );
+    await this.updateLiveActivity(activity._id, {
+      status: 'waiting_for_input',
+      latestSummary: `Verified ${providerLabel(attachedSession.process.provider)} in ${activity.tmuxPaneId}`,
+      processId: attachedSession.processId,
+      title: activity.title,
+    });
+  }
+
+  private async refreshWorkSessionTerminal(
+    workSessionId: Id<'workSessions'> | undefined,
+    metadata: {
+      tmuxSessionName?: string;
+      tmuxWindowName?: string;
+      tmuxPaneId?: string;
+      cwd?: string;
+      repoRoot?: string;
+      branch?: string;
+      agentProvider?: AgentProvider;
+      agentSessionKey?: string;
+    },
+  ): Promise<void> {
+    if (!workSessionId || !metadata.tmuxPaneId) {
+      return;
+    }
+
+    const terminalSnapshot = captureTmuxPane(metadata.tmuxPaneId);
+    await this.client.mutation(
+      api.agentBridge.bridgePublic.updateWorkSessionTerminal,
+      {
+        deviceId: this.config.deviceId as Id<'agentDevices'>,
+        deviceSecret: this.config.deviceSecret,
+        workSessionId,
+        terminalSnapshot,
+        tmuxSessionName: metadata.tmuxSessionName,
+        tmuxWindowName: metadata.tmuxWindowName,
+        tmuxPaneId: metadata.tmuxPaneId,
+        cwd: metadata.cwd,
+        repoRoot: metadata.repoRoot,
+        branch: metadata.branch,
+        agentProvider: metadata.agentProvider,
+        agentSessionKey: metadata.agentSessionKey,
+      },
+    );
   }
 
   async run(): Promise<void> {
@@ -266,7 +415,6 @@ export class BridgeService {
         this.heartbeat().catch(e =>
           console.error(`[${ts()}] Heartbeat error:`, e.message),
         );
-        this.refreshLiveActivities().catch(() => {});
       }, HEARTBEAT_INTERVAL_MS),
     );
 
@@ -276,6 +424,14 @@ export class BridgeService {
           console.error(`[${ts()}] Command poll error:`, e.message),
         );
       }, COMMAND_POLL_INTERVAL_MS),
+    );
+
+    this.timers.push(
+      setInterval(() => {
+        this.refreshLiveActivities().catch(e =>
+          console.error(`[${ts()}] Live activity sync error:`, e.message),
+        );
+      }, LIVE_ACTIVITY_SYNC_INTERVAL_MS),
     );
 
     this.timers.push(
@@ -321,6 +477,47 @@ export class BridgeService {
     }
 
     const process = cmd.process;
+    console.log(`  > "${truncateForLog(body)}"`);
+
+    if (cmd.workSession?.tmuxPaneId) {
+      sendTextToTmuxPane(cmd.workSession.tmuxPaneId, body);
+      const attachedSession =
+        cmd.workSession.agentProvider &&
+        isBridgeProvider(cmd.workSession.agentProvider)
+          ? await this.attachObservedAgentSession(
+              cmd.workSession.agentProvider,
+              cmd.workSession.workspacePath ??
+                cmd.workSession.cwd ??
+                process?.cwd,
+            )
+          : null;
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'status',
+        'Sent input to work session terminal',
+      );
+      await this.refreshWorkSessionTerminal(cmd.workSession._id, {
+        tmuxSessionName: cmd.workSession.tmuxSessionName,
+        tmuxWindowName: cmd.workSession.tmuxWindowName,
+        tmuxPaneId: cmd.workSession.tmuxPaneId,
+        cwd: cmd.workSession.cwd,
+        repoRoot: cmd.workSession.repoRoot,
+        branch: cmd.workSession.branch,
+        agentProvider:
+          attachedSession?.process.provider ?? cmd.workSession.agentProvider,
+        agentSessionKey:
+          attachedSession?.process.sessionKey ??
+          cmd.workSession.agentSessionKey,
+      });
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'waiting_for_input',
+        latestSummary: `Input sent to ${cmd.workSession.tmuxPaneId}`,
+        title: cmd.liveActivity?.title,
+        processId: attachedSession?.processId ?? process?._id,
+      });
+      return;
+    }
+
     if (
       !process ||
       !process.supportsInboundMessages ||
@@ -330,8 +527,6 @@ export class BridgeService {
     ) {
       throw new Error('No resumable local session is attached to this issue');
     }
-
-    console.log(`  > "${truncateForLog(body)}"`);
 
     await this.reportProcess({
       provider: process.provider,
@@ -399,52 +594,130 @@ export class BridgeService {
     if (!workspacePath) {
       throw new Error('Launch command is missing workspacePath');
     }
-    if (!payload?.provider || !isBridgeProvider(payload.provider)) {
-      throw new Error('Launch command is missing a supported provider');
-    }
-
-    const provider = payload.provider;
-    const issueKey = payload.issueKey ?? cmd.liveActivity?.issueKey ?? 'ISSUE';
+    const requestedProvider = payload?.provider;
+    const provider =
+      requestedProvider && isBridgeProvider(requestedProvider)
+        ? requestedProvider
+        : undefined;
+    const issueKey = payload?.issueKey ?? cmd.liveActivity?.issueKey ?? 'ISSUE';
     const issueTitle =
-      payload.issueTitle ?? cmd.liveActivity?.issueTitle ?? 'Untitled issue';
+      payload?.issueTitle ?? cmd.liveActivity?.issueTitle ?? 'Untitled issue';
     const prompt = buildLaunchPrompt(issueKey, issueTitle, workspacePath);
+    const launchLabel = provider ? providerLabel(provider) : 'shell session';
+    const workSessionTitle = `${issueKey}: ${issueTitle}`;
+    const sessionsBeforeLaunch = provider
+      ? listObservedSessionsForWorkspace(provider, workspacePath)
+      : [];
 
     await this.updateLiveActivity(cmd.liveActivityId, {
       status: 'active',
-      latestSummary: `Launching ${providerLabel(provider)} in ${workspacePath}`,
-      delegatedRunId: payload.delegatedRunId,
+      latestSummary: `Launching ${launchLabel} in ${workspacePath}`,
+      delegatedRunId: payload?.delegatedRunId,
       launchStatus: 'launching',
-      title: `${providerLabel(provider)} on ${this.config.displayName}`,
+      title: workSessionTitle,
     });
     await this.postAgentMessage(
       cmd.liveActivityId,
       'status',
-      `Launching ${providerLabel(provider)} in ${workspacePath}`,
+      `Launching ${launchLabel} in ${workspacePath}`,
     );
 
-    const result = await launchProviderSession(provider, workspacePath, prompt);
-    const processId = await this.reportProcess({
-      ...result,
-      title: `${issueKey}: ${issueTitle}`,
+    const tmuxSession = createTmuxWorkSession({
+      workspacePath,
+      issueKey,
+      issueTitle,
+      provider,
+      prompt,
+    });
+    const attachedSession = provider
+      ? await this.attachObservedAgentSession(
+          provider,
+          workspacePath,
+          sessionsBeforeLaunch,
+          tmuxSession.paneProcessId,
+        )
+      : null;
+
+    await this.refreshWorkSessionTerminal(cmd.workSession?._id, {
+      tmuxSessionName: tmuxSession.sessionName,
+      tmuxWindowName: tmuxSession.windowName,
+      tmuxPaneId: tmuxSession.paneId,
+      cwd: workspacePath,
+      repoRoot: workspacePath,
+      branch: currentGitBranch(workspacePath),
+      agentProvider: provider,
+      agentSessionKey: attachedSession?.process.sessionKey,
     });
 
-    await this.updateLiveActivity(cmd.liveActivityId, {
-      processId,
-      status: 'waiting_for_input',
-      latestSummary: summarizeMessage(result.responseText),
-      delegatedRunId: payload.delegatedRunId,
-      launchStatus: 'running',
-      title: `${providerLabel(provider)} on ${this.config.displayName}`,
-    });
-
-    if (result.responseText) {
+    if (provider && !attachedSession) {
       await this.postAgentMessage(
         cmd.liveActivityId,
-        'assistant',
-        result.responseText,
+        'status',
+        `Started tmux session ${tmuxSession.sessionName}:${tmuxSession.windowName}. Waiting to verify ${providerLabel(provider)} in ${tmuxSession.paneId}.`,
       );
-      console.log(`  < "${truncateForLog(result.responseText)}"`);
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'waiting_for_input',
+        latestSummary: `Running in ${tmuxSession.sessionName}:${tmuxSession.windowName}; waiting to verify ${providerLabel(provider)}`,
+        delegatedRunId: payload?.delegatedRunId,
+        launchStatus: 'running',
+        title: `${providerLabel(provider)} on ${this.config.displayName}`,
+      });
+      return;
     }
+
+    await this.updateLiveActivity(cmd.liveActivityId, {
+      status: 'waiting_for_input',
+      latestSummary: `Running in ${tmuxSession.sessionName}:${tmuxSession.windowName}`,
+      delegatedRunId: payload?.delegatedRunId,
+      launchStatus: 'running',
+      processId: attachedSession?.processId,
+      title: workSessionTitle,
+    });
+  }
+
+  private async attachObservedAgentSession(
+    provider: BridgeProvider,
+    workspacePath?: string,
+    sessionsBeforeLaunch: SessionProcessRecord[] = [],
+    paneProcessId?: string,
+  ): Promise<{
+    process: SessionProcessRecord;
+    processId: Id<'agentProcesses'>;
+  } | null> {
+    if (!workspacePath) {
+      return null;
+    }
+
+    const existingKeys = new Set(
+      sessionsBeforeLaunch.map(sessionIdentityKey).filter(Boolean),
+    );
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const observedSessions = listObservedSessionsForWorkspace(
+        provider,
+        workspacePath,
+      );
+      const candidate =
+        (paneProcessId
+          ? findObservedSessionInProcessTree(observedSessions, paneProcessId)
+          : undefined) ??
+        observedSessions.find(
+          session => !existingKeys.has(sessionIdentityKey(session)),
+        ) ??
+        (attempt === 9 ? observedSessions[0] : undefined);
+
+      if (candidate) {
+        const processId = await this.reportProcess(candidate);
+        return {
+          process: candidate,
+          processId,
+        };
+      }
+
+      await sleep(750);
+    }
+
+    return null;
   }
 
   private async reportProcess(
@@ -489,14 +762,7 @@ export class BridgeService {
   private async updateLiveActivity(
     liveActivityId: Id<'issueLiveActivities'>,
     args: {
-      status:
-        | 'active'
-        | 'waiting_for_input'
-        | 'paused'
-        | 'completed'
-        | 'failed'
-        | 'canceled'
-        | 'disconnected';
+      status: LiveActivityStatus;
       latestSummary?: string;
       title?: string;
       processId?: Id<'agentProcesses'>;
@@ -573,6 +839,130 @@ export class BridgeService {
       });
     }
   }
+}
+
+function createTmuxWorkSession(args: {
+  workspacePath: string;
+  issueKey: string;
+  issueTitle: string;
+  provider?: BridgeProvider;
+  prompt: string;
+}): {
+  sessionName: string;
+  windowName: string;
+  paneId: string;
+  paneProcessId: string;
+} {
+  const slug = sanitizeTmuxName(args.issueKey.toLowerCase());
+  const sessionName = `vector-${slug}-${randomUUID().slice(0, 8)}`;
+  const windowName = sanitizeTmuxName(
+    args.provider === 'codex'
+      ? 'codex'
+      : args.provider === 'claude_code'
+        ? 'claude'
+        : 'shell',
+  );
+
+  execFileSync('tmux', [
+    'new-session',
+    '-d',
+    '-s',
+    sessionName,
+    '-n',
+    windowName,
+    '-c',
+    args.workspacePath,
+  ]);
+
+  const paneId = execFileSync(
+    'tmux',
+    [
+      'display-message',
+      '-p',
+      '-t',
+      `${sessionName}:${windowName}.0`,
+      '#{pane_id}',
+    ],
+    { encoding: 'utf-8' },
+  ).trim();
+  const paneProcessId = execFileSync(
+    'tmux',
+    ['display-message', '-p', '-t', paneId, '#{pane_pid}'],
+    { encoding: 'utf-8' },
+  ).trim();
+
+  if (args.provider) {
+    execFileSync('tmux', [
+      'send-keys',
+      '-t',
+      paneId,
+      buildManagedLaunchCommand(args.provider, args.prompt),
+      'Enter',
+    ]);
+  } else {
+    execFileSync('tmux', [
+      'send-keys',
+      '-t',
+      paneId,
+      `printf '%s\\n\\n' ${shellQuote(args.prompt)}`,
+      'Enter',
+    ]);
+  }
+
+  return {
+    sessionName,
+    windowName,
+    paneId,
+    paneProcessId,
+  };
+}
+
+function sendTextToTmuxPane(paneId: string, text: string): void {
+  execFileSync('tmux', ['set-buffer', '--', text]);
+  execFileSync('tmux', ['paste-buffer', '-t', paneId]);
+  execFileSync('tmux', ['send-keys', '-t', paneId, 'Enter']);
+  execFileSync('tmux', ['delete-buffer']);
+}
+
+function captureTmuxPane(paneId: string): string {
+  return execFileSync(
+    'tmux',
+    ['capture-pane', '-p', '-t', paneId, '-S', '-120'],
+    { encoding: 'utf-8' },
+  )
+    .replace(/\u001B\[[0-9;?]*[A-Za-z]/g, '')
+    .trimEnd();
+}
+
+function currentGitBranch(cwd: string): string | undefined {
+  try {
+    return execSync('git rev-parse --abbrev-ref HEAD', {
+      encoding: 'utf-8',
+      cwd,
+      timeout: 3000,
+    }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+function buildManagedLaunchCommand(
+  provider: BridgeProvider,
+  prompt: string,
+): string {
+  if (provider === 'codex') {
+    return `codex --no-alt-screen -a never ${shellQuote(prompt)}`;
+  }
+
+  return `claude --permission-mode bypassPermissions --dangerously-skip-permissions ${shellQuote(prompt)}`;
+}
+
+function sanitizeTmuxName(value: string): string {
+  return value.replace(/[^a-z0-9_-]+/gi, '-').replace(/^-+|-+$/g, '') || 'work';
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\"'\"'`)}'`;
 }
 
 // ── Device Setup ────────────────────────────────────────────────────────────
@@ -661,6 +1051,117 @@ function summarizeMessage(message: string | undefined): string | undefined {
 
 function truncateForLog(message: string): string {
   return message.length > 80 ? `${message.slice(0, 77).trimEnd()}...` : message;
+}
+
+function listObservedSessionsForWorkspace(
+  provider: BridgeProvider,
+  workspacePath: string,
+): SessionProcessRecord[] {
+  return discoverAttachableSessions()
+    .filter(
+      session =>
+        session.provider === provider &&
+        matchesWorkspacePath(session, workspacePath),
+    )
+    .sort(compareLocalSessionRecency);
+}
+
+function findObservedSessionInProcessTree(
+  sessions: SessionProcessRecord[],
+  paneProcessId: string,
+): SessionProcessRecord | undefined {
+  const descendantIds = listDescendantProcessIds(paneProcessId);
+  if (descendantIds.size === 0) {
+    return undefined;
+  }
+
+  return sessions.find(session =>
+    session.localProcessId ? descendantIds.has(session.localProcessId) : false,
+  );
+}
+
+function listDescendantProcessIds(rootPid: string): Set<string> {
+  const descendants = new Set<string>([rootPid]);
+
+  try {
+    const output = execSync('ps -axo pid=,ppid=', {
+      encoding: 'utf-8',
+      timeout: 3000,
+    });
+
+    const parentToChildren = new Map<string, string[]>();
+    for (const line of output
+      .split('\n')
+      .map(value => value.trim())
+      .filter(Boolean)) {
+      const [pid, ppid] = line.split(/\s+/, 2);
+      if (!pid || !ppid) {
+        continue;
+      }
+
+      const children = parentToChildren.get(ppid) ?? [];
+      children.push(pid);
+      parentToChildren.set(ppid, children);
+    }
+
+    const queue = [rootPid];
+    while (queue.length > 0) {
+      const currentPid = queue.shift();
+      if (!currentPid) {
+        continue;
+      }
+
+      for (const childPid of parentToChildren.get(currentPid) ?? []) {
+        if (descendants.has(childPid)) {
+          continue;
+        }
+        descendants.add(childPid);
+        queue.push(childPid);
+      }
+    }
+  } catch {
+    return descendants;
+  }
+
+  return descendants;
+}
+
+function matchesWorkspacePath(
+  session: SessionProcessRecord,
+  workspacePath: string,
+): boolean {
+  const normalizedWorkspace = normalizePath(workspacePath);
+  const candidatePaths = [session.cwd, session.repoRoot]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizePath);
+
+  return candidatePaths.some(path => path === normalizedWorkspace);
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
+function sessionIdentityKey(session: SessionProcessRecord): string {
+  return [
+    session.provider,
+    session.sessionKey,
+    session.localProcessId,
+    session.cwd,
+  ]
+    .filter(Boolean)
+    .join('::');
+}
+
+function compareLocalSessionRecency(
+  a: SessionProcessRecord,
+  b: SessionProcessRecord,
+): number {
+  return Number(b.localProcessId ?? 0) - Number(a.localProcessId ?? 0);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function isBridgeProvider(provider: AgentProvider): provider is BridgeProvider {

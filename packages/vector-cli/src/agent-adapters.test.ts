@@ -3,6 +3,22 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { mkdtempSync } from 'fs';
+import { EventEmitter } from 'events';
+
+type RecordedRpcWrite = {
+  id?: number;
+  method?: string;
+  params?: unknown;
+};
+
+type MockSpawnChild = EventEmitter & {
+  stdout: EventEmitter;
+  stderr: EventEmitter;
+  stdin: {
+    write: ReturnType<typeof vi.fn>;
+  };
+  kill: ReturnType<typeof vi.fn>;
+};
 
 function writeJsonl(path: string, entries: unknown[]) {
   mkdirSync(join(path, '..'), { recursive: true });
@@ -284,5 +300,210 @@ describe('agent-adapters session discovery', () => {
       title: 'Implement the bridge attach flow properly',
       supportsInboundMessages: true,
     });
+  });
+
+  it('uses codex app-server thread/start and turn/start for managed launches', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'vector-workspace-'));
+    const writes: RecordedRpcWrite[] = [];
+
+    vi.doMock('child_process', async () => {
+      const actual =
+        await vi.importActual<typeof import('child_process')>('child_process');
+
+      return {
+        ...actual,
+        execSync: vi.fn((command: string) => {
+          if (command === 'git rev-parse --show-toplevel') {
+            return `${workspace}\n`;
+          }
+          if (command === 'git rev-parse --abbrev-ref HEAD') {
+            return 'main\n';
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        }),
+        spawn: vi.fn(() => {
+          const stdout = new EventEmitter();
+          const stderr = new EventEmitter();
+          const child = new EventEmitter() as MockSpawnChild;
+
+          child.stdout = stdout;
+          child.stderr = stderr;
+          child.kill = vi.fn(() => {
+            child.emit('close', 0);
+          });
+          child.stdin = {
+            write: vi.fn((chunk: string) => {
+              for (const line of chunk.trim().split('\n')) {
+                const payload = JSON.parse(line);
+                writes.push(payload);
+
+                if (payload.method === 'initialize') {
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ id: payload.id, result: {} })}\n`,
+                    ),
+                  );
+                }
+
+                if (payload.method === 'thread/start') {
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ id: payload.id, result: { thread: { id: 'thr_vector_codex' } } })}\n`,
+                    ),
+                  );
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ method: 'thread/started', params: { thread: { id: 'thr_vector_codex' } } })}\n`,
+                    ),
+                  );
+                }
+
+                if (payload.method === 'turn/start') {
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ id: payload.id, result: { turn: { id: 'turn_1', status: 'inProgress', items: [] } } })}\n`,
+                    ),
+                  );
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ method: 'item/agentMessage/delta', params: { delta: 'Managed via Codex.' } })}\n`,
+                    ),
+                  );
+                  stdout.emit(
+                    'data',
+                    Buffer.from(
+                      `${JSON.stringify({ method: 'turn/completed', params: { turn: { id: 'turn_1', status: 'completed' } } })}\n`,
+                    ),
+                  );
+                }
+              }
+            }),
+          };
+
+          return child;
+        }),
+      };
+    });
+
+    const { launchProviderSession } = await import('./agent-adapters');
+    const result = await launchProviderSession(
+      'codex',
+      workspace,
+      'Ship the bridge fix',
+    );
+
+    expect(result).toMatchObject({
+      provider: 'codex',
+      sessionKey: 'thr_vector_codex',
+      responseText: 'Managed via Codex.',
+      cwd: workspace,
+      branch: 'main',
+      repoRoot: workspace,
+      launchCommand: 'codex app-server',
+    });
+    expect(writes.some(entry => entry.method === 'thread/start')).toBe(true);
+    expect(writes.some(entry => entry.method === 'turn/start')).toBe(true);
+  });
+
+  it('uses the Claude Agent SDK query resume flow for managed follow-up messages', async () => {
+    const workspace = mkdtempSync(join(tmpdir(), 'vector-workspace-'));
+    const close = vi.fn();
+    const queryMock = vi
+      .fn()
+      .mockImplementationOnce((args: { options?: { resume?: string } }) => {
+        const options = args.options ?? {};
+        expect(options.resume).toBeUndefined();
+        return {
+          close,
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'assistant',
+              session_id: 'claude-session-new',
+              message: {
+                content: [{ type: 'text', text: 'Initial Claude reply' }],
+              },
+            };
+            yield {
+              type: 'result',
+              subtype: 'success',
+              session_id: 'claude-session-new',
+              result: 'Initial Claude reply',
+              modelUsage: { 'claude-opus-4-6': {} },
+            };
+          },
+        };
+      })
+      .mockImplementationOnce((args: { options?: { resume?: string } }) => {
+        const options = args.options ?? {};
+        expect(options.resume).toBe('claude-session-new');
+        return {
+          close,
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: 'result',
+              subtype: 'success',
+              session_id: 'claude-session-new',
+              result: 'Follow-up reply',
+              modelUsage: { 'claude-opus-4-6': {} },
+            };
+          },
+        };
+      });
+
+    vi.doMock('@anthropic-ai/claude-agent-sdk', () => ({
+      query: queryMock,
+    }));
+
+    vi.doMock('child_process', async () => {
+      const actual =
+        await vi.importActual<typeof import('child_process')>('child_process');
+      return {
+        ...actual,
+        execSync: vi.fn((command: string) => {
+          if (command === 'git rev-parse --show-toplevel') {
+            return `${workspace}\n`;
+          }
+          if (command === 'git rev-parse --abbrev-ref HEAD') {
+            return 'main\n';
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        }),
+      };
+    });
+
+    const { launchProviderSession, resumeProviderSession } = await import(
+      './agent-adapters'
+    );
+    const launched = await launchProviderSession(
+      'claude_code',
+      workspace,
+      'Start the delegated issue',
+    );
+    const resumed = await resumeProviderSession(
+      'claude_code',
+      launched.sessionKey,
+      workspace,
+      'Continue and finish it',
+    );
+
+    expect(launched).toMatchObject({
+      provider: 'claude_code',
+      sessionKey: 'claude-session-new',
+      responseText: 'Initial Claude reply',
+      model: 'claude-opus-4-6',
+    });
+    expect(resumed).toMatchObject({
+      provider: 'claude_code',
+      sessionKey: 'claude-session-new',
+      responseText: 'Follow-up reply',
+      model: 'claude-opus-4-6',
+      launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
+    });
+    expect(close).toHaveBeenCalledTimes(2);
   });
 });

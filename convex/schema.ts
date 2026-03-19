@@ -22,6 +22,7 @@ import {
   liveMessageDeliveryStatusValidator,
   liveMessageDirectionValidator,
   liveMessageRoleValidator,
+  workSessionAccessLevelValidator,
   workspaceLaunchPolicyValidator,
 } from './_shared/agentBridge';
 import { PERMISSION_VALUES, SYSTEM_ROLE_KEYS } from './_shared/permissions';
@@ -1157,11 +1158,54 @@ export default defineSchema({
     .index('by_live_activity', ['liveActivityId'])
     .index('by_launch_status', ['launchStatus']),
 
+  workSessions: defineTable({
+    organizationId: v.id('organizations'),
+    issueId: v.id('issues'),
+    liveActivityId: v.optional(v.id('issueLiveActivities')),
+    deviceId: v.id('agentDevices'),
+    workspaceId: v.optional(v.id('deviceWorkspaces')),
+    ownerUserId: v.id('users'),
+    title: v.optional(v.string()),
+    status: liveActivityStatusValidator,
+    workspacePath: v.optional(v.string()),
+    cwd: v.optional(v.string()),
+    repoRoot: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    tmuxSessionName: v.optional(v.string()),
+    tmuxWindowName: v.optional(v.string()),
+    tmuxPaneId: v.optional(v.string()),
+    terminalSnapshot: v.optional(v.string()),
+    terminalUpdatedAt: v.optional(v.number()),
+    agentProvider: v.optional(agentProviderValidator),
+    agentProcessId: v.optional(v.id('agentProcesses')),
+    agentSessionKey: v.optional(v.string()),
+    startedAt: v.number(),
+    lastEventAt: v.number(),
+    endedAt: v.optional(v.number()),
+  })
+    .index('by_issue', ['issueId'])
+    .index('by_device', ['deviceId'])
+    .index('by_owner', ['ownerUserId'])
+    .index('by_live_activity', ['liveActivityId'])
+    .index('by_agent_process', ['agentProcessId']),
+
+  workSessionShares: defineTable({
+    workSessionId: v.id('workSessions'),
+    userId: v.id('users'),
+    grantedByUserId: v.id('users'),
+    accessLevel: workSessionAccessLevelValidator,
+    createdAt: v.number(),
+  })
+    .index('by_work_session', ['workSessionId'])
+    .index('by_user', ['userId'])
+    .index('by_work_session_user', ['workSessionId', 'userId']),
+
   // Issue-bound projection of a process lifecycle
   issueLiveActivities: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
     deviceId: v.id('agentDevices'),
+    workSessionId: v.optional(v.id('workSessions')),
     processId: v.optional(v.id('agentProcesses')),
     ownerUserId: v.id('users'),
     provider: agentProviderValidator,

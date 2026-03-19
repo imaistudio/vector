@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useCachedQuery, useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
-import type { FunctionReturnType } from 'convex/server';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
@@ -12,12 +11,12 @@ import {
   Activity,
   ChevronDown,
   ChevronUp,
+  CircleDot,
   Cpu,
   FolderOpen,
   Monitor,
   Play,
   Plus,
-  Send,
   Terminal,
 } from 'lucide-react';
 import {
@@ -34,21 +33,8 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { LiveActivityCard } from './live-activity-card';
-
-type LiveActivity = FunctionReturnType<
-  typeof api.agentBridge.queries.listIssueLiveActivities
->[number];
-
-type DeviceWithProcesses = FunctionReturnType<
-  typeof api.agentBridge.queries.listProcessesForAttach
->[number];
-
-type DelegationTarget = FunctionReturnType<
-  typeof api.agentBridge.queries.listDelegationTargets
->[number];
 
 // ── Section Header ──────────────────────────────────────────────────────────
 
@@ -63,9 +49,7 @@ function SectionHeader({
     <div className='flex items-center justify-between px-3 py-2'>
       <div className='flex items-center gap-2'>
         <Activity className='text-muted-foreground size-4' />
-        <span className='text-muted-foreground text-sm font-medium'>
-          Live Activity
-        </span>
+        <span className='text-sm font-semibold'>Work Sessions</span>
         {count > 0 && (
           <span className='bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] leading-none font-medium'>
             {count}
@@ -131,7 +115,7 @@ export function AttachProcessPopover({
         {children ?? (
           <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
             <Plus className='size-3' />
-            <span className='text-xs'>Attach</span>
+            <span className='text-xs'>Attach Session</span>
           </Button>
         )}
       </PopoverTrigger>
@@ -221,8 +205,8 @@ export function DelegateRunPopover({
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [selectedDeviceId, setSelectedDeviceId] =
     useState<Id<'agentDevices'> | null>(null);
-  const [selectedProvider, setSelectedProvider] = useState<
-    'codex' | 'claude_code' | null
+  const [selectedLaunchMode, setSelectedLaunchMode] = useState<
+    'codex' | 'claude_code' | 'manual' | null
   >(null);
 
   const targets = useCachedQuery(
@@ -234,18 +218,24 @@ export function DelegateRunPopover({
   const selectedTarget = targets?.find(t => t.device._id === selectedDeviceId);
 
   const handleDelegate = async (workspaceId: Id<'deviceWorkspaces'>) => {
-    if (!selectedDeviceId || !selectedProvider) return;
+    if (!selectedDeviceId || !selectedLaunchMode) return;
+    const provider =
+      selectedLaunchMode === 'manual' ? undefined : selectedLaunchMode;
     try {
       await delegateMutation({
         issueId,
         deviceId: selectedDeviceId,
         workspaceId,
-        provider: selectedProvider,
+        ...(provider ? { provider } : {}),
       });
       setOpen(false);
       setSelectedDeviceId(null);
-      setSelectedProvider(null);
-      toast.success('Issue delegated successfully');
+      setSelectedLaunchMode(null);
+      toast.success(
+        provider
+          ? 'Work session started on device'
+          : 'Shell session started on device',
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delegate issue';
       toast.error(msg);
@@ -254,7 +244,7 @@ export function DelegateRunPopover({
 
   const reset = () => {
     setSelectedDeviceId(null);
-    setSelectedProvider(null);
+    setSelectedLaunchMode(null);
   };
 
   return (
@@ -269,7 +259,7 @@ export function DelegateRunPopover({
         {children ?? (
           <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
             <Play className='size-3' />
-            <span className='text-xs'>Run on device</span>
+            <span className='text-xs'>New Session</span>
           </Button>
         )}
       </PopoverTrigger>
@@ -313,8 +303,8 @@ export function DelegateRunPopover({
               </CommandGroup>
             </CommandList>
           </Command>
-        ) : !selectedProvider ? (
-          // Step 2: Pick agent
+        ) : !selectedLaunchMode ? (
+          // Step 2: Pick session type
           <Command>
             <div className='flex items-center gap-2 border-b px-3 py-2'>
               <Button
@@ -330,20 +320,42 @@ export function DelegateRunPopover({
               </span>
             </div>
             <CommandList>
-              <CommandGroup heading='Select agent'>
+              <CommandGroup heading='Select session type'>
                 <CommandItem
-                  onSelect={() => setSelectedProvider('codex')}
+                  onSelect={() => setSelectedLaunchMode('codex')}
                   className='gap-2'
                 >
                   <Cpu className='size-4' />
-                  <span>Codex</span>
+                  <div className='min-w-0 flex-1'>
+                    <div className='text-sm'>Codex</div>
+                    <div className='text-muted-foreground text-xs'>
+                      Open a managed Codex work session in tmux
+                    </div>
+                  </div>
                 </CommandItem>
                 <CommandItem
-                  onSelect={() => setSelectedProvider('claude_code')}
+                  onSelect={() => setSelectedLaunchMode('claude_code')}
                   className='gap-2'
                 >
                   <Terminal className='size-4' />
-                  <span>Claude</span>
+                  <div className='min-w-0 flex-1'>
+                    <div className='text-sm'>Claude</div>
+                    <div className='text-muted-foreground text-xs'>
+                      Open a managed Claude work session in tmux
+                    </div>
+                  </div>
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => setSelectedLaunchMode('manual')}
+                  className='gap-2'
+                >
+                  <CircleDot className='size-4' />
+                  <div className='min-w-0 flex-1'>
+                    <div className='text-sm'>Manual shell</div>
+                    <div className='text-muted-foreground text-xs'>
+                      Start a plain tmux shell tied to this issue
+                    </div>
+                  </div>
                 </CommandItem>
               </CommandGroup>
             </CommandList>
@@ -353,8 +365,14 @@ export function DelegateRunPopover({
           <WorkspacePickerStep
             device={selectedTarget?.device}
             workspaces={selectedTarget?.workspaces ?? []}
-            providerLabel={selectedProvider === 'codex' ? 'Codex' : 'Claude'}
-            onBack={() => setSelectedProvider(null)}
+            providerLabel={
+              selectedLaunchMode === 'codex'
+                ? 'Codex'
+                : selectedLaunchMode === 'claude_code'
+                  ? 'Claude'
+                  : 'Manual shell'
+            }
+            onBack={() => setSelectedLaunchMode(null)}
             onSelect={handleDelegate}
           />
         )}
@@ -558,9 +576,11 @@ const TERMINAL_STATUSES = new Set([
 ]);
 
 export function IssueLiveActivitySection({
+  orgSlug,
   issueId,
   currentUser,
 }: {
+  orgSlug: string;
   issueId: Id<'issues'>;
   currentUser?: {
     _id: string;
@@ -582,11 +602,6 @@ export function IssueLiveActivitySection({
     activities?.filter(a => TERMINAL_STATUSES.has(a.status)) ?? [];
   const activeCount = activeActivities.length;
 
-  // Don't render anything when empty — actions are in the 3-dot menu instead
-  if (activities !== undefined && activities.length === 0) {
-    return null;
-  }
-
   return (
     <div className='border-t'>
       <SectionHeader count={activeCount} issueId={issueId} />
@@ -598,6 +613,34 @@ export function IssueLiveActivitySection({
         </div>
       )}
 
+      {activities !== undefined && activities.length === 0 && (
+        <div className='px-3 pb-3'>
+          <div className='bg-muted/20 flex items-center justify-between rounded-lg border px-3 py-3'>
+            <div className='min-w-0'>
+              <div className='text-sm font-medium'>No work sessions yet</div>
+              <div className='text-muted-foreground text-xs'>
+                Start a tmux-backed shell or launch Codex or Claude on one of
+                your bridge devices.
+              </div>
+            </div>
+            <div className='ml-3 flex shrink-0 items-center gap-1'>
+              <AttachProcessPopover issueId={issueId}>
+                <Button variant='ghost' size='xs' className='h-7 gap-1.5 px-2'>
+                  <Plus className='size-3.5' />
+                  Attach
+                </Button>
+              </AttachProcessPopover>
+              <DelegateRunPopover issueId={issueId}>
+                <Button size='xs' className='h-7 gap-1.5 px-2'>
+                  <Play className='size-3.5' />
+                  New Session
+                </Button>
+              </DelegateRunPopover>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Active activity cards */}
       {activeActivities.length > 0 && (
         <div className='space-y-2 px-3 pb-2'>
@@ -605,6 +648,7 @@ export function IssueLiveActivitySection({
             <LiveActivityCard
               key={activity._id}
               activity={activity}
+              orgSlug={orgSlug}
               currentUser={currentUser}
             />
           ))}
@@ -633,6 +677,7 @@ export function IssueLiveActivitySection({
                 <LiveActivityCard
                   key={activity._id}
                   activity={activity}
+                  orgSlug={orgSlug}
                   currentUser={currentUser}
                 />
               ))}

@@ -1,11 +1,10 @@
-import { mutation } from '../_generated/server';
-import { internal } from '../_generated/api';
+import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
+import type { Id } from '../_generated/dataModel';
 import { requireAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
 import {
   agentDeviceServiceTypeValidator,
-  agentDeviceStatusValidator,
   agentProcessModeValidator,
   agentProcessStatusValidator,
   agentProviderValidator,
@@ -14,6 +13,7 @@ import {
   liveActivityStatusValidator,
   liveMessageDirectionValidator,
   liveMessageRoleValidator,
+  workSessionAccessLevelValidator,
   workspaceLaunchPolicyValidator,
   AGENT_PROVIDER_LABELS,
 } from '../_shared/agentBridge';
@@ -22,6 +22,7 @@ import {
   resolveIssueScope,
   snapshotForIssue,
 } from '../activities/lib';
+import { getWorkSessionAccess, requireWorkSessionViewer } from './workSessions';
 
 // ── Agent Devices ───────────────────────────────────────────────────────────
 
@@ -402,6 +403,48 @@ export const updateProcessStatus = mutation({
 
 // ── Issue Live Activities ───────────────────────────────────────────────────
 
+async function createWorkSessionForLiveActivity(
+  ctx: MutationCtx,
+  args: {
+    organizationId: Id<'organizations'>;
+    issueId: Id<'issues'>;
+    liveActivityId: Id<'issueLiveActivities'>;
+    deviceId: Id<'agentDevices'>;
+    ownerUserId: Id<'users'>;
+    workspaceId?: Id<'deviceWorkspaces'>;
+    workspacePath?: string;
+    title?: string;
+    status: 'active' | 'waiting_for_input' | 'paused';
+    agentProvider?: 'codex' | 'claude_code' | 'vector_cli';
+    agentProcessId?: Id<'agentProcesses'>;
+    agentSessionKey?: string;
+    cwd?: string;
+    repoRoot?: string;
+    branch?: string;
+  },
+) {
+  const now = Date.now();
+  return ctx.db.insert('workSessions', {
+    organizationId: args.organizationId,
+    issueId: args.issueId,
+    liveActivityId: args.liveActivityId,
+    deviceId: args.deviceId,
+    workspaceId: args.workspaceId,
+    ownerUserId: args.ownerUserId,
+    title: args.title,
+    status: args.status,
+    workspacePath: args.workspacePath,
+    cwd: args.cwd ?? args.workspacePath,
+    repoRoot: args.repoRoot,
+    branch: args.branch,
+    agentProvider: args.agentProvider,
+    agentProcessId: args.agentProcessId,
+    agentSessionKey: args.agentSessionKey,
+    startedAt: now,
+    lastEventAt: now,
+  });
+}
+
 /** Attach a process to an issue as a live activity. */
 export const attachLiveActivity = mutation({
   args: {
@@ -423,8 +466,10 @@ export const attachLiveActivity = mutation({
       throw new ConvexError('DEVICE_NOT_FOUND');
     }
 
+    const process = args.processId
+      ? await ctx.db.get('agentProcesses', args.processId)
+      : null;
     if (args.processId) {
-      const process = await ctx.db.get('agentProcesses', args.processId);
       if (!process || process.deviceId !== args.deviceId) {
         throw new ConvexError('PROCESS_NOT_FOUND');
       }
@@ -447,6 +492,27 @@ export const attachLiveActivity = mutation({
       status: 'active',
       startedAt: now,
       lastEventAt: now,
+    });
+
+    const workSessionId = await createWorkSessionForLiveActivity(ctx, {
+      organizationId: issue.organizationId,
+      issueId: args.issueId,
+      liveActivityId,
+      deviceId: args.deviceId,
+      ownerUserId: userId,
+      title: args.title ?? process?.title,
+      status: 'active',
+      agentProvider: args.provider,
+      agentProcessId: process?._id,
+      agentSessionKey: process?.sessionKey,
+      workspacePath: process?.cwd ?? process?.repoRoot,
+      cwd: process?.cwd,
+      repoRoot: process?.repoRoot,
+      branch: process?.branch,
+    });
+
+    await ctx.db.patch('issueLiveActivities', liveActivityId, {
+      workSessionId,
     });
 
     // Record activity event
@@ -500,6 +566,14 @@ export const updateLiveActivityStatus = mutation({
       lastEventAt: now,
       ...(isTerminal && { endedAt: now }),
     });
+
+    if (activity.workSessionId) {
+      await ctx.db.patch('workSessions', activity.workSessionId, {
+        status: args.status,
+        lastEventAt: now,
+        ...(isTerminal && { endedAt: now }),
+      });
+    }
 
     // Record activity event for status changes
     const issue = await ctx.db.get('issues', activity.issueId);
@@ -576,6 +650,14 @@ export const completeLiveActivity = mutation({
       finalCommentId,
     });
 
+    if (activity.workSessionId) {
+      await ctx.db.patch('workSessions', activity.workSessionId, {
+        status: args.status,
+        lastEventAt: now,
+        endedAt: now,
+      });
+    }
+
     // Record activity event
     const issue = await ctx.db.get('issues', activity.issueId);
     if (issue) {
@@ -599,6 +681,89 @@ export const completeLiveActivity = mutation({
   },
 });
 
+export const shareWorkSession = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    userId: v.id('users'),
+    accessLevel: workSessionAccessLevelValidator,
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canManage) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const member = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q
+          .eq('organizationId', workSession.organizationId)
+          .eq('userId', args.userId),
+      )
+      .first();
+    if (!member) {
+      throw new ConvexError('MEMBER_NOT_FOUND');
+    }
+
+    const now = Date.now();
+    const existing = await ctx.db
+      .query('workSessionShares')
+      .withIndex('by_work_session_user', q =>
+        q.eq('workSessionId', args.workSessionId).eq('userId', args.userId),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch('workSessionShares', existing._id, {
+        accessLevel: args.accessLevel,
+      });
+      return existing._id;
+    }
+
+    return ctx.db.insert('workSessionShares', {
+      workSessionId: args.workSessionId,
+      userId: args.userId,
+      grantedByUserId: access.userId,
+      accessLevel: args.accessLevel,
+      createdAt: now,
+    });
+  },
+});
+
+export const revokeWorkSessionShare = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    userId: v.id('users'),
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canManage) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const existing = await ctx.db
+      .query('workSessionShares')
+      .withIndex('by_work_session_user', q =>
+        q.eq('workSessionId', args.workSessionId).eq('userId', args.userId),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.delete('workSessionShares', existing._id);
+    }
+  },
+});
+
 // ── Live Messages ───────────────────────────────────────────────────────────
 
 /** Append a message to a live activity transcript. */
@@ -618,15 +783,20 @@ export const appendLiveMessage = mutation({
     );
     if (!activity) throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
 
-    // Only the owner can drive the attached local session from Vector.
-    if (args.direction === 'agent_to_vector') {
-      if (activity.ownerUserId !== userId) {
-        throw new ConvexError('FORBIDDEN');
-      }
-    } else {
-      if (activity.ownerUserId !== userId) {
-        throw new ConvexError('FORBIDDEN');
-      }
+    if (args.direction !== 'vector_to_agent') {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const workSessionAccess = await getWorkSessionAccess(
+      ctx,
+      activity.workSessionId,
+    );
+
+    const canInteract = activity.workSessionId
+      ? workSessionAccess.canInteract
+      : activity.ownerUserId === userId;
+    if (!canInteract) {
+      throw new ConvexError('FORBIDDEN');
     }
 
     const now = Date.now();
@@ -637,7 +807,7 @@ export const appendLiveMessage = mutation({
       role: args.role,
       body: args.body,
       structuredPayload: args.structuredPayload,
-      deliveryStatus: args.direction === 'agent_to_vector' ? 'sent' : 'pending',
+      deliveryStatus: 'pending',
       createdAt: now,
     });
 
@@ -647,19 +817,23 @@ export const appendLiveMessage = mutation({
       ...(args.role === 'status' && { latestSummary: args.body }),
     });
 
-    // If this is a user message to the agent, create a command
-    if (args.direction === 'vector_to_agent') {
-      await ctx.db.insert('agentCommands', {
-        deviceId: activity.deviceId,
-        processId: activity.processId,
-        liveActivityId: args.liveActivityId,
-        senderUserId: userId,
-        kind: 'message',
-        payload: { body: args.body, messageId },
-        status: 'pending',
-        createdAt: now,
+    if (activity.workSessionId) {
+      await ctx.db.patch('workSessions', activity.workSessionId, {
+        lastEventAt: now,
       });
     }
+
+    // If this is a user message to the agent, create a command
+    await ctx.db.insert('agentCommands', {
+      deviceId: activity.deviceId,
+      processId: activity.processId,
+      liveActivityId: args.liveActivityId,
+      senderUserId: userId,
+      kind: 'message',
+      payload: { body: args.body, messageId },
+      status: 'pending',
+      createdAt: now,
+    });
 
     return messageId;
   },
@@ -754,8 +928,15 @@ export const sendCommand = mutation({
     );
     if (!activity) throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
 
-    // Only the device owner can send commands by default
-    if (activity.ownerUserId !== userId) {
+    const workSessionAccess = await getWorkSessionAccess(
+      ctx,
+      activity.workSessionId,
+    );
+    const canInteract = activity.workSessionId
+      ? workSessionAccess.canInteract
+      : activity.ownerUserId === userId;
+
+    if (!canInteract) {
       throw new ConvexError('FORBIDDEN');
     }
 
@@ -780,7 +961,13 @@ export const delegateIssue = mutation({
     issueId: v.id('issues'),
     deviceId: v.id('agentDevices'),
     workspaceId: v.id('deviceWorkspaces'),
-    provider: agentProviderValidator,
+    provider: v.optional(
+      v.union(
+        v.literal('codex'),
+        v.literal('claude_code'),
+        v.literal('vector_cli'),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUserId(ctx);
@@ -808,7 +995,13 @@ export const delegateIssue = mutation({
     }
 
     const now = Date.now();
-    const providerLabel = AGENT_PROVIDER_LABELS[args.provider] ?? args.provider;
+    const providerLabel = args.provider
+      ? (AGENT_PROVIDER_LABELS[args.provider] ?? args.provider)
+      : 'Work Session';
+    const liveActivityProvider = args.provider ?? 'vector_cli';
+    const liveActivityTitle = args.provider
+      ? `${providerLabel} on ${device.displayName}`
+      : `${device.displayName} shell session`;
 
     // Create live activity
     const liveActivityId = await ctx.db.insert('issueLiveActivities', {
@@ -816,11 +1009,29 @@ export const delegateIssue = mutation({
       issueId: args.issueId,
       deviceId: args.deviceId,
       ownerUserId: userId,
-      provider: args.provider,
-      title: `${providerLabel} on ${device.displayName}`,
+      provider: liveActivityProvider,
+      title: liveActivityTitle,
       status: 'active',
       startedAt: now,
       lastEventAt: now,
+    });
+
+    const workSessionId = await createWorkSessionForLiveActivity(ctx, {
+      organizationId: issue.organizationId,
+      issueId: args.issueId,
+      liveActivityId,
+      deviceId: args.deviceId,
+      ownerUserId: userId,
+      workspaceId: args.workspaceId,
+      workspacePath: workspace.path,
+      title: `${issue.key}: ${issue.title}`,
+      status: 'active',
+      agentProvider: args.provider,
+      cwd: workspace.path,
+    });
+
+    await ctx.db.patch('issueLiveActivities', liveActivityId, {
+      workSessionId,
     });
 
     // Create delegated run
@@ -831,7 +1042,7 @@ export const delegateIssue = mutation({
       deviceId: args.deviceId,
       workspaceId: args.workspaceId,
       requestedByUserId: userId,
-      provider: args.provider,
+      provider: liveActivityProvider,
       launchMode: 'delegated_launch',
       workspacePath: workspace.path,
       launchStatus: 'pending',

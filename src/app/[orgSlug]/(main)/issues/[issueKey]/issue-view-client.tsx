@@ -1269,6 +1269,7 @@ export default function IssueViewClient({
 
             {/* Live Activity */}
             <IssueLiveActivitySection
+              orgSlug={params.orgSlug}
               issueId={issue._id}
               currentUser={
                 user

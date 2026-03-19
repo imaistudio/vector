@@ -6,6 +6,7 @@ import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
+import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
@@ -373,14 +374,6 @@ function requireOrg(runtime: Runtime, explicit?: string) {
   return orgSlug;
 }
 
-function readJsonFile<T>(path: string, fallback: T): T {
-  try {
-    return JSON.parse(readFileSync(path, 'utf8')) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function hostForAppUrl(appUrl?: string) {
   if (!appUrl) {
     return undefined;
@@ -450,6 +443,36 @@ function parseAgentProvider(
   throw new Error('provider must be one of: codex, claude_code, vector_cli');
 }
 
+function isBridgeDeviceAuthError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeData = (error as { data?: unknown }).data;
+  return (
+    maybeData === 'INVALID_DEVICE_SECRET' || maybeData === 'DEVICE_NOT_FOUND'
+  );
+}
+
+async function validateStoredBridgeConfig(
+  config: Awaited<ReturnType<typeof setupBridgeDevice>>,
+): Promise<boolean> {
+  const client = new ConvexHttpClient(config.convexUrl);
+
+  try {
+    await client.mutation(api.agentBridge.bridgePublic.heartbeat, {
+      deviceId: config.deviceId as Id<'agentDevices'>,
+      deviceSecret: config.deviceSecret,
+    });
+    return true;
+  } catch (error) {
+    if (isBridgeDeviceAuthError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 async function getClient(command: Command) {
   const runtime = await getRuntime(command);
   const session = requireSession(runtime);
@@ -489,7 +512,8 @@ async function ensureBridgeConfig(
       !config ||
       config.userId !== user._id ||
       config.convexUrl !== runtime.convexUrl ||
-      !backendDevice;
+      !backendDevice ||
+      !(await validateStoredBridgeConfig(config));
 
     if (needsRegistration) {
       config = await setupBridgeDevice(client, runtime.convexUrl);
@@ -3030,11 +3054,8 @@ serviceCommand
     const globalOptions = command.optsWithGlobals() as GlobalOptions;
     const profile = globalOptions.profile ?? 'default';
     const session = await readSession(profile);
-    const liveActivities = readJsonFile(
-      join(VECTOR_HOME, 'live-activities.json'),
-      [] as unknown[],
-    );
-    let processes: unknown[] = [];
+    let workSessions: unknown[] = [];
+    let detectedSessions: unknown[] = [];
 
     try {
       const runtime = await getRuntime(command);
@@ -3043,6 +3064,13 @@ serviceCommand
           runtime.session,
           runtime.appUrl,
           runtime.convexUrl,
+        );
+        workSessions = await runQuery(
+          client,
+          api.agentBridge.queries.listDeviceWorkSessions,
+          {
+            deviceId: status.config.deviceId as Id<'agentDevices'>,
+          },
         );
         const devices = await runQuery(
           client,
@@ -3053,10 +3081,11 @@ serviceCommand
           (entry: { device: { _id: string } }) =>
             entry.device._id === status.config?.deviceId,
         );
-        processes = currentDevice?.processes ?? [];
+        detectedSessions = currentDevice?.processes ?? [];
       }
     } catch {
-      processes = [];
+      workSessions = [];
+      detectedSessions = [];
     }
 
     printOutput(
@@ -3067,8 +3096,8 @@ serviceCommand
         pid: status.pid,
         config: status.config,
         sessionInfo: buildMenuSessionInfo(session),
-        liveActivities,
-        processes,
+        workSessions,
+        detectedSessions,
       },
       Boolean(globalOptions.json),
     );
