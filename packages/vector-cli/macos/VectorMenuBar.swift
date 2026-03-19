@@ -65,8 +65,20 @@ struct AttachableProcess: Decodable, Identifiable {
     return source
   }
 
+  var primaryLabel: String {
+    let candidate = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    if !candidate.isEmpty {
+      return candidate
+    }
+    return workspaceLabel
+  }
+
   var attachTitle: String? {
     title ?? cwd ?? repoRoot
+  }
+
+  var repoPathLabel: String? {
+    repoRoot ?? cwd
   }
 }
 
@@ -599,74 +611,76 @@ struct TrayPopoverView: View {
                 EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
               } else {
                 ForEach(controller.snapshot.processes) { process in
-                  let binding = Binding(
-                    get: { expandedProcessIds.contains(process.id) },
-                    set: { isExpanded in
+                  let isExpanded = expandedProcessIds.contains(process.id)
+
+                  VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
+                    Button {
                       if isExpanded {
-                        expandedProcessIds.insert(process.id)
-                      } else {
                         expandedProcessIds.remove(process.id)
-                      }
-                    }
-                  )
-
-                  DisclosureGroup(isExpanded: binding) {
-                    VStack(alignment: .leading, spacing: 8) {
-                      TextField(
-                        "Search issue key or title...",
-                        text: controller.issueSearchBinding(for: process.id)
-                      )
-                      .textFieldStyle(.roundedBorder)
-                      .font(.system(size: 12))
-
-                      if controller.isSearching(processId: process.id) {
-                        HStack(spacing: 8) {
-                          ProgressView()
-                            .controlSize(.small)
-                          Text("Searching issues")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        }
-                      } else if controller.results(for: process.id).isEmpty {
-                        EmptySectionLabel(
-                          text: (controller.issueSearchText[process.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
-                            ? "No matching issues."
-                            : "Type at least 2 characters to search."
-                        )
                       } else {
-                        VStack(alignment: .leading, spacing: 6) {
-                          ForEach(controller.results(for: process.id)) { issue in
-                            HStack(alignment: .center, spacing: 8) {
-                              Circle()
-                                .fill(color(from: issue.stateColor))
-                                .frame(width: 8, height: 8)
-                              VStack(alignment: .leading, spacing: 2) {
-                                Text(issue.key)
-                                  .font(.system(size: 11, weight: .semibold))
-                                Text(issue.title)
-                                  .font(.system(size: 11))
-                                  .foregroundStyle(.secondary)
-                                  .lineLimit(2)
-                              }
-                              Spacer(minLength: 0)
-                              Button(controller.isAttaching(processId: process.id) ? "Attaching..." : "Attach") {
-                                controller.attach(process: process, to: issue)
-                              }
-                              .buttonStyle(.borderedProminent)
+                        expandedProcessIds.insert(process.id)
+                      }
+                    } label: {
+                      ProcessRow(process: process, expanded: isExpanded)
+                    }
+                    .buttonStyle(.plain)
+
+                    if isExpanded {
+                      VStack(alignment: .leading, spacing: 8) {
+                        TextField(
+                          "Search issue key or title...",
+                          text: controller.issueSearchBinding(for: process.id)
+                        )
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12))
+
+                        if controller.isSearching(processId: process.id) {
+                          HStack(spacing: 8) {
+                            ProgressView()
                               .controlSize(.small)
-                              .disabled(controller.isAttaching(processId: process.id))
+                            Text("Searching issues")
+                              .font(.system(size: 11))
+                              .foregroundStyle(.secondary)
+                          }
+                        } else if controller.results(for: process.id).isEmpty {
+                          EmptySectionLabel(
+                            text: (controller.issueSearchText[process.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+                              ? "No matching issues."
+                              : "Type at least 2 characters to search."
+                          )
+                        } else {
+                          VStack(alignment: .leading, spacing: 6) {
+                            ForEach(controller.results(for: process.id)) { issue in
+                              HStack(alignment: .center, spacing: 8) {
+                                Circle()
+                                  .fill(color(from: issue.stateColor))
+                                  .frame(width: 8, height: 8)
+                                VStack(alignment: .leading, spacing: 2) {
+                                  Text(issue.key)
+                                    .font(.system(size: 11, weight: .semibold))
+                                  Text(issue.title)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                                Button(controller.isAttaching(processId: process.id) ? "Attaching..." : "Attach") {
+                                  controller.attach(process: process, to: issue)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+                                .disabled(controller.isAttaching(processId: process.id))
+                              }
+                              .padding(.vertical, 2)
                             }
-                            .padding(.vertical, 2)
                           }
                         }
                       }
+                      .transition(.opacity.combined(with: .move(edge: .top)))
                     }
-                    .padding(.top, 8)
-                  } label: {
-                    ProcessRow(process: process)
                   }
-                  .padding(10)
-                  .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+                  .padding(12)
+                  .background(SessionCardBackground(isExpanded: isExpanded))
                 }
               }
             }
@@ -763,6 +777,7 @@ struct StatusChip: View {
 
 struct ProcessRow: View {
   let process: AttachableProcess
+  let expanded: Bool
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -771,22 +786,63 @@ struct ProcessRow: View {
         .frame(width: 8, height: 8)
         .padding(.top, 6)
       VStack(alignment: .leading, spacing: 3) {
-        HStack(spacing: 6) {
-          Text(process.resolvedProviderLabel)
+        HStack(alignment: .top, spacing: 8) {
+          Text(process.primaryLabel)
             .font(.system(size: 12, weight: .semibold))
-          Text(process.workspaceLabel)
-            .font(.system(size: 11))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
+            .foregroundStyle(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 0)
+          HStack(spacing: 8) {
+            ProviderBadge(process: process)
+            Image(systemName: expanded ? "chevron.down" : "chevron.right")
+              .font(.system(size: 10, weight: .semibold))
+              .foregroundStyle(.tertiary)
+          }
+          .padding(.top, 1)
         }
         Text(processMeta(process))
           .font(.system(size: 11))
           .foregroundStyle(.secondary)
-          .lineLimit(2)
+          .lineLimit(1)
+        if let repoPathLabel = process.repoPathLabel, !repoPathLabel.isEmpty {
+          Text(repoPathLabel)
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+        }
       }
-      Spacer(minLength: 0)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+struct ProviderBadge: View {
+  let process: AttachableProcess
+
+  var body: some View {
+    Text(process.resolvedProviderLabel)
+      .font(.system(size: 10, weight: .semibold))
+      .foregroundStyle(providerColor(process.provider))
+      .padding(.horizontal, 7)
+      .padding(.vertical, 4)
+      .background(
+        Capsule(style: .continuous)
+          .fill(providerColor(process.provider).opacity(0.16))
+      )
+  }
+}
+
+struct SessionCardBackground: View {
+  let isExpanded: Bool
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: 14, style: .continuous)
+      .fill(Color.white.opacity(isExpanded ? 0.052 : 0.032))
+      .overlay(
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+          .stroke(Color.white.opacity(isExpanded ? 0.08 : 0.045), lineWidth: 1)
+      )
   }
 }
 
@@ -818,15 +874,35 @@ func color(from hex: String?) -> Color {
 }
 
 func processMeta(_ process: AttachableProcess) -> String {
-  [process.repoRoot ?? process.cwd, process.branch, process.mode]
+  let workspace = summarizeWorkspacePath(process.repoRoot ?? process.cwd)
+  let primary = normalizeProcessLabel(process.primaryLabel)
+  let secondaryWorkspace = workspace.flatMap { label -> String? in
+    guard normalizeProcessLabel(label) != primary else {
+      return nil
+    }
+    return label
+  }
+
+  return [secondaryWorkspace, process.branch, process.mode]
     .compactMap { value in
       guard let value, !value.isEmpty else { return nil }
-      if value.contains("/") {
-        return URL(fileURLWithPath: value).lastPathComponent
-      }
       return value
     }
     .joined(separator: " · ")
+}
+
+func summarizeWorkspacePath(_ value: String?) -> String? {
+  guard let value, !value.isEmpty else {
+    return nil
+  }
+  if value.contains("/") {
+    return URL(fileURLWithPath: value).lastPathComponent
+  }
+  return value
+}
+
+func normalizeProcessLabel(_ value: String) -> String {
+  value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 }
 
 func activityMeta(_ activity: LiveActivity) -> String {

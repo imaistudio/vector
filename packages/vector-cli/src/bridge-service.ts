@@ -35,6 +35,7 @@ import {
 const CONFIG_DIR =
   process.env.VECTOR_HOME?.trim() || join(homedir(), '.vector');
 const BRIDGE_CONFIG_FILE = join(CONFIG_DIR, 'bridge.json');
+const DEVICE_KEY_FILE = join(CONFIG_DIR, 'device-key');
 const PID_FILE = join(CONFIG_DIR, 'bridge.pid');
 const LIVE_ACTIVITIES_CACHE = join(CONFIG_DIR, 'live-activities.json');
 const LAUNCHAGENT_DIR = join(homedir(), 'Library', 'LaunchAgents');
@@ -74,6 +75,7 @@ export function loadBridgeConfig(): BridgeConfig | null {
 export function saveBridgeConfig(config: BridgeConfig): void {
   if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
   writeFileSync(BRIDGE_CONFIG_FILE, JSON.stringify(config, null, 2));
+  persistDeviceKey(config.deviceKey);
 }
 
 function writeLiveActivitiesCache(activities: unknown[]): void {
@@ -557,7 +559,7 @@ export async function setupBridgeDevice(
   client: ConvexHttpClient,
   convexUrl: string,
 ): Promise<BridgeConfig> {
-  const deviceKey = `${hostname()}-${randomUUID().slice(0, 8)}`;
+  const deviceKey = getStableDeviceKey();
   const displayName = `${process.env.USER ?? 'user'}'s ${platform() === 'darwin' ? 'Mac' : 'machine'}`;
 
   const result = await client.mutation(
@@ -585,6 +587,31 @@ export async function setupBridgeDevice(
 
   saveBridgeConfig(config);
   return config;
+}
+
+function getStableDeviceKey(): string {
+  const existingConfig = loadBridgeConfig();
+  const existingKey = existingConfig?.deviceKey?.trim();
+  if (existingKey) {
+    persistDeviceKey(existingKey);
+    return existingKey;
+  }
+
+  if (existsSync(DEVICE_KEY_FILE)) {
+    const savedKey = readFileSync(DEVICE_KEY_FILE, 'utf-8').trim();
+    if (savedKey) {
+      return savedKey;
+    }
+  }
+
+  const generatedKey = `${hostname()}-${randomUUID().slice(0, 8)}`;
+  persistDeviceKey(generatedKey);
+  return generatedKey;
+}
+
+function persistDeviceKey(deviceKey: string): void {
+  if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+  writeFileSync(DEVICE_KEY_FILE, `${deviceKey}\n`);
 }
 
 function buildLaunchPrompt(

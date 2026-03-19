@@ -469,7 +469,6 @@ async function ensureBridgeConfig(
   try {
     const runtime = await getRuntime(command);
     const session = requireSession(runtime);
-    const authUserId = decodeSessionClaims(session).userId;
     const client = await createConvexClient(
       session,
       runtime.appUrl,
@@ -488,7 +487,7 @@ async function ensureBridgeConfig(
 
     const needsRegistration =
       !config ||
-      (authUserId ? config.userId !== authUserId : false) ||
+      config.userId !== user._id ||
       config.convexUrl !== runtime.convexUrl ||
       !backendDevice;
 
@@ -500,6 +499,7 @@ async function ensureBridgeConfig(
       throw new Error('Bridge device is not configured.');
     }
 
+    saveBridgeConfig(config);
     return config;
   } catch (error) {
     if (config) {

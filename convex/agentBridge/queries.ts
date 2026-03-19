@@ -4,6 +4,53 @@ import { v, ConvexError } from 'convex/values';
 import { getAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
 import { AGENT_PROVIDER_LABELS } from '../_shared/agentBridge';
+import type { Doc } from '../_generated/dataModel';
+
+function deviceDedupKey(device: Doc<'agentDevices'>): string {
+  return [
+    device.hostname ?? device.deviceKey,
+    device.platform ?? 'unknown',
+    device.displayName,
+    device.serviceType,
+  ].join('::');
+}
+
+function deviceStatusRank(status: Doc<'agentDevices'>['status']): number {
+  switch (status) {
+    case 'online':
+      return 3;
+    case 'stale':
+      return 2;
+    case 'offline':
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function collapseDuplicateDevices(
+  devices: Doc<'agentDevices'>[],
+): Doc<'agentDevices'>[] {
+  const canonicalByKey = new Map<string, Doc<'agentDevices'>>();
+  const sorted = [...devices].sort((a, b) => {
+    const statusDelta = deviceStatusRank(b.status) - deviceStatusRank(a.status);
+    if (statusDelta !== 0) {
+      return statusDelta;
+    }
+    return b.lastSeenAt - a.lastSeenAt;
+  });
+
+  for (const device of sorted) {
+    const key = deviceDedupKey(device);
+    if (!canonicalByKey.has(key)) {
+      canonicalByKey.set(key, device);
+    }
+  }
+
+  return [...canonicalByKey.values()].sort(
+    (a, b) => b.lastSeenAt - a.lastSeenAt,
+  );
+}
 
 // ── Agent Devices ───────────────────────────────────────────────────────────
 
@@ -14,10 +61,12 @@ export const listMyDevices = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError('AUTH_REQUIRED');
 
-    return ctx.db
+    const devices = await ctx.db
       .query('agentDevices')
       .withIndex('by_user', q => q.eq('userId', userId))
       .collect();
+
+    return collapseDuplicateDevices(devices);
   },
 });
 
@@ -28,12 +77,14 @@ export const listMyOnlineDevices = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new ConvexError('AUTH_REQUIRED');
 
-    return ctx.db
+    const devices = await ctx.db
       .query('agentDevices')
       .withIndex('by_user_status', q =>
         q.eq('userId', userId).eq('status', 'online'),
       )
       .collect();
+
+    return collapseDuplicateDevices(devices);
   },
 });
 
