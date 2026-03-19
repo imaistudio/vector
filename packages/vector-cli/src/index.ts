@@ -3008,8 +3008,8 @@ serviceCommand
   .description('Return JSON state for the macOS tray')
   .action(async (_options, command) => {
     const status = getBridgeStatus();
-    const profile =
-      command.optsWithGlobals<GlobalOptions>().profile ?? 'default';
+    const globalOptions = command.optsWithGlobals() as GlobalOptions;
+    const profile = globalOptions.profile ?? 'default';
     const session = await readSession(profile);
     const liveActivities = readJsonFile(
       join(VECTOR_HOME, 'live-activities.json'),
@@ -3051,7 +3051,7 @@ serviceCommand
         liveActivities,
         processes,
       },
-      Boolean(command.optsWithGlobals<GlobalOptions>().json),
+      Boolean(globalOptions.json),
     );
   });
 
