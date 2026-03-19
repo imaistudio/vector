@@ -671,6 +671,75 @@ export const sendTerminalSignal = mutation({
 });
 
 /** Get signaling messages from the browser for the bridge. */
+/** Update the tunnel URL, local port, and auth token for interactive terminal. */
+export const updateWorkSessionTerminalUrl = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+    terminalUrl: v.union(v.string(), v.null()),
+    terminalToken: v.optional(v.string()),
+    terminalLocalPort: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const ws = await ctx.db.get('workSessions', args.workSessionId);
+    if (!ws || ws.deviceId !== args.deviceId) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      terminalUrl: args.terminalUrl ?? undefined,
+      terminalToken: args.terminalToken ?? undefined,
+      terminalLocalPort: args.terminalLocalPort,
+    });
+  },
+});
+
+/** Get work session terminal state (for bridge reactive subscription). */
+export const getWorkSessionTerminalState = query({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const ws = await ctx.db.get('workSessions', args.workSessionId);
+    if (!ws || ws.deviceId !== args.deviceId) return null;
+
+    return {
+      terminalInput: ws.terminalInput ?? null,
+      terminalViewerActive: ws.terminalViewerActive ?? false,
+      terminalCols: ws.terminalCols ?? 80,
+      terminalRows: ws.terminalRows ?? 24,
+    };
+  },
+});
+
+/** Consume terminal input after the bridge has processed it. */
+export const consumeTerminalInput = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const ws = await ctx.db.get('workSessions', args.workSessionId);
+    if (!ws || ws.deviceId !== args.deviceId) return;
+
+    if (ws.terminalInput) {
+      await ctx.db.patch('workSessions', args.workSessionId, {
+        terminalInput: '',
+      });
+    }
+  },
+});
+
 export const getTerminalSignals = query({
   args: {
     deviceId: v.id('agentDevices'),

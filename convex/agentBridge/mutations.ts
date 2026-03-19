@@ -1406,3 +1406,48 @@ export const clearTerminalSignals = mutation({
     }
   },
 });
+
+// ── Interactive Terminal (Convex-relay) ─────────────────────────────────────
+
+/** Send terminal input (keystrokes) from the browser to the bridge via Convex. */
+export const sendTerminalInput = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    data: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+
+    const access = await getWorkSessionAccess(ctx, workSession._id);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+
+    // Append to any existing pending input
+    const existing = workSession.terminalInput ?? '';
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      terminalInput: existing + args.data,
+    });
+  },
+});
+
+/** Set terminal viewer active state and dimensions. */
+export const setTerminalViewer = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    active: v.boolean(),
+    cols: v.optional(v.number()),
+    rows: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      terminalViewerActive: args.active,
+      ...(args.cols !== undefined && { terminalCols: args.cols }),
+      ...(args.rows !== undefined && { terminalRows: args.rows }),
+    });
+  },
+});

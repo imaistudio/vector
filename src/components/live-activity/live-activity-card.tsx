@@ -320,7 +320,9 @@ export function LiveActivityCard({
         <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
           <WorkSessionTerminal
             snapshot={terminalSnapshot}
-            tmuxSessionName={workSession?.tmuxSessionName}
+            terminalUrl={workSession?.terminalUrl}
+            terminalToken={workSession?.terminalToken}
+            terminalLocalPort={workSession?.terminalLocalPort}
             workSessionId={workSession?._id}
             isTerminal={isTerminal}
             fullscreen={fullscreen}
