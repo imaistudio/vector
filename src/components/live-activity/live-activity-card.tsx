@@ -218,50 +218,46 @@ export function LiveActivityCard({
       {/* Row header */}
       <div
         className={cn(
-          'flex items-start gap-2',
-          fullscreen ? 'border-b px-4 py-2' : 'py-1.5',
+          'group flex items-start gap-2.5',
+          fullscreen
+            ? 'border-b px-4 py-2'
+            : 'hover:bg-muted/40 cursor-pointer rounded-md px-1.5 py-1.5 transition-colors',
         )}
+        onClick={fullscreen ? undefined : toggleExpanded}
       >
-        <button
-          type='button'
-          onClick={fullscreen ? undefined : toggleExpanded}
-          className={cn(
-            'flex min-w-0 flex-1 items-start gap-2.5 text-left',
-            !fullscreen &&
-              'hover:bg-muted/40 -mx-1 rounded-md px-1 py-1 transition-colors',
-          )}
-        >
-          <ProviderIcon
-            provider={workSession?.agentProvider ?? activity.provider}
-            className='text-muted-foreground mt-0.5 size-3.5 shrink-0'
-          />
-          <div className='min-w-0 flex-1'>
-            <div className='flex items-center gap-2'>
-              <span className='truncate text-sm font-medium'>
-                {workSessionTitle}
-              </span>
-              <span className='bg-muted text-muted-foreground inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
-                {sessionKindLabel}
-              </span>
-              <StatusBadge status={activity.status} />
-            </div>
-            <div className='text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs'>
-              <span className='truncate'>{workspaceName}</span>
-              {workSession?.branch && (
-                <>
-                  <span>&middot;</span>
-                  <span className='font-mono'>{workSession.branch}</span>
-                </>
-              )}
-              <span>&middot;</span>
-              <Monitor className='size-3 shrink-0' />
-              <span className='truncate'>{activity.deviceName}</span>
-              <span>&middot;</span>
-              <span className='shrink-0'>{timeAgo}</span>
-            </div>
+        <ProviderIcon
+          provider={workSession?.agentProvider ?? activity.provider}
+          className='text-muted-foreground mt-0.5 size-3.5 shrink-0'
+        />
+        <div className='min-w-0 flex-1'>
+          <div className='flex items-center gap-2'>
+            <span className='truncate text-sm font-medium'>
+              {workSessionTitle}
+            </span>
+            <span className='bg-muted text-muted-foreground inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
+              {sessionKindLabel}
+            </span>
+            <StatusBadge status={activity.status} />
           </div>
-        </button>
-        <div className='flex shrink-0 items-center gap-1 pt-1'>
+          <div className='text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs'>
+            <span className='truncate'>{workspaceName}</span>
+            {workSession?.branch && (
+              <>
+                <span>&middot;</span>
+                <span className='font-mono'>{workSession.branch}</span>
+              </>
+            )}
+            <span>&middot;</span>
+            <Monitor className='size-3 shrink-0' />
+            <span className='truncate'>{activity.deviceName}</span>
+            <span>&middot;</span>
+            <span className='shrink-0'>{timeAgo}</span>
+          </div>
+        </div>
+        <div
+          className='flex shrink-0 items-center gap-2 pt-0.5'
+          onClick={e => e.stopPropagation()}
+        >
           {canManageSession && workSession && (
             <ShareWorkSessionPopover
               orgSlug={orgSlug}
