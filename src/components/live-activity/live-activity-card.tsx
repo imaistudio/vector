@@ -25,6 +25,8 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Maximize2,
+  Minimize2,
   Monitor,
   Share2,
   Unlink,
@@ -33,6 +35,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { ProviderIcon } from './live-activity-section';
 import { WorkSessionTerminal } from './work-session-terminal';
 
@@ -122,7 +125,9 @@ export function LiveActivityCard({
   } | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
+  const [detaching, setDetaching] = useState(false);
   const updateStatus = useMutation(
     api.agentBridge.mutations.updateLiveActivityStatus,
   );
@@ -178,6 +183,7 @@ export function LiveActivityCard({
   };
 
   const handleDetach = async () => {
+    setDetaching(true);
     try {
       await updateStatus({
         liveActivityId: activity._id,
@@ -186,6 +192,8 @@ export function LiveActivityCard({
       toast.success('Process detached from issue');
     } catch {
       toast.error('Failed to detach process');
+    } finally {
+      setDetaching(false);
     }
   };
 
@@ -205,14 +213,23 @@ export function LiveActivityCard({
     }
   };
 
-  return (
-    <div className={cn(expanded && 'pb-2')}>
+  const cardContent = (
+    <>
       {/* Row header */}
-      <div className='flex items-start gap-2 py-1.5'>
+      <div
+        className={cn(
+          'flex items-start gap-2',
+          fullscreen ? 'border-b px-4 py-2' : 'py-1.5',
+        )}
+      >
         <button
           type='button'
-          onClick={toggleExpanded}
-          className='hover:bg-muted/40 -mx-1 flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-1 py-1 text-left transition-colors'
+          onClick={fullscreen ? undefined : toggleExpanded}
+          className={cn(
+            'flex min-w-0 flex-1 items-start gap-2.5 text-left',
+            !fullscreen &&
+              'hover:bg-muted/40 -mx-1 rounded-md px-1 py-1 transition-colors',
+          )}
         >
           <ProviderIcon
             provider={workSession?.agentProvider ?? activity.provider}
@@ -257,38 +274,60 @@ export function LiveActivityCard({
             <button
               type='button'
               onClick={() => void handleDetach()}
-              className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors'
+              disabled={detaching}
+              className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors disabled:opacity-50'
               title='Detach process'
               aria-label='Detach process'
             >
-              <Unlink className='size-3.5' />
+              {detaching ? (
+                <BarsSpinner className='size-3.5' />
+              ) : (
+                <Unlink className='size-3.5' />
+              )}
             </button>
           )}
-          <button
-            type='button'
-            onClick={toggleExpanded}
-            className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors'
-            aria-label={
-              expanded ? 'Collapse work session' : 'Expand work session'
-            }
-          >
-            {expanded ? (
-              <ChevronUp className='size-3.5' />
-            ) : (
-              <ChevronDown className='size-3.5' />
-            )}
-          </button>
+          {expanded && showTerminal && (
+            <button
+              type='button'
+              onClick={() => setFullscreen(f => !f)}
+              className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors'
+              aria-label={fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {fullscreen ? (
+                <Minimize2 className='size-3.5' />
+              ) : (
+                <Maximize2 className='size-3.5' />
+              )}
+            </button>
+          )}
+          {!fullscreen && (
+            <button
+              type='button'
+              onClick={toggleExpanded}
+              className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors'
+              aria-label={
+                expanded ? 'Collapse work session' : 'Expand work session'
+              }
+            >
+              {expanded ? (
+                <ChevronUp className='size-3.5' />
+              ) : (
+                <ChevronDown className='size-3.5' />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Expanded: terminal view */}
       {expanded && showTerminal && (
-        <div className='mt-1'>
+        <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
           <WorkSessionTerminal
             snapshot={terminalSnapshot}
             tmuxSessionName={workSession?.tmuxSessionName}
             workSessionId={workSession?._id}
             isTerminal={isTerminal}
+            fullscreen={fullscreen}
           />
         </div>
       )}
@@ -300,7 +339,7 @@ export function LiveActivityCard({
       )}
 
       {/* Terminal status + mark done for completed/failed sessions */}
-      {expanded && isTerminal && (
+      {expanded && isTerminal && !fullscreen && (
         <div className='mt-2 space-y-2'>
           <div className='text-muted-foreground flex items-center gap-3 text-xs'>
             <div className='bg-border h-px flex-1' />
@@ -323,8 +362,18 @@ export function LiveActivityCard({
             )}
         </div>
       )}
-    </div>
+    </>
   );
+
+  if (fullscreen) {
+    return (
+      <div className='bg-background fixed inset-0 z-50 flex flex-col'>
+        {cardContent}
+      </div>
+    );
+  }
+
+  return <div className={cn(expanded && 'pb-2')}>{cardContent}</div>;
 }
 
 function ShareWorkSessionPopover({

@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes';
 import { useCachedQuery, useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
+import { cn } from '@/lib/utils';
 
 const TERMINAL_THEME_DARK = {
   background: '#000000',
@@ -63,11 +64,13 @@ export function WorkSessionTerminal({
   tmuxSessionName,
   workSessionId,
   isTerminal,
+  fullscreen,
 }: {
   snapshot: string;
   tmuxSessionName?: string;
   workSessionId?: Id<'workSessions'>;
   isTerminal?: boolean;
+  fullscreen?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -306,12 +309,15 @@ export function WorkSessionTerminal({
 
   return (
     <div
-      className='overflow-hidden rounded-md'
+      className={cn('overflow-hidden', fullscreen ? 'h-full' : 'rounded-md')}
       onClick={() => terminalRef.current?.focus()}
     >
       <div
         ref={containerRef}
-        className='vector-terminal h-[350px] w-full'
+        className={cn(
+          'vector-terminal w-full',
+          fullscreen ? 'h-full' : 'h-[350px]',
+        )}
         style={{ backgroundColor: terminalTheme.background }}
       />
     </div>
