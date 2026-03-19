@@ -86,6 +86,18 @@ export function buildNotificationCopy(
           'There is a new comment on an issue assigned to you.',
         href: payload.href,
       };
+    case 'work_session_completed':
+      return {
+        title: `Work session completed on ${payload.issueKey ?? 'an issue'}`,
+        body: payload.issueTitle ?? 'A work session has finished.',
+        href: payload.href,
+      };
+    case 'work_session_failed':
+      return {
+        title: `Work session failed on ${payload.issueKey ?? 'an issue'}`,
+        body: payload.issueTitle ?? 'A work session has failed.',
+        href: payload.href,
+      };
   }
 }
 

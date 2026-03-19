@@ -286,6 +286,7 @@ export const getDeviceLiveActivities = query({
             workspacePath: workSession?.workspacePath,
             terminalSnapshot: workSession?.terminalSnapshot,
             tmuxPaneId: workSession?.tmuxPaneId,
+            tmuxSessionName: workSession?.tmuxSessionName,
             agentProvider: workSession?.agentProvider,
             agentProcessId: workSession?.agentProcessId,
             agentSessionKey: workSession?.agentSessionKey,
@@ -316,6 +317,9 @@ export const reportProcess = mutation({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    tmuxSessionName: v.optional(v.string()),
+    tmuxWindowName: v.optional(v.string()),
+    tmuxPaneId: v.optional(v.string()),
     responseText: v.optional(v.string()),
     launchCommand: v.optional(v.string()),
     mode: v.union(v.literal('observed'), v.literal('managed')),
@@ -359,6 +363,9 @@ export const reportProcess = mutation({
           title: args.title,
           cwd: args.cwd,
           branch: args.branch,
+          tmuxSessionName: args.tmuxSessionName,
+          tmuxWindowName: args.tmuxWindowName,
+          tmuxPaneId: args.tmuxPaneId,
           lastHeartbeatAt: now,
           endedAt:
             args.status === 'completed' ||
@@ -383,6 +390,9 @@ export const reportProcess = mutation({
       branch: args.branch,
       title: args.title,
       model: args.model,
+      tmuxSessionName: args.tmuxSessionName,
+      tmuxWindowName: args.tmuxWindowName,
+      tmuxPaneId: args.tmuxPaneId,
       mode: args.mode,
       status: args.status,
       supportsInboundMessages: args.supportsInboundMessages,
@@ -613,5 +623,66 @@ export const updateWorkSessionTerminal = mutation({
         agentSessionKey: args.agentSessionKey,
       }),
     });
+  },
+});
+
+// ── Terminal Signaling (WebRTC, bridge side) ────────────────────────────────
+
+/** Send a WebRTC signaling message from the bridge (answer or ICE candidate). */
+export const sendTerminalSignal = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+    type: v.union(v.literal('answer'), v.literal('candidate')),
+    data: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession || workSession.deviceId !== args.deviceId) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+
+    // Clear old signals of the same type when sending an answer
+    if (args.type === 'answer') {
+      const old = await ctx.db
+        .query('terminalSignals')
+        .withIndex('by_work_session_from', q =>
+          q.eq('workSessionId', args.workSessionId).eq('from', 'bridge'),
+        )
+        .collect();
+      for (const signal of old) {
+        await ctx.db.delete('terminalSignals', signal._id);
+      }
+    }
+
+    await ctx.db.insert('terminalSignals', {
+      workSessionId: args.workSessionId,
+      from: 'bridge',
+      type: args.type,
+      data: args.data,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/** Get signaling messages from the browser for the bridge. */
+export const getTerminalSignals = query({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    workSessionId: v.id('workSessions'),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    return ctx.db
+      .query('terminalSignals')
+      .withIndex('by_work_session_from', q =>
+        q.eq('workSessionId', args.workSessionId).eq('from', 'browser'),
+      )
+      .collect();
   },
 });

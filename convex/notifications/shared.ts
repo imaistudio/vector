@@ -5,6 +5,7 @@ export const NOTIFICATION_CATEGORIES = [
   'assignments',
   'mentions',
   'comments',
+  'work_sessions',
 ] as const;
 
 export const NOTIFICATION_EVENT_TYPES = [
@@ -13,6 +14,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   'issue_reassigned',
   'issue_mentioned',
   'issue_comment_on_assigned_issue',
+  'work_session_completed',
+  'work_session_failed',
 ] as const;
 
 export const NOTIFICATION_CHANNELS = ['email', 'push'] as const;
@@ -84,6 +87,11 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: Record<
     emailEnabled: false,
     pushEnabled: true,
   },
+  work_sessions: {
+    inAppEnabled: true,
+    emailEnabled: false,
+    pushEnabled: true,
+  },
 };
 
 export function categoryForEvent(
@@ -99,5 +107,8 @@ export function categoryForEvent(
       return 'mentions';
     case 'issue_comment_on_assigned_issue':
       return 'comments';
+    case 'work_session_completed':
+    case 'work_session_failed':
+      return 'work_sessions';
   }
 }

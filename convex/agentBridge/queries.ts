@@ -559,3 +559,27 @@ export const listDelegationTargets = query({
     );
   },
 });
+
+// ── Terminal Signaling (WebRTC) ─────────────────────────────────────────────
+
+/** Get signaling messages for a specific peer. */
+export const getTerminalSignals = query({
+  args: {
+    workSessionId: v.id('workSessions'),
+    for: v.union(v.literal('browser'), v.literal('bridge')),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    // 'for' browser means get signals FROM bridge, and vice versa
+    const from = args.for === 'browser' ? 'bridge' : 'browser';
+
+    return ctx.db
+      .query('terminalSignals')
+      .withIndex('by_work_session_from', q =>
+        q.eq('workSessionId', args.workSessionId).eq('from', from),
+      )
+      .collect();
+  },
+});

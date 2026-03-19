@@ -20,6 +20,14 @@ import {
   Terminal,
 } from 'lucide-react';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -36,6 +44,23 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LiveActivityCard } from './live-activity-card';
 
+type DelegationWorkspace = {
+  _id: Id<'deviceWorkspaces'>;
+  label: string;
+  path: string;
+};
+
+type DelegationDevice = {
+  _id: Id<'agentDevices'>;
+  displayName: string;
+  platform?: string;
+};
+
+type DelegationTarget = {
+  device: DelegationDevice;
+  workspaces: DelegationWorkspace[];
+};
+
 // ── Section Header ──────────────────────────────────────────────────────────
 
 function SectionHeader({
@@ -46,10 +71,9 @@ function SectionHeader({
   issueId: Id<'issues'>;
 }) {
   return (
-    <div className='flex items-center justify-between px-3 py-2'>
+    <div className='mb-3 flex items-center justify-between'>
       <div className='flex items-center gap-2'>
-        <Activity className='text-muted-foreground size-4' />
-        <span className='text-sm font-semibold'>Work Sessions</span>
+        <h2 className='text-sm font-semibold'>Work Sessions</h2>
         {count > 0 && (
           <span className='bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] leading-none font-medium'>
             {count}
@@ -151,6 +175,16 @@ export function AttachProcessPopover({
                 {processes.map(process => (
                   <CommandItem
                     key={process._id}
+                    value={[
+                      process.providerLabel ?? '',
+                      process.title ?? '',
+                      process.cwd ?? '',
+                      process.repoRoot ?? '',
+                      process.branch ?? '',
+                      process.mode,
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     onSelect={() =>
                       handleAttach(
                         device._id,
@@ -163,11 +197,15 @@ export function AttachProcessPopover({
                   >
                     <ProviderIcon provider={process.provider} />
                     <div className='min-w-0 flex-1'>
-                      <div className='truncate text-sm'>
-                        {process.providerLabel}
+                      <div className='truncate text-sm font-medium'>
+                        {process.title?.trim() ||
+                          process.cwd?.split('/').pop() ||
+                          process.providerLabel}
                       </div>
                       <div className='text-muted-foreground truncate text-xs'>
-                        {process.title ?? process.cwd ?? 'Unknown'}
+                        {process.providerLabel}
+                        {(process.cwd || process.branch) && ' · '}
+                        {process.cwd ?? process.repoRoot ?? 'Unknown'}
                         {process.branch && (
                           <span className='ml-1 font-mono'>
                             ({process.branch})
@@ -208,6 +246,9 @@ export function DelegateRunPopover({
   const [selectedLaunchMode, setSelectedLaunchMode] = useState<
     'codex' | 'claude_code' | 'manual' | null
   >(null);
+  const [workspaceDialogTarget, setWorkspaceDialogTarget] =
+    useState<DelegationTarget | null>(null);
+  const [delegating, setDelegating] = useState(false);
 
   const targets = useCachedQuery(
     api.agentBridge.queries.listDelegationTargets,
@@ -218,9 +259,10 @@ export function DelegateRunPopover({
   const selectedTarget = targets?.find(t => t.device._id === selectedDeviceId);
 
   const handleDelegate = async (workspaceId: Id<'deviceWorkspaces'>) => {
-    if (!selectedDeviceId || !selectedLaunchMode) return;
+    if (!selectedDeviceId || !selectedLaunchMode || delegating) return;
     const provider =
       selectedLaunchMode === 'manual' ? undefined : selectedLaunchMode;
+    setDelegating(true);
     try {
       await delegateMutation({
         issueId,
@@ -239,6 +281,8 @@ export function DelegateRunPopover({
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Failed to delegate issue';
       toast.error(msg);
+    } finally {
+      setDelegating(false);
     }
   };
 
@@ -248,136 +292,171 @@ export function DelegateRunPopover({
   };
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={v => {
-        setOpen(v);
-        if (!v) reset();
-      }}
-    >
-      <PopoverTrigger asChild>
-        {children ?? (
-          <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
-            <Play className='size-3' />
-            <span className='text-xs'>New Session</span>
-          </Button>
-        )}
-      </PopoverTrigger>
-      <PopoverContent className='w-80 p-0' align='end'>
-        {!selectedDeviceId ? (
-          // Step 1: Pick device
-          <Command>
-            <CommandInput placeholder='Select device...' />
-            <CommandList>
-              <CommandEmpty>
-                {targets === undefined ? (
-                  <div className='space-y-2 p-2'>
-                    <Skeleton className='h-8 w-full' />
-                    <Skeleton className='h-8 w-full' />
-                  </div>
-                ) : (
-                  <span className='text-muted-foreground text-sm'>
-                    No online devices with workspaces
-                  </span>
-                )}
-              </CommandEmpty>
-              <CommandGroup heading='Online devices'>
-                {targets?.map(({ device, workspaces }) => (
+    <>
+      <Popover
+        open={open}
+        onOpenChange={v => {
+          setOpen(v);
+          if (!v) reset();
+        }}
+      >
+        <PopoverTrigger asChild>
+          {children ?? (
+            <Button variant='ghost' size='xs' className='h-6 gap-1 px-1.5'>
+              <Play className='size-3' />
+              <span className='text-xs'>New Session</span>
+            </Button>
+          )}
+        </PopoverTrigger>
+        <PopoverContent className='w-80 p-0' align='end'>
+          {!selectedDeviceId ? (
+            // Step 1: Pick device
+            <Command>
+              <CommandInput placeholder='Select device...' />
+              <CommandList>
+                <CommandEmpty>
+                  {targets === undefined ? (
+                    <div className='space-y-2 p-2'>
+                      <Skeleton className='h-8 w-full' />
+                      <Skeleton className='h-8 w-full' />
+                    </div>
+                  ) : (
+                    <span className='text-muted-foreground text-sm'>
+                      No online devices available
+                    </span>
+                  )}
+                </CommandEmpty>
+                <CommandGroup heading='Online devices'>
+                  {targets?.map(({ device, workspaces }) => (
+                    <CommandItem
+                      key={device._id}
+                      value={[
+                        device.displayName,
+                        device.platform ?? '',
+                        ...workspaces.map(workspace => workspace.label),
+                        ...workspaces.map(workspace => workspace.path),
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      onSelect={() => {
+                        if (workspaces.length === 0) {
+                          setWorkspaceDialogTarget({ device, workspaces });
+                          setOpen(false);
+                          return;
+                        }
+                        setSelectedDeviceId(device._id);
+                      }}
+                      className='gap-2'
+                    >
+                      <Monitor className='size-4' />
+                      <div className='min-w-0 flex-1'>
+                        <div className='text-sm'>{device.displayName}</div>
+                        <div className='text-muted-foreground text-xs'>
+                          {device.platform ?? 'unknown'} &middot;{' '}
+                          {workspaces.length} workspace
+                          {workspaces.length !== 1 && 's'}
+                        </div>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          ) : !selectedLaunchMode ? (
+            // Step 2: Pick session type
+            <Command>
+              <div className='flex items-center gap-2 border-b px-3 py-2'>
+                <Button
+                  variant='ghost'
+                  size='xs'
+                  className='h-5 px-1'
+                  onClick={reset}
+                >
+                  &larr;
+                </Button>
+                <span className='text-sm font-medium'>
+                  {selectedTarget?.device.displayName}
+                </span>
+              </div>
+              <CommandList>
+                <CommandGroup heading='Select session type'>
                   <CommandItem
-                    key={device._id}
-                    disabled={workspaces.length === 0}
-                    onSelect={() => setSelectedDeviceId(device._id)}
+                    onSelect={() => setSelectedLaunchMode('codex')}
                     className='gap-2'
                   >
-                    <Monitor className='size-4' />
+                    <Cpu className='size-4' />
                     <div className='min-w-0 flex-1'>
-                      <div className='text-sm'>{device.displayName}</div>
+                      <div className='text-sm'>Codex</div>
                       <div className='text-muted-foreground text-xs'>
-                        {device.platform ?? 'unknown'} &middot;{' '}
-                        {workspaces.length} workspace
-                        {workspaces.length !== 1 && 's'}
+                        Open a managed Codex work session in tmux
                       </div>
                     </div>
                   </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        ) : !selectedLaunchMode ? (
-          // Step 2: Pick session type
-          <Command>
-            <div className='flex items-center gap-2 border-b px-3 py-2'>
-              <Button
-                variant='ghost'
-                size='xs'
-                className='h-5 px-1'
-                onClick={reset}
-              >
-                &larr;
-              </Button>
-              <span className='text-sm font-medium'>
-                {selectedTarget?.device.displayName}
-              </span>
-            </div>
-            <CommandList>
-              <CommandGroup heading='Select session type'>
-                <CommandItem
-                  onSelect={() => setSelectedLaunchMode('codex')}
-                  className='gap-2'
-                >
-                  <Cpu className='size-4' />
-                  <div className='min-w-0 flex-1'>
-                    <div className='text-sm'>Codex</div>
-                    <div className='text-muted-foreground text-xs'>
-                      Open a managed Codex work session in tmux
+                  <CommandItem
+                    onSelect={() => setSelectedLaunchMode('claude_code')}
+                    className='gap-2'
+                  >
+                    <Terminal className='size-4' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>Claude</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Open a managed Claude work session in tmux
+                      </div>
                     </div>
-                  </div>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => setSelectedLaunchMode('claude_code')}
-                  className='gap-2'
-                >
-                  <Terminal className='size-4' />
-                  <div className='min-w-0 flex-1'>
-                    <div className='text-sm'>Claude</div>
-                    <div className='text-muted-foreground text-xs'>
-                      Open a managed Claude work session in tmux
+                  </CommandItem>
+                  <CommandItem
+                    onSelect={() => setSelectedLaunchMode('manual')}
+                    className='gap-2'
+                  >
+                    <CircleDot className='size-4' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>Manual shell</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Start a plain tmux shell tied to this issue
+                      </div>
                     </div>
-                  </div>
-                </CommandItem>
-                <CommandItem
-                  onSelect={() => setSelectedLaunchMode('manual')}
-                  className='gap-2'
-                >
-                  <CircleDot className='size-4' />
-                  <div className='min-w-0 flex-1'>
-                    <div className='text-sm'>Manual shell</div>
-                    <div className='text-muted-foreground text-xs'>
-                      Start a plain tmux shell tied to this issue
-                    </div>
-                  </div>
-                </CommandItem>
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        ) : (
-          // Step 3: Pick workspace (or add one)
-          <WorkspacePickerStep
-            device={selectedTarget?.device}
-            workspaces={selectedTarget?.workspaces ?? []}
-            providerLabel={
-              selectedLaunchMode === 'codex'
-                ? 'Codex'
-                : selectedLaunchMode === 'claude_code'
-                  ? 'Claude'
-                  : 'Manual shell'
-            }
-            onBack={() => setSelectedLaunchMode(null)}
-            onSelect={handleDelegate}
-          />
-        )}
-      </PopoverContent>
-    </Popover>
+                  </CommandItem>
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          ) : (
+            // Step 3: Pick workspace (or add one)
+            <WorkspacePickerStep
+              device={selectedTarget?.device}
+              workspaces={selectedTarget?.workspaces ?? []}
+              providerLabel={
+                selectedLaunchMode === 'codex'
+                  ? 'Codex'
+                  : selectedLaunchMode === 'claude_code'
+                    ? 'Claude'
+                    : 'Manual shell'
+              }
+              onBack={() => setSelectedLaunchMode(null)}
+              onSelect={handleDelegate}
+              loading={delegating}
+            />
+          )}
+        </PopoverContent>
+      </Popover>
+
+      <WorkspaceConfigDialog
+        device={workspaceDialogTarget?.device}
+        open={workspaceDialogTarget !== null}
+        onOpenChange={nextOpen => {
+          if (!nextOpen) {
+            setWorkspaceDialogTarget(null);
+          }
+        }}
+        onConfigured={() => {
+          if (!workspaceDialogTarget) {
+            return;
+          }
+          setSelectedDeviceId(workspaceDialogTarget.device._id);
+          setWorkspaceDialogTarget(null);
+          setOpen(true);
+        }}
+      />
+    </>
   );
 }
 
@@ -389,6 +468,7 @@ function WorkspacePickerStep({
   providerLabel,
   onBack,
   onSelect,
+  loading,
 }: {
   device?: { _id: Id<'agentDevices'>; displayName: string };
   workspaces: Array<{
@@ -399,6 +479,7 @@ function WorkspacePickerStep({
   providerLabel: string;
   onBack: () => void;
   onSelect: (workspaceId: Id<'deviceWorkspaces'>) => void;
+  loading?: boolean;
 }) {
   const [showAddForm, setShowAddForm] = useState(workspaces.length === 0);
   const [newLabel, setNewLabel] = useState('');
@@ -490,20 +571,35 @@ function WorkspacePickerStep({
   return (
     <Command>
       <div className='flex items-center gap-2 border-b px-3 py-2'>
-        <Button variant='ghost' size='xs' className='h-5 px-1' onClick={onBack}>
+        <Button
+          variant='ghost'
+          size='xs'
+          className='h-5 px-1'
+          onClick={onBack}
+          disabled={loading}
+        >
           &larr;
         </Button>
         <span className='text-sm font-medium'>
           {device?.displayName} &middot; {providerLabel}
         </span>
+        {loading && (
+          <span className='text-muted-foreground ml-auto text-xs'>
+            Starting...
+          </span>
+        )}
       </div>
       <CommandList>
         <CommandGroup heading='Select workspace'>
           {workspaces.map(ws => (
             <CommandItem
               key={ws._id}
-              onSelect={() => onSelect(ws._id)}
-              className='gap-2'
+              onSelect={() => !loading && onSelect(ws._id)}
+              className={cn(
+                'gap-2',
+                loading && 'pointer-events-none opacity-50',
+              )}
+              disabled={loading}
             >
               <FolderOpen className='text-muted-foreground size-4 shrink-0' />
               <div className='min-w-0 flex-1'>
@@ -514,19 +610,164 @@ function WorkspacePickerStep({
               </div>
             </CommandItem>
           ))}
-          <CommandItem
-            value='add-workspace'
-            onSelect={() => setShowAddForm(true)}
-            className='gap-2'
-          >
-            <Plus className='text-muted-foreground size-4 shrink-0' />
-            <span className='text-muted-foreground text-sm'>
-              Add workspace...
-            </span>
-          </CommandItem>
+          {!loading && (
+            <CommandItem
+              value='add-workspace'
+              onSelect={() => setShowAddForm(true)}
+              className='gap-2'
+            >
+              <Plus className='text-muted-foreground size-4 shrink-0' />
+              <span className='text-muted-foreground text-sm'>
+                Add workspace...
+              </span>
+            </CommandItem>
+          )}
         </CommandGroup>
       </CommandList>
     </Command>
+  );
+}
+
+function WorkspaceConfigDialog({
+  device,
+  open,
+  onOpenChange,
+  onConfigured,
+}: {
+  device?: DelegationDevice;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfigured: () => void;
+}) {
+  const existingWorkspaces = useCachedQuery(
+    api.agentBridge.queries.listDeviceWorkspaces,
+    open && device ? { deviceId: device._id } : 'skip',
+  );
+  const addWorkspace = useMutation(api.agentBridge.mutations.upsertWorkspace);
+
+  const [newLabel, setNewLabel] = useState('');
+  const [newPath, setNewPath] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const handleAdd = async () => {
+    if (!device || !newPath.trim()) return;
+    setAdding(true);
+    try {
+      await addWorkspace({
+        deviceId: device._id,
+        label:
+          newLabel.trim() || newPath.trim().split('/').pop() || 'Workspace',
+        path: newPath.trim(),
+        isDefault: (existingWorkspaces?.length ?? 0) === 0,
+        launchPolicy: 'allow_delegated',
+      });
+      toast.success('Workspace added');
+      setNewLabel('');
+      setNewPath('');
+      onConfigured();
+    } catch {
+      toast.error('Failed to add workspace');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent showCloseButton={false} className='gap-3 p-3 sm:max-w-md'>
+        <DialogHeader className='gap-1'>
+          <DialogTitle className='text-sm font-semibold'>
+            Configure workspaces
+          </DialogTitle>
+          <DialogDescription className='text-xs'>
+            {device
+              ? `Add at least one workspace for ${device.displayName} before starting a new session.`
+              : 'Add a workspace for this device before starting a new session.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {existingWorkspaces === undefined ? (
+          <div className='space-y-2'>
+            <Skeleton className='h-8 w-full rounded-md' />
+            <Skeleton className='h-8 w-full rounded-md' />
+          </div>
+        ) : existingWorkspaces.length > 0 ? (
+          <div className='space-y-1 rounded-lg border p-2'>
+            {existingWorkspaces.map(workspace => (
+              <div
+                key={workspace._id}
+                className='flex items-center gap-2 rounded-md px-2 py-1.5'
+              >
+                <FolderOpen className='text-muted-foreground size-3.5 shrink-0' />
+                <div className='min-w-0 flex-1'>
+                  <div className='truncate text-xs font-medium'>
+                    {workspace.label}
+                  </div>
+                  <div className='text-muted-foreground truncate font-mono text-[11px]'>
+                    {workspace.path}
+                  </div>
+                </div>
+                {workspace.isDefault && (
+                  <span className='bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
+                    Default
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className='space-y-2'>
+          <div className='space-y-1'>
+            <label className='text-muted-foreground block text-[11px] font-medium'>
+              Workspace path
+            </label>
+            <Input
+              value={newPath}
+              onChange={e => setNewPath(e.target.value)}
+              placeholder='/Users/you/projects/my-repo'
+              className='h-8 font-mono text-xs'
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  void handleAdd();
+                }
+              }}
+            />
+          </div>
+
+          <div className='space-y-1'>
+            <label className='text-muted-foreground block text-[11px] font-medium'>
+              Workspace label
+            </label>
+            <Input
+              value={newLabel}
+              onChange={e => setNewLabel(e.target.value)}
+              placeholder={newPath.trim().split('/').pop() || 'My project'}
+              className='h-8 text-xs'
+            />
+          </div>
+        </div>
+
+        <DialogFooter className='-mx-3 -mb-3 px-3 py-2'>
+          <Button
+            variant='outline'
+            size='sm'
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size='sm'
+            disabled={adding || !newPath.trim()}
+            onClick={() => void handleAdd()}
+          >
+            {adding ? 'Adding...' : 'Add workspace'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -603,47 +844,25 @@ export function IssueLiveActivitySection({
   const activeCount = activeActivities.length;
 
   return (
-    <div className='border-t'>
+    <div>
       <SectionHeader count={activeCount} issueId={issueId} />
 
       {/* Loading skeleton */}
       {activities === undefined && (
-        <div className='space-y-1 px-3 pb-2'>
+        <div className='space-y-1'>
           <Skeleton className='h-14 w-full rounded-md' />
         </div>
       )}
 
       {activities !== undefined && activities.length === 0 && (
-        <div className='px-3 pb-3'>
-          <div className='bg-muted/20 flex items-center justify-between rounded-lg border px-3 py-3'>
-            <div className='min-w-0'>
-              <div className='text-sm font-medium'>No work sessions yet</div>
-              <div className='text-muted-foreground text-xs'>
-                Start a tmux-backed shell or launch Codex or Claude on one of
-                your bridge devices.
-              </div>
-            </div>
-            <div className='ml-3 flex shrink-0 items-center gap-1'>
-              <AttachProcessPopover issueId={issueId}>
-                <Button variant='ghost' size='xs' className='h-7 gap-1.5 px-2'>
-                  <Plus className='size-3.5' />
-                  Attach
-                </Button>
-              </AttachProcessPopover>
-              <DelegateRunPopover issueId={issueId}>
-                <Button size='xs' className='h-7 gap-1.5 px-2'>
-                  <Play className='size-3.5' />
-                  New Session
-                </Button>
-              </DelegateRunPopover>
-            </div>
-          </div>
-        </div>
+        <p className='text-muted-foreground py-2 text-sm'>
+          No work sessions yet.
+        </p>
       )}
 
       {/* Active activity cards */}
       {activeActivities.length > 0 && (
-        <div className='space-y-2 px-3 pb-2'>
+        <div className='space-y-1'>
           {activeActivities.map(activity => (
             <LiveActivityCard
               key={activity._id}
@@ -657,7 +876,7 @@ export function IssueLiveActivitySection({
 
       {/* Old/disconnected activities — collapsed by default */}
       {oldActivities.length > 0 && (
-        <div className='px-3 pb-2'>
+        <div>
           <button
             type='button'
             onClick={() => setShowOld(!showOld)}
@@ -672,7 +891,7 @@ export function IssueLiveActivitySection({
             {oldActivities.length !== 1 && 's'}
           </button>
           {showOld && (
-            <div className='mt-1 space-y-2'>
+            <div className='mt-1 space-y-1'>
               {oldActivities.map(activity => (
                 <LiveActivityCard
                   key={activity._id}

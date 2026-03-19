@@ -1,6 +1,6 @@
 import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { requireAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
 import {
@@ -22,6 +22,7 @@ import {
   resolveIssueScope,
   snapshotForIssue,
 } from '../activities/lib';
+import { createNotificationEvent, getIssueHref } from '../notifications/lib';
 import { getWorkSessionAccess, requireWorkSessionViewer } from './workSessions';
 
 // ── Agent Devices ───────────────────────────────────────────────────────────
@@ -150,6 +151,26 @@ export const registerBridgeDevice = mutation({
   },
 });
 
+/** Rename a device. */
+export const renameDevice = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    displayName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const device = await ctx.db.get('agentDevices', args.deviceId);
+    if (!device || device.userId !== userId) {
+      throw new ConvexError('DEVICE_NOT_FOUND');
+    }
+
+    await ctx.db.patch('agentDevices', args.deviceId, {
+      displayName: args.displayName,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 /** Revoke a device — clears secret and marks offline. */
 export const revokeDevice = mutation({
   args: { deviceId: v.id('agentDevices') },
@@ -274,6 +295,43 @@ export const upsertWorkspace = mutation({
       createdAt: now,
       updatedAt: now,
     });
+  },
+});
+
+/** Mark one workspace as the default for its device. */
+export const setDefaultWorkspace = mutation({
+  args: { workspaceId: v.id('deviceWorkspaces') },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const workspace = await ctx.db.get('deviceWorkspaces', args.workspaceId);
+    if (!workspace || workspace.userId !== userId) {
+      throw new ConvexError('WORKSPACE_NOT_FOUND');
+    }
+
+    const now = Date.now();
+    const currentDefaults = await ctx.db
+      .query('deviceWorkspaces')
+      .withIndex('by_device_default', q =>
+        q.eq('deviceId', workspace.deviceId).eq('isDefault', true),
+      )
+      .collect();
+
+    for (const current of currentDefaults) {
+      if (current._id === workspace._id) {
+        continue;
+      }
+      await ctx.db.patch('deviceWorkspaces', current._id, {
+        isDefault: false,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch('deviceWorkspaces', workspace._id, {
+      isDefault: true,
+      updatedAt: now,
+    });
+
+    return workspace._id;
   },
 });
 
@@ -421,6 +479,9 @@ async function createWorkSessionForLiveActivity(
     cwd?: string;
     repoRoot?: string;
     branch?: string;
+    tmuxSessionName?: string;
+    tmuxWindowName?: string;
+    tmuxPaneId?: string;
   },
 ) {
   const now = Date.now();
@@ -437,11 +498,66 @@ async function createWorkSessionForLiveActivity(
     cwd: args.cwd ?? args.workspacePath,
     repoRoot: args.repoRoot,
     branch: args.branch,
+    tmuxSessionName: args.tmuxSessionName,
+    tmuxWindowName: args.tmuxWindowName,
+    tmuxPaneId: args.tmuxPaneId,
     agentProvider: args.agentProvider,
     agentProcessId: args.agentProcessId,
     agentSessionKey: args.agentSessionKey,
     startedAt: now,
     lastEventAt: now,
+  });
+}
+
+/**
+ * Auto-transition an issue to "in_progress" when a live activity starts,
+ * but only if the issue is currently in a pre-progress state (backlog/todo).
+ */
+async function autoTransitionToInProgress(
+  ctx: MutationCtx,
+  issue: Doc<'issues'>,
+  actorId: Id<'users'>,
+) {
+  const currentState = issue.workflowStateId
+    ? await ctx.db.get('issueStates', issue.workflowStateId)
+    : null;
+
+  // Only transition from backlog or todo (or if no state is set)
+  if (
+    currentState &&
+    currentState.type !== 'backlog' &&
+    currentState.type !== 'todo'
+  ) {
+    return;
+  }
+
+  const inProgressState = await ctx.db
+    .query('issueStates')
+    .withIndex('by_org_type', q =>
+      q.eq('organizationId', issue.organizationId).eq('type', 'in_progress'),
+    )
+    .first();
+
+  if (!inProgressState) return;
+  if (issue.workflowStateId === inProgressState._id) return;
+
+  await ctx.db.patch('issues', issue._id, {
+    workflowStateId: inProgressState._id,
+  });
+
+  await recordActivity(ctx, {
+    actorId,
+    entityType: 'issue',
+    eventType: 'issue_workflow_state_changed',
+    scope: resolveIssueScope(issue),
+    snapshot: snapshotForIssue(issue),
+    details: {
+      field: 'workflow_state',
+      fromId: issue.workflowStateId,
+      fromLabel: currentState?.name,
+      toId: inProgressState._id,
+      toLabel: inProgressState.name,
+    },
   });
 }
 
@@ -509,6 +625,9 @@ export const attachLiveActivity = mutation({
       cwd: process?.cwd,
       repoRoot: process?.repoRoot,
       branch: process?.branch,
+      tmuxSessionName: process?.tmuxSessionName,
+      tmuxWindowName: process?.tmuxWindowName,
+      tmuxPaneId: process?.tmuxPaneId,
     });
 
     await ctx.db.patch('issueLiveActivities', liveActivityId, {
@@ -530,6 +649,9 @@ export const attachLiveActivity = mutation({
         deviceName: device.displayName,
       },
     });
+
+    // Auto-transition issue to "In Progress"
+    await autoTransitionToInProgress(ctx, issue, userId);
 
     return liveActivityId;
   },
@@ -598,6 +720,31 @@ export const updateLiveActivityStatus = mutation({
           agentProviderLabel: providerLabel,
         },
       });
+
+      // Notify session owner when session reaches terminal state
+      if (
+        isTerminal &&
+        (args.status === 'completed' || args.status === 'failed')
+      ) {
+        const org = await ctx.db.get('organizations', issue.organizationId);
+        if (org) {
+          await createNotificationEvent(ctx, {
+            type:
+              args.status === 'completed'
+                ? 'work_session_completed'
+                : 'work_session_failed',
+            actorId: userId,
+            organizationId: issue.organizationId,
+            issueId: issue._id,
+            payload: {
+              issueKey: issue.key,
+              issueTitle: issue.title,
+              href: getIssueHref(org.slug, issue.key),
+            },
+            recipients: [{ userId: activity.ownerUserId }],
+          });
+        }
+      }
     }
   },
 });
@@ -677,6 +824,26 @@ export const completeLiveActivity = mutation({
           ...(finalCommentId && { commentId: finalCommentId }),
         },
       });
+
+      // Notify session owner
+      const org = await ctx.db.get('organizations', issue.organizationId);
+      if (org) {
+        await createNotificationEvent(ctx, {
+          type:
+            args.status === 'completed'
+              ? 'work_session_completed'
+              : 'work_session_failed',
+          actorId: userId,
+          organizationId: issue.organizationId,
+          issueId: issue._id,
+          payload: {
+            issueKey: issue.key,
+            issueTitle: issue.title,
+            href: getIssueHref(org.slug, issue.key),
+          },
+          recipients: [{ userId: activity.ownerUserId }],
+        });
+      }
     }
   },
 });
@@ -860,6 +1027,49 @@ export const updateMessageDelivery = mutation({
 
     await ctx.db.patch('issueLiveMessages', args.messageId, {
       deliveryStatus: args.deliveryStatus,
+    });
+  },
+});
+
+/** Request the bridge to resize a tmux pane to match the web terminal. */
+export const resizeWorkSessionTerminal = mutation({
+  args: {
+    liveActivityId: v.id('issueLiveActivities'),
+    cols: v.number(),
+    rows: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const activity = await ctx.db.get(
+      'issueLiveActivities',
+      args.liveActivityId,
+    );
+    if (!activity) throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
+
+    // Allow owner or anyone with view access
+    if (activity.workSessionId) {
+      const workSession = await ctx.db.get(
+        'workSessions',
+        activity.workSessionId,
+      );
+      if (workSession) {
+        await requireWorkSessionViewer(ctx, workSession);
+      }
+    } else if (activity.ownerUserId !== userId) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    // Don't resize ended sessions
+    if (activity.endedAt) return;
+
+    await ctx.db.insert('agentCommands', {
+      deviceId: activity.deviceId,
+      liveActivityId: args.liveActivityId,
+      senderUserId: userId,
+      kind: 'resize',
+      payload: { cols: args.cols, rows: args.rows },
+      status: 'pending',
+      createdAt: Date.now(),
     });
   },
 });
@@ -1085,6 +1295,9 @@ export const delegateIssue = mutation({
       },
     });
 
+    // Auto-transition issue to "In Progress"
+    await autoTransitionToInProgress(ctx, issue, userId);
+
     return { liveActivityId, delegatedRunId: runId };
   },
 });
@@ -1123,5 +1336,72 @@ export const updateDelegatedRun = mutation({
       ...(args.launchStatus === 'running' && { launchedAt: now }),
       ...(isTerminal && { endedAt: now }),
     });
+  },
+});
+
+// ── Terminal Signaling (WebRTC) ─────────────────────────────────────────────
+
+/** Send a WebRTC signaling message (offer, answer, or ICE candidate). */
+export const sendTerminalSignal = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    from: v.union(v.literal('browser'), v.literal('bridge')),
+    type: v.union(
+      v.literal('offer'),
+      v.literal('answer'),
+      v.literal('candidate'),
+    ),
+    data: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+
+    // Browser senders need view access; bridge senders need to be the device owner
+    if (args.from === 'browser') {
+      await requireWorkSessionViewer(ctx, workSession);
+    } else if (workSession.ownerUserId !== userId) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    // Clear old signals of the same type from the same sender when sending offer/answer
+    if (args.type === 'offer' || args.type === 'answer') {
+      const old = await ctx.db
+        .query('terminalSignals')
+        .withIndex('by_work_session_from', q =>
+          q.eq('workSessionId', args.workSessionId).eq('from', args.from),
+        )
+        .collect();
+      for (const signal of old) {
+        await ctx.db.delete('terminalSignals', signal._id);
+      }
+    }
+
+    await ctx.db.insert('terminalSignals', {
+      workSessionId: args.workSessionId,
+      from: args.from,
+      type: args.type,
+      data: args.data,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+/** Clear all signaling messages for a work session. */
+export const clearTerminalSignals = mutation({
+  args: { workSessionId: v.id('workSessions') },
+  handler: async (ctx, args) => {
+    await requireAuthUserId(ctx);
+    const signals = await ctx.db
+      .query('terminalSignals')
+      .withIndex('by_work_session', q =>
+        q.eq('workSessionId', args.workSessionId),
+      )
+      .collect();
+    for (const signal of signals) {
+      await ctx.db.delete('terminalSignals', signal._id);
+    }
   },
 });

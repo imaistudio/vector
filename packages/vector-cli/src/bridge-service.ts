@@ -10,6 +10,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { execFileSync, execSync } from 'child_process';
+import { TerminalPeerManager } from './terminal-peer';
 import {
   existsSync,
   mkdirSync,
@@ -124,6 +125,9 @@ interface PendingBridgeCommand {
     branch?: string;
     title?: string;
     model?: string;
+    tmuxSessionName?: string;
+    tmuxWindowName?: string;
+    tmuxPaneId?: string;
     mode: string;
     status: string;
     supportsInboundMessages: boolean;
@@ -136,6 +140,7 @@ export class BridgeService {
   private client: ConvexHttpClient;
   private config: BridgeConfig;
   private timers: ReturnType<typeof setInterval>[] = [];
+  private terminalPeer: TerminalPeerManager | null = null;
 
   constructor(config: BridgeConfig) {
     this.config = config;
@@ -190,6 +195,10 @@ export class BridgeService {
           return;
         case 'launch':
           await this.handleLaunchCommand(cmd);
+          await this.completeCommand(cmd._id, 'delivered');
+          return;
+        case 'resize':
+          await this.handleResizeCommand(cmd);
           await this.completeCommand(cmd._id, 'delivered');
           return;
         default:
@@ -253,6 +262,18 @@ export class BridgeService {
       );
       writeLiveActivitiesCache(activities);
       await this.syncWorkSessionTerminals(activities);
+
+      // Watch active sessions with tmux for WebRTC offers
+      if (this.terminalPeer) {
+        for (const activity of activities) {
+          if (activity.workSessionId && activity.tmuxSessionName) {
+            this.terminalPeer.watchSession(
+              activity.workSessionId,
+              activity.tmuxSessionName,
+            );
+          }
+        }
+      }
     } catch {
       /* non-critical */
     }
@@ -403,6 +424,21 @@ export class BridgeService {
     if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
     writeFileSync(PID_FILE, String(process.pid));
 
+    // Start WebRTC terminal peer manager
+    try {
+      this.terminalPeer = new TerminalPeerManager({
+        deviceId: this.config.deviceId,
+        deviceSecret: this.config.deviceSecret,
+        convexUrl: this.config.convexUrl,
+      });
+      console.log(`  WebRTC:  ready`);
+    } catch (e) {
+      console.error(
+        `  WebRTC:  failed (${e instanceof Error ? e.message : 'unknown'})`,
+      );
+    }
+    console.log('');
+
     // Initial sync
     await this.heartbeat();
     await this.reportProcesses();
@@ -446,6 +482,7 @@ export class BridgeService {
     const shutdown = () => {
       console.log(`\n[${ts()}] Shutting down...`);
       for (const t of this.timers) clearInterval(t);
+      this.terminalPeer?.stop();
       try {
         unlinkSync(PID_FILE);
       } catch {
@@ -571,6 +608,34 @@ export class BridgeService {
       latestSummary: summarizeMessage(result.responseText),
       title: cmd.liveActivity?.title ?? process.title,
     });
+  }
+
+  private async handleResizeCommand(cmd: PendingBridgeCommand): Promise<void> {
+    const payload = cmd.payload as { cols?: number; rows?: number } | undefined;
+    const cols = payload?.cols;
+    const rows = payload?.rows;
+    const paneId = cmd.workSession?.tmuxPaneId;
+
+    if (!paneId || !cols || !rows) {
+      throw new Error('Resize command missing paneId, cols, or rows');
+    }
+
+    console.log(`  Resize ${paneId} → ${cols}x${rows}`);
+    resizeTmuxPane(paneId, cols, rows);
+
+    // Capture fresh snapshot after resize
+    if (cmd.workSession) {
+      await this.refreshWorkSessionTerminal(cmd.workSession._id, {
+        tmuxSessionName: cmd.workSession.tmuxSessionName,
+        tmuxWindowName: cmd.workSession.tmuxWindowName,
+        tmuxPaneId: paneId,
+        cwd: cmd.workSession.cwd,
+        repoRoot: cmd.workSession.repoRoot,
+        branch: cmd.workSession.branch,
+        agentProvider: cmd.workSession.agentProvider,
+        agentSessionKey: cmd.workSession.agentSessionKey,
+      });
+    }
   }
 
   private async handleLaunchCommand(cmd: PendingBridgeCommand): Promise<void> {
@@ -733,6 +798,9 @@ export class BridgeService {
       branch,
       title,
       model,
+      tmuxSessionName,
+      tmuxWindowName,
+      tmuxPaneId,
       mode,
       status,
       supportsInboundMessages,
@@ -752,6 +820,9 @@ export class BridgeService {
         branch,
         title,
         model,
+        tmuxSessionName,
+        tmuxWindowName,
+        tmuxPaneId,
         mode,
         status,
         supportsInboundMessages,
@@ -927,11 +998,25 @@ function sendTextToTmuxPane(paneId: string, text: string): void {
 function captureTmuxPane(paneId: string): string {
   return execFileSync(
     'tmux',
-    ['capture-pane', '-p', '-t', paneId, '-S', '-120'],
+    ['capture-pane', '-p', '-e', '-t', paneId, '-S', '-120'],
     { encoding: 'utf-8' },
-  )
-    .replace(/\u001B\[[0-9;?]*[A-Za-z]/g, '')
-    .trimEnd();
+  ).trimEnd();
+}
+
+function resizeTmuxPane(paneId: string, cols: number, rows: number): void {
+  try {
+    execFileSync('tmux', [
+      'resize-pane',
+      '-t',
+      paneId,
+      '-x',
+      String(cols),
+      '-y',
+      String(rows),
+    ]);
+  } catch (e) {
+    console.error(`Failed to resize pane ${paneId}:`, e);
+  }
 }
 
 function currentGitBranch(cwd: string): string | undefined {
@@ -1168,8 +1253,14 @@ function isBridgeProvider(provider: AgentProvider): provider is BridgeProvider {
   return provider === 'codex' || provider === 'claude_code';
 }
 
-function providerLabel(provider: BridgeProvider): string {
-  return provider === 'codex' ? 'Codex' : 'Claude';
+function providerLabel(provider: AgentProvider): string {
+  if (provider === 'codex') {
+    return 'Codex';
+  }
+  if (provider === 'claude_code') {
+    return 'Claude';
+  }
+  return 'Vector CLI';
 }
 
 // ── LaunchAgent (macOS) ─────────────────────────────────────────────────────

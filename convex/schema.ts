@@ -1120,6 +1120,9 @@ export default defineSchema({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    tmuxSessionName: v.optional(v.string()),
+    tmuxWindowName: v.optional(v.string()),
+    tmuxPaneId: v.optional(v.string()),
     mode: agentProcessModeValidator,
     status: agentProcessStatusValidator,
     supportsInboundMessages: v.boolean(),
@@ -1199,6 +1202,21 @@ export default defineSchema({
     .index('by_work_session', ['workSessionId'])
     .index('by_user', ['userId'])
     .index('by_work_session_user', ['workSessionId', 'userId']),
+
+  // WebRTC signaling for interactive terminal sessions
+  terminalSignals: defineTable({
+    workSessionId: v.id('workSessions'),
+    from: v.union(v.literal('browser'), v.literal('bridge')),
+    type: v.union(
+      v.literal('offer'),
+      v.literal('answer'),
+      v.literal('candidate'),
+    ),
+    data: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_work_session', ['workSessionId'])
+    .index('by_work_session_from', ['workSessionId', 'from']),
 
   // Issue-bound projection of a process lifecycle
   issueLiveActivities: defineTable({

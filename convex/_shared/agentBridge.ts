@@ -125,6 +125,7 @@ export const AGENT_COMMAND_KINDS = [
   'attach_issue',
   'detach_issue',
   'launch',
+  'resize',
 ] as const;
 export type AgentCommandKind = (typeof AGENT_COMMAND_KINDS)[number];
 
