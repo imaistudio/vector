@@ -561,132 +561,152 @@ struct TrayPopoverView: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
-          DisclosureGroup(isExpanded: $liveActivitiesExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-              if controller.snapshot.liveActivities.isEmpty {
-                EmptySectionLabel(text: "No live activities on this device.")
-              } else {
-                ForEach(controller.snapshot.liveActivities) { activity in
-                  Button(action: { controller.openIssue(activity) }) {
-                    HStack(alignment: .top, spacing: 10) {
-                      Circle()
-                        .fill(providerColor(activity.provider))
-                        .frame(width: 8, height: 8)
-                        .padding(.top, 6)
-                      VStack(alignment: .leading, spacing: 3) {
-                        Text("\(activity.issueKey) — \(activity.issueTitle)")
-                          .font(.system(size: 12, weight: .semibold))
-                          .foregroundStyle(.primary)
-                          .lineLimit(2)
-                        Text(activityMeta(activity))
-                          .font(.system(size: 11))
-                          .foregroundStyle(.secondary)
-                          .lineLimit(1)
-                        if let latestSummary = activity.latestSummary, !latestSummary.isEmpty {
-                          Text(latestSummary)
+          VStack(alignment: .leading, spacing: 8) {
+            Button {
+              liveActivitiesExpanded.toggle()
+            } label: {
+              SectionLabel(
+                title: "Live Activities",
+                count: controller.snapshot.liveActivities.count,
+                expanded: liveActivitiesExpanded
+              )
+            }
+            .buttonStyle(.plain)
+
+            if liveActivitiesExpanded {
+              VStack(alignment: .leading, spacing: 8) {
+                if controller.snapshot.liveActivities.isEmpty {
+                  EmptySectionLabel(text: "No live activities on this device.")
+                } else {
+                  ForEach(controller.snapshot.liveActivities) { activity in
+                    Button(action: { controller.openIssue(activity) }) {
+                      HStack(alignment: .top, spacing: 10) {
+                        Circle()
+                          .fill(providerColor(activity.provider))
+                          .frame(width: 8, height: 8)
+                          .padding(.top, 6)
+                        VStack(alignment: .leading, spacing: 3) {
+                          Text("\(activity.issueKey) — \(activity.issueTitle)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                          Text(activityMeta(activity))
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
+                            .lineLimit(1)
+                          if let latestSummary = activity.latestSummary, !latestSummary.isEmpty {
+                            Text(latestSummary)
+                              .font(.system(size: 11))
+                              .foregroundStyle(.secondary)
+                              .lineLimit(2)
+                          }
                         }
+                        Spacer(minLength: 0)
                       }
-                      Spacer(minLength: 0)
+                      .padding(10)
+                      .frame(maxWidth: .infinity, alignment: .leading)
+                      .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor)))
+                    .buttonStyle(.plain)
+                    .help(buildActivityTooltip(activity))
                   }
-                  .buttonStyle(.plain)
-                  .help(buildActivityTooltip(activity))
                 }
               }
             }
-            .padding(.top, 8)
-          } label: {
-            SectionLabel(title: "Live Activities", count: controller.snapshot.liveActivities.count)
           }
 
-          DisclosureGroup(isExpanded: $processesExpanded) {
-            VStack(alignment: .leading, spacing: 8) {
-              if controller.snapshot.processes.isEmpty {
-                EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
-              } else {
-                ForEach(controller.snapshot.processes) { process in
-                  let isExpanded = expandedProcessIds.contains(process.id)
+          VStack(alignment: .leading, spacing: 8) {
+            Button {
+              processesExpanded.toggle()
+            } label: {
+              SectionLabel(
+                title: "Detected Sessions",
+                count: controller.snapshot.processes.count,
+                expanded: processesExpanded
+              )
+            }
+            .buttonStyle(.plain)
 
-                  VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
-                    Button {
-                      if isExpanded {
-                        expandedProcessIds.remove(process.id)
-                      } else {
-                        expandedProcessIds.insert(process.id)
-                      }
-                    } label: {
-                      ProcessRow(process: process, expanded: isExpanded)
-                    }
-                    .buttonStyle(.plain)
+            if processesExpanded {
+              VStack(alignment: .leading, spacing: 8) {
+                if controller.snapshot.processes.isEmpty {
+                  EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
+                } else {
+                  ForEach(controller.snapshot.processes) { process in
+                    let isExpanded = expandedProcessIds.contains(process.id)
 
-                    if isExpanded {
-                      VStack(alignment: .leading, spacing: 8) {
-                        TextField(
-                          "Search issue key or title...",
-                          text: controller.issueSearchBinding(for: process.id)
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 12))
-
-                        if controller.isSearching(processId: process.id) {
-                          HStack(spacing: 8) {
-                            ProgressView()
-                              .controlSize(.small)
-                            Text("Searching issues")
-                              .font(.system(size: 11))
-                              .foregroundStyle(.secondary)
-                          }
-                        } else if controller.results(for: process.id).isEmpty {
-                          EmptySectionLabel(
-                            text: (controller.issueSearchText[process.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
-                              ? "No matching issues."
-                              : "Type at least 2 characters to search."
-                          )
+                    VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
+                      Button {
+                        if isExpanded {
+                          expandedProcessIds.remove(process.id)
                         } else {
-                          VStack(alignment: .leading, spacing: 6) {
-                            ForEach(controller.results(for: process.id)) { issue in
-                              HStack(alignment: .center, spacing: 8) {
-                                Circle()
-                                  .fill(color(from: issue.stateColor))
-                                  .frame(width: 8, height: 8)
-                                VStack(alignment: .leading, spacing: 2) {
-                                  Text(issue.key)
-                                    .font(.system(size: 11, weight: .semibold))
-                                  Text(issue.title)
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                                }
-                                Spacer(minLength: 0)
-                                Button(controller.isAttaching(processId: process.id) ? "Attaching..." : "Attach") {
-                                  controller.attach(process: process, to: issue)
-                                }
-                                .buttonStyle(.borderedProminent)
+                          expandedProcessIds.insert(process.id)
+                        }
+                      } label: {
+                        ProcessRow(process: process, expanded: isExpanded)
+                      }
+                      .buttonStyle(.plain)
+
+                      if isExpanded {
+                        VStack(alignment: .leading, spacing: 8) {
+                          TextField(
+                            "Search issue key or title...",
+                            text: controller.issueSearchBinding(for: process.id)
+                          )
+                          .textFieldStyle(.roundedBorder)
+                          .font(.system(size: 12))
+
+                          if controller.isSearching(processId: process.id) {
+                            HStack(spacing: 8) {
+                              ProgressView()
                                 .controlSize(.small)
-                                .disabled(controller.isAttaching(processId: process.id))
+                              Text("Searching issues")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            }
+                          } else if controller.results(for: process.id).isEmpty {
+                            EmptySectionLabel(
+                              text: (controller.issueSearchText[process.id] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+                                ? "No matching issues."
+                                : "Type at least 2 characters to search."
+                            )
+                          } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                              ForEach(controller.results(for: process.id)) { issue in
+                                HStack(alignment: .center, spacing: 8) {
+                                  Circle()
+                                    .fill(color(from: issue.stateColor))
+                                    .frame(width: 8, height: 8)
+                                  VStack(alignment: .leading, spacing: 2) {
+                                    Text(issue.key)
+                                      .font(.system(size: 11, weight: .semibold))
+                                    Text(issue.title)
+                                      .font(.system(size: 11))
+                                      .foregroundStyle(.secondary)
+                                      .lineLimit(2)
+                                  }
+                                  Spacer(minLength: 0)
+                                  Button(controller.isAttaching(processId: process.id) ? "Attaching..." : "Attach") {
+                                    controller.attach(process: process, to: issue)
+                                  }
+                                  .buttonStyle(.borderedProminent)
+                                  .controlSize(.small)
+                                  .disabled(controller.isAttaching(processId: process.id))
+                                }
+                                .padding(.vertical, 2)
                               }
-                              .padding(.vertical, 2)
                             }
                           }
                         }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                       }
-                      .transition(.opacity.combined(with: .move(edge: .top)))
                     }
+                    .padding(12)
+                    .background(SessionCardBackground(isExpanded: isExpanded))
                   }
-                  .padding(12)
-                  .background(SessionCardBackground(isExpanded: isExpanded))
                 }
               }
             }
-            .padding(.top, 8)
-          } label: {
-            SectionLabel(title: "Detected Sessions", count: controller.snapshot.processes.count)
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -737,17 +757,22 @@ struct TrayPopoverView: View {
 struct SectionLabel: View {
   let title: String
   let count: Int
+  let expanded: Bool
 
   var body: some View {
     HStack(spacing: 8) {
       Text(title)
         .font(.system(size: 12, weight: .semibold))
+      Spacer(minLength: 0)
       Text("\(count)")
         .font(.system(size: 10, weight: .semibold))
         .foregroundStyle(.secondary)
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .background(Capsule().fill(Color(NSColor.quaternaryLabelColor).opacity(0.15)))
+      Image(systemName: expanded ? "chevron.down" : "chevron.right")
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(.tertiary)
     }
   }
 }

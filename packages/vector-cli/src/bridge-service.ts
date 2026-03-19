@@ -190,6 +190,13 @@ export class BridgeService {
 
   async reportProcesses(): Promise<void> {
     const processes = discoverAttachableSessions();
+    const activeSessionKeys = processes
+      .map(proc => proc.sessionKey)
+      .filter((value): value is string => Boolean(value));
+    const activeLocalProcessIds = processes
+      .map(proc => proc.localProcessId)
+      .filter((value): value is string => Boolean(value));
+
     for (const proc of processes) {
       try {
         await this.reportProcess(proc);
@@ -197,6 +204,21 @@ export class BridgeService {
         /* skip individual failures */
       }
     }
+
+    try {
+      await this.client.mutation(
+        api.agentBridge.bridgePublic.reconcileObservedProcesses,
+        {
+          deviceId: this.config.deviceId as Id<'agentDevices'>,
+          deviceSecret: this.config.deviceSecret,
+          activeSessionKeys,
+          activeLocalProcessIds,
+        },
+      );
+    } catch {
+      /* best effort */
+    }
+
     if (processes.length > 0) {
       console.log(
         `[${ts()}] Discovered ${processes.length} attachable session(s)`,
@@ -660,7 +682,7 @@ export function installLaunchAgent(vcliPath: string): void {
   const programArguments = getLaunchAgentProgramArguments(vcliPath);
   const environmentVariables = [
     '  <key>PATH</key>',
-    '  <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>',
+    '  <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>',
     ...(process.env.VECTOR_HOME?.trim()
       ? [
           '  <key>VECTOR_HOME</key>',

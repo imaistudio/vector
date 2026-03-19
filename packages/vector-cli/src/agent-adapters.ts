@@ -1,5 +1,5 @@
 import { execSync, spawn } from 'child_process';
-import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir, userInfo } from 'os';
 import { basename, join } from 'path';
 
@@ -25,7 +25,7 @@ export interface SessionRunResult extends SessionProcessRecord {
   launchCommand: string;
 }
 
-const MAX_DISCOVERED_FILES_PER_PROVIDER = 30;
+const LSOF_PATHS = ['/usr/sbin/lsof', '/usr/bin/lsof'];
 
 export function discoverAttachableSessions(): SessionProcessRecord[] {
   return dedupeSessions([
@@ -115,127 +115,47 @@ async function runCommand(
 }
 
 function discoverCodexSessions(): SessionProcessRecord[] {
-  return listRecentJsonlFiles(getCodexSessionsDir()).flatMap(file => {
-    const entries = readJsonLines(file);
-    let sessionKey: string | undefined;
-    let cwd: string | undefined;
-    let title: string | undefined;
-    let lastUserMessage: string | undefined;
-    let lastAssistantMessage: string | undefined;
+  const historyBySession = buildCodexHistoryIndex();
 
-    for (const entry of entries) {
-      if (entry.type === 'session_meta') {
-        sessionKey = asString(entry.payload?.id) ?? sessionKey;
-        cwd = asString(entry.payload?.cwd) ?? cwd;
+  return listLiveProcessIds('codex')
+    .flatMap(pid => {
+      const transcriptPath = getCodexTranscriptPath(pid);
+      if (!transcriptPath) {
+        return [];
       }
 
-      if (
-        entry.type === 'event_msg' &&
-        entry.payload?.type === 'user_message'
-      ) {
-        lastUserMessage = asString(entry.payload?.message) ?? lastUserMessage;
-      }
-
-      if (
-        entry.type === 'response_item' &&
-        entry.payload?.type === 'message' &&
-        entry.payload?.role === 'user'
-      ) {
-        lastUserMessage =
-          extractCodexResponseText(entry.payload?.content) ?? lastUserMessage;
-      }
-
-      if (
-        entry.type === 'event_msg' &&
-        entry.payload?.type === 'agent_message'
-      ) {
-        lastAssistantMessage =
-          asString(entry.payload?.message) ?? lastAssistantMessage;
-      }
-
-      if (
-        entry.type === 'response_item' &&
-        entry.payload?.type === 'message' &&
-        entry.payload?.role === 'assistant'
-      ) {
-        lastAssistantMessage =
-          extractCodexResponseText(entry.payload?.content) ??
-          lastAssistantMessage;
-      }
-    }
-
-    if (!sessionKey) {
-      return [];
-    }
-
-    title = summarizeTitle(lastUserMessage ?? lastAssistantMessage, cwd);
-    const gitInfo = cwd ? getGitInfo(cwd) : {};
-
-    return [
-      {
-        provider: 'codex' as const,
-        providerLabel: 'Codex',
-        sessionKey,
-        cwd,
-        ...gitInfo,
-        title,
-        mode: 'observed' as const,
-        status: 'observed' as const,
-        supportsInboundMessages: true as const,
-      },
-    ];
-  });
+      const processCwd = getProcessCwd(pid);
+      const parsed = parseObservedCodexSession(
+        pid,
+        transcriptPath,
+        processCwd,
+        historyBySession,
+      );
+      return parsed ? [parsed] : [];
+    })
+    .sort(compareObservedSessions);
 }
 
 function discoverClaudeSessions(): SessionProcessRecord[] {
-  return listRecentJsonlFiles(getClaudeSessionsDir()).flatMap(file => {
-    const entries = readJsonLines(file);
-    let sessionKey: string | undefined;
-    let cwd: string | undefined;
-    let branch: string | undefined;
-    let model: string | undefined;
-    let lastUserMessage: string | undefined;
-    let lastAssistantMessage: string | undefined;
+  const historyBySession = buildClaudeHistoryIndex();
 
-    for (const entry of entries) {
-      sessionKey = asString(entry.sessionId) ?? sessionKey;
-      cwd = asString(entry.cwd) ?? cwd;
-      branch = asString(entry.gitBranch) ?? branch;
-
-      if (entry.type === 'user') {
-        lastUserMessage =
-          extractClaudeUserText(entry.message) ?? lastUserMessage;
+  return listLiveProcessIds('claude')
+    .flatMap(pid => {
+      const sessionMeta = readClaudePidSession(pid);
+      if (!sessionMeta?.sessionId) {
+        return [];
       }
 
-      if (entry.type === 'assistant') {
-        model = asString(entry.message?.model) ?? model;
-        lastAssistantMessage =
-          extractClaudeAssistantText(entry.message) ?? lastAssistantMessage;
-      }
-    }
-
-    if (!sessionKey) {
-      return [];
-    }
-
-    const gitInfo = cwd ? getGitInfo(cwd) : {};
-
-    return [
-      {
-        provider: 'claude_code' as const,
-        providerLabel: 'Claude',
-        sessionKey,
-        cwd,
-        repoRoot: gitInfo.repoRoot,
-        branch: branch ?? gitInfo.branch,
-        title: summarizeTitle(lastUserMessage ?? lastAssistantMessage, cwd),
-        model,
-        mode: 'observed' as const,
-        status: 'observed' as const,
-        supportsInboundMessages: true as const,
-      },
-    ];
-  });
+      const transcriptPath = findClaudeTranscriptPath(sessionMeta.sessionId);
+      const parsed = parseObservedClaudeSession(
+        pid,
+        sessionMeta,
+        transcriptPath,
+        historyBySession,
+      );
+      return parsed ? [parsed] : [];
+    })
+    .sort(compareObservedSessions);
 }
 
 function parseCodexRunResult(
@@ -338,25 +258,24 @@ function parseClaudeRunResult(
   };
 }
 
-function listRecentJsonlFiles(root: string): string[] {
-  if (!existsSync(root)) {
-    return [];
-  }
-
-  const files = collectJsonlFiles(root);
-  return files
-    .map(path => ({ path, mtimeMs: statSync(path).mtimeMs }))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
-    .slice(0, MAX_DISCOVERED_FILES_PER_PROVIDER)
-    .map(file => file.path);
-}
-
 function getCodexSessionsDir(): string {
   return join(getRealHomeDir(), '.codex', 'sessions');
 }
 
-function getClaudeSessionsDir(): string {
+function getCodexHistoryFile(): string {
+  return join(getRealHomeDir(), '.codex', 'history.jsonl');
+}
+
+function getClaudeProjectsDir(): string {
   return join(getRealHomeDir(), '.claude', 'projects');
+}
+
+function getClaudeSessionStateDir(): string {
+  return join(getRealHomeDir(), '.claude', 'sessions');
+}
+
+function getClaudeHistoryFile(): string {
+  return join(getRealHomeDir(), '.claude', 'history.jsonl');
 }
 
 function getRealHomeDir(): string {
@@ -372,31 +291,160 @@ function getRealHomeDir(): string {
   return homedir();
 }
 
-function collectJsonlFiles(root: string): string[] {
-  const files: string[] = [];
+function resolveExecutable(
+  fallbackCommand: string,
+  absoluteCandidates: string[],
+): string | undefined {
+  for (const candidate of absoluteCandidates) {
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  try {
+    const output = execSync(`command -v ${fallbackCommand}`, {
+      encoding: 'utf-8',
+      timeout: 1000,
+    }).trim();
+    return output || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function listLiveProcessIds(commandName: string): string[] {
+  try {
+    const output = execSync('ps -axo pid=,comm=', {
+      encoding: 'utf-8',
+      timeout: 3000,
+    });
+
+    return output
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => line.split(/\s+/, 2))
+      .filter(([, command]) => command === commandName)
+      .map(([pid]) => pid)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function getProcessCwd(pid: string): string | undefined {
+  const lsofCommand = resolveExecutable('lsof', LSOF_PATHS);
+  if (!lsofCommand) {
+    return undefined;
+  }
+
+  try {
+    const output = execSync(`${lsofCommand} -a -p ${pid} -Fn -d cwd`, {
+      encoding: 'utf-8',
+      timeout: 3000,
+    });
+
+    return output
+      .split('\n')
+      .map(line => line.trim())
+      .find(line => line.startsWith('n'))
+      ?.slice(1);
+  } catch {
+    return undefined;
+  }
+}
+
+function getCodexTranscriptPath(pid: string): string | undefined {
+  const lsofCommand = resolveExecutable('lsof', LSOF_PATHS);
+  if (!lsofCommand) {
+    return undefined;
+  }
+
+  try {
+    const output = execSync(`${lsofCommand} -p ${pid} -Fn`, {
+      encoding: 'utf-8',
+      timeout: 3000,
+    });
+
+    return output
+      .split('\n')
+      .map(line => line.trim())
+      .find(
+        line =>
+          line.startsWith('n') &&
+          line.includes('/.codex/sessions/') &&
+          line.endsWith('.jsonl'),
+      )
+      ?.slice(1);
+  } catch {
+    return undefined;
+  }
+}
+
+function readClaudePidSession(
+  pid: string,
+): { sessionId: string; cwd?: string; startedAt?: number } | null {
+  const path = join(getClaudeSessionStateDir(), `${pid}.json`);
+  if (!existsSync(path)) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(readFileSync(path, 'utf-8'));
+    const sessionId = asString(payload.sessionId);
+    if (!sessionId) {
+      return null;
+    }
+
+    return {
+      sessionId,
+      cwd: asString(payload.cwd),
+      startedAt:
+        typeof payload.startedAt === 'number' ? payload.startedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function findClaudeTranscriptPath(sessionId: string): string | undefined {
+  return findJsonlFileByStem(getClaudeProjectsDir(), sessionId);
+}
+
+function findJsonlFileByStem(root: string, stem: string): string | undefined {
+  if (!existsSync(root)) {
+    return undefined;
+  }
 
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) {
-      files.push(...collectJsonlFiles(path));
+      const nested = findJsonlFileByStem(path, stem);
+      if (nested) {
+        return nested;
+      }
       continue;
     }
 
-    if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      files.push(path);
+    if (entry.isFile() && entry.name === `${stem}.jsonl`) {
+      return path;
     }
   }
 
-  return files;
+  return undefined;
 }
 
 function readJsonLines(path: string): any[] {
-  return readFileSync(path, 'utf-8')
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(tryParseJson)
-    .filter(Boolean);
+  try {
+    return readFileSync(path, 'utf-8')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(tryParseJson)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 function tryParseJson(value: string): any | null {
@@ -412,7 +460,7 @@ function dedupeSessions(
 ): SessionProcessRecord[] {
   const seen = new Set<string>();
   return sessions.filter(session => {
-    const key = `${session.provider}:${session.sessionKey}`;
+    const key = `${session.provider}:${session.localProcessId ?? session.sessionKey}`;
     if (seen.has(key)) {
       return false;
     }
@@ -421,53 +469,152 @@ function dedupeSessions(
   });
 }
 
-function extractCodexResponseText(content: unknown): string | undefined {
-  if (!Array.isArray(content)) {
-    return undefined;
+function compareObservedSessions(
+  a: SessionProcessRecord,
+  b: SessionProcessRecord,
+): number {
+  return Number(b.localProcessId ?? 0) - Number(a.localProcessId ?? 0);
+}
+
+function parseObservedCodexSession(
+  pid: string,
+  transcriptPath: string,
+  processCwd?: string,
+  historyBySession?: Map<string, string[]>,
+): SessionProcessRecord | null {
+  const entries = readJsonLines(transcriptPath);
+  let sessionKey: string | undefined;
+  let cwd = processCwd;
+  const userMessages: string[] = [];
+  const assistantMessages: string[] = [];
+
+  for (const entry of entries) {
+    if (entry.type === 'session_meta') {
+      sessionKey = asString(entry.payload?.id) ?? sessionKey;
+      cwd = asString(entry.payload?.cwd) ?? cwd;
+    }
+
+    if (entry.type === 'event_msg' && entry.payload?.type === 'user_message') {
+      pushIfPresent(userMessages, entry.payload?.message);
+    }
+
+    if (
+      entry.type === 'response_item' &&
+      entry.payload?.type === 'message' &&
+      entry.payload?.role === 'user'
+    ) {
+      userMessages.push(...extractTextSegments(entry.payload?.content));
+    }
+
+    if (entry.type === 'event_msg' && entry.payload?.type === 'agent_message') {
+      pushIfPresent(assistantMessages, entry.payload?.message);
+    }
+
+    if (
+      entry.type === 'response_item' &&
+      entry.payload?.type === 'message' &&
+      entry.payload?.role === 'assistant'
+    ) {
+      assistantMessages.push(...extractTextSegments(entry.payload?.content));
+    }
   }
 
-  const texts = content
-    .map(item =>
-      item && typeof item === 'object' && 'text' in item
-        ? asString((item as { text?: unknown }).text)
-        : undefined,
-    )
-    .filter(Boolean);
+  if (!sessionKey) {
+    return null;
+  }
 
+  const gitInfo = cwd ? getGitInfo(cwd) : {};
+  const historyTitle = sessionKey
+    ? selectSessionTitle(historyBySession?.get(sessionKey) ?? [])
+    : undefined;
+
+  return {
+    provider: 'codex',
+    providerLabel: 'Codex',
+    localProcessId: pid,
+    sessionKey,
+    cwd,
+    ...gitInfo,
+    title: summarizeTitle(
+      historyTitle ??
+        selectSessionTitle(userMessages) ??
+        selectSessionTitle(assistantMessages),
+      cwd,
+    ),
+    mode: 'observed',
+    status: 'observed',
+    supportsInboundMessages: true,
+  };
+}
+
+function parseObservedClaudeSession(
+  pid: string,
+  sessionMeta: { sessionId: string; cwd?: string; startedAt?: number },
+  transcriptPath?: string,
+  historyBySession?: Map<string, string[]>,
+): SessionProcessRecord | null {
+  const entries = transcriptPath ? readJsonLines(transcriptPath) : [];
+  let cwd = sessionMeta.cwd;
+  let branch: string | undefined;
+  let model: string | undefined;
+  const userMessages: string[] = [];
+  const assistantMessages: string[] = [];
+
+  for (const entry of entries) {
+    cwd = asString(entry.cwd) ?? cwd;
+    branch = asString(entry.gitBranch) ?? branch;
+
+    if (entry.type === 'user') {
+      userMessages.push(...extractClaudeMessageTexts(entry.message));
+    }
+
+    if (entry.type === 'assistant') {
+      model = asString(entry.message?.model) ?? model;
+      assistantMessages.push(...extractClaudeMessageTexts(entry.message));
+    }
+  }
+
+  const gitInfo = cwd ? getGitInfo(cwd) : {};
+  const historyTitle = selectSessionTitle(
+    historyBySession?.get(sessionMeta.sessionId) ?? [],
+  );
+
+  return {
+    provider: 'claude_code',
+    providerLabel: 'Claude',
+    localProcessId: pid,
+    sessionKey: sessionMeta.sessionId,
+    cwd,
+    repoRoot: gitInfo.repoRoot,
+    branch: branch ?? gitInfo.branch,
+    title: summarizeTitle(
+      historyTitle ??
+        selectSessionTitle(userMessages) ??
+        selectSessionTitle(assistantMessages),
+      cwd,
+    ),
+    model,
+    mode: 'observed',
+    status: 'observed',
+    supportsInboundMessages: true,
+  };
+}
+
+function extractCodexResponseText(content: unknown): string | undefined {
+  const texts = extractTextSegments(content);
   return texts.length > 0 ? texts.join('\n\n') : undefined;
 }
 
 function extractClaudeUserText(message: unknown): string | undefined {
-  if (!message || typeof message !== 'object') {
-    return undefined;
+  const texts = extractClaudeMessageTexts(message);
+  if (texts.length > 0) {
+    return texts.join('\n\n');
   }
-
-  const content = (message as { content?: unknown }).content;
-  if (typeof content === 'string') {
-    return content;
-  }
-
   return undefined;
 }
 
 function extractClaudeAssistantText(message: unknown): string | undefined {
-  if (!message || typeof message !== 'object') {
-    return undefined;
-  }
-
-  const content = (message as { content?: unknown }).content;
-  if (!Array.isArray(content)) {
-    return undefined;
-  }
-
-  const texts = content
-    .map(item =>
-      item && typeof item === 'object' && 'text' in item
-        ? asString((item as { text?: unknown }).text)
-        : undefined,
-    )
-    .filter(Boolean);
-
+  const texts = extractClaudeMessageTexts(message);
   return texts.length > 0 ? texts.join('\n\n') : undefined;
 }
 
@@ -500,6 +647,230 @@ function firstObjectKey(value: unknown): string | undefined {
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function pushIfPresent(target: string[], value: unknown): void {
+  const text = asString(value);
+  if (text) {
+    target.push(text);
+  }
+}
+
+function extractClaudeMessageTexts(message: unknown): string[] {
+  if (!message || typeof message !== 'object') {
+    return [];
+  }
+
+  return extractTextSegments((message as { content?: unknown }).content);
+}
+
+function extractTextSegments(value: unknown): string[] {
+  if (typeof value === 'string') {
+    return [value];
+  }
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap(extractTextSegmentFromBlock).filter(Boolean);
+}
+
+function extractTextSegmentFromBlock(block: unknown): string[] {
+  if (!block || typeof block !== 'object') {
+    return [];
+  }
+
+  const typedBlock = block as {
+    type?: unknown;
+    text?: unknown;
+    content?: unknown;
+  };
+
+  const blockType = asString(typedBlock.type);
+  if (blockType && isIgnoredContentBlockType(blockType)) {
+    return [];
+  }
+
+  const directText = asString(typedBlock.text);
+  if (directText) {
+    return [directText];
+  }
+
+  if (typeof typedBlock.content === 'string') {
+    return [typedBlock.content];
+  }
+
+  return [];
+}
+
+function isIgnoredContentBlockType(blockType: string): boolean {
+  return [
+    'tool_result',
+    'tool_use',
+    'image',
+    'thinking',
+    'reasoning',
+    'contextCompaction',
+  ].includes(blockType);
+}
+
+function buildCodexHistoryIndex(): Map<string, string[]> {
+  const historyBySession = new Map<string, string[]>();
+
+  for (const entry of readJsonLines(getCodexHistoryFile())) {
+    const sessionId = asString(entry.session_id);
+    const text = asString(entry.text);
+    if (!sessionId || !text) {
+      continue;
+    }
+
+    appendHistoryEntry(historyBySession, sessionId, text);
+  }
+
+  return historyBySession;
+}
+
+function buildClaudeHistoryIndex(): Map<string, string[]> {
+  const historyBySession = new Map<string, string[]>();
+
+  for (const entry of readJsonLines(getClaudeHistoryFile())) {
+    const sessionId = asString(entry.sessionId);
+    if (!sessionId) {
+      continue;
+    }
+
+    const texts = extractClaudeHistoryTexts(entry);
+    for (const text of texts) {
+      appendHistoryEntry(historyBySession, sessionId, text);
+    }
+  }
+
+  return historyBySession;
+}
+
+function appendHistoryEntry(
+  historyBySession: Map<string, string[]>,
+  sessionId: string,
+  text: string,
+): void {
+  const existing = historyBySession.get(sessionId);
+  if (existing) {
+    existing.push(text);
+    return;
+  }
+
+  historyBySession.set(sessionId, [text]);
+}
+
+function extractClaudeHistoryTexts(entry: unknown): string[] {
+  if (!entry || typeof entry !== 'object') {
+    return [];
+  }
+
+  const record = entry as {
+    display?: unknown;
+    pastedContents?: unknown;
+  };
+
+  const pastedTexts = extractClaudePastedTexts(record.pastedContents);
+  if (pastedTexts.length > 0) {
+    return pastedTexts;
+  }
+
+  const display = asString(record.display);
+  return display ? [display] : [];
+}
+
+function extractClaudePastedTexts(value: unknown): string[] {
+  if (!value || typeof value !== 'object') {
+    return [];
+  }
+
+  return Object.values(value as Record<string, unknown>)
+    .flatMap(item => {
+      if (!item || typeof item !== 'object') {
+        return [];
+      }
+
+      const record = item as {
+        type?: unknown;
+        content?: unknown;
+      };
+
+      return record.type === 'text' && typeof record.content === 'string'
+        ? [record.content]
+        : [];
+    })
+    .filter(Boolean);
+}
+
+function selectSessionTitle(messages: string[]): string | undefined {
+  for (const message of messages) {
+    const cleaned = cleanSessionTitleCandidate(message);
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+
+  return undefined;
+}
+
+function cleanSessionTitleCandidate(message: string): string | undefined {
+  const normalized = stripAnsi(message).replace(/\s+/g, ' ').trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized.length < 4) {
+    return undefined;
+  }
+
+  if (
+    normalized.startsWith('/') ||
+    looksLikeGeneratedTagEnvelope(normalized) ||
+    looksLikeGeneratedImageSummary(normalized) ||
+    looksLikeStandaloneImagePath(normalized) ||
+    looksLikeInstructionScaffold(normalized)
+  ) {
+    return undefined;
+  }
+
+  return normalized;
+}
+
+function looksLikeGeneratedTagEnvelope(value: string): boolean {
+  return /^<[\w:-]+>.*<\/[\w:-]+>$/s.test(value);
+}
+
+function looksLikeGeneratedImageSummary(value: string): boolean {
+  return (
+    /^\[image:/i.test(value) ||
+    (/displayed at/i.test(value) && /coordinates/i.test(value))
+  );
+}
+
+function looksLikeStandaloneImagePath(value: string): boolean {
+  return (
+    /^\/\S+\.(png|jpe?g|gif|webp|heic|bmp)$/i.test(value) ||
+    /^file:\S+\.(png|jpe?g|gif|webp|heic|bmp)$/i.test(value)
+  );
+}
+
+function looksLikeInstructionScaffold(value: string): boolean {
+  if (value.length < 700) {
+    return false;
+  }
+
+  const headingCount = value.match(/^#{1,3}\s/gm)?.length ?? 0;
+  const tagCount = value.match(/<\/?[\w:-]+>/g)?.length ?? 0;
+  const bulletCount = value.match(/^\s*[-*]\s/gm)?.length ?? 0;
+
+  return headingCount + tagCount + bulletCount >= 6;
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-9;]*m/g, '');
 }
 
 function getGitInfo(cwd: string): { repoRoot?: string; branch?: string } {

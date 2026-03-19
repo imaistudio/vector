@@ -52,6 +52,47 @@ function collapseDuplicateDevices(
   );
 }
 
+function processDedupKey(process: Doc<'agentProcesses'>): string {
+  return [
+    process.provider,
+    process.localProcessId ??
+      process.sessionKey ??
+      process.cwd ??
+      process.title,
+  ]
+    .filter(Boolean)
+    .join('::');
+}
+
+function processRank(process: Doc<'agentProcesses'>): number {
+  return process.localProcessId ? 2 : process.sessionKey ? 1 : 0;
+}
+
+function collapseDuplicateProcesses(
+  processes: Doc<'agentProcesses'>[],
+): Doc<'agentProcesses'>[] {
+  const canonicalByKey = new Map<string, Doc<'agentProcesses'>>();
+  const sorted = [...processes].sort((a, b) => {
+    const rankDelta = processRank(b) - processRank(a);
+    if (rankDelta !== 0) {
+      return rankDelta;
+    }
+    return b.lastHeartbeatAt - a.lastHeartbeatAt;
+  });
+
+  for (const process of sorted) {
+    const key = processDedupKey(process);
+    if (!key || canonicalByKey.has(key)) {
+      continue;
+    }
+    canonicalByKey.set(key, process);
+  }
+
+  return [...canonicalByKey.values()].sort(
+    (a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt,
+  );
+}
+
 // ── Agent Devices ───────────────────────────────────────────────────────────
 
 /** List all devices for the authenticated user. */
@@ -190,14 +231,15 @@ export const listProcessesForAttach = query({
           .withIndex('by_device', q => q.eq('deviceId', device._id))
           .collect();
 
-        const processes = allProcesses
-          .filter(
+        const processes = collapseDuplicateProcesses(
+          allProcesses.filter(
             p =>
+              p.mode === 'observed' &&
               p.supportsInboundMessages &&
               !p.endedAt &&
               !['failed', 'disconnected'].includes(p.status),
-          )
-          .sort((a, b) => b.lastHeartbeatAt - a.lastHeartbeatAt);
+          ),
+        );
 
         return {
           device,

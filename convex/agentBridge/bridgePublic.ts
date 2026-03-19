@@ -363,6 +363,79 @@ export const reportProcess = mutation({
   },
 });
 
+export const reconcileObservedProcesses = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    activeSessionKeys: v.array(v.string()),
+    activeLocalProcessIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const activeSessionKeys = new Set(args.activeSessionKeys);
+    const activeLocalProcessIds = new Set(args.activeLocalProcessIds);
+    const now = Date.now();
+
+    const processes = await ctx.db
+      .query('agentProcesses')
+      .withIndex('by_device', q => q.eq('deviceId', args.deviceId))
+      .collect();
+    const activities = await ctx.db
+      .query('issueLiveActivities')
+      .withIndex('by_device', q => q.eq('deviceId', args.deviceId))
+      .collect();
+
+    let disconnected = 0;
+
+    for (const process of processes) {
+      if (process.mode !== 'observed' || process.endedAt) {
+        continue;
+      }
+
+      if (!process.localProcessId) {
+        await ctx.db.patch('agentProcesses', process._id, {
+          status: 'disconnected',
+          endedAt: now,
+        });
+        disconnected++;
+        continue;
+      }
+
+      const sessionStillActive =
+        !!process.sessionKey && activeSessionKeys.has(process.sessionKey);
+      const pidStillActive =
+        !!process.localProcessId &&
+        activeLocalProcessIds.has(process.localProcessId);
+
+      if (sessionStillActive || pidStillActive) {
+        continue;
+      }
+
+      await ctx.db.patch('agentProcesses', process._id, {
+        status: 'disconnected',
+        endedAt: now,
+      });
+
+      for (const activity of activities) {
+        if (activity.processId !== process._id || activity.endedAt) {
+          continue;
+        }
+
+        await ctx.db.patch('issueLiveActivities', activity._id, {
+          status: 'disconnected',
+          lastEventAt: now,
+          endedAt: now,
+        });
+      }
+
+      disconnected++;
+    }
+
+    return { disconnected };
+  },
+});
+
 // ── Live Activity / Delegated Run Sync ──────────────────────────────────────
 
 export const updateLiveActivityState = mutation({
