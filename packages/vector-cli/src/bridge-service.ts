@@ -1559,11 +1559,7 @@ export async function launchMenuBar(): Promise<void> {
   const cliInvocation = getCurrentCliInvocation();
   if (!executable || !cliInvocation) return;
 
-  const existingPid = getRunningMenuBarPid();
-  if (existingPid) {
-    return;
-  }
-
+  // Always kill and relaunch so the binary matches the installed CLI version
   killExistingMenuBar();
 
   try {
