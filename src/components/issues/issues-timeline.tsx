@@ -232,11 +232,6 @@ export function IssuesTimeline({
           existing.assigneeIds.push(row.assigneeId);
         }
         existing.assignments.push(assignment);
-        if (!existing.row.assigneeId && row.assigneeId) {
-          existing.row = row;
-        } else if (row.assigneeId === currentUserId) {
-          existing.row = row;
-        }
       } else {
         map.set(row.id, {
           row,
@@ -248,7 +243,7 @@ export function IssuesTimeline({
     }
 
     return [...map.values()];
-  }, [issues, currentUserId]);
+  }, [issues]);
 
   // Filter by state tab, sort by most recently updated
   const sorted = React.useMemo(

@@ -143,11 +143,6 @@ export function IssuesTable({
           stateName: row.stateName ?? null,
           stateType: row.stateType ?? null,
         });
-        if (!existing.row.assigneeId && row.assigneeId) {
-          existing.row = row;
-        } else if (row.assigneeId === currentUserId) {
-          existing.row = row;
-        }
       } else {
         map.set(row.id, {
           row,
@@ -170,7 +165,7 @@ export function IssuesTable({
       }
     });
     return Array.from(map.values());
-  }, [issues, currentUserId]);
+  }, [issues]);
 
   const sortedGrouped = React.useMemo(
     () => [...groupedIssues].sort((a, b) => b.row.updatedAt - a.row.updatedAt),
