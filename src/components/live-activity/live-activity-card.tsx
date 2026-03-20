@@ -332,9 +332,17 @@ export function LiveActivityCard({
         </div>
       )}
 
-      {expanded && !showTerminal && (
+      {expanded && !showTerminal && !isTerminal && (
+        <div className='mt-1 flex items-center justify-center gap-2 rounded-lg border py-6'>
+          <span className='size-1.5 animate-pulse rounded-full bg-yellow-500' />
+          <span className='text-muted-foreground text-sm'>
+            Setting up terminal session...
+          </span>
+        </div>
+      )}
+      {expanded && !showTerminal && isTerminal && (
         <div className='text-muted-foreground mt-1 rounded-lg border py-6 text-center text-sm'>
-          Terminal output will appear when the device syncs this pane.
+          No terminal output available.
         </div>
       )}
 

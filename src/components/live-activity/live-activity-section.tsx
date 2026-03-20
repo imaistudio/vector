@@ -175,6 +175,7 @@ export function AttachProcessPopover({
   children?: React.ReactNode;
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [attachingId, setAttachingId] = useState<string | null>(null);
   const open = controlledOpen ?? internalOpen;
   const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const devicesWithProcesses = useCachedQuery(
@@ -191,6 +192,8 @@ export function AttachProcessPopover({
     provider: 'codex' | 'claude_code' | 'vector_cli',
     title?: string,
   ) => {
+    if (attachingId) return;
+    setAttachingId(processId);
     try {
       await attachMutation({
         issueId,
@@ -200,9 +203,12 @@ export function AttachProcessPopover({
         title,
       });
       setOpen(false);
+      setAttachingId(null);
       toast.success('Process attached to issue');
     } catch {
       toast.error('Failed to attach process');
+    } finally {
+      setAttachingId(null);
     }
   };
 
@@ -249,50 +255,63 @@ export function AttachProcessPopover({
                     </div>
                   }
                 >
-                  {processes.map(process => (
-                    <CommandItem
-                      key={process._id}
-                      value={[
-                        process.providerLabel ?? '',
-                        process.title ?? '',
-                        process.cwd ?? '',
-                        process.repoRoot ?? '',
-                        process.branch ?? '',
-                        process.mode,
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      onSelect={() =>
-                        handleAttach(
-                          device._id,
-                          process._id,
-                          process.provider,
-                          process.title ?? process.cwd,
-                        )
-                      }
-                      className='gap-2'
-                    >
-                      <ProviderIcon provider={process.provider} />
-                      <div className='min-w-0 flex-1'>
-                        <div className='truncate text-sm font-medium'>
-                          {process.title?.trim() ||
-                            process.cwd?.split('/').pop() ||
-                            process.providerLabel}
+                  {processes.map(process => {
+                    const isAttaching = attachingId === process._id;
+                    return (
+                      <CommandItem
+                        key={process._id}
+                        value={[
+                          process.providerLabel ?? '',
+                          process.title ?? '',
+                          process.cwd ?? '',
+                          process.repoRoot ?? '',
+                          process.branch ?? '',
+                          process.mode,
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                        onSelect={() =>
+                          handleAttach(
+                            device._id,
+                            process._id,
+                            process.provider,
+                            process.title ?? process.cwd,
+                          )
+                        }
+                        disabled={Boolean(attachingId)}
+                        className={cn(
+                          'gap-2',
+                          attachingId && !isAttaching && 'opacity-50',
+                        )}
+                      >
+                        <ProviderIcon provider={process.provider} />
+                        <div className='min-w-0 flex-1'>
+                          <div className='truncate text-sm font-medium'>
+                            {process.title?.trim() ||
+                              process.cwd?.split('/').pop() ||
+                              process.providerLabel}
+                          </div>
+                          <div className='text-muted-foreground truncate text-xs'>
+                            {process.providerLabel}
+                            {(process.cwd || process.branch) && ' · '}
+                            {process.cwd ?? process.repoRoot ?? 'Unknown'}
+                            {process.branch && (
+                              <span className='ml-1 font-mono'>
+                                ({process.branch})
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div className='text-muted-foreground truncate text-xs'>
-                          {process.providerLabel}
-                          {(process.cwd || process.branch) && ' · '}
-                          {process.cwd ?? process.repoRoot ?? 'Unknown'}
-                          {process.branch && (
-                            <span className='ml-1 font-mono'>
-                              ({process.branch})
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <ModeBadge mode={process.mode} />
-                    </CommandItem>
-                  ))}
+                        {isAttaching ? (
+                          <span className='text-muted-foreground text-[10px]'>
+                            Attaching...
+                          </span>
+                        ) : (
+                          <ModeBadge mode={process.mode} />
+                        )}
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               ))}
             </CommandList>

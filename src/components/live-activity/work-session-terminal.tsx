@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useCallback, useState } from 'react';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { useTheme } from 'next-themes';
@@ -83,6 +83,9 @@ export function WorkSessionTerminal({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const connectedRef = useRef(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    'idle' | 'activating' | 'connecting' | 'connected'
+  >('idle');
   const { resolvedTheme } = useTheme();
 
   const terminalTheme = useMemo(
@@ -183,6 +186,7 @@ export function WorkSessionTerminal({
     const fitAddon = fitAddonRef.current;
     const dims = fitAddon?.proposeDimensions();
 
+    setConnectionStatus('activating');
     void setViewer({
       workSessionId,
       active: true,
@@ -192,6 +196,7 @@ export function WorkSessionTerminal({
 
     return () => {
       void setViewer({ workSessionId, active: false });
+      setConnectionStatus('idle');
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canInteract, workSessionId]);
@@ -210,11 +215,8 @@ export function WorkSessionTerminal({
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log(
-          '[Terminal] Connected via',
-          ws.url.includes('localhost') ? 'localhost' : 'tunnel',
-        );
         connectedRef.current = true;
+        setConnectionStatus('connected');
         terminal.clear();
         terminal.focus();
 
@@ -249,6 +251,8 @@ export function WorkSessionTerminal({
 
       ws.onerror = () => {};
     }
+
+    setConnectionStatus('connecting');
 
     // Try localhost first (near-zero latency)
     if (terminalLocalPort) {
@@ -327,9 +331,19 @@ export function WorkSessionTerminal({
     fitAddonRef.current?.fit();
   }, [snapshot]);
 
+  const statusMessage =
+    connectionStatus === 'activating'
+      ? 'Waiting for device...'
+      : connectionStatus === 'connecting'
+        ? 'Connecting to terminal...'
+        : null;
+
   return (
     <div
-      className={cn('overflow-hidden', fullscreen ? 'h-full' : 'rounded-md')}
+      className={cn(
+        'relative overflow-hidden',
+        fullscreen ? 'h-full' : 'rounded-md',
+      )}
       onClick={() => terminalRef.current?.focus()}
     >
       <div
@@ -340,6 +354,16 @@ export function WorkSessionTerminal({
         )}
         style={{ backgroundColor: terminalTheme.background }}
       />
+      {statusMessage && connectionStatus !== 'connected' && (
+        <div className='absolute inset-0 flex items-center justify-center'>
+          <div className='bg-background/80 flex items-center gap-2 rounded-lg border px-4 py-2 backdrop-blur-sm'>
+            <span className='size-1.5 animate-pulse rounded-full bg-yellow-500' />
+            <span className='text-muted-foreground text-sm'>
+              {statusMessage}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
