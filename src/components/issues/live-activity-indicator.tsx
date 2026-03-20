@@ -296,15 +296,16 @@ export function LiveActivityPreview({
           <span className='shrink-0'>{timeAgo}</span>
         </div>
 
-        <div className='px-2.5 pb-2'>
+        <div>
           {showTerminal ? (
             <WorkSessionTerminal
               snapshot={terminalSnapshot}
               autoFocus={false}
               heightClassName='h-36'
+              rounded={false}
             />
           ) : (
-            <div className='flex min-h-24 items-center font-mono text-[10px] text-zinc-500'>
+            <div className='flex min-h-24 items-center px-2.5 pb-2 font-mono text-[10px] text-zinc-500'>
               Terminal preview will appear here once the session writes output.
             </div>
           )}

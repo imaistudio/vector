@@ -70,6 +70,7 @@ export function WorkSessionTerminal({
   fullscreen,
   autoFocus = true,
   heightClassName,
+  rounded = true,
 }: {
   snapshot: string;
   terminalUrl?: string;
@@ -81,6 +82,7 @@ export function WorkSessionTerminal({
   fullscreen?: boolean;
   autoFocus?: boolean;
   heightClassName?: string;
+  rounded?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -353,7 +355,7 @@ export function WorkSessionTerminal({
     <div
       className={cn(
         'relative overflow-hidden',
-        fullscreen ? 'h-full' : 'rounded-md',
+        fullscreen ? 'h-full' : rounded && 'rounded-md',
       )}
       onClick={() => terminalRef.current?.focus()}
     >
