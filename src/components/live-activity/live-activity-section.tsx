@@ -130,7 +130,46 @@ export function DeviceSetupGuide({ compact }: { compact?: boolean } = {}) {
   );
 }
 
-function NoDevicesGuide() {
+function NoDevicesOrOfflineGuide() {
+  const devices = useCachedQuery(api.agentBridge.queries.listMyDevices, {});
+  const hasDevices = devices !== undefined && devices.length > 0;
+
+  if (hasDevices) {
+    // User has devices but none are online
+    return (
+      <div className='p-3'>
+        <div className='text-sm font-medium'>Devices offline</div>
+        <p className='text-muted-foreground mt-1 text-xs leading-relaxed'>
+          Your registered devices are not currently online. Start the bridge
+          service on your device to connect.
+        </p>
+        <div className='mt-3 space-y-1'>
+          {devices
+            .filter(d => d.status !== 'online')
+            .slice(0, 3)
+            .map(d => (
+              <div
+                key={d._id}
+                className='bg-muted/30 flex items-center gap-2 rounded-md border px-3 py-2 text-xs'
+              >
+                <Monitor className='text-muted-foreground size-3.5 shrink-0' />
+                <span className='flex-1 truncate font-medium'>
+                  {d.displayName}
+                </span>
+                <span className='text-muted-foreground capitalize'>
+                  {d.status}
+                </span>
+              </div>
+            ))}
+        </div>
+        <p className='text-muted-foreground mt-3 text-[11px]'>
+          Run <code className='bg-muted rounded px-1'>vcli service start</code>{' '}
+          on your device to bring it online.
+        </p>
+      </div>
+    );
+  }
+
   return <DeviceSetupGuide compact />;
 }
 
@@ -225,7 +264,7 @@ export function AttachProcessPopover({
       <PopoverContent className='w-80 p-0' align='end'>
         {devicesWithProcesses !== undefined &&
         devicesWithProcesses.length === 0 ? (
-          <NoDevicesGuide />
+          <NoDevicesOrOfflineGuide />
         ) : (
           <Command>
             <CommandInput placeholder='Search processes...' />
@@ -407,7 +446,7 @@ export function DelegateRunPopover({
         </PopoverTrigger>
         <PopoverContent className='w-80 p-0' align='end'>
           {targets !== undefined && targets.length === 0 ? (
-            <NoDevicesGuide />
+            <NoDevicesOrOfflineGuide />
           ) : !selectedDeviceId ? (
             // Step 1: Pick device
             <Command>
