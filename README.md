@@ -5,28 +5,40 @@
     <img alt="Vector" src="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark.png" width="220">
   </picture>
   <p>Open source issue tracking and project management built because there was no truly open source alternative to Linear.</p>
+
+  <p>Vector exists because I wanted the speed and focus of Linear, but without giving up source access, self-hosting, or the ability to shape the product for my own team.</p>
+
+  <p>Most tools in this category are either:</p>
+  <p>
+    • not actually open source<br>
+    • source-available but not realistically self-hostable<br>
+    • open source, but missing the product quality and workflows that make Linear compelling
+  </p>
+
+  <p>So I made this.</p>
+
+  <p>Vector is for teams that want a real open source Linear-style workspace for:</p>
+  <p>
+    • issues, projects, and teams<br>
+    • docs and linked project context<br>
+    • work sessions that keep active execution tied to the issue<br>
+    • permissions and org-level administration<br>
+    • GitHub-linked development workflows<br>
+    • self-hosting and code-level customization
+  </p>
+
+  <p>
+    <a href="#why-vector-exists">Why Vector Exists</a> ·
+    <a href="#features">Features</a> ·
+    <a href="#entity-model">Entity Model</a> ·
+    <a href="#screenshots">Screenshots</a> ·
+    <a href="#quick-start">Quick Start</a> ·
+    <a href="#environment-variables">Environment Variables</a> ·
+    <a href="#development">Development</a> ·
+    <a href="#documentation">Documentation</a> ·
+    <a href="#contributing">Contributing</a>
+  </p>
 </div>
-
-Vector exists because I wanted the speed and focus of Linear, but without giving up source access, self-hosting, or the ability to shape the product for my own team.
-
-Most tools in this category are either:
-
-- not actually open source
-- source-available but not realistically self-hostable
-- open source, but missing the product quality and workflows that make Linear compelling
-
-So I made this.
-
-Vector is for teams that want a real open source Linear-style workspace for:
-
-- issues, projects, and teams
-- docs and linked project context
-- work sessions that keep active execution tied to the issue
-- permissions and org-level administration
-- GitHub-linked development workflows
-- self-hosting and code-level customization
-
-Quick links: [Why Vector Exists](#why-vector-exists) · [Features](#features) · [Entity Model](#entity-model) · [Screenshots](#screenshots) · [Quick Start](#quick-start) · [Environment Variables](#environment-variables) · [Development](#development) · [Documentation](#documentation) · [Contributing](#contributing)
 
 ![Issues Kanban Board](public/screenshots/issues-kanban.png)
 
