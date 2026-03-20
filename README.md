@@ -50,7 +50,7 @@ The goal is not to clone every Linear feature. The goal is to build an opinionat
 - Kanban and table views for issue tracking
 - Saved views with table, kanban, and timeline layouts
 - Public views that can power a shareable roadmap surface
-- Issue-linked work sessions with attach, delegate, and shared terminal flows
+- Issue-linked work sessions with attach, delegate, sharing, and live terminal flows
 - Rich document editor with markdown, mentions, and slash commands
 - Real-time data updates with Convex
 - Optional email and web-push notification delivery
@@ -62,7 +62,7 @@ The goal is not to clone every Linear feature. The goal is to build an opinionat
 - A focused issue tracker with table and kanban views
 - Saved views for teams, projects, and custom slices of work
 - Public roadmap publishing from a public saved view
-- Work sessions that let you manage the issue and do the work in the same place
+- Work sessions that let you manage the issue, watch the terminal, and do the work in the same place
 - Projects, teams, and org-level workflows in one app
 - Rich collaborative docs with mentions and slash commands
 - Role-based permissions for multi-tenant organizations
@@ -126,7 +126,7 @@ Views are also how Vector exposes a public roadmap: make a saved view public, th
 
 Vector also ships with a dedicated CLI package for terminal workflows.
 
-The CLI powers the device bridge behind work sessions, so you can connect a machine to Vector, attach an existing agent session to an issue, or launch a managed Codex, Claude, or shell session from the issue itself and follow it from the same view.
+The CLI powers the device bridge behind work sessions, so you can connect a machine to Vector, attach an existing agent session to an issue, or launch a managed Codex, Claude, or shell session from the issue itself and follow terminal output, status, and sharing controls from the same view.
 
 - Package README: [packages/vector-cli/README.md](packages/vector-cli/README.md)
 - Local repo entrypoint: `pnpm exec tsx src/cli/index.ts --help`
