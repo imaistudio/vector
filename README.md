@@ -21,6 +21,7 @@ Vector is for teams that want a real open source Linear-style workspace for:
 
 - issues, projects, and teams
 - docs and linked project context
+- work sessions that keep active execution tied to the issue
 - permissions and org-level administration
 - GitHub-linked development workflows
 - self-hosting and code-level customization
@@ -47,6 +48,7 @@ The goal is not to clone every Linear feature. The goal is to build an opinionat
 - Multi-tenant organizations
 - Projects, issues, teams, and role-based permissions
 - Kanban and table views for issue tracking
+- Issue-linked work sessions with attach, delegate, and shared terminal flows
 - Rich document editor with markdown, mentions, and slash commands
 - Real-time data updates with Convex
 - Optional email and web-push notification delivery
@@ -56,6 +58,7 @@ The goal is not to clone every Linear feature. The goal is to build an opinionat
 ## What You Get
 
 - A focused issue tracker with table and kanban views
+- Work sessions that let you manage the issue and do the work in the same place
 - Projects, teams, and org-level workflows in one app
 - Rich collaborative docs with mentions and slash commands
 - Role-based permissions for multi-tenant organizations
@@ -116,6 +119,8 @@ For the fuller explanation of how these entities relate and what each one is for
 ## CLI
 
 Vector also ships with a dedicated CLI package for terminal workflows.
+
+The CLI powers the device bridge behind work sessions, so you can connect a machine to Vector, attach an existing agent session to an issue, or launch a managed Codex, Claude, or shell session from the issue itself and follow it from the same view.
 
 - Package README: [packages/vector-cli/README.md](packages/vector-cli/README.md)
 - Local repo entrypoint: `pnpm exec tsx src/cli/index.ts --help`
