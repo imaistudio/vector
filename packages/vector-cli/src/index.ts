@@ -3385,6 +3385,137 @@ bridgeCommand
     );
   });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLI Update
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function detectInstallMethod(): {
+  method: 'volta' | 'npm' | 'pnpm' | 'yarn' | 'unknown';
+  command: string[];
+} {
+  const execPath = process.argv[1] ?? '';
+
+  if (execPath.includes('.volta')) {
+    return {
+      method: 'volta',
+      command: ['volta', 'install', '@rehpic/vcli@latest'],
+    };
+  }
+
+  // Check if installed via pnpm
+  if (execPath.includes('pnpm')) {
+    return {
+      method: 'pnpm',
+      command: ['pnpm', 'add', '-g', '@rehpic/vcli@latest'],
+    };
+  }
+
+  // Check if installed via yarn
+  if (execPath.includes('yarn')) {
+    return {
+      method: 'yarn',
+      command: ['yarn', 'global', 'add', '@rehpic/vcli@latest'],
+    };
+  }
+
+  // Default: npm
+  return {
+    method: 'npm',
+    command: ['npm', 'install', '-g', '@rehpic/vcli@latest'],
+  };
+}
+
+async function checkForUpdate(): Promise<{
+  current: string;
+  latest: string;
+  hasUpdate: boolean;
+} | null> {
+  try {
+    const { execSync: exec } = await import('child_process');
+    const latest = exec('npm view @rehpic/vcli version', {
+      encoding: 'utf-8',
+      timeout: 10000,
+    }).trim();
+    const pkg = await import('../package.json', { with: { type: 'json' } });
+    const current = (pkg.default?.version ?? pkg.version ?? '0.0.0') as string;
+    return {
+      current,
+      latest,
+      hasUpdate: latest !== current && !current.includes('beta'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+program
+  .command('update')
+  .description('Update the CLI to the latest version')
+  .action(async () => {
+    const { spinner, log } = await import('@clack/prompts');
+    const s = spinner();
+
+    // 1. Check for updates
+    s.start('Checking for updates...');
+    const updateInfo = await checkForUpdate();
+    if (!updateInfo) {
+      s.stop('Could not check for updates.');
+      return;
+    }
+    if (!updateInfo.hasUpdate) {
+      s.stop(`Already on the latest version (${updateInfo.current}).`);
+      return;
+    }
+    s.stop(`Update available: ${updateInfo.current} → ${updateInfo.latest}`);
+
+    const install = detectInstallMethod();
+    log.info(`Install method: ${install.method}`);
+
+    // 2. Stop the bridge service
+    s.start('Stopping bridge service...');
+    const wasRunning = getBridgeStatus().running;
+    if (wasRunning) {
+      stopBridge({ includeMenuBar: true });
+      if (osPlatform() === 'darwin') {
+        unloadLaunchAgent();
+      }
+      stopMenuBar();
+    }
+    s.stop(wasRunning ? 'Bridge stopped.' : 'Bridge was not running.');
+
+    // 3. Run the update
+    s.start(`Updating via ${install.method}...`);
+    try {
+      const { execFileSync: exec } = await import('child_process');
+      exec(install.command[0], install.command.slice(1), {
+        stdio: 'inherit',
+        timeout: 120000,
+      });
+      s.stop('CLI updated successfully.');
+    } catch (err) {
+      s.stop('Update failed.');
+      log.error(`Run manually: ${install.command.join(' ')}`);
+      return;
+    }
+
+    // 4. Restart the bridge + menu bar using the NEW binary
+    if (wasRunning) {
+      s.start('Restarting bridge service...');
+      try {
+        const { execFileSync: exec } = await import('child_process');
+        exec('vcli', ['service', 'start'], {
+          stdio: 'inherit',
+          timeout: 30000,
+        });
+        s.stop('Bridge restarted.');
+      } catch {
+        s.stop('Could not auto-restart. Run: vcli service start');
+      }
+    }
+
+    log.success(`Updated to v${updateInfo.latest}`);
+  });
+
 async function main() {
   await program.parseAsync(process.argv);
 }
