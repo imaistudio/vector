@@ -262,6 +262,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
   @Published private(set) var attachingProcessIds: Set<String> = []
   @Published private(set) var selectingWorkspaceId: String?
   @Published private(set) var selectingProfileName: String?
+  @Published private(set) var updateAvailable: String?
+  @Published private(set) var isUpdating = false
+  private var lastUpdateCheck = Date.distantPast
 
   init(configDir: URL, cliCommand: String, cliArgs: [String]) {
     self.configDir = configDir
@@ -451,6 +454,74 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
     }
   }
 
+  func updateCLI() {
+    guard !isUpdating else { return }
+    isUpdating = true
+    log("starting CLI update")
+    runCLI(arguments: ["update"]) { [weak self] success, output in
+      guard let self else { return }
+      self.isUpdating = false
+      if success {
+        self.updateAvailable = nil
+        self.log("CLI update completed")
+      } else {
+        self.log("CLI update failed: \(output)")
+      }
+      self.refreshState()
+    }
+  }
+
+  private func checkForUpdate() {
+    // Only check every 5 minutes
+    guard Date().timeIntervalSince(lastUpdateCheck) > 300 else { return }
+    lastUpdateCheck = Date()
+
+    DispatchQueue.global(qos: .utility).async { [weak self] in
+      guard let self else { return }
+      let task = Process()
+      task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+      task.arguments = ["npm", "view", "@rehpic/vcli", "version"]
+      let pipe = Pipe()
+      task.standardOutput = pipe
+      task.standardError = Pipe()
+
+      do {
+        try task.run()
+        task.waitUntilExit()
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let latestVersion = String(data: data, encoding: .utf8)?
+          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        // Get current version from menu-state (already in snapshot via CLI)
+        // Compare by running vcli --version
+        let versionTask = Process()
+        versionTask.executableURL = URL(fileURLWithPath: self.cliCommand)
+        versionTask.arguments = self.cliArgs + ["--version"]
+        let versionPipe = Pipe()
+        versionTask.standardOutput = versionPipe
+        versionTask.standardError = Pipe()
+        try versionTask.run()
+        versionTask.waitUntilExit()
+        let versionData = versionPipe.fileHandleForReading.readDataToEndOfFile()
+        let currentVersion = String(data: versionData, encoding: .utf8)?
+          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        DispatchQueue.main.async {
+          if !latestVersion.isEmpty && !currentVersion.isEmpty
+            && latestVersion != currentVersion
+            && !currentVersion.contains("beta")
+          {
+            self.updateAvailable = latestVersion
+          } else {
+            self.updateAvailable = nil
+          }
+        }
+      } catch {
+        self.log("update check failed: \(error)")
+      }
+    }
+  }
+
   func updateIssueSearch(processId: String, query: String) {
     issueSearchText[processId] = query
     searchTasks[processId]?.cancel()
@@ -557,6 +628,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
 
       self.reconcileTransition()
       self.updateStatusButton()
+      self.checkForUpdate()
     }
   }
 
@@ -983,8 +1055,33 @@ struct TrayPopoverView: View {
 
       Divider()
 
+      // Update banner
+      if let latestVersion = controller.updateAvailable {
+        HStack(spacing: 8) {
+          Image(systemName: "arrow.triangle.2.circlepath")
+            .foregroundColor(.blue)
+            .font(.system(size: 11))
+          Text("Update available: v\(latestVersion)")
+            .font(.system(size: 11))
+            .foregroundColor(.secondary)
+          Spacer(minLength: 0)
+          Button(controller.isUpdating ? "Updating..." : "Update") {
+            controller.updateCLI()
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+          .disabled(controller.isUpdating)
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 4)
+
+        Divider()
+      }
+
       HStack(spacing: 8) {
-        if let transition = controller.transition {
+        if controller.isUpdating {
+          StatusChip(text: "Updating CLI...")
+        } else if let transition = controller.transition {
           StatusChip(text: transition.label)
         } else if controller.snapshot.running {
           Button("Stop Bridge") {
