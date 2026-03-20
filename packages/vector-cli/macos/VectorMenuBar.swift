@@ -480,9 +480,11 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
 
     DispatchQueue.global(qos: .utility).async { [weak self] in
       guard let self else { return }
+
+      // Get dist-tags JSON to find the actual newest version
       let task = Process()
       task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-      task.arguments = ["npm", "view", "@rehpic/vcli", "version"]
+      task.arguments = ["npm", "view", "@rehpic/vcli", "dist-tags", "--json"]
       let pipe = Pipe()
       task.standardOutput = pipe
       task.standardError = Pipe()
@@ -491,11 +493,15 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
         try task.run()
         task.waitUntilExit()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let latestVersion = String(data: data, encoding: .utf8)?
-          .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let tags = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+          return
+        }
+        // Pick the newest: if 'latest' is a beta, prefer the 'beta' tag
+        let latestTag = tags["latest"] ?? ""
+        let betaTag = tags["beta"] ?? ""
+        let latestVersion = latestTag.contains("beta") ? (betaTag.isEmpty ? latestTag : betaTag) : (latestTag.isEmpty ? betaTag : latestTag)
 
-        // Get current version from menu-state (already in snapshot via CLI)
-        // Compare by running vcli --version
+        // Get current version
         let versionTask = Process()
         versionTask.executableURL = URL(fileURLWithPath: self.cliCommand)
         versionTask.arguments = self.cliArgs + ["--version"]
