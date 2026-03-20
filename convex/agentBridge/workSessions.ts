@@ -37,7 +37,9 @@ async function resolveWorkSessionAccess(
 
   return {
     userId,
-    canView: isOwner || Boolean(share),
+    // Anyone who can view the issue can see work sessions on it
+    canView: true,
+    // Only owner or explicitly shared controllers can interact
     canInteract: isOwner || share?.accessLevel === 'controller',
     canManage: isOwner,
     shareAccessLevel: share?.accessLevel ?? null,
