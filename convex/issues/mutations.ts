@@ -27,6 +27,7 @@ import {
   resolveMentionedUsers,
 } from '../notifications/lib';
 import { buildIssueSearchText } from './search';
+import { getNextAvailableIssueKey } from './keys';
 import { hasAgentMention } from '../ai/comment_agent';
 
 function priorityLabel(
@@ -164,16 +165,26 @@ export const create = mutation({
         .withIndex('by_project', q => q.eq('projectId', projectId))
         .collect();
 
-      nextNumber = existingIssues.length + 1;
-      issueKey = `${project.key}-${nextNumber}`;
+      const nextIssueKey = await getNextAvailableIssueKey(ctx, {
+        organizationId: org._id,
+        prefix: project.key,
+        startingSequenceNumber: existingIssues.length + 1,
+      });
+      nextNumber = nextIssueKey.sequenceNumber;
+      issueKey = nextIssueKey.key;
     } else {
       const existingIssues = await ctx.db
         .query('issues')
         .withIndex('by_organization', q => q.eq('organizationId', org._id))
         .collect();
 
-      nextNumber = existingIssues.length + 1;
-      issueKey = `${org.slug.toUpperCase()}-${nextNumber}`;
+      const nextIssueKey = await getNextAvailableIssueKey(ctx, {
+        organizationId: org._id,
+        prefix: org.slug.toUpperCase(),
+        startingSequenceNumber: existingIssues.length + 1,
+      });
+      nextNumber = nextIssueKey.sequenceNumber;
+      issueKey = nextIssueKey.key;
     }
 
     if (!args.data.title.trim()) {

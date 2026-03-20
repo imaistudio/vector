@@ -56,6 +56,7 @@ import type * as github_node from "../github/node.js";
 import type * as github_queries from "../github/queries.js";
 import type * as github_shared from "../github/shared.js";
 import type * as http from "../http.js";
+import type * as issues_keys from "../issues/keys.js";
 import type * as issues_mutations from "../issues/mutations.js";
 import type * as issues_queries from "../issues/queries.js";
 import type * as issues_search from "../issues/search.js";
@@ -140,6 +141,7 @@ declare const fullApi: ApiFromModules<{
   "github/queries": typeof github_queries;
   "github/shared": typeof github_shared;
   http: typeof http;
+  "issues/keys": typeof issues_keys;
   "issues/mutations": typeof issues_mutations;
   "issues/queries": typeof issues_queries;
   "issues/search": typeof issues_search;

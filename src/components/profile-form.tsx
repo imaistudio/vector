@@ -282,20 +282,24 @@ function GitHubConnectionSection() {
   const [isLinking, setIsLinking] = useState(false);
   const [isUnlinking, setIsUnlinking] = useState(false);
   const [isSyncingIdentity, setIsSyncingIdentity] = useState(false);
-  const hasSyncedCallbackRef = useRef(false);
+  const hasAttemptedProfileSyncRef = useRef(false);
 
   useEffect(() => {
     const githubStatus = searchParams.get('github');
-    if (
-      githubStatus !== 'connected' ||
-      githubConnection === undefined ||
-      githubConnection?.connected ||
-      hasSyncedCallbackRef.current
-    ) {
+    if (githubConnection === undefined) {
       return;
     }
 
-    hasSyncedCallbackRef.current = true;
+    if (!githubConnection.needsProfileSync) {
+      hasAttemptedProfileSyncRef.current = false;
+      return;
+    }
+
+    if (hasAttemptedProfileSyncRef.current) {
+      return;
+    }
+
+    hasAttemptedProfileSyncRef.current = true;
     let cancelled = false;
 
     const syncIdentity = async () => {
@@ -314,14 +318,21 @@ function GitHubConnectionSection() {
         }
 
         await syncGitHubIdentity({ accessToken });
-        toast.success('GitHub account connected');
+        if (githubStatus === 'connected') {
+          toast.success('GitHub account connected');
+        }
       } catch {
-        hasSyncedCallbackRef.current = false;
-        toast.error('GitHub connected, but Vector could not sync your profile');
+        if (githubStatus === 'connected') {
+          toast.error(
+            'GitHub connected, but Vector could not sync your profile',
+          );
+        }
       } finally {
         if (!cancelled) {
           setIsSyncingIdentity(false);
-          router.replace('/settings/profile');
+          if (githubStatus) {
+            router.replace('/settings/profile');
+          }
         }
       }
     };
@@ -332,6 +343,15 @@ function GitHubConnectionSection() {
       cancelled = true;
     };
   }, [githubConnection, router, searchParams, syncGitHubIdentity]);
+
+  const isConnected = Boolean(githubConnection?.connected);
+  const connectionLabel = isConnected
+    ? githubConnection?.githubUsername
+      ? `@${githubConnection.githubUsername}`
+      : isSyncingIdentity || githubConnection?.needsProfileSync
+        ? 'Syncing GitHub profile'
+        : 'GitHub account linked'
+    : 'Connect to auto-assign issues from PRs';
 
   const handleConnect = async () => {
     setIsLinking(true);
@@ -399,22 +419,14 @@ function GitHubConnectionSection() {
           </div>
           <div>
             <div className='text-sm font-medium'>GitHub</div>
-            {githubConnection?.connected ? (
-              <p className='text-muted-foreground text-xs'>
-                @{githubConnection.githubUsername}
-              </p>
-            ) : (
-              <p className='text-muted-foreground text-xs'>
-                Connect to auto-assign issues from PRs
-              </p>
-            )}
+            <p className='text-muted-foreground text-xs'>{connectionLabel}</p>
           </div>
         </div>
-        {githubConnection?.connected ? (
+        {isConnected ? (
           <Button
             variant='ghost'
             size='sm'
-            disabled={isUnlinking}
+            disabled={isUnlinking || isSyncingIdentity}
             onClick={handleDisconnect}
           >
             {isUnlinking ? 'Disconnecting...' : 'Disconnect'}

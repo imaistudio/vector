@@ -17,6 +17,7 @@ import {
   syncTeamRoleAssignment,
 } from '../roles';
 import { buildIssueSearchText } from '../issues/search';
+import { getNextAvailableIssueKey } from '../issues/keys';
 import { createNotificationEvent } from '../notifications/lib';
 import { syncDocumentMentions } from '../documents/mentions';
 import {
@@ -1646,8 +1647,13 @@ export const createIssue = internalMutation({
         .query('issues')
         .withIndex('by_project', q => q.eq('projectId', resolvedProject._id))
         .collect();
-      sequenceNumber = existingIssues.length + 1;
-      key = `${resolvedProject.key}-${sequenceNumber}`;
+      const nextIssueKey = await getNextAvailableIssueKey(ctx, {
+        organizationId: organization._id,
+        prefix: resolvedProject.key,
+        startingSequenceNumber: existingIssues.length + 1,
+      });
+      sequenceNumber = nextIssueKey.sequenceNumber;
+      key = nextIssueKey.key;
     } else {
       const existingIssues = await ctx.db
         .query('issues')
@@ -1655,8 +1661,13 @@ export const createIssue = internalMutation({
           q.eq('organizationId', organization._id),
         )
         .collect();
-      sequenceNumber = existingIssues.length + 1;
-      key = `${organization.slug.toUpperCase()}-${sequenceNumber}`;
+      const nextIssueKey = await getNextAvailableIssueKey(ctx, {
+        organizationId: organization._id,
+        prefix: organization.slug.toUpperCase(),
+        startingSequenceNumber: existingIssues.length + 1,
+      });
+      sequenceNumber = nextIssueKey.sequenceNumber;
+      key = nextIssueKey.key;
     }
 
     const issueId = await ctx.db.insert('issues', {

@@ -20,6 +20,7 @@ import {
 } from '../activities/lib';
 import { PERMISSIONS } from '../_shared/permissions';
 import { buildIssueSearchText } from '../issues/search';
+import { getNextAvailableIssueKey } from '../issues/keys';
 import {
   buildArtifactExternalKey,
   normalizeIssueKey,
@@ -1467,16 +1468,21 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       },
     );
 
-    const nextNumber =
-      (
-        await ctx.db
-          .query('issues')
-          .withIndex('by_organization', q =>
-            q.eq('organizationId', args.organizationId),
-          )
-          .collect()
-      ).length + 1;
-    const issueKey = `${organization.slug.toUpperCase()}-${nextNumber}`;
+    const nextIssueKey = await getNextAvailableIssueKey(ctx, {
+      organizationId: args.organizationId,
+      prefix: organization.slug.toUpperCase(),
+      startingSequenceNumber:
+        (
+          await ctx.db
+            .query('issues')
+            .withIndex('by_organization', q =>
+              q.eq('organizationId', args.organizationId),
+            )
+            .collect()
+        ).length + 1,
+    });
+    const nextNumber = nextIssueKey.sequenceNumber;
+    const issueKey = nextIssueKey.key;
     const title =
       pullRequest.title.trim() ||
       `${repository.fullName}#${pullRequest.number}`;

@@ -5,6 +5,7 @@ import {
   internalAction,
   internalMutation,
   type MutationCtx,
+  type QueryCtx,
 } from './_generated/server';
 import { v, ConvexError } from 'convex/values';
 import { api, components, internal } from './_generated/api';
@@ -38,6 +39,42 @@ async function syncBetterAuthUser(
         },
       ],
     },
+  });
+}
+
+async function getLinkedGitHubAccount(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<'users'>,
+) {
+  const authUser = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+    model: 'user',
+    where: [
+      {
+        field: 'userId',
+        operator: 'eq',
+        value: String(userId),
+      },
+    ],
+  });
+
+  if (!authUser) {
+    return null;
+  }
+
+  return await ctx.runQuery(components.betterAuth.adapter.findOne, {
+    model: 'account',
+    where: [
+      {
+        field: 'providerId',
+        operator: 'eq',
+        value: 'github',
+      },
+      {
+        field: 'userId',
+        operator: 'eq',
+        value: authUser._id,
+      },
+    ],
   });
 }
 
@@ -478,10 +515,22 @@ export const getGitHubConnection = query({
   handler: async ctx => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
-    const user = await ctx.db.get('users', userId);
+    const [user, githubAccount] = await Promise.all([
+      ctx.db.get('users', userId),
+      getLinkedGitHubAccount(ctx, userId),
+    ]);
     if (!user) return null;
+
+    const hasLinkedAccount = Boolean(githubAccount);
+    const hasStoredIdentity =
+      typeof user.githubUserId === 'number' &&
+      typeof user.githubUsername === 'string' &&
+      user.githubUsername.length > 0;
+
     return {
-      connected: Boolean(user.githubUserId),
+      connected: hasLinkedAccount,
+      hasLinkedAccount,
+      needsProfileSync: hasLinkedAccount && !hasStoredIdentity,
       githubUsername: user.githubUsername ?? null,
       githubUserId: user.githubUserId ?? null,
     };
