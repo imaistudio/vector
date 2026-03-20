@@ -651,6 +651,7 @@ export class BridgeService {
       | {
           issueKey?: string;
           issueTitle?: string;
+          issueDescription?: string;
           provider?: AgentProvider;
           workspacePath?: string;
           workspaceLabel?: string;
@@ -671,7 +672,13 @@ export class BridgeService {
     const issueKey = payload?.issueKey ?? cmd.liveActivity?.issueKey ?? 'ISSUE';
     const issueTitle =
       payload?.issueTitle ?? cmd.liveActivity?.issueTitle ?? 'Untitled issue';
-    const prompt = buildLaunchPrompt(issueKey, issueTitle, workspacePath);
+    const issueDescription = payload?.issueDescription;
+    const prompt = buildLaunchPrompt(
+      issueKey,
+      issueTitle,
+      workspacePath,
+      issueDescription,
+    );
     const launchLabel = provider ? providerLabel(provider) : 'shell session';
     const workSessionTitle = `${issueKey}: ${issueTitle}`;
 
@@ -1087,14 +1094,23 @@ function buildLaunchPrompt(
   issueKey: string,
   issueTitle: string,
   workspacePath: string,
+  issueDescription?: string,
 ): string {
-  return [
-    `You are working on issue ${issueKey}: ${issueTitle}`,
+  const lines = [`You are working on issue ${issueKey}: ${issueTitle}`];
+
+  if (issueDescription?.trim()) {
+    lines.push('', 'Issue description:', issueDescription.trim());
+  }
+
+  lines.push(
+    '',
     `The repository is at ${workspacePath}.`,
     'Do exactly and only what the issue describes — nothing more, nothing less.',
     'If anything is unclear or ambiguous, ask clarifying questions before making changes.',
     'Do not refactor, clean up, or "improve" code that is not part of the issue scope.',
-  ].join('\n');
+  );
+
+  return lines.join('\n');
 }
 
 function summarizeMessage(message: string | undefined): string | undefined {

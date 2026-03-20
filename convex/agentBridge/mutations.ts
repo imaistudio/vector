@@ -1268,6 +1268,7 @@ export const delegateIssue = mutation({
         issueId: args.issueId,
         issueKey: issue.key,
         issueTitle: issue.title,
+        issueDescription: issue.description,
         provider: args.provider,
         workspacePath: workspace.path,
         workspaceLabel: workspace.label,
