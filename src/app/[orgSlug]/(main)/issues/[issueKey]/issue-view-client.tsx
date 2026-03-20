@@ -688,7 +688,7 @@ export default function IssueViewClient({
                     selectedTeam={issue.teamId || ''}
                     onTeamSelect={canChangeTeam ? handleTeamChange : () => {}}
                     displayMode='iconWhenUnselected'
-                    className='border-none bg-transparent shadow-none'
+                    className='border-none bg-transparent shadow-none dark:bg-transparent'
                   />
                 </PermissionAwareSelector>
                 <PermissionAwareSelector
@@ -703,7 +703,7 @@ export default function IssueViewClient({
                       canChangeProject ? handleProjectChange : () => {}
                     }
                     displayMode='iconWhenUnselected'
-                    className='border-none bg-transparent shadow-none'
+                    className='border-none bg-transparent shadow-none dark:bg-transparent'
                   />
                 </PermissionAwareSelector>
                 <div className='hidden sm:contents'>
@@ -722,7 +722,7 @@ export default function IssueViewClient({
                       relatedProjectId={issue.projectId || ''}
                       relatedTeamId={issue.teamId || ''}
                       displayMode='iconWhenUnselected'
-                      className='border-none bg-transparent shadow-none'
+                      className='border-none bg-transparent shadow-none dark:bg-transparent'
                     />
                   </PermissionAwareSelector>
                 </div>
@@ -762,7 +762,7 @@ export default function IssueViewClient({
                         stateId: stateId as Id<'issueStates'>,
                       });
                     }}
-                    className='border-none bg-transparent shadow-none'
+                    className='border-none bg-transparent shadow-none dark:bg-transparent'
                   />
                 </PermissionAwareSelector>
               )}
@@ -778,7 +778,7 @@ export default function IssueViewClient({
                   onPrioritySelect={
                     canEditPriority ? handlePriorityChange : () => {}
                   }
-                  className='border-none bg-transparent shadow-none'
+                  className='border-none bg-transparent shadow-none dark:bg-transparent'
                 />
               </PermissionAwareSelector>
               <PermissionAwareSelector
@@ -792,7 +792,7 @@ export default function IssueViewClient({
                     canEditVisibility ? handleVisibilityChange : () => {}
                   }
                   displayMode='iconWhenUnselected'
-                  className='border-none bg-transparent shadow-none'
+                  className='border-none bg-transparent shadow-none dark:bg-transparent'
                   publicLinkUrl={publicIssueUrl}
                 />
               </PermissionAwareSelector>
