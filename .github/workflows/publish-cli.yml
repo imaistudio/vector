@@ -92,6 +92,12 @@ jobs:
         run: npm publish --access public --tag "${{ steps.publish.outputs.npm_tag }}"
         working-directory: packages/vector-cli
 
+      - name: Point latest tag at beta build
+        if: github.event_name != 'release'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm dist-tag add "@rehpic/vcli@${{ steps.publish.outputs.version }}" latest
+
       - name: Job summary
         run: |
           {
@@ -100,5 +106,8 @@ jobs:
             echo "- Package: \`@rehpic/vcli\`"
             echo "- Version: \`${{ steps.publish.outputs.version }}\`"
             echo "- npm tag: \`${{ steps.publish.outputs.npm_tag }}\`"
+            if [ "${{ github.event_name }}" != "release" ]; then
+              echo "- latest alias: \`${{ steps.publish.outputs.version }}\`"
+            fi
             echo "- Trigger: \`${{ github.event_name }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
