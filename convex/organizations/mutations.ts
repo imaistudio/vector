@@ -433,6 +433,7 @@ export const update = mutation({
       publicSocialLinks: v.optional(
         v.union(v.array(socialLinkValidator), v.null()),
       ),
+      agentContext: v.optional(v.union(v.string(), v.null())),
     }),
   },
   handler: async (ctx, args) => {
@@ -552,6 +553,10 @@ export const update = mutation({
         normalizedSocialLinks && normalizedSocialLinks.length > 0
           ? normalizedSocialLinks
           : undefined;
+    }
+    if (args.data.agentContext !== undefined) {
+      const trimmed = args.data.agentContext?.trim() ?? '';
+      updateData.agentContext = trimmed || undefined;
     }
 
     if (Object.keys(updateData).length > 0) {

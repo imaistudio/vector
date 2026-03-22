@@ -184,11 +184,21 @@ export const getCurrentUserContextSummary = internalQuery({
       identityParts.push(`username "${user.username.trim()}"`);
     }
 
-    return [
+    const lines = [
       `The authenticated user you are speaking to is ${identityParts.join(', ')}.`,
       `They are a ${membership?.role ?? 'member'} in organization "${organization.name}" (${organization.slug}).`,
       'Treat references like "me", "my", "myself", "current user", and "my email" as referring to this person unless the user clearly says otherwise.',
-    ].join('\n');
+    ];
+
+    if (organization.agentContext?.trim()) {
+      lines.push(
+        '',
+        'Additional organization context provided by the workspace admin:',
+        organization.agentContext.trim(),
+      );
+    }
+
+    return lines.join('\n');
   },
 });
 
@@ -2084,6 +2094,135 @@ export const updateIssue = internalMutation({
       key: issue.key,
       title: nextTitle,
       ...(changes.length > 0 ? { changes: changes.join(', ') } : {}),
+    };
+  },
+});
+
+export const changeIssueKey = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    pageContext: v.optional(assistantPageContextValidator),
+    issueKey: v.optional(v.string()),
+    context: v.union(
+      v.literal('team'),
+      v.literal('project'),
+      v.literal('user'),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const issue = await resolveIssueFromContext(
+      ctx,
+      organization._id,
+      args.pageContext,
+      args.issueKey ?? null,
+    );
+
+    if (!(await canEditEntity(ctx, args.userId, issue, 'issue'))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    // Determine the prefix based on the requested context
+    let prefix: string;
+    let contextLabel: string;
+
+    if (args.context === 'project') {
+      if (!issue.projectId) {
+        throw new ConvexError(
+          'Issue has no project assigned. Assign a project first or use a different context.',
+        );
+      }
+      const project = await ctx.db.get('projects', issue.projectId);
+      if (!project) {
+        throw new ConvexError('PROJECT_NOT_FOUND');
+      }
+      prefix = project.key;
+      contextLabel = `project "${project.name}" (${project.key})`;
+    } else if (args.context === 'team') {
+      if (!issue.teamId) {
+        throw new ConvexError(
+          'Issue has no team assigned. Assign a team first or use a different context.',
+        );
+      }
+      const team = await ctx.db.get('teams', issue.teamId);
+      if (!team) {
+        throw new ConvexError('TEAM_NOT_FOUND');
+      }
+      prefix = team.key;
+      contextLabel = `team "${team.name}" (${team.key})`;
+    } else {
+      // user context — use the user's username or name initials
+      const user = await ctx.db.get('users', args.userId);
+      if (user?.username?.trim()) {
+        prefix = user.username.trim().toUpperCase();
+      } else if (user?.name?.trim()) {
+        prefix = user.name
+          .trim()
+          .split(/\s+/)
+          .map(w => w[0])
+          .join('')
+          .toUpperCase();
+      } else {
+        prefix = organization.slug.toUpperCase();
+      }
+      contextLabel = `user "${user?.name ?? user?.email ?? 'Unknown'}"`;
+    }
+
+    // Generate next available key with the new prefix
+    const existingWithPrefix = await ctx.db
+      .query('issues')
+      .withIndex('by_organization', q =>
+        q.eq('organizationId', organization._id),
+      )
+      .collect();
+    const samePrefix = existingWithPrefix.filter(i =>
+      i.key.startsWith(`${prefix}-`),
+    );
+
+    const nextKey = await getNextAvailableIssueKey(ctx, {
+      organizationId: organization._id,
+      prefix,
+      startingSequenceNumber: samePrefix.length + 1,
+    });
+
+    const oldKey = issue.key;
+
+    await ctx.db.patch('issues', issue._id, {
+      key: nextKey.key,
+      sequenceNumber: nextKey.sequenceNumber,
+      searchText: buildIssueSearchText({
+        key: nextKey.key,
+        title: issue.title,
+        description: issue.description,
+      }),
+    });
+
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: args.userId,
+      entityType: 'issue',
+      eventType: 'issue_title_changed',
+      details: {
+        field: 'title',
+        fromLabel: oldKey,
+        toLabel: nextKey.key,
+        viaAgent: true,
+      },
+      snapshot: snapshotForIssue(issue),
+    });
+
+    return {
+      issueId: String(issue._id),
+      oldKey,
+      newKey: nextKey.key,
+      context: args.context,
+      contextLabel,
+      summary: `Key changed from ${oldKey} to ${nextKey.key} (based on ${contextLabel})`,
     };
   },
 });

@@ -298,6 +298,33 @@ export const updateIssue: any = createTool({
   },
 });
 
+export const changeIssueKey: any = createTool({
+  description:
+    'Change an issue\'s key by regenerating it based on a different context. Use "project" to base the key on the issue\'s project (e.g. PROJ-5), "team" to base it on the issue\'s team (e.g. ENG-3), or "user" to base it on the current user\'s name/username. The issue must already have the relevant team or project assigned.',
+  args: z.object({
+    issueKey: z
+      .string()
+      .optional()
+      .describe(
+        'Key of the issue to change. Defaults to the current issue page.',
+      ),
+    context: z
+      .enum(['team', 'project', 'user'])
+      .describe(
+        'Which context to derive the new key prefix from: "project" uses the project key, "team" uses the team key, "user" uses the user\'s username or initials.',
+      ),
+  }),
+  handler: async (ctx: AssistantToolCtx, args) => {
+    return await ctx.runMutation(internal.ai.internal.changeIssueKey, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      pageContext: ctx.currentPageContext,
+      issueKey: args.issueKey,
+      context: args.context,
+    });
+  },
+});
+
 export const requestDeleteIssue: any = createTool({
   description:
     'Prepare deletion of an issue. This creates a pending confirmation in the UI instead of deleting immediately.',

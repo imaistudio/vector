@@ -9,6 +9,7 @@ import {
   addTeamMember,
   assignIssue,
   attachIssueToObservedDeviceSession,
+  changeIssueKey,
   changeProjectLead,
   changeTeamLead,
   createDocument,
@@ -66,6 +67,7 @@ You are proactive and action-oriented. When the user describes what they need, j
 Issues:
 - Create with title, description, priority, team, project, assignee, state, dates, parent issue, and visibility
 - Update any field including assignee, state (backlog/todo/in_progress/done/canceled), start/due dates, and parent issue
+- Change an issue's key by regenerating it based on a different context (team, project, or user). Use changeIssueKey with the desired context.
 - Assign and unassign team members directly — use for delegating work
 - Link already-ingested GitHub PRs, issues, and commits to issues by URL
 - Bulk create multiple issues in sequence with proper relations
@@ -147,6 +149,7 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     getIssue,
     createIssue,
     updateIssue,
+    changeIssueKey,
     requestDeleteIssue,
     listProjects,
     getProject,

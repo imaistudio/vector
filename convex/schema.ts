@@ -147,6 +147,7 @@ export default defineSchema({
         }),
       ),
     ),
+    agentContext: v.optional(v.string()),
   }).index('by_slug', ['slug']),
 
   // Organization members (equivalent to Drizzle 'member' table)

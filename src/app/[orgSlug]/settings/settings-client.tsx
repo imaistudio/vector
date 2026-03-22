@@ -250,6 +250,10 @@ export default function OrgSettingsPageClient({
           args.data.publicSocialLinks !== undefined
             ? (args.data.publicSocialLinks ?? undefined)
             : current.publicSocialLinks,
+        agentContext:
+          args.data.agentContext !== undefined
+            ? (args.data.agentContext ?? undefined)
+            : current.agentContext,
       }),
     );
 
@@ -286,6 +290,8 @@ export default function OrgSettingsPageClient({
   const [publicSocialLinks, setPublicSocialLinks] = useState<SocialLink[]>([]);
   const [hasPublicEdits, setHasPublicEdits] = useState(false);
   const [isSavingPublicSettings, setIsSavingPublicSettings] = useState(false);
+  const [agentContext, setAgentContext] = useState('');
+  const [isSavingAgentContext, setIsSavingAgentContext] = useState(false);
 
   useEffect(() => {
     if (!org || hasPublicEdits) {
@@ -297,6 +303,13 @@ export default function OrgSettingsPageClient({
     setPublicLandingViewId(org.publicLandingViewId ?? null);
     setPublicSocialLinks(org.publicSocialLinks ?? []);
   }, [org, hasPublicEdits]);
+
+  useEffect(() => {
+    if (!org) {
+      return;
+    }
+    setAgentContext(org.agentContext ?? '');
+  }, [org?.agentContext]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const userRole = members?.find(member => member.userId === user?._id)?.role;
   const isOwner = userRole === 'owner';
@@ -690,6 +703,77 @@ export default function OrgSettingsPageClient({
             ) : null}
           </div>
         </div>
+
+        {isAdmin ? (
+          <div className='rounded-md border'>
+            <div className='border-b px-3 py-2'>
+              <div className='text-sm font-medium'>
+                Vector assistant context
+              </div>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                Provide additional context about what your organization works
+                on. This information is included in the assistant&apos;s system
+                prompt so it can give more relevant responses.
+              </p>
+            </div>
+
+            <div className='space-y-4 p-3'>
+              <div className='space-y-2'>
+                <label className='text-sm font-medium'>
+                  Organization context
+                </label>
+                <textarea
+                  value={agentContext}
+                  onChange={event => setAgentContext(event.target.value)}
+                  placeholder='e.g. "We build a SaaS analytics platform. Our main product is a real-time dashboard for e-commerce metrics. Engineering uses Go microservices and a React frontend."'
+                  className='border-input bg-background placeholder:text-muted-foreground focus-visible:ring-ring min-h-[120px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-1 focus-visible:outline-none'
+                  maxLength={2000}
+                />
+                <p className='text-muted-foreground text-xs'>
+                  Describe your org&apos;s domain, products, tech stack, or
+                  anything else that helps the assistant understand your
+                  workspace. Max 2,000 characters.
+                </p>
+              </div>
+
+              <div className='flex items-center gap-2'>
+                <Button
+                  type='button'
+                  className='h-8'
+                  disabled={
+                    isSavingAgentContext ||
+                    agentContext === (org?.agentContext ?? '')
+                  }
+                  onClick={async () => {
+                    setIsSavingAgentContext(true);
+                    try {
+                      await updateOrganization({
+                        orgSlug,
+                        data: { agentContext: agentContext || null },
+                      });
+                      toast.success('Assistant context updated');
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : 'Failed to update assistant context',
+                      );
+                    } finally {
+                      setIsSavingAgentContext(false);
+                    }
+                  }}
+                >
+                  Save assistant context
+                </Button>
+                {agentContext !== (org?.agentContext ?? '') ? (
+                  <span className='text-muted-foreground text-xs'>
+                    Unsaved changes
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
