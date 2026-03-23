@@ -616,13 +616,10 @@ export function ThreadViewClient() {
         </div>
       </div>
 
-      {/* Messages area — full height scroll */}
-      <ScrollArea
-        className='mx-auto h-full w-full max-w-[700px] flex-1'
-        viewportRef={viewportRef}
-      >
+      {/* Messages area — full height scroll, scrollbar flush right */}
+      <ScrollArea className='h-full w-full flex-1' viewportRef={viewportRef}>
         <div ref={contentRef}>
-          <div className='space-y-3 px-4 pt-16 pb-36'>
+          <div className='mx-auto max-w-[700px] space-y-3 px-4 pt-16 pb-36'>
             {!hasMessages && (
               <div className='text-muted-foreground flex flex-col items-center justify-center gap-2 py-32 text-sm'>
                 <svg
