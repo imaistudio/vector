@@ -1129,6 +1129,28 @@ export const updateOrgMemberRole: any = createTool({
   },
 });
 
+export const renameMember: any = createTool({
+  description:
+    'Rename another user in the organization. Requires admin or owner role.',
+  args: z.object({
+    memberName: z
+      .string()
+      .describe('Current name, username, or email of the member to rename'),
+    newName: z.string().min(1).describe('The new display name to set'),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: { memberName: string; newName: string },
+  ) => {
+    return await ctx.runMutation(internal.ai.internal.renameMember, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      memberName: args.memberName,
+      newName: args.newName,
+    });
+  },
+});
+
 // ──── Activity feed ────
 
 export const listActivity: any = createTool({

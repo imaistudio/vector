@@ -4422,6 +4422,49 @@ export const updateOrgMemberRole = internalMutation({
   },
 });
 
+export const renameMember = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    memberName: v.string(),
+    newName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    await requireOrgPermissionForUser(
+      ctx,
+      organization._id,
+      args.userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+
+    const memberMatch = await findMemberByName(
+      ctx,
+      organization._id,
+      args.memberName,
+    );
+    if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    const trimmedName = args.newName.trim();
+    if (!trimmedName) throw new ConvexError('INVALID_INPUT');
+
+    const oldName =
+      memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown';
+
+    await ctx.db.patch('users', memberMatch.user._id, { name: trimmedName });
+
+    return {
+      message: `Renamed "${oldName}" to "${trimmedName}"`,
+      oldName,
+      newName: trimmedName,
+    };
+  },
+});
+
 // ──── Activity feed ────
 
 type ActivityEventDoc = Doc<'activityEvents'>;
