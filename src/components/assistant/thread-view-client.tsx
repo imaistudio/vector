@@ -21,15 +21,11 @@ import {
   type MentionRef,
 } from './assistant-input';
 import { BarsSpinner } from '@/components/bars-spinner';
-import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
   ArrowUp,
   Check,
-  Globe,
-  Building,
   Loader2,
-  Lock,
   Pencil,
   Trash2,
   X,
@@ -47,6 +43,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
 import { ProgressiveBlur } from '@/components/ui/progressive-blur';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  VisibilitySelector,
+  type VisibilityOption,
+} from '@/components/ui/visibility-selector';
 
 type PendingAction = {
   id: string;
@@ -572,31 +572,13 @@ export function ThreadViewClient() {
 
           {/* Right — visibility + delete */}
           <div className='flex shrink-0 items-center gap-1'>
-            {(['private', 'organization', 'public'] as const).map(vis => {
-              const Icon =
-                vis === 'public'
-                  ? Globe
-                  : vis === 'organization'
-                    ? Building
-                    : Lock;
-              const isActive = (threadRow.visibility ?? 'private') === vis;
-              return (
-                <button
-                  key={vis}
-                  type='button'
-                  onClick={() => void handleVisibilityChange(vis)}
-                  className={cn(
-                    'flex size-7 items-center justify-center rounded transition-colors',
-                    isActive
-                      ? 'bg-muted text-foreground'
-                      : 'text-muted-foreground/50 hover:text-muted-foreground',
-                  )}
-                  title={vis.charAt(0).toUpperCase() + vis.slice(1)}
-                >
-                  <Icon className='size-3.5' />
-                </button>
-              );
-            })}
+            <VisibilitySelector
+              value={(threadRow.visibility as VisibilityOption) ?? 'private'}
+              onValueChange={handleVisibilityChange}
+              displayMode='iconOnly'
+              className='border-none bg-transparent shadow-none'
+              align='end'
+            />
 
             <Button
               variant='ghost'
