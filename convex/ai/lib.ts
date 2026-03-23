@@ -113,6 +113,91 @@ async function hasPermissionForUser(
   return await hasScopedPermission(ctx, scope, userId, permission);
 }
 
+// --- Thread access control ---
+
+export type ThreadVisibility = 'private' | 'organization' | 'public';
+
+export async function canViewThread(
+  ctx: QueryCtx | MutationCtx,
+  thread: Doc<'assistantThreads'>,
+  userId: Id<'users'>,
+): Promise<boolean> {
+  // Creator can always view
+  if (thread.userId === userId || thread.createdBy === userId) return true;
+
+  const visibility = (thread.visibility ?? 'private') as ThreadVisibility;
+
+  if (visibility === 'public') return true;
+
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', thread.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  // private — check threadMembers
+  const membership = await ctx.db
+    .query('threadMembers')
+    .withIndex('by_thread_user', q =>
+      q.eq('threadId', thread._id).eq('userId', userId),
+    )
+    .first();
+  return !!membership;
+}
+
+export async function canEditThread(
+  ctx: QueryCtx | MutationCtx,
+  thread: Doc<'assistantThreads'>,
+  userId: Id<'users'>,
+): Promise<boolean> {
+  // Creator can always edit
+  if (thread.userId === userId || thread.createdBy === userId) return true;
+
+  // Check for editor role in threadMembers
+  const membership = await ctx.db
+    .query('threadMembers')
+    .withIndex('by_thread_user', q =>
+      q.eq('threadId', thread._id).eq('userId', userId),
+    )
+    .first();
+  return membership?.role === 'editor';
+}
+
+export async function canCommentOnThread(
+  ctx: QueryCtx | MutationCtx,
+  thread: Doc<'assistantThreads'>,
+  userId: Id<'users'>,
+): Promise<boolean> {
+  // Creator can always comment
+  if (thread.userId === userId || thread.createdBy === userId) return true;
+
+  const visibility = (thread.visibility ?? 'private') as ThreadVisibility;
+
+  // Organization-visible threads allow any org member to comment
+  if (visibility === 'organization') {
+    const orgMembership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', thread.organizationId).eq('userId', userId),
+      )
+      .first();
+    return !!orgMembership;
+  }
+
+  // Check for commenter or editor role
+  const membership = await ctx.db
+    .query('threadMembers')
+    .withIndex('by_thread_user', q =>
+      q.eq('threadId', thread._id).eq('userId', userId),
+    )
+    .first();
+  return membership?.role === 'commenter' || membership?.role === 'editor';
+}
+
 export async function getAssistantThreadRow(
   ctx: QueryCtx | MutationCtx,
   organizationId: Id<'organizations'>,

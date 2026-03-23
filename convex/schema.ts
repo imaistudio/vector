@@ -869,6 +869,16 @@ export default defineSchema({
     lastEntityId: v.optional(v.string()),
     lastEntityKey: v.optional(v.string()),
     pendingAction: v.optional(v.any()),
+    // Multi-thread fields
+    title: v.optional(v.string()),
+    visibility: v.optional(
+      v.union(
+        v.literal('private'),
+        v.literal('organization'),
+        v.literal('public'),
+      ),
+    ),
+    createdBy: v.optional(v.id('users')),
   })
     .index('by_org_user', ['organizationId', 'userId'])
     .index('by_org_context_entity', [
@@ -876,7 +886,30 @@ export default defineSchema({
       'lastContextType',
       'lastEntityKey',
     ])
-    .index('by_threadId', ['threadId']),
+    .index('by_threadId', ['threadId'])
+    .index('by_org_createdBy', ['organizationId', 'createdBy'])
+    .index('by_org_updated', ['organizationId', 'updatedAt']),
+
+  threadMembers: defineTable({
+    threadId: v.id('assistantThreads'),
+    userId: v.id('users'),
+    role: v.union(
+      v.literal('viewer'),
+      v.literal('commenter'),
+      v.literal('editor'),
+    ),
+    addedBy: v.id('users'),
+    addedAt: v.number(),
+  })
+    .index('by_thread', ['threadId'])
+    .index('by_thread_user', ['threadId', 'userId'])
+    .index('by_user', ['userId']),
+
+  assistantUserState: defineTable({
+    organizationId: v.id('organizations'),
+    userId: v.id('users'),
+    activeThreadId: v.optional(v.id('assistantThreads')),
+  }).index('by_org_user', ['organizationId', 'userId']),
 
   documentPresence: defineTable({
     documentId: v.id('documents'),

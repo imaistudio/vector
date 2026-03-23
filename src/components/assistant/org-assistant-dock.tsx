@@ -27,7 +27,9 @@ import {
   ArrowUp,
   ChevronsDown,
   ChevronsUp,
+  ExternalLink,
   Loader2,
+  Plus,
   Trash2,
   X,
 } from 'lucide-react';
@@ -43,6 +45,7 @@ import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
 import { useAssistantIssueDnd } from './assistant-issue-dnd';
+import { useRouter } from 'nextjs-toploader/app';
 
 type PendingAction = {
   id: string;
@@ -71,6 +74,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   useAssistantActions(orgSlug);
   const pageContext = useMemo(
     () =>
@@ -83,13 +87,17 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   );
   const isReadyForAssistant = isAuthenticated && !isLoading;
 
+  // Hide dock on thread detail pages — those have their own full-page view
+  const isOnThreadPage = pathname.startsWith(`/${orgSlug}/threads/`);
+
   const threadRowQuery = useQuery(
-    api.ai.queries.getThreadForCurrentUser,
+    api.ai.queries.getActiveThread,
     isReadyForAssistant ? { orgSlug } : 'skip',
   );
   const threadRow = threadRowQuery.data;
   const pendingThreadIdRef = useRef<string | null>(null);
   const ensureThread = useMutation(api.ai.mutations.ensureThread);
+  const createNewThread = useMutation(api.ai.mutations.createThread);
   const sendMessage = useMutation(
     api.ai.mutations.sendMessage,
   ).withOptimisticUpdate((store, args) => {
@@ -110,6 +118,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [confirmAction, ConfirmActionDialog] = useConfirm();
   const inputRef = useRef<AssistantInputHandle>(null);
   const assistantDropId = useId();
@@ -173,6 +182,9 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     isSending ||
     threadRow?.threadStatus === 'pending' ||
     messages.some(message => message.status === 'streaming');
+
+  // Thread title for dock header
+  const threadTitle = threadRow?.title || 'Vector';
 
   // --- Scroll management ---
   const contentRef = useRef<HTMLDivElement>(null);
@@ -396,6 +408,11 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     };
   }, []);
 
+  // Hide dock on thread detail pages
+  if (isOnThreadPage) {
+    return null;
+  }
+
   if (!isReadyForAssistant || threadRowQuery.isError) {
     return null;
   }
@@ -474,15 +491,18 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const handleClearHistory = async () => {
     const ok = await confirmAction({
       title: 'Clear conversation',
-      description: 'This will clear the conversation and start fresh.',
-      confirmLabel: 'Clear',
+      description: 'This will delete this thread and start fresh.',
+      confirmLabel: 'Delete',
       variant: 'destructive',
     });
     if (!ok) return;
 
     setIsClearing(true);
     try {
-      await clearThreadHistory({ orgSlug });
+      await clearThreadHistory({
+        orgSlug,
+        threadId: threadRow?._id,
+      });
       setIsExpanded(false);
     } catch (error) {
       toast.error(
@@ -493,16 +513,36 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     }
   };
 
+  const handleCreateThread = async () => {
+    setIsCreatingThread(true);
+    try {
+      await createNewThread({ orgSlug });
+      setIsExpanded(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to create thread',
+      );
+    } finally {
+      setIsCreatingThread(false);
+    }
+  };
+
+  const handleOpenInPage = () => {
+    if (threadRow?._id) {
+      router.push(`/${orgSlug}/threads/${threadRow._id}`);
+    }
+  };
+
   return (
     <>
       <div className='border-border bg-background flex flex-col border-t'>
         {/* Header toggle */}
-        <button
-          type='button'
-          onClick={() => setIsExpanded(prev => !prev)}
-          className='text-muted-foreground hover:text-foreground flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors'
-        >
-          <span className='flex items-center gap-1.5'>
+        <div className='flex items-center justify-between px-3 py-1.5'>
+          <button
+            type='button'
+            onClick={() => setIsExpanded(prev => !prev)}
+            className='text-muted-foreground hover:text-foreground flex min-w-0 flex-1 items-center gap-1.5 text-xs font-medium transition-colors'
+          >
             <svg
               width='14'
               height='14'
@@ -533,19 +573,48 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                 strokeLinejoin='round'
               />
             </svg>
-            Vector
-          </span>
-          <span className='flex items-center gap-1'>
+            <span className='truncate'>{threadTitle}</span>
             {isAssistantActive && (
               <span className='bg-foreground/40 size-1.5 animate-pulse rounded-full' />
             )}
-            {isExpanded ? (
-              <ChevronsDown className='size-3' />
-            ) : (
-              <ChevronsUp className='size-3' />
+          </button>
+          <div className='flex items-center gap-0.5'>
+            {threadRow && (
+              <button
+                type='button'
+                onClick={handleOpenInPage}
+                className='text-muted-foreground/50 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors'
+                aria-label='Open in page'
+              >
+                <ExternalLink className='size-2.5' />
+              </button>
             )}
-          </span>
-        </button>
+            <button
+              type='button'
+              onClick={handleCreateThread}
+              disabled={isCreatingThread}
+              className='text-muted-foreground/50 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors disabled:opacity-30'
+              aria-label='New thread'
+            >
+              {isCreatingThread ? (
+                <Loader2 className='size-2.5 animate-spin' />
+              ) : (
+                <Plus className='size-3' />
+              )}
+            </button>
+            <button
+              type='button'
+              onClick={() => setIsExpanded(prev => !prev)}
+              className='text-muted-foreground/50 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors'
+            >
+              {isExpanded ? (
+                <ChevronsDown className='size-3' />
+              ) : (
+                <ChevronsUp className='size-3' />
+              )}
+            </button>
+          </div>
+        </div>
 
         {/* Expanded messages */}
         <AnimatePresence initial={false}>
@@ -686,7 +755,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                     onClick={() => void handleClearHistory()}
                     disabled={isClearing}
                     className='text-muted-foreground/40 hover:text-muted-foreground flex size-5 items-center justify-center rounded transition-colors disabled:pointer-events-none disabled:opacity-30'
-                    aria-label='Clear conversation'
+                    aria-label='Delete thread'
                   >
                     {isClearing ? (
                       <Loader2 className='size-2.5 animate-spin' />

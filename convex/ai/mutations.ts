@@ -8,6 +8,8 @@ import { assistantAgent } from './agent';
 import {
   assistantPageContextValidator,
   buildAssistantThreadPatch,
+  canEditThread,
+  canViewThread,
   getAssistantThreadRow,
   requireOrgForAssistant,
 } from './lib';
@@ -31,6 +33,306 @@ type ExecutedPendingAction = {
   entityLabel: string;
 };
 
+// --- Active thread helpers ---
+
+async function getOrCreateUserState(
+  ctx: any,
+  organizationId: any,
+  userId: any,
+) {
+  const existing = await ctx.db
+    .query('assistantUserState')
+    .withIndex('by_org_user', (q: any) =>
+      q.eq('organizationId', organizationId).eq('userId', userId),
+    )
+    .first();
+  if (existing) return existing;
+
+  const id = await ctx.db.insert('assistantUserState', {
+    organizationId,
+    userId,
+    activeThreadId: undefined,
+  });
+  return await ctx.db.get('assistantUserState', id);
+}
+
+async function resolveActiveThread(ctx: any, organizationId: any, userId: any) {
+  const userState = await ctx.db
+    .query('assistantUserState')
+    .withIndex('by_org_user', (q: any) =>
+      q.eq('organizationId', organizationId).eq('userId', userId),
+    )
+    .first();
+
+  if (userState?.activeThreadId) {
+    const thread = await ctx.db.get(
+      'assistantThreads',
+      userState.activeThreadId,
+    );
+    if (thread && (await canViewThread(ctx, thread, userId))) {
+      return thread;
+    }
+  }
+
+  // Fallback: legacy single thread
+  return await getAssistantThreadRow(ctx, organizationId, userId);
+}
+
+// --- Thread CRUD ---
+
+export const createThread = mutation({
+  args: {
+    orgSlug: v.string(),
+    title: v.optional(v.string()),
+    visibility: v.optional(
+      v.union(
+        v.literal('private'),
+        v.literal('organization'),
+        v.literal('public'),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      userId,
+    );
+
+    const title = args.title || 'New Thread';
+    const visibility = args.visibility ?? 'private';
+
+    const { threadId } = await assistantAgent.createThread(ctx, {
+      userId,
+      title,
+    });
+
+    const rowId = await ctx.db.insert('assistantThreads', {
+      organizationId: organization._id,
+      userId,
+      threadId,
+      updatedAt: Date.now(),
+      threadStatus: 'idle',
+      title,
+      visibility,
+      createdBy: userId,
+    });
+
+    // Set as active thread
+    const userState = await getOrCreateUserState(ctx, organization._id, userId);
+    await ctx.db.patch('assistantUserState', userState._id, {
+      activeThreadId: rowId,
+    });
+
+    return await ctx.db.get('assistantThreads', rowId);
+  },
+});
+
+export const setActiveThread = mutation({
+  args: {
+    orgSlug: v.string(),
+    threadId: v.id('assistantThreads'),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      userId,
+    );
+
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canViewThread(ctx, thread, userId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    const userState = await getOrCreateUserState(ctx, organization._id, userId);
+    await ctx.db.patch('assistantUserState', userState._id, {
+      activeThreadId: args.threadId,
+    });
+
+    return thread;
+  },
+});
+
+export const updateThread = mutation({
+  args: {
+    threadId: v.id('assistantThreads'),
+    title: v.optional(v.string()),
+    visibility: v.optional(
+      v.union(
+        v.literal('private'),
+        v.literal('organization'),
+        v.literal('public'),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canEditThread(ctx, thread, userId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    const patch: Record<string, any> = { updatedAt: Date.now() };
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.visibility !== undefined) patch.visibility = args.visibility;
+
+    await ctx.db.patch('assistantThreads', args.threadId, patch);
+    return await ctx.db.get('assistantThreads', args.threadId);
+  },
+});
+
+export const addThreadMember = mutation({
+  args: {
+    threadId: v.id('assistantThreads'),
+    userId: v.id('users'),
+    role: v.union(
+      v.literal('viewer'),
+      v.literal('commenter'),
+      v.literal('editor'),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const currentUserId = await requireAuthUserId(ctx);
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canEditThread(ctx, thread, currentUserId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    // Check if already a member
+    const existing = await ctx.db
+      .query('threadMembers')
+      .withIndex('by_thread_user', q =>
+        q.eq('threadId', args.threadId).eq('userId', args.userId),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch('threadMembers', existing._id, { role: args.role });
+      return existing._id;
+    }
+
+    return await ctx.db.insert('threadMembers', {
+      threadId: args.threadId,
+      userId: args.userId,
+      role: args.role,
+      addedBy: currentUserId,
+      addedAt: Date.now(),
+    });
+  },
+});
+
+export const removeThreadMember = mutation({
+  args: {
+    threadId: v.id('assistantThreads'),
+    userId: v.id('users'),
+  },
+  handler: async (ctx, args) => {
+    const currentUserId = await requireAuthUserId(ctx);
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canEditThread(ctx, thread, currentUserId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    const membership = await ctx.db
+      .query('threadMembers')
+      .withIndex('by_thread_user', q =>
+        q.eq('threadId', args.threadId).eq('userId', args.userId),
+      )
+      .first();
+
+    if (membership) {
+      await ctx.db.delete('threadMembers', membership._id);
+    }
+    return null;
+  },
+});
+
+export const updateThreadMemberRole = mutation({
+  args: {
+    threadId: v.id('assistantThreads'),
+    userId: v.id('users'),
+    role: v.union(
+      v.literal('viewer'),
+      v.literal('commenter'),
+      v.literal('editor'),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const currentUserId = await requireAuthUserId(ctx);
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canEditThread(ctx, thread, currentUserId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    const membership = await ctx.db
+      .query('threadMembers')
+      .withIndex('by_thread_user', q =>
+        q.eq('threadId', args.threadId).eq('userId', args.userId),
+      )
+      .first();
+
+    if (!membership) {
+      throw new ConvexError('MEMBER_NOT_FOUND');
+    }
+
+    await ctx.db.patch('threadMembers', membership._id, { role: args.role });
+    return null;
+  },
+});
+
+export const deleteThread = mutation({
+  args: {
+    threadId: v.id('assistantThreads'),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || !(await canEditThread(ctx, thread, userId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    // Delete thread members
+    const members = await ctx.db
+      .query('threadMembers')
+      .withIndex('by_thread', q => q.eq('threadId', args.threadId))
+      .collect();
+    for (const member of members) {
+      await ctx.db.delete('threadMembers', member._id);
+    }
+
+    // Clear activeThreadId for any user state pointing to this thread
+    // (we search by org to limit scope)
+    const userStates = await ctx.db
+      .query('assistantUserState')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', thread.organizationId),
+      )
+      .collect();
+    for (const state of userStates) {
+      if (state.activeThreadId === args.threadId) {
+        await ctx.db.patch('assistantUserState', state._id, {
+          activeThreadId: undefined,
+        });
+      }
+    }
+
+    // Schedule agent component data cleanup
+    await ctx.scheduler.runAfter(0, internal.ai.actions.cleanupThreadData, {
+      threadId: thread.threadId,
+    });
+
+    // Delete the app-level row
+    await ctx.db.delete('assistantThreads', args.threadId);
+
+    return null;
+  },
+});
+
+// --- Existing mutations (updated) ---
+
 export const ensureThread = mutation({
   args: {
     orgSlug: v.string(),
@@ -44,15 +346,17 @@ export const ensureThread = mutation({
       userId,
     );
 
-    const existing = await getAssistantThreadRow(ctx, organization._id, userId);
-    if (existing) {
-      await ctx.db.patch('assistantThreads', existing._id, {
+    // Try to use the active thread
+    const active = await resolveActiveThread(ctx, organization._id, userId);
+    if (active) {
+      await ctx.db.patch('assistantThreads', active._id, {
         updatedAt: Date.now(),
         ...buildAssistantThreadPatch(args.pageContext),
       });
-      return existing;
+      return active;
     }
 
+    // No active thread — create one
     const { threadId } = await assistantAgent.createThread(ctx, {
       userId,
       title: 'Vector Assistant',
@@ -64,7 +368,16 @@ export const ensureThread = mutation({
       threadId,
       updatedAt: Date.now(),
       threadStatus: 'idle',
+      title: 'Vector Assistant',
+      visibility: 'private',
+      createdBy: userId,
       ...buildAssistantThreadPatch(args.pageContext),
+    });
+
+    // Set as active
+    const userState = await getOrCreateUserState(ctx, organization._id, userId);
+    await ctx.db.patch('assistantUserState', userState._id, {
+      activeThreadId: rowId,
     });
 
     return await ctx.db.get('assistantThreads', rowId);
@@ -76,6 +389,7 @@ export const sendMessage = mutation({
     orgSlug: v.string(),
     pageContext: assistantPageContextValidator,
     prompt: v.string(),
+    threadId: v.optional(v.id('assistantThreads')),
   },
   returns: v.object({
     threadId: v.string(),
@@ -94,7 +408,16 @@ export const sendMessage = mutation({
       throw new ConvexError('PROMPT_REQUIRED');
     }
 
-    let row = await getAssistantThreadRow(ctx, organization._id, userId);
+    // Resolve which thread to use
+    let row = args.threadId
+      ? await ctx.db.get('assistantThreads', args.threadId)
+      : await resolveActiveThread(ctx, organization._id, userId);
+
+    // Verify access if we got a specific thread
+    if (row && !(await canViewThread(ctx, row, userId))) {
+      row = null;
+    }
+
     if (!row) {
       const { threadId } = await assistantAgent.createThread(ctx, {
         userId,
@@ -106,9 +429,22 @@ export const sendMessage = mutation({
         threadId,
         updatedAt: Date.now(),
         threadStatus: 'idle',
+        title: 'New Thread',
+        visibility: 'private',
+        createdBy: userId,
         ...buildAssistantThreadPatch(args.pageContext),
       });
       row = await ctx.db.get('assistantThreads', rowId);
+
+      // Set as active
+      const userState = await getOrCreateUserState(
+        ctx,
+        organization._id,
+        userId,
+      );
+      await ctx.db.patch('assistantUserState', userState._id, {
+        activeThreadId: rowId,
+      });
     }
 
     if (!row) {
@@ -135,6 +471,7 @@ export const sendMessage = mutation({
       threadId: row.threadId,
       promptMessageId: saved.messageId,
       pageContext: args.pageContext,
+      promptText: prompt,
     });
 
     return {
@@ -175,11 +512,12 @@ export const executeConfirmedAction: RegisteredMutation<
       },
     )) as ExecutedPendingAction;
 
-    const row = await getAssistantThreadRow(
+    const organization = await requireOrgForAssistant(
       ctx,
-      (await requireOrgForAssistant(ctx, args.orgSlug, userId))._id,
+      args.orgSlug,
       userId,
     );
+    const row = await resolveActiveThread(ctx, organization._id, userId);
 
     if (row) {
       await saveMessage(ctx, components.agent, {
@@ -272,5 +610,27 @@ export const setThreadError = internalMutation({
       updatedAt: Date.now(),
     });
     return null;
+  },
+});
+
+// --- Migration backfill ---
+
+export const backfillThreadFields = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async ctx => {
+    const threads = await ctx.db.query('assistantThreads').collect();
+    let patched = 0;
+    for (const thread of threads) {
+      if (thread.createdBy === undefined) {
+        await ctx.db.patch('assistantThreads', thread._id, {
+          createdBy: thread.userId,
+          visibility: 'private',
+          title: thread.title ?? 'Vector Assistant',
+        });
+        patched++;
+      }
+    }
+    return patched;
   },
 });

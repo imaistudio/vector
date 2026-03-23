@@ -16,6 +16,8 @@ import {
   Lock,
   Plus,
   ChevronRight,
+  MessageSquare,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -24,9 +26,10 @@ import { CreateTeamButton } from '@/components/teams/create-team-button';
 import { CreateProjectButton } from '@/components/projects/create-project-button';
 import { ScopedPermissionGate } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
-import { api, useCachedQuery } from '@/lib/convex';
+import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
 import { useState, type ReactNode } from 'react';
+import { useRouter } from 'nextjs-toploader/app';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 import { CreateViewDialog } from '@/components/views/create-view-dialog';
@@ -95,6 +98,47 @@ function SidebarSection({
   );
 }
 
+function CreateThreadButton({
+  orgSlug,
+  onNavigate,
+}: {
+  orgSlug: string;
+  onNavigate?: () => void;
+}) {
+  const router = useRouter();
+  const createThread = useMutation(api.ai.mutations.createThread);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleCreate = async () => {
+    setIsCreating(true);
+    try {
+      const thread = await createThread({ orgSlug });
+      if (thread?._id) {
+        onNavigate?.();
+        router.push(`/${orgSlug}/threads/${thread._id}`);
+      }
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <Button
+      variant='outline'
+      size='sm'
+      className='h-6 w-6 border-0 p-0 shadow-none'
+      onClick={handleCreate}
+      disabled={isCreating}
+    >
+      {isCreating ? (
+        <Loader2 className='size-3.5 animate-spin' />
+      ) : (
+        <Plus className='size-3.5' />
+      )}
+    </Button>
+  );
+}
+
 export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const pathname = usePathname();
 
@@ -122,6 +166,11 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
     orgSlug,
   });
   const visibleViews = visibleViewsData ?? [];
+
+  const threadsData = useCachedQuery(api.ai.queries.listMyThreads, {
+    orgSlug,
+  });
+  const threads = threadsData ?? [];
 
   const navItems: NavItem[] = [
     {
@@ -405,6 +454,59 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
               +{visibleViews.length - 3} more views
+            </Link>
+          )}
+        </SidebarSection>
+
+        {/* Threads Section */}
+        <SidebarSection
+          label='Threads'
+          href={`/${orgSlug}/threads`}
+          onNavigate={onNavigate}
+          action={
+            <CreateThreadButton orgSlug={orgSlug} onNavigate={onNavigate} />
+          }
+        >
+          {threads.length > 0 ? (
+            threads.slice(0, 3).map(thread => {
+              const threadHref = `/${orgSlug}/threads/${thread._id}`;
+              const isActive =
+                pathname === threadHref ||
+                pathname.startsWith(threadHref + '/');
+
+              return (
+                <Link
+                  key={thread._id}
+                  href={threadHref}
+                  onClick={onNavigate}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'hover:bg-foreground/5 text-foreground',
+                    {
+                      'bg-foreground/5': isActive,
+                    },
+                  )}
+                >
+                  <MessageSquare className='text-muted-foreground size-3 flex-shrink-0' />
+                  <span className='truncate'>
+                    {thread.title || 'Untitled Thread'}
+                  </span>
+                </Link>
+              );
+            })
+          ) : (
+            <div className='text-muted-foreground py-1.5 pr-1 pl-2 text-xs'>
+              No threads yet
+            </div>
+          )}
+
+          {threads.length > 3 && (
+            <Link
+              href={`/${orgSlug}/threads`}
+              onClick={onNavigate}
+              className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
+            >
+              +{threads.length - 3} more threads
             </Link>
           )}
         </SidebarSection>

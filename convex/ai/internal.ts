@@ -1074,6 +1074,31 @@ export const deleteAssistantThreadRow = internalMutation({
   },
 });
 
+export const getAssistantThreadRowById = internalQuery({
+  args: {
+    assistantThreadId: v.id('assistantThreads'),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get('assistantThreads', args.assistantThreadId);
+  },
+});
+
+export const setThreadTitle = internalMutation({
+  args: {
+    assistantThreadId: v.id('assistantThreads'),
+    title: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await ctx.db.get('assistantThreads', args.assistantThreadId);
+    if (!row) return null;
+    await ctx.db.patch('assistantThreads', args.assistantThreadId, {
+      title: args.title,
+    });
+    return null;
+  },
+});
+
 export const listDocuments = internalQuery({
   args: {
     orgSlug: v.string(),

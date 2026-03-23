@@ -1,3 +1,4 @@
+import { generateText } from 'ai';
 import { saveMessage } from '@convex-dev/agent';
 import { ConvexError, v } from 'convex/values';
 import { api, components, internal } from '../_generated/api';
@@ -5,7 +6,11 @@ import { action, internalAction } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { assistantAgent } from './agent';
 import { assistantPageContextValidator } from './lib';
-import { assertAssistantModelConfigured } from './provider';
+import {
+  assertAssistantModelConfigured,
+  defaultAssistantModel,
+  openrouterChatWithAnnotations,
+} from './provider';
 
 function buildSystemPrompt(
   pageContextSummary: string,
@@ -39,6 +44,7 @@ function sanitizeAssistantError(error: unknown) {
 export const clearThreadHistory = action({
   args: {
     orgSlug: v.string(),
+    threadId: v.optional(v.id('assistantThreads')),
   },
   returns: v.union(
     v.null(),
@@ -52,39 +58,91 @@ export const clearThreadHistory = action({
       throw new ConvexError('AUTH_REQUIRED');
     }
 
-    const row = await ctx.runQuery(
-      internal.ai.internal.getAssistantThreadForAuthUser,
-      {
-        orgSlug: args.orgSlug,
-        authUserId: authUser.userId,
-      },
-    );
+    let row;
+    if (args.threadId) {
+      row = await ctx.runQuery(api.ai.queries.getThreadById, {
+        threadId: args.threadId,
+      });
+    } else {
+      row = await ctx.runQuery(
+        internal.ai.internal.getAssistantThreadForAuthUser,
+        {
+          orgSlug: args.orgSlug,
+          authUserId: authUser.userId,
+        },
+      );
+    }
 
     if (!row) {
       return null;
     }
 
-    // Delete the app-level thread row first so the UI immediately sees it as gone
-    // and so any in-flight generateResponse can no longer update it.
     await ctx.runMutation(internal.ai.internal.deleteAssistantThreadRow, {
       assistantThreadId: row._id,
     });
 
-    // Now clean up the agent component data (messages, thread record, streams).
-    // deleteAllForThreadIdSync handles messages + thread deletion + streams
-    // in one call, so we don't need to call deleteAllStreamsForThreadIdSync separately.
     try {
       await ctx.runAction(components.agent.threads.deleteAllForThreadIdSync, {
         threadId: row.threadId,
       });
     } catch (error) {
-      // Best-effort cleanup — the app-level row is already deleted,
-      // so the user won't see the old conversation. Component data
-      // will be orphaned but harmless.
       console.error('[clearThreadHistory] component cleanup error:', error);
     }
 
     return { deleted: true };
+  },
+});
+
+export const cleanupThreadData = internalAction({
+  args: {
+    threadId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    try {
+      await ctx.runAction(components.agent.threads.deleteAllForThreadIdSync, {
+        threadId: args.threadId,
+      });
+    } catch (error) {
+      console.error('[cleanupThreadData] component cleanup error:', error);
+    }
+    return null;
+  },
+});
+
+export const autoTitleThread = internalAction({
+  args: {
+    assistantThreadId: v.id('assistantThreads'),
+    firstUserMessage: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    try {
+      assertAssistantModelConfigured();
+
+      const model = openrouterChatWithAnnotations(defaultAssistantModel, {});
+      const result = await generateText({
+        model,
+        system:
+          'Generate a very short title (3-6 words, no quotes) for an assistant conversation thread based on the first user message. Just output the title, nothing else.',
+        prompt: args.firstUserMessage,
+      });
+
+      const title =
+        result.text
+          ?.trim()
+          .replace(/^["']|["']$/g, '')
+          .slice(0, 80) || null;
+      if (title) {
+        await ctx.runMutation(internal.ai.internal.setThreadTitle, {
+          assistantThreadId: args.assistantThreadId,
+          title,
+        });
+      }
+    } catch (error) {
+      console.error('[autoTitleThread] error:', error);
+    }
+    return null;
   },
 });
 
@@ -96,6 +154,7 @@ export const generateResponse = internalAction({
     threadId: v.string(),
     promptMessageId: v.string(),
     pageContext: assistantPageContextValidator,
+    promptText: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -173,6 +232,25 @@ export const generateResponse = internalAction({
       await ctx.runMutation(internal.ai.mutations.setThreadCompleted, {
         assistantThreadId: args.assistantThreadId,
       });
+
+      // Auto-title: check if thread still has default title and schedule titling
+      if (args.promptText) {
+        const threadRow = await ctx.runQuery(
+          internal.ai.internal.getAssistantThreadRowById,
+          { assistantThreadId: args.assistantThreadId },
+        );
+        if (
+          threadRow &&
+          (!threadRow.title ||
+            threadRow.title === 'Vector Assistant' ||
+            threadRow.title === 'New Thread')
+        ) {
+          await ctx.scheduler.runAfter(0, internal.ai.actions.autoTitleThread, {
+            assistantThreadId: args.assistantThreadId,
+            firstUserMessage: args.promptText,
+          });
+        }
+      }
     } catch (error) {
       const errorMessage = sanitizeAssistantError(error);
       await ctx.runMutation(internal.ai.mutations.setThreadError, {
