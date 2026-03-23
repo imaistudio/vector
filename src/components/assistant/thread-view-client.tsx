@@ -42,6 +42,7 @@ import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
 import { ProgressiveBlur } from '@/components/ui/progressive-blur';
+import Avvvatars from 'avvvatars-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   VisibilitySelector,
@@ -524,6 +525,14 @@ export function ThreadViewClient() {
             >
               <ArrowLeft className='size-4' />
             </Button>
+
+            <Avvvatars
+              value={`thread-${assistantThreadId}`.toLowerCase()}
+              style='shape'
+              size={22}
+              shadow={false}
+              radius={999}
+            />
 
             {isEditingTitle ? (
               <div className='flex items-center gap-1'>

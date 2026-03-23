@@ -15,6 +15,7 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react';
+import Avvvatars from 'avvvatars-react';
 import { formatDateHuman } from '@/lib/date';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
@@ -123,7 +124,13 @@ export function ThreadsListPage() {
                   href={`/${orgSlug}/threads/${thread._id}`}
                   className='flex min-w-0 flex-1 items-center gap-3'
                 >
-                  <MessageSquare className='text-muted-foreground size-4 shrink-0' />
+                  <Avvvatars
+                    value={`thread-${thread._id}`.toLowerCase()}
+                    style='shape'
+                    size={22}
+                    shadow={false}
+                    radius={999}
+                  />
                   <div className='min-w-0 flex-1'>
                     <div className='flex items-center gap-2'>
                       <span className='truncate text-sm font-medium'>

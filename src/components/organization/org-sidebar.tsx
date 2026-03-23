@@ -16,7 +16,6 @@ import {
   Lock,
   Plus,
   ChevronRight,
-  MessageSquare,
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,6 +30,7 @@ import { withIds } from '@/lib/convex-helpers';
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'nextjs-toploader/app';
 import { DynamicIcon } from '@/lib/dynamic-icons';
+import Avvvatars from 'avvvatars-react';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 import { CreateViewDialog } from '@/components/views/create-view-dialog';
 
@@ -487,7 +487,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                     },
                   )}
                 >
-                  <MessageSquare className='text-muted-foreground size-3 flex-shrink-0' />
+                  <Avvvatars
+                    value={`thread-${thread._id}`.toLowerCase()}
+                    style='shape'
+                    size={16}
+                    shadow={false}
+                    radius={999}
+                  />
                   <span className='truncate'>
                     {thread.title || 'Untitled Thread'}
                   </span>
