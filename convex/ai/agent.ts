@@ -35,8 +35,10 @@ import {
   listWorkspaceReferenceData,
   moveDocumentToFolder,
   performClientAction,
+  previewEmail,
   renameMember,
   removeOrgMember,
+  requestBulkDelete,
   sendEmailToMember,
   removeProjectMember,
   removeTeamMember,
@@ -89,7 +91,7 @@ Organization Members:
 - List pending invitations
 - Change a member's role between member and admin (cannot change owner)
 - Rename members (change their display name) — requires admin or owner role
-- Send emails to members with any subject and body content — requires admin or owner role
+- Send emails to members with any subject and body — requires admin or owner role. Use previewEmail first so the user can review, then sendEmailToMember to send. Templates: default, announcement, welcome, action-required.
 - Remove members from the organization (cascades to all teams and projects)
 - Revoke pending invitations
 - Use listOrgMembers to see current members and listOrgInvites to see pending invites
@@ -130,7 +132,7 @@ Operating rules:
 - Default to the current page context when the user omits identifiers.
 - Use listWorkspaceReferenceData to look up valid team keys, project keys, member names, priority names, and state names before creating or updating — never invent identifiers.
 - When you need to assign someone, look up members first to find their exact name/ID.
-- Delete requests are confirmation-gated. When a delete tool returns a pending confirmation, tell the user the UI is waiting for confirmation.
+- Delete requests are confirmation-gated. When a delete tool returns a pending confirmation, tell the user the UI is waiting for confirmation. Use requestBulkDelete when deleting multiple entities of the same type to show a single confirmation.
 - Keep replies concise and action-focused. After performing an action, briefly confirm what was done.
 - When creating multiple items, do them one at a time and report progress.
 - You operate with the same permissions as the user talking to you. If an action fails with FORBIDDEN, explain that the user's role doesn't have permission for that action — don't say "I can't", say "you don't have permission to".
@@ -176,6 +178,8 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     updateOrgMemberRole,
     renameMember,
     sendEmailToMember,
+    previewEmail,
+    requestBulkDelete,
     // Team member management
     addTeamMember,
     removeTeamMember,

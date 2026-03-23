@@ -37,15 +37,24 @@ export type AssistantPageContext = {
   assigneeFilter?: string;
 };
 
-export type AssistantPendingAction = {
-  id: string;
-  kind: 'delete_entity';
-  entityType: 'document' | 'issue' | 'project' | 'team' | 'folder';
-  entityId: string;
-  entityLabel: string;
-  summary: string;
-  createdAt: number;
-};
+export type AssistantPendingAction =
+  | {
+      id: string;
+      kind: 'delete_entity';
+      entityType: 'document' | 'issue' | 'project' | 'team' | 'folder';
+      entityId: string;
+      entityLabel: string;
+      summary: string;
+      createdAt: number;
+    }
+  | {
+      id: string;
+      kind: 'bulk_delete_entities';
+      entityType: 'document' | 'issue' | 'project' | 'team';
+      entities: Array<{ entityId: string; entityLabel: string }>;
+      summary: string;
+      createdAt: number;
+    };
 
 export const assistantPageContextValidator = v.any();
 

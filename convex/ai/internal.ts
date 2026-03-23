@@ -3063,6 +3063,106 @@ export const setPendingDeleteAction = internalMutation({
   },
 });
 
+export const setBulkPendingDeleteAction = internalMutation({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    assistantThreadId: v.id('assistantThreads'),
+    pageContext: v.optional(assistantPageContextValidator),
+    entityType: v.union(
+      v.literal('document'),
+      v.literal('issue'),
+      v.literal('project'),
+      v.literal('team'),
+    ),
+    keys: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const row = await requireAssistantThreadRow(
+      ctx,
+      organization._id,
+      args.userId,
+    );
+    if (row._id !== args.assistantThreadId) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const entities: Array<{ entityId: string; entityLabel: string }> = [];
+
+    for (const key of args.keys) {
+      try {
+        const entity =
+          args.entityType === 'document'
+            ? await resolveDocumentFromContext(
+                ctx,
+                organization._id,
+                undefined,
+                key,
+              )
+            : args.entityType === 'issue'
+              ? await resolveIssueFromContext(
+                  ctx,
+                  organization._id,
+                  undefined,
+                  key,
+                )
+              : args.entityType === 'project'
+                ? await resolveProjectFromContext(
+                    ctx,
+                    organization._id,
+                    undefined,
+                    key,
+                  )
+                : await resolveTeamFromContext(
+                    ctx,
+                    organization._id,
+                    undefined,
+                    key,
+                  );
+
+        if (await canDeleteEntity(ctx, args.userId, entity, args.entityType)) {
+          const label = 'title' in entity ? entity.title : entity.name;
+          entities.push({ entityId: String(entity._id), entityLabel: label });
+        }
+      } catch {
+        // Skip entities that can't be resolved
+      }
+    }
+
+    if (entities.length === 0) {
+      throw new ConvexError('No deletable entities found');
+    }
+
+    const pendingAction: AssistantPendingAction = {
+      id: makePendingActionId(),
+      kind: 'bulk_delete_entities',
+      entityType: args.entityType,
+      entities,
+      summary: `Delete ${entities.length} ${args.entityType}${entities.length > 1 ? 's' : ''}: ${entities.map(e => e.entityLabel).join(', ')}`,
+      createdAt: Date.now(),
+    };
+
+    await ctx.db.patch('assistantThreads', row._id, {
+      pendingAction,
+      updatedAt: Date.now(),
+      ...buildAssistantThreadPatch(
+        args.pageContext ?? {
+          kind: 'org_generic',
+          orgSlug: args.orgSlug,
+          path: `/${args.orgSlug}`,
+        },
+      ),
+    });
+
+    return pendingAction;
+  },
+});
+
 export const executePendingAction = internalMutation({
   args: {
     orgSlug: v.string(),
@@ -3086,161 +3186,163 @@ export const executePendingAction = internalMutation({
       throw new ConvexError('PENDING_ACTION_NOT_FOUND');
     }
 
-    switch (pendingAction.entityType) {
-      case 'document': {
-        const documentId = ctx.db.normalizeId(
-          'documents',
-          pendingAction.entityId,
-        );
-        if (!documentId) throw new ConvexError('DOCUMENT_NOT_FOUND');
-        const document = await ctx.db.get('documents', documentId);
-        if (!document) throw new ConvexError('DOCUMENT_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, args.userId, document, 'document'))) {
-          throw new ConvexError('FORBIDDEN');
+    // Collect entity IDs to delete
+    const typedAction = pendingAction as AssistantPendingAction;
+    const entityIds: string[] =
+      typedAction.kind === 'bulk_delete_entities'
+        ? typedAction.entities.map(e => e.entityId)
+        : [typedAction.entityId];
+
+    for (const entityId of entityIds) {
+      switch (pendingAction.entityType) {
+        case 'document': {
+          const documentId = ctx.db.normalizeId('documents', entityId);
+          if (!documentId) throw new ConvexError('DOCUMENT_NOT_FOUND');
+          const document = await ctx.db.get('documents', documentId);
+          if (!document) throw new ConvexError('DOCUMENT_NOT_FOUND');
+          if (
+            !(await canDeleteEntity(ctx, args.userId, document, 'document'))
+          ) {
+            throw new ConvexError('FORBIDDEN');
+          }
+          const mentions = await ctx.db
+            .query('documentMentions')
+            .withIndex('by_document', q => q.eq('documentId', document._id))
+            .collect();
+          for (const mention of mentions) {
+            await ctx.db.delete('documentMentions', mention._id);
+          }
+          await ctx.db.delete('documents', document._id);
+          break;
         }
-        const mentions = await ctx.db
-          .query('documentMentions')
-          .withIndex('by_document', q => q.eq('documentId', document._id))
-          .collect();
-        for (const mention of mentions) {
-          await ctx.db.delete('documentMentions', mention._id);
+        case 'issue': {
+          const issueId = ctx.db.normalizeId('issues', entityId);
+          if (!issueId) throw new ConvexError('ISSUE_NOT_FOUND');
+          const issue = await ctx.db.get('issues', issueId);
+          if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
+          if (!(await canDeleteEntity(ctx, args.userId, issue, 'issue'))) {
+            throw new ConvexError('FORBIDDEN');
+          }
+          const child = await ctx.db
+            .query('issues')
+            .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
+            .first();
+          if (child) throw new ConvexError('HAS_CHILD_ISSUES');
+          const assignees = await ctx.db
+            .query('issueAssignees')
+            .withIndex('by_issue', q => q.eq('issueId', issue._id))
+            .collect();
+          for (const assignee of assignees) {
+            await ctx.db.delete('issueAssignees', assignee._id);
+          }
+          const comments = await ctx.db
+            .query('comments')
+            .withIndex('by_issue', q => q.eq('issueId', issue._id))
+            .collect();
+          for (const comment of comments) {
+            await ctx.db.delete('comments', comment._id);
+          }
+          await ctx.db.delete('issues', issue._id);
+          break;
         }
-        await ctx.db.delete('documents', document._id);
-        break;
+        case 'project': {
+          const projectId = ctx.db.normalizeId('projects', entityId);
+          if (!projectId) throw new ConvexError('PROJECT_NOT_FOUND');
+          const project = await ctx.db.get('projects', projectId);
+          if (!project) throw new ConvexError('PROJECT_NOT_FOUND');
+          if (!(await canDeleteEntity(ctx, args.userId, project, 'project'))) {
+            throw new ConvexError('FORBIDDEN');
+          }
+          const members = await ctx.db
+            .query('projectMembers')
+            .withIndex('by_project', q => q.eq('projectId', project._id))
+            .collect();
+          for (const member of members) {
+            await ctx.db.delete('projectMembers', member._id);
+          }
+          const roleAssignments = await ctx.db
+            .query('roleAssignments')
+            .withIndex('by_project_user', q => q.eq('projectId', project._id))
+            .collect();
+          for (const assignment of roleAssignments) {
+            await ctx.db.delete('roleAssignments', assignment._id);
+          }
+          const legacyAssignments = await ctx.db
+            .query('projectRoleAssignments')
+            .withIndex('by_project', q => q.eq('projectId', project._id))
+            .collect();
+          for (const assignment of legacyAssignments) {
+            await ctx.db.delete('projectRoleAssignments', assignment._id);
+          }
+          const projectTeams = await ctx.db
+            .query('projectTeams')
+            .withIndex('by_project', q => q.eq('projectId', project._id))
+            .collect();
+          for (const projectTeam of projectTeams) {
+            await ctx.db.delete('projectTeams', projectTeam._id);
+          }
+          await ctx.db.delete('projects', project._id);
+          break;
+        }
+        case 'team': {
+          const teamId = ctx.db.normalizeId('teams', entityId);
+          if (!teamId) throw new ConvexError('TEAM_NOT_FOUND');
+          const team = await ctx.db.get('teams', teamId);
+          if (!team) throw new ConvexError('TEAM_NOT_FOUND');
+          if (!(await canDeleteEntity(ctx, args.userId, team, 'team'))) {
+            throw new ConvexError('FORBIDDEN');
+          }
+          const members = await ctx.db
+            .query('teamMembers')
+            .withIndex('by_team', q => q.eq('teamId', team._id))
+            .collect();
+          for (const member of members) {
+            await ctx.db.delete('teamMembers', member._id);
+          }
+          const roleAssignments = await ctx.db
+            .query('roleAssignments')
+            .withIndex('by_team_user', q => q.eq('teamId', team._id))
+            .collect();
+          for (const assignment of roleAssignments) {
+            await ctx.db.delete('roleAssignments', assignment._id);
+          }
+          const legacyAssignments = await ctx.db
+            .query('teamRoleAssignments')
+            .withIndex('by_team', q => q.eq('teamId', team._id))
+            .collect();
+          for (const assignment of legacyAssignments) {
+            await ctx.db.delete('teamRoleAssignments', assignment._id);
+          }
+          await ctx.db.delete('teams', team._id);
+          break;
+        }
+        case 'folder': {
+          const folderId = ctx.db.normalizeId('documentFolders', entityId);
+          if (!folderId) throw new ConvexError('FOLDER_NOT_FOUND');
+          const folder = await ctx.db.get('documentFolders', folderId);
+          if (!folder || folder.organizationId !== organization._id) {
+            throw new ConvexError('FOLDER_NOT_FOUND');
+          }
+          await requireOrgPermissionForUser(
+            ctx,
+            organization._id,
+            args.userId,
+            PERMISSIONS.DOCUMENT_DELETE,
+          );
+          const documents = await ctx.db
+            .query('documents')
+            .withIndex('by_folder', q => q.eq('folderId', folder._id))
+            .collect();
+          for (const document of documents) {
+            await ctx.db.patch('documents', document._id, {
+              folderId: undefined,
+            });
+          }
+          await ctx.db.delete('documentFolders', folder._id);
+          break;
+        }
       }
-      case 'issue': {
-        const issueId = ctx.db.normalizeId('issues', pendingAction.entityId);
-        if (!issueId) throw new ConvexError('ISSUE_NOT_FOUND');
-        const issue = await ctx.db.get('issues', issueId);
-        if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, args.userId, issue, 'issue'))) {
-          throw new ConvexError('FORBIDDEN');
-        }
-        const child = await ctx.db
-          .query('issues')
-          .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
-          .first();
-        if (child) throw new ConvexError('HAS_CHILD_ISSUES');
-        const assignees = await ctx.db
-          .query('issueAssignees')
-          .withIndex('by_issue', q => q.eq('issueId', issue._id))
-          .collect();
-        for (const assignee of assignees) {
-          await ctx.db.delete('issueAssignees', assignee._id);
-        }
-        const comments = await ctx.db
-          .query('comments')
-          .withIndex('by_issue', q => q.eq('issueId', issue._id))
-          .collect();
-        for (const comment of comments) {
-          await ctx.db.delete('comments', comment._id);
-        }
-        await ctx.db.delete('issues', issue._id);
-        break;
-      }
-      case 'project': {
-        const projectId = ctx.db.normalizeId(
-          'projects',
-          pendingAction.entityId,
-        );
-        if (!projectId) throw new ConvexError('PROJECT_NOT_FOUND');
-        const project = await ctx.db.get('projects', projectId);
-        if (!project) throw new ConvexError('PROJECT_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, args.userId, project, 'project'))) {
-          throw new ConvexError('FORBIDDEN');
-        }
-        const members = await ctx.db
-          .query('projectMembers')
-          .withIndex('by_project', q => q.eq('projectId', project._id))
-          .collect();
-        for (const member of members) {
-          await ctx.db.delete('projectMembers', member._id);
-        }
-        const roleAssignments = await ctx.db
-          .query('roleAssignments')
-          .withIndex('by_project_user', q => q.eq('projectId', project._id))
-          .collect();
-        for (const assignment of roleAssignments) {
-          await ctx.db.delete('roleAssignments', assignment._id);
-        }
-        const legacyAssignments = await ctx.db
-          .query('projectRoleAssignments')
-          .withIndex('by_project', q => q.eq('projectId', project._id))
-          .collect();
-        for (const assignment of legacyAssignments) {
-          await ctx.db.delete('projectRoleAssignments', assignment._id);
-        }
-        const projectTeams = await ctx.db
-          .query('projectTeams')
-          .withIndex('by_project', q => q.eq('projectId', project._id))
-          .collect();
-        for (const projectTeam of projectTeams) {
-          await ctx.db.delete('projectTeams', projectTeam._id);
-        }
-        await ctx.db.delete('projects', project._id);
-        break;
-      }
-      case 'team': {
-        const teamId = ctx.db.normalizeId('teams', pendingAction.entityId);
-        if (!teamId) throw new ConvexError('TEAM_NOT_FOUND');
-        const team = await ctx.db.get('teams', teamId);
-        if (!team) throw new ConvexError('TEAM_NOT_FOUND');
-        if (!(await canDeleteEntity(ctx, args.userId, team, 'team'))) {
-          throw new ConvexError('FORBIDDEN');
-        }
-        const members = await ctx.db
-          .query('teamMembers')
-          .withIndex('by_team', q => q.eq('teamId', team._id))
-          .collect();
-        for (const member of members) {
-          await ctx.db.delete('teamMembers', member._id);
-        }
-        const roleAssignments = await ctx.db
-          .query('roleAssignments')
-          .withIndex('by_team_user', q => q.eq('teamId', team._id))
-          .collect();
-        for (const assignment of roleAssignments) {
-          await ctx.db.delete('roleAssignments', assignment._id);
-        }
-        const legacyAssignments = await ctx.db
-          .query('teamRoleAssignments')
-          .withIndex('by_team', q => q.eq('teamId', team._id))
-          .collect();
-        for (const assignment of legacyAssignments) {
-          await ctx.db.delete('teamRoleAssignments', assignment._id);
-        }
-        await ctx.db.delete('teams', team._id);
-        break;
-      }
-      case 'folder': {
-        const folderId = ctx.db.normalizeId(
-          'documentFolders',
-          pendingAction.entityId,
-        );
-        if (!folderId) throw new ConvexError('FOLDER_NOT_FOUND');
-        const folder = await ctx.db.get('documentFolders', folderId);
-        if (!folder || folder.organizationId !== organization._id) {
-          throw new ConvexError('FOLDER_NOT_FOUND');
-        }
-        await requireOrgPermissionForUser(
-          ctx,
-          organization._id,
-          args.userId,
-          PERMISSIONS.DOCUMENT_DELETE,
-        );
-        const documents = await ctx.db
-          .query('documents')
-          .withIndex('by_folder', q => q.eq('folderId', folder._id))
-          .collect();
-        for (const document of documents) {
-          await ctx.db.patch('documents', document._id, {
-            folderId: undefined,
-          });
-        }
-        await ctx.db.delete('documentFolders', folder._id);
-        break;
-      }
-    }
+    } // end for entityId
 
     await ctx.db.patch('assistantThreads', row._id, {
       pendingAction: undefined,
@@ -4519,6 +4621,106 @@ export const renameMember = internalMutation({
   },
 });
 
+function buildEmailHtml(opts: {
+  subject: string;
+  body: string;
+  senderName: string;
+  orgName: string;
+  template?: string;
+}) {
+  const { subject, body, senderName, orgName, template } = opts;
+  const escapedBody = body
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const headerStyles: Record<string, string> = {
+    default: 'font-size:22px;font-weight:600;color:#ffffff;margin-bottom:16px',
+    announcement:
+      'font-size:28px;font-weight:800;color:#ffffff;margin-bottom:20px;text-transform:uppercase;letter-spacing:0.02em',
+    welcome: 'font-size:26px;font-weight:700;color:#a78bfa;margin-bottom:18px',
+    'action-required':
+      'font-size:22px;font-weight:700;color:#f97316;margin-bottom:16px',
+  };
+
+  const bannerHtml: Record<string, string> = {
+    default: '',
+    announcement:
+      '<div style="background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:8px 16px;border-radius:6px 6px 0 0;margin:-24px -24px 20px -24px;text-align:center;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:0.1em;text-transform:uppercase">Announcement</div>',
+    welcome:
+      '<div style="background:linear-gradient(135deg,#7c3aed,#a78bfa);padding:8px 16px;border-radius:6px 6px 0 0;margin:-24px -24px 20px -24px;text-align:center;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:0.1em;text-transform:uppercase">Welcome</div>',
+    'action-required':
+      '<div style="background:linear-gradient(135deg,#ea580c,#f97316);padding:8px 16px;border-radius:6px 6px 0 0;margin:-24px -24px 20px -24px;text-align:center;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:0.1em;text-transform:uppercase">Action Required</div>',
+  };
+
+  const style = headerStyles[template ?? 'default'] ?? headerStyles.default;
+  const banner = bannerHtml[template ?? 'default'] ?? '';
+
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0a0a0a;color:#f0f0f0;font-family:Poppins,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <div style="max-width:560px;margin:0 auto;padding:32px 16px">
+    <div style="background:#111111;border:1px solid #222222;border-radius:8px;padding:24px">
+      ${banner}
+      <div style="font-family:Urbanist,Poppins,sans-serif;${style}">${subject}</div>
+      <div style="font-size:14px;line-height:1.6;color:#f0f0f0;white-space:pre-wrap">${escapedBody}</div>
+      <hr style="border:none;border-top:1px solid #222222;margin:20px 0">
+      <div style="font-size:12px;color:#888888">Sent by ${senderName} via Vector &middot; ${orgName}</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+export const previewEmail = internalQuery({
+  args: {
+    orgSlug: v.string(),
+    userId: v.id('users'),
+    recipientName: v.string(),
+    subject: v.string(),
+    body: v.string(),
+    template: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      args.userId,
+    );
+    const memberMatch = await findMemberByName(
+      ctx,
+      organization._id,
+      args.recipientName,
+    );
+    if (!memberMatch) throw new ConvexError('MEMBER_NOT_FOUND');
+
+    const sender = await ctx.db.get('users', args.userId);
+    const senderName =
+      sender?.name ?? sender?.email ?? sender?.username ?? 'Vector';
+
+    const html = buildEmailHtml({
+      subject: args.subject,
+      body: args.body,
+      senderName,
+      orgName: organization.name,
+      template: args.template,
+    });
+
+    const recipientName =
+      memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown';
+
+    return {
+      _display: 'email_preview',
+      recipient: recipientName,
+      recipientEmail: memberMatch.user.email ?? '',
+      subject: args.subject,
+      template: args.template ?? 'default',
+      html,
+    };
+  },
+});
+
 export const sendEmailToMember = internalMutation({
   args: {
     orgSlug: v.string(),
@@ -4526,6 +4728,7 @@ export const sendEmailToMember = internalMutation({
     recipientName: v.string(),
     subject: v.string(),
     body: v.string(),
+    template: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const organization = await requireOrgForAssistant(
@@ -4556,21 +4759,13 @@ export const sendEmailToMember = internalMutation({
     const senderName =
       sender?.name ?? sender?.email ?? sender?.username ?? 'Vector';
 
-    // Build a simple HTML email
-    const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;color:#f0f0f0;font-family:Poppins,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-  <div style="max-width:560px;margin:0 auto;padding:32px 16px">
-    <div style="background:#111111;border:1px solid #222222;border-radius:8px;padding:24px">
-      <div style="font-size:22px;font-weight:600;font-family:Urbanist,Poppins,sans-serif;margin-bottom:16px;color:#ffffff">${args.subject}</div>
-      <div style="font-size:14px;line-height:1.6;color:#f0f0f0;white-space:pre-wrap">${args.body}</div>
-      <hr style="border:none;border-top:1px solid #222222;margin:20px 0">
-      <div style="font-size:12px;color:#888888">Sent by ${senderName} via Vector &middot; ${organization.name}</div>
-    </div>
-  </div>
-</body>
-</html>`;
+    const html = buildEmailHtml({
+      subject: args.subject,
+      body: args.body,
+      senderName,
+      orgName: organization.name,
+      template: args.template,
+    });
 
     await ctx.scheduler.runAfter(
       0,

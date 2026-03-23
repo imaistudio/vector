@@ -46,8 +46,10 @@ import { useAssistantIssueDnd } from './assistant-issue-dnd';
 
 type PendingAction = {
   id: string;
+  kind?: 'delete_entity' | 'bulk_delete_entities';
   entityType: 'document' | 'issue' | 'project' | 'team';
-  entityLabel: string;
+  entityLabel?: string;
+  entities?: Array<{ entityId: string; entityLabel: string }>;
   summary: string;
 };
 
@@ -445,9 +447,15 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const handleConfirmAction = async () => {
     if (!pendingAction) return;
 
+    const isBulk = pendingAction.kind === 'bulk_delete_entities';
+    const description = isBulk
+      ? `This will permanently delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}(s) and cannot be undone.\n\n${(pendingAction as any).entities.map((e: any) => `• ${e.entityLabel}`).join('\n')}`
+      : `This will permanently delete "${(pendingAction as any).entityLabel}" and cannot be undone.`;
     const ok = await confirmAction({
-      title: `Delete ${pendingAction.entityType}`,
-      description: `This will permanently delete "${pendingAction.entityLabel}" and cannot be undone.`,
+      title: isBulk
+        ? `Delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}s`
+        : `Delete ${pendingAction.entityType}`,
+      description,
       confirmLabel: 'Delete',
       variant: 'destructive',
     });

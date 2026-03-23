@@ -4,6 +4,7 @@ import type { ToolUIPart } from 'ai';
 import {
   CheckCircle2,
   AlertCircle,
+  Mail,
   Wrench,
   FileText,
   CircleDot,
@@ -14,7 +15,14 @@ import { BarsSpinner } from '@/components/bars-spinner';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Fragment, type ComponentType, type ReactNode } from 'react';
+import { Fragment, useState, type ComponentType, type ReactNode } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { AssistantIssueCard } from './assistant-issue-card';
 import {
   AssistantProjectCard,
@@ -386,6 +394,78 @@ function DocumentToolResult({ tool }: AssistantToolComponentProps) {
   return <AssistantDocumentCard documentId={documentId} />;
 }
 
+function EmailPreviewResult({ tool }: AssistantToolComponentProps) {
+  const output = getToolOutput(tool) as {
+    _display?: string;
+    recipient?: string;
+    recipientEmail?: string;
+    subject?: string;
+    template?: string;
+    html?: string;
+  } | null;
+
+  if (!output?.html) {
+    return <DefaultAssistantToolResult tool={tool} />;
+  }
+
+  return (
+    <div className='max-w-full min-w-0 py-0.5'>
+      <DenseToolShell
+        icon={<Mail className='size-3' />}
+        title={`Email preview → ${output.recipient ?? 'recipient'}`}
+        status={output.template ?? 'default'}
+        tone='success'
+      >
+        <div className='text-muted-foreground/60 mb-1 text-[11px]'>
+          Subject: {output.subject}
+        </div>
+      </DenseToolShell>
+      <Dialog>
+        <DialogTrigger asChild>
+          <button
+            type='button'
+            className='bg-muted/30 hover:bg-muted/50 mt-1 w-full cursor-pointer overflow-hidden rounded-md border text-left transition-colors'
+          >
+            <div className='pointer-events-none h-[120px] origin-top-left overflow-hidden'>
+              <iframe
+                srcDoc={output.html}
+                title='Email preview'
+                className='h-[600px] w-[560px] border-0'
+                style={{
+                  transform: 'scale(0.45)',
+                  transformOrigin: 'top left',
+                }}
+                sandbox=''
+              />
+            </div>
+            <div className='text-muted-foreground border-t px-2 py-1 text-center text-[10px]'>
+              Click to expand preview
+            </div>
+          </button>
+        </DialogTrigger>
+        <DialogContent className='max-h-[85vh] max-w-2xl overflow-y-auto p-0'>
+          <DialogHeader className='border-b px-4 py-3'>
+            <DialogTitle className='text-sm'>
+              Email Preview — {output.subject}
+            </DialogTitle>
+          </DialogHeader>
+          <div className='bg-[#0a0a0a]'>
+            <iframe
+              srcDoc={output.html}
+              title='Email preview'
+              className='h-[500px] w-full border-0'
+              sandbox=''
+            />
+          </div>
+          <div className='text-muted-foreground border-t px-4 py-2 text-xs'>
+            To: {output.recipient} ({output.recipientEmail})
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 const toolConfigs: AssistantToolConfigs = {
   'tool-listWorkspaceReferenceData': {
     displayName: 'List workspace context',
@@ -488,6 +568,17 @@ const toolConfigs: AssistantToolConfigs = {
   'tool-moveDocumentToFolder': { displayName: 'Move document' },
   'tool-listFolders': { displayName: 'List folders' },
   'tool-performClientAction': { displayName: 'Navigate' },
+  'tool-previewEmail': {
+    displayName: 'Email preview',
+    resultComponent: EmailPreviewResult,
+  },
+  'tool-sendEmailToMember': { displayName: 'Send email' },
+  'tool-requestBulkDelete': {
+    displayName: 'Bulk delete',
+    resultComponent: DeleteRequestToolResult,
+  },
+  'tool-changeIssueKey': { displayName: 'Change issue key' },
+  'tool-renameMember': { displayName: 'Rename member' },
   'tool-showIssues': {
     displayName: 'Issues',
     resultComponent: EntityListResult,

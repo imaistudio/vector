@@ -343,6 +343,77 @@ export const requestDeleteIssue: any = createTool({
   },
 });
 
+export const requestBulkDelete: any = createTool({
+  description:
+    'Prepare bulk deletion of multiple entities of the same type. Creates a single pending confirmation in the UI. Use this instead of calling requestDeleteIssue/requestDeleteProject/requestDeleteTeam/requestDeleteDocument multiple times.',
+  args: z.object({
+    entityType: z
+      .enum(['issue', 'project', 'team', 'document'])
+      .describe('The type of entities to delete'),
+    keys: z
+      .array(z.string())
+      .min(1)
+      .describe(
+        'Array of entity keys/IDs to delete (issue keys like "PROJ-1", project keys, team keys, or document IDs)',
+      ),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: {
+      entityType: 'issue' | 'project' | 'team' | 'document';
+      keys: string[];
+    },
+  ) => {
+    return await ctx.runMutation(
+      internal.ai.internal.setBulkPendingDeleteAction,
+      {
+        orgSlug: ctx.currentPageContext.orgSlug,
+        userId: ctx.userId,
+        assistantThreadId: ctx.assistantThreadId,
+        pageContext: ctx.currentPageContext,
+        entityType: args.entityType,
+        keys: args.keys,
+      },
+    );
+  },
+});
+
+export const previewEmail: any = createTool({
+  description:
+    'Generate an email preview that the user can inspect before sending. Returns the rendered HTML so the user can see exactly how the email will look. After the user approves, use sendEmailToMember to actually send it. Use this when composing important emails or when the user wants to review before sending.',
+  args: z.object({
+    recipientName: z
+      .string()
+      .describe('Name, username, or email of the intended recipient'),
+    subject: z.string().min(1).describe('Email subject line'),
+    body: z.string().min(1).describe('Email body content (plain text)'),
+    template: z
+      .enum(['default', 'announcement', 'welcome', 'action-required'])
+      .optional()
+      .describe(
+        'Email template style. "default" is a simple message, "announcement" has a bold header, "welcome" is warm and inviting, "action-required" has an urgent tone with a highlighted call-to-action.',
+      ),
+  }),
+  handler: async (
+    ctx: AssistantToolCtx,
+    args: {
+      recipientName: string;
+      subject: string;
+      body: string;
+      template?: string;
+    },
+  ) => {
+    return await ctx.runQuery(internal.ai.internal.previewEmail, {
+      orgSlug: ctx.currentPageContext.orgSlug,
+      userId: ctx.userId,
+      recipientName: args.recipientName,
+      subject: args.subject,
+      body: args.body,
+      template: args.template,
+    });
+  },
+});
+
 export const listProjects: any = createTool({
   description:
     'List projects. If teamKey is omitted, defaults to the current team page when available.',
@@ -1153,22 +1224,28 @@ export const renameMember: any = createTool({
 
 export const sendEmailToMember: any = createTool({
   description:
-    'Send an email to an organization member. Requires admin or owner role. The email is sent from the workspace SMTP configuration.',
+    'Send an email to an organization member. Requires admin or owner role. Consider using previewEmail first so the user can review the email before sending.',
   args: z.object({
     recipientName: z
       .string()
       .describe('Name, username, or email of the member to email'),
     subject: z.string().min(1).describe('Email subject line'),
-    body: z
-      .string()
-      .min(1)
+    body: z.string().min(1).describe('Email body content (plain text)'),
+    template: z
+      .enum(['default', 'announcement', 'welcome', 'action-required'])
+      .optional()
       .describe(
-        'Email body content (plain text, will be rendered in the Vector email template)',
+        'Email template style. Must match what was shown in the preview.',
       ),
   }),
   handler: async (
     ctx: AssistantToolCtx,
-    args: { recipientName: string; subject: string; body: string },
+    args: {
+      recipientName: string;
+      subject: string;
+      body: string;
+      template?: string;
+    },
   ) => {
     return await ctx.runMutation(internal.ai.internal.sendEmailToMember, {
       orgSlug: ctx.currentPageContext.orgSlug,
@@ -1176,6 +1253,7 @@ export const sendEmailToMember: any = createTool({
       recipientName: args.recipientName,
       subject: args.subject,
       body: args.body,
+      template: args.template,
     });
   },
 });
