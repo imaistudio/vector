@@ -17,6 +17,7 @@ import { UserMenu } from '@/components/user-menu';
 import { PlatformAdminSidebar } from './platform-admin-sidebar';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { GradientWaveText } from '@/components/gradient-wave-text';
@@ -103,6 +104,8 @@ export function PlatformAdminPage() {
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [emailFrom, setEmailFrom] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
 
   const userQuery = useQuery(api.users.currentUser);
   const user = userQuery.data;
@@ -114,8 +117,15 @@ export function PlatformAdminPage() {
   const updatePolicy = useMutation(
     api.platformAdmin.mutations.updateSignupEmailDomainPolicy,
   );
+  const updateEmailConfig = useMutation(
+    api.platformAdmin.mutations.updateEmailConfig,
+  );
   const runSync = useAction(
     api.platformAdmin.actions.runDisposableDomainSyncNow,
+  );
+  const emailConfigQuery = useQuery(
+    api.platformAdmin.queries.getEmailConfig,
+    user?.role === PLATFORM_ADMIN_ROLE ? {} : 'skip',
   );
 
   useEffect(() => {
@@ -141,6 +151,12 @@ export function PlatformAdminPage() {
     setBlockedInput(policyQuery.data.blockedDomains.join('\n'));
     setAllowedInput(policyQuery.data.allowedDomains.join('\n'));
   }, [hasLocalEdits, policyQuery.data]);
+
+  useEffect(() => {
+    if (emailConfigQuery.data && !isSavingEmail) {
+      setEmailFrom(emailConfigQuery.data.emailFromAddress);
+    }
+  }, [emailConfigQuery.data, isSavingEmail]);
 
   if (
     userQuery.isPending ||
@@ -285,6 +301,61 @@ export function PlatformAdminPage() {
         </div>
 
         <div className='space-y-4 p-3'>
+          {/* Email from address */}
+          <div className='rounded-md border'>
+            <div className='border-b px-3 py-2'>
+              <div className='text-sm font-medium'>Email sender address</div>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                The &quot;From&quot; address used for all outgoing emails
+                (invitations, OTPs, notifications). Falls back to SMTP_FROM
+                environment variable if not set.
+              </p>
+            </div>
+            <div className='flex items-end gap-2 p-3'>
+              <div className='min-w-0 flex-1 space-y-1'>
+                <label htmlFor='emailFrom' className='text-xs font-medium'>
+                  From address
+                </label>
+                <Input
+                  id='emailFrom'
+                  value={emailFrom}
+                  onChange={e => setEmailFrom(e.target.value)}
+                  placeholder='Vector <no-reply@example.com>'
+                  className='h-8 text-sm'
+                />
+              </div>
+              <Button
+                className='h-8'
+                disabled={
+                  isSavingEmail ||
+                  emailFrom === (emailConfigQuery.data?.emailFromAddress ?? '')
+                }
+                onClick={async () => {
+                  setIsSavingEmail(true);
+                  try {
+                    await updateEmailConfig({
+                      emailFromAddress: emailFrom,
+                    });
+                    toast.success('Email from address saved');
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : 'Failed to save email config',
+                    );
+                  } finally {
+                    setIsSavingEmail(false);
+                  }
+                }}
+              >
+                {isSavingEmail ? (
+                  <RefreshCw className='mr-2 size-3.5 animate-spin' />
+                ) : null}
+                Save
+              </Button>
+            </div>
+          </div>
+
           <div className='space-y-1'>
             <h1 className='text-lg font-semibold tracking-tight'>
               Signup access and disposable-domain policy

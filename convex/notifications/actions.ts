@@ -40,10 +40,12 @@ async function sendEmail({
   to,
   subject,
   html,
+  fromOverride,
 }: {
   to: string;
   subject: string;
   html: string;
+  fromOverride?: string | null;
 }) {
   const config = getMailTransportConfig();
   if (!config) {
@@ -54,9 +56,10 @@ async function sendEmail({
   const transporter = nodemailer.createTransport(config);
   const info = await transporter.sendMail({
     from:
-      process.env.SMTP_FROM ??
-      process.env.SMTP_USER ??
-      'Vector <no-reply@vector.local>',
+      fromOverride ||
+      (process.env.SMTP_FROM ??
+        process.env.SMTP_USER ??
+        'Vector <no-reply@vector.local>'),
     to,
     subject,
     html,
@@ -155,10 +158,17 @@ export const deliverRecipient = internalAction({
           }),
         );
 
+        // Fetch configured from address from siteSettings
+        const configuredFrom = await ctx.runQuery(
+          internal.platformAdmin.queries.getEmailFromAddress,
+          {},
+        );
+
         const result = await sendEmail({
           to: recipient.email ?? user?.email ?? '',
           subject: recipient.title,
           html,
+          fromOverride: configuredFrom,
         });
 
         await ctx.runMutation(

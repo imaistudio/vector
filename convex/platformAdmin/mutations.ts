@@ -36,6 +36,22 @@ async function upsertSyncStats(
   });
 }
 
+export const updateEmailConfig = mutation({
+  args: {
+    emailFromAddress: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new ConvexError('UNAUTHORIZED');
+    await requirePlatformAdminUser(ctx.db, userId);
+
+    const settingsId = await ensureSiteSettings(ctx.db);
+    await ctx.db.patch('siteSettings', settingsId, {
+      emailFromAddress: args.emailFromAddress || undefined,
+    });
+  },
+});
+
 export const saveGitHubAppInstallation = internalMutation({
   args: {
     installationId: v.number(),

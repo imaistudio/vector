@@ -611,6 +611,24 @@ export function ThreadViewClient() {
       <ScrollArea className='h-full w-full flex-1' viewportRef={viewportRef}>
         <div ref={contentRef}>
           <div className='mx-auto max-w-[700px] space-y-3 px-4 pt-16 pb-36'>
+            {/* Load more trigger at top */}
+            {uiMessages.status === 'CanLoadMore' && (
+              <div className='flex justify-center py-2'>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='text-muted-foreground h-7 text-xs'
+                  onClick={() => uiMessages.loadMore(40)}
+                >
+                  Load older messages
+                </Button>
+              </div>
+            )}
+            {uiMessages.status === 'LoadingMore' && (
+              <div className='flex justify-center py-2'>
+                <Loader2 className='text-muted-foreground size-4 animate-spin' />
+              </div>
+            )}
             {!hasMessages && (
               <div className='text-muted-foreground flex flex-col items-center justify-center gap-2 py-32 text-sm'>
                 <svg

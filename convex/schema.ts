@@ -96,6 +96,8 @@ export default defineSchema({
         skippedCount: v.number(),
       }),
     ),
+    // Email configuration
+    emailFromAddress: v.optional(v.string()),
     // Platform branding (white-label)
     brandName: v.optional(v.string()),
     brandDescription: v.optional(v.string()),

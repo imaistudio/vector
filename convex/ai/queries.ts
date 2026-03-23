@@ -263,6 +263,47 @@ export const listThreadMessages = query({
   },
 });
 
+export const getPublicThread = query({
+  args: {
+    threadId: v.id('assistantThreads'),
+  },
+  handler: async (ctx, args) => {
+    const thread = await ctx.db.get('assistantThreads', args.threadId);
+    if (!thread || thread.visibility !== 'public') return null;
+    return thread;
+  },
+});
+
+export const listPublicThreadMessages = query({
+  args: {
+    threadId: v.string(),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    const denied = {
+      page: [],
+      isDone: true,
+      continueCursor: '',
+    };
+
+    // Verify thread is public
+    const row = await ctx.db
+      .query('assistantThreads')
+      .withIndex('by_threadId', q => q.eq('threadId', args.threadId))
+      .first();
+
+    if (!row || row.visibility !== 'public') {
+      return denied;
+    }
+
+    return await listUIMessages(ctx, components.agent, {
+      threadId: args.threadId,
+      paginationOpts: args.paginationOpts,
+    });
+  },
+});
+
 export const listPendingActions = query({
   args: {
     orgSlug: v.string(),

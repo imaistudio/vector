@@ -78,6 +78,20 @@ export const listSignupEmailDomainRulesPageBySource = internalQuery({
   },
 });
 
+export const getEmailConfig = query({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new ConvexError('UNAUTHORIZED');
+    await requirePlatformAdminUser(ctx.db, userId);
+
+    const settings = await getSiteSettings(ctx.db);
+    return {
+      emailFromAddress: settings?.emailFromAddress ?? '',
+    };
+  },
+});
+
 export const getGitHubAppConfig = query({
   args: {},
   handler: async ctx => {
@@ -142,6 +156,14 @@ export const getBranding = query({
       accentColor: settings?.brandAccentColor ?? '#2563eb',
       defaultOrgSlug: defaultOrg?.slug ?? null,
     };
+  },
+});
+
+export const getEmailFromAddress = internalQuery({
+  args: {},
+  handler: async ctx => {
+    const settings = await getSiteSettings(ctx.db);
+    return settings?.emailFromAddress || null;
   },
 });
 

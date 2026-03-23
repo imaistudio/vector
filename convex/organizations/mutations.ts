@@ -200,7 +200,7 @@ export const resendInvite = mutation({
           inviterName:
             inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
           roleLabel: invite.role,
-          href: '/settings/invites',
+          href: existingUser ? '/settings/invites' : '/auth/signup',
         },
         recipients: [
           {
@@ -998,7 +998,7 @@ export const invite = mutation({
         inviterName:
           inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
         roleLabel: args.role,
-        href: '/settings/invites',
+        href: existingUser ? '/settings/invites' : '/auth/signup',
       },
       recipients: [
         {
