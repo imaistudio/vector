@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter, useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { useScopedPermissions } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';

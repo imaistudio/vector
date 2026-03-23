@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { api, useCachedQuery, useMutation } from '@/lib/convex';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { toast } from 'sonner';
 import type { Id } from '@/convex/_generated/dataModel';
 
