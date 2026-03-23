@@ -278,6 +278,7 @@ export const listPublicThreadMessages = query({
   args: {
     threadId: v.string(),
     paginationOpts: paginationOptsValidator,
+    streamArgs: v.optional(vStreamArgs),
   },
   returns: v.any(),
   handler: async (ctx, args) => {
@@ -285,6 +286,7 @@ export const listPublicThreadMessages = query({
       page: [],
       isDone: true,
       continueCursor: '',
+      streams: undefined,
     };
 
     // Verify thread is public
@@ -297,10 +299,21 @@ export const listPublicThreadMessages = query({
       return denied;
     }
 
-    return await listUIMessages(ctx, components.agent, {
+    const paginated = await listUIMessages(ctx, components.agent, {
       threadId: args.threadId,
       paginationOpts: args.paginationOpts,
     });
+    const streams = args.streamArgs
+      ? await syncStreams(ctx, components.agent, {
+          threadId: args.threadId,
+          streamArgs: args.streamArgs,
+        })
+      : undefined;
+
+    return {
+      ...paginated,
+      streams: streams ?? undefined,
+    };
   },
 });
 
