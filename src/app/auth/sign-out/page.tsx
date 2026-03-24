@@ -3,7 +3,7 @@
 import { Button } from '@/components/ui/button';
 import { authClient } from '@/lib/auth-client';
 import { Loader2, LogOut } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { useCallback, useEffect, useState } from 'react';
 
 type SignOutState = 'pending' | 'error';

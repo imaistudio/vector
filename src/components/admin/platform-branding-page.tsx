@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { toast } from 'sonner';
 import { Palette, Upload, X, RefreshCw, Menu, Shield } from 'lucide-react';
 import { api, useQuery, useMutation } from '@/lib/convex';

@@ -51,7 +51,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { useScopedPermissions } from '@/hooks/use-permissions';
 
 interface DocumentDetailPageProps {

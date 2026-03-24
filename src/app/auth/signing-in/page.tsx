@@ -2,7 +2,7 @@
 
 import { Loader2 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { Suspense, useEffect } from 'react';
 import { useQuery } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';

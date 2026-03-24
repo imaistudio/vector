@@ -1,7 +1,8 @@
 'use client';
 
 import { api, useCachedQuery, useMutation } from '@/lib/convex';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { useState, useRef, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {

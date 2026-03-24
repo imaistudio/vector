@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IconPicker } from '@/components/ui/icon-picker';
-import { notFound, useRouter } from 'next/navigation';
+import { notFound } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { formatDateHuman } from '@/lib/date';
 import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';

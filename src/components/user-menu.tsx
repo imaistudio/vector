@@ -20,7 +20,7 @@ import {
   Sun,
   User,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { UserAvatar } from '@/components/user-avatar';
 import { useTheme } from 'next-themes';
 

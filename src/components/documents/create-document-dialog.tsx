@@ -7,7 +7,7 @@ import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Id } from '@/convex/_generated/dataModel';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 
 export interface CreateDocumentDialogProps {
   orgSlug: string;

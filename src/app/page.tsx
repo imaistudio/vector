@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { useEffect } from 'react';
 import { api, useQuery } from '@/lib/convex';
 import { Skeleton } from '@/components/ui/skeleton';

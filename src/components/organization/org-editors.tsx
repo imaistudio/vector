@@ -5,7 +5,7 @@ import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Edit, Check, X, Loader2, AlertCircle } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 

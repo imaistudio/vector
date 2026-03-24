@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { toast } from 'sonner';
 import { useErrorBoundary } from '@/components/ui/error-boundary';
 import { usePermission } from '@/hooks/use-permissions';

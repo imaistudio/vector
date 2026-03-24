@@ -19,7 +19,8 @@ import { cn } from '@/lib/utils';
 import { LayoutList, Columns3 } from 'lucide-react';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import {
   usePersistedViewMode,
   type ViewMode,

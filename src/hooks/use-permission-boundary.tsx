@@ -1,6 +1,6 @@
 'use client';
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { usePermission } from './use-permissions';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { Permission } from '@/convex/_shared/permissions';
