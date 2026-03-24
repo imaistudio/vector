@@ -373,116 +373,118 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
       <ConfirmDeleteDialog />
       <div className='flex flex-col'>
         {/* Header — scope tabs, status filters + actions */}
-        <div className='scrollbar-none flex items-center justify-between gap-1 overflow-x-auto border-b p-1'>
-          <div className='flex min-w-0 flex-1 items-center gap-1'>
-            <MobileNavTrigger />
-            {/* Scope tabs */}
-            <Button
-              variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
-              size='sm'
-              className={cn(
-                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                scopeTab === 'mine' && 'bg-secondary',
-              )}
-              onClick={() => {
-                setScopeTab('mine');
-                setActiveFilter('all');
-              }}
-            >
-              <span>My projects</span>
-              <span className='text-muted-foreground text-xs'>
-                {summary?.mineCount ?? 0}
-              </span>
-            </Button>
-            <Button
-              variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
-              size='sm'
-              className={cn(
-                'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                scopeTab === 'all' && 'bg-secondary',
-              )}
-              onClick={() => {
-                setScopeTab('all');
-                setActiveFilter('all');
-              }}
-            >
-              <span>All projects</span>
-              <span className='text-muted-foreground text-xs'>
-                {summary?.allCount ?? 0}
-              </span>
-            </Button>
-
-            {viewMode !== 'kanban' && (
-              <>
-                {/* Separator */}
-                <div className='bg-border mx-1 h-4 w-px shrink-0' />
-
-                {/* Status filter tabs */}
-                {visibleTabs.map(tab => (
-                  <Button
-                    key={tab.key}
-                    variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
-                    size='sm'
-                    className={cn(
-                      'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                      activeFilter === tab.key && 'bg-secondary',
-                    )}
-                    onClick={() => setActiveFilter(tab.key)}
-                  >
-                    <span>{tab.label}</span>
-                    <span className='text-muted-foreground text-xs'>
-                      {tab.count}
-                    </span>
-                  </Button>
-                ))}
-              </>
-            )}
-          </div>
-
-          <div className='flex shrink-0 items-center gap-1'>
-            {/* View mode toggle */}
-            <div className='border-border flex items-center rounded-md border'>
+        <div className='border-b'>
+          <div className='flex flex-col gap-1 p-1 sm:flex-row sm:items-center sm:justify-between'>
+            <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
+              <MobileNavTrigger />
+              {/* Scope tabs */}
               <Button
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
                 size='sm'
-                className='h-6 rounded-r-none px-2'
-                onClick={() => setViewMode('table')}
-              >
-                <LayoutList className='size-3.5' />
-              </Button>
-              <Button
-                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-l-none px-2'
+                className={cn(
+                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                  scopeTab === 'mine' && 'bg-secondary',
+                )}
                 onClick={() => {
-                  setViewMode('kanban');
+                  setScopeTab('mine');
                   setActiveFilter('all');
                 }}
               >
-                <Columns3 className='size-3.5' />
+                <span>My projects</span>
+                <span className='text-muted-foreground text-xs'>
+                  {summary?.mineCount ?? 0}
+                </span>
               </Button>
+              <Button
+                variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
+                size='sm'
+                className={cn(
+                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                  scopeTab === 'all' && 'bg-secondary',
+                )}
+                onClick={() => {
+                  setScopeTab('all');
+                  setActiveFilter('all');
+                }}
+              >
+                <span>All projects</span>
+                <span className='text-muted-foreground text-xs'>
+                  {summary?.allCount ?? 0}
+                </span>
+              </Button>
+
+              {viewMode !== 'kanban' && (
+                <>
+                  {/* Separator */}
+                  <div className='bg-border mx-1 h-4 w-px shrink-0' />
+
+                  {/* Status filter tabs */}
+                  {visibleTabs.map(tab => (
+                    <Button
+                      key={tab.key}
+                      variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
+                      size='sm'
+                      className={cn(
+                        'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                        activeFilter === tab.key && 'bg-secondary',
+                      )}
+                      onClick={() => setActiveFilter(tab.key)}
+                    >
+                      <span>{tab.label}</span>
+                      <span className='text-muted-foreground text-xs'>
+                        {tab.count}
+                      </span>
+                    </Button>
+                  ))}
+                </>
+              )}
             </div>
 
-            {/* Group by selector */}
-            {viewMode === 'table' && (
-              <GroupBySelector<ProjectGroupByField>
-                options={[
-                  { value: 'none', label: 'No grouping' },
-                  { value: 'status', label: 'Status' },
-                  { value: 'team', label: 'Team' },
-                  { value: 'lead', label: 'Lead' },
-                ]}
-                value={groupBy}
-                onChange={setGroupBy}
-                className='h-6 text-xs'
-              />
-            )}
+            <div className='flex shrink-0 items-center gap-1'>
+              {/* View mode toggle */}
+              <div className='border-border flex items-center rounded-md border'>
+                <Button
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-r-none px-2'
+                  onClick={() => setViewMode('table')}
+                >
+                  <LayoutList className='size-3.5' />
+                </Button>
+                <Button
+                  variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-l-none px-2'
+                  onClick={() => {
+                    setViewMode('kanban');
+                    setActiveFilter('all');
+                  }}
+                >
+                  <Columns3 className='size-3.5' />
+                </Button>
+              </div>
 
-            <CreateProjectButton
-              className='h-6 shrink-0'
-              orgSlug={orgSlug}
-              size='sm'
-            />
+              {/* Group by selector */}
+              {viewMode === 'table' && (
+                <GroupBySelector<ProjectGroupByField>
+                  options={[
+                    { value: 'none', label: 'No grouping' },
+                    { value: 'status', label: 'Status' },
+                    { value: 'team', label: 'Team' },
+                    { value: 'lead', label: 'Lead' },
+                  ]}
+                  value={groupBy}
+                  onChange={setGroupBy}
+                  className='h-6 text-xs'
+                />
+              )}
+
+              <CreateProjectButton
+                className='h-6 shrink-0'
+                orgSlug={orgSlug}
+                size='sm'
+              />
+            </div>
           </div>
         </div>
 

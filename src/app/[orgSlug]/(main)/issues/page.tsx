@@ -428,7 +428,7 @@ export default function IssuesPage() {
           </div>
 
           {/* View switcher + filters + create */}
-          <div className='flex shrink-0 items-center gap-1'>
+          <div className='flex shrink-0 items-center gap-1 overflow-x-auto'>
             {/* Search */}
             <div className='relative'>
               {deferredSearch !== searchText ? (
