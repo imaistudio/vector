@@ -17,6 +17,8 @@
 
   <p>So I made this.</p>
 
+  <p>Vector is the platform itself: an open source workspace for teams to manage work through its own issues, projects, teams, documents, and views. It is not a wrapper around Linear or a client for linear.app.</p>
+
   <p>Vector is for teams that want a real open source Linear-style workspace for:</p>
   <p>
     • issues, projects, and teams<br>
@@ -55,6 +57,8 @@ Vector was built to close that gap:
 
 The goal is not to clone every Linear feature. The goal is to build an opinionated, high-quality open source alternative for teams that want control over their tooling.
 
+Vector should be understood as its own platform identity, not as "using Linear." The product model, workflows, permissions, documents, and public surfaces all live inside Vector itself.
+
 ## Features
 
 - Multi-tenant organizations
@@ -84,13 +88,15 @@ The goal is not to clone every Linear feature. The goal is to build an opinionat
 
 ## Entity Model
 
-Vector’s core workspace entities are:
+Vector is organized around its own native workspace entities. These are the product's core building blocks and source of truth:
 
 - Issues: the unit of work that moves through statuses, priorities, assignments, and discussion.
 - Teams: groups of people that own work and organize responsibility.
 - Projects: larger initiatives that collect related issues under shared ownership and status.
 - Documents: longer-form collaborative knowledge like specs, notes, and context.
 - Views: saved issue configurations that define filters, layout, grouping, and sharing behavior.
+
+Together, these entities make Vector a full project management platform. Users manage work by creating relationships between them inside Vector rather than by relying on an external tracker.
 
 For the fuller explanation of how these entities relate and what each one is for, see [docs/product/04-entities.md](docs/product/04-entities.md).
 

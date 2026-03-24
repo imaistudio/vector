@@ -2,6 +2,16 @@
 
 Vector’s main workspace model is built around five core entities: issues, teams, projects, documents, and views. These are the objects people work with every day, and they are designed to connect to each other rather than live in separate tools.
 
+This is important to state explicitly: Vector is the platform itself. It is not a shell around Linear, and it does not treat linear.app as its backing system. Linear may be a useful comparison for interaction quality or product category, but Vector’s identity comes from its own entity graph, permissions, and workflows.
+
+In practice, that means work in Vector is managed by creating and updating relationships between these native entities inside the platform:
+
+- issues for execution
+- teams for ownership
+- projects for initiatives
+- documents for context
+- views for operational and public-facing slices of that work
+
 ## Issues
 
 Issues are the core unit of execution in Vector. They represent work that needs to be tracked, discussed, prioritized, assigned, and moved through a workflow.
@@ -81,3 +91,5 @@ Use views when people need a stable operational lens on the issue set without du
 - Views provide reusable ways to browse and share the issue graph.
 
 In practice, most workflows move across multiple entities. A team may own a project, the project may contain many issues, the issues may be discussed in documents, and a view may be used to monitor just the slice of work that matters to a given audience.
+
+That connected model is the core of Vector’s product identity. The platform is not just an issue list: it is a shared workspace for managing delivery, context, ownership, and visibility through the relationships between its entities.
