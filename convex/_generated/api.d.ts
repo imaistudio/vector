@@ -80,6 +80,7 @@ import type * as projects_mutations from "../projects/mutations.js";
 import type * as projects_queries from "../projects/queries.js";
 import type * as roles_index from "../roles/index.js";
 import type * as search_queries from "../search/queries.js";
+import type * as status from "../status.js";
 import type * as teams_mutations from "../teams/mutations.js";
 import type * as teams_queries from "../teams/queries.js";
 import type * as users from "../users.js";
@@ -165,6 +166,7 @@ declare const fullApi: ApiFromModules<{
   "projects/queries": typeof projects_queries;
   "roles/index": typeof roles_index;
   "search/queries": typeof search_queries;
+  status: typeof status;
   "teams/mutations": typeof teams_mutations;
   "teams/queries": typeof teams_queries;
   users: typeof users;

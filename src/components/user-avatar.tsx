@@ -4,6 +4,10 @@ import type { ComponentProps } from 'react';
 import Avvvatars from 'avvvatars-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import {
+  StatusIndicator,
+  type PresenceStatus,
+} from '@/components/user-status-indicator';
 
 const avatarPixels = {
   sm: 24,
@@ -21,6 +25,8 @@ interface UserAvatarProps
   userId?: string | null;
   size?: AvatarSize;
   fallbackClassName?: string;
+  showStatus?: boolean;
+  presence?: PresenceStatus | null;
 }
 
 export function UserAvatar({
@@ -31,6 +37,8 @@ export function UserAvatar({
   size = 'default',
   className,
   fallbackClassName,
+  showStatus = false,
+  presence,
   ...props
 }: UserAvatarProps) {
   const label = name?.trim() || email?.trim() || 'User avatar';
@@ -55,6 +63,9 @@ export function UserAvatar({
           />
         </div>
       </AvatarFallback>
+      {showStatus && presence && (
+        <StatusIndicator presence={presence} size={size} />
+      )}
     </Avatar>
   );
 }

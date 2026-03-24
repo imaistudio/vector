@@ -1318,4 +1318,21 @@ export default defineSchema({
     .index('by_device_status', ['deviceId', 'status'])
     .index('by_live_activity', ['liveActivityId'])
     .index('by_process', ['processId']),
+
+  // User status (Discord-like presence + custom status)
+  userStatuses: defineTable({
+    userId: v.id('users'),
+    presence: v.union(
+      v.literal('online'),
+      v.literal('idle'),
+      v.literal('dnd'),
+      v.literal('invisible'),
+    ),
+    customText: v.optional(v.string()),
+    customEmoji: v.optional(v.string()),
+    clearsAt: v.optional(v.number()), // timestamp when custom status auto-clears
+    updatedAt: v.number(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_presence', ['presence']),
 });
