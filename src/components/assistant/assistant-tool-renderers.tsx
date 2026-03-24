@@ -4,26 +4,21 @@ import type { ToolUIPart } from 'ai';
 import {
   CheckCircle2,
   AlertCircle,
-  Loader2,
   Mail,
   Trash2,
-  Wrench,
   FileText,
   CircleDot,
   FolderKanban,
   Users,
-  X,
 } from 'lucide-react';
 import { BarsSpinner } from '@/components/bars-spinner';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Fragment, useState, type ComponentType, type ReactNode } from 'react';
 import { useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
-import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -38,6 +33,10 @@ import {
   AssistantTeamCard,
   AssistantDocumentCard,
 } from './assistant-entity-cards';
+import {
+  AssistantPendingActions,
+  type AssistantPendingAction,
+} from './assistant-pending-actions';
 
 export interface AssistantToolComponentProps {
   tool: ToolUIPart;
@@ -214,44 +213,24 @@ export function DefaultAssistantToolResult({
   );
 }
 
-function DeleteRequestToolResult({ tool }: AssistantToolComponentProps) {
-  const output = getToolOutput(tool) as {
-    summary?: string;
-    id?: string;
-    entityType?: string;
-    entityLabel?: string;
-    entities?: Array<{ entityId: string; entityLabel: string }>;
-    kind?: string;
-  } | null;
+function PendingActionToolResult({ tool }: AssistantToolComponentProps) {
+  const output = getToolOutput(tool) as AssistantPendingAction | null;
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const executeConfirmedAction = useMutation(
     api.ai.mutations.executeConfirmedAction,
   );
   const cancelPendingAction = useMutation(api.ai.mutations.cancelPendingAction);
-  const [confirmAction, ConfirmDialog] = useConfirm();
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
+    null,
+  );
+  const [cancellingActionId, setCancellingActionId] = useState<string | null>(
+    null,
+  );
   const [isDone, setIsDone] = useState(false);
 
   const handleConfirm = async () => {
     if (!output?.id || !orgSlug) return;
-
-    const isBulk = output.kind === 'bulk_delete_entities';
-    const description = isBulk
-      ? `This will permanently delete ${output.entities?.length ?? 0} ${output.entityType ?? 'item'}(s) and cannot be undone.\n\n${(output.entities ?? []).map(e => `• ${e.entityLabel}`).join('\n')}`
-      : `This will permanently delete "${output.entityLabel ?? 'this item'}" and cannot be undone.`;
-
-    const ok = await confirmAction({
-      title: isBulk
-        ? `Delete ${output.entities?.length ?? 0} ${output.entityType ?? 'item'}s`
-        : `Delete ${output.entityType ?? 'item'}`,
-      description,
-      confirmLabel: 'Delete',
-      variant: 'destructive',
-    });
-    if (!ok) return;
-
-    setIsExecuting(true);
+    setConfirmingActionId(output.id);
     try {
       await executeConfirmedAction({
         orgSlug,
@@ -259,22 +238,22 @@ function DeleteRequestToolResult({ tool }: AssistantToolComponentProps) {
       });
       setIsDone(true);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Delete failed');
+      toast.error(error instanceof Error ? error.message : 'Action failed');
     } finally {
-      setIsExecuting(false);
+      setConfirmingActionId(null);
     }
   };
 
   const handleCancel = async () => {
-    if (!orgSlug) return;
-    setIsCancelling(true);
+    if (!orgSlug || !output?.id) return;
+    setCancellingActionId(output.id);
     try {
-      await cancelPendingAction({ orgSlug });
+      await cancelPendingAction({ orgSlug, actionId: output.id });
       setIsDone(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Cancel failed');
     } finally {
-      setIsCancelling(false);
+      setCancellingActionId(null);
     }
   };
 
@@ -296,49 +275,30 @@ function DeleteRequestToolResult({ tool }: AssistantToolComponentProps) {
   }
 
   return (
-    <>
+    <div className='py-0.5'>
       <DenseToolShell
-        icon={<Trash2 className='size-3' />}
+        icon={
+          output?.kind === 'send_email' ? (
+            <Mail className='size-3' />
+          ) : (
+            <Trash2 className='size-3' />
+          )
+        }
         title={getDisplayName(tool)}
         status='awaiting confirmation'
-        tone='destructive'
-      >
-        {output?.summary ? (
-          <div className='text-muted-foreground/60 min-w-0 text-[11px] leading-4 break-words'>
-            {output.summary}
-          </div>
-        ) : null}
-        {output?.id ? (
-          <div className='mt-1.5 flex items-center gap-1.5'>
-            <Button
-              size='sm'
-              variant='destructive'
-              className='h-6 px-2.5 text-[11px]'
-              onClick={() => void handleConfirm()}
-              disabled={isExecuting || isCancelling}
-            >
-              {isExecuting ? (
-                <Loader2 className='mr-1 size-3 animate-spin' />
-              ) : null}
-              Confirm delete
-            </Button>
-            <Button
-              size='sm'
-              variant='ghost'
-              className='text-muted-foreground h-6 px-2 text-[11px]'
-              onClick={() => void handleCancel()}
-              disabled={isExecuting || isCancelling}
-            >
-              {isCancelling ? (
-                <Loader2 className='mr-1 size-3 animate-spin' />
-              ) : null}
-              Cancel
-            </Button>
-          </div>
-        ) : null}
-      </DenseToolShell>
-      <ConfirmDialog />
-    </>
+        tone={output?.kind === 'send_email' ? 'muted' : 'destructive'}
+      />
+      {output ? (
+        <AssistantPendingActions
+          actions={[output]}
+          variant='dock'
+          confirmingActionId={confirmingActionId}
+          cancellingActionId={cancellingActionId}
+          onConfirm={() => void handleConfirm()}
+          onCancel={() => void handleCancel()}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -607,7 +567,7 @@ const toolConfigs: AssistantToolConfigs = {
   },
   'tool-requestDeleteDocument': {
     displayName: 'Delete document',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-listIssues': {
     displayName: 'List issues',
@@ -627,7 +587,7 @@ const toolConfigs: AssistantToolConfigs = {
   },
   'tool-requestDeleteIssue': {
     displayName: 'Delete issue',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-listProjects': {
     displayName: 'List projects',
@@ -647,7 +607,7 @@ const toolConfigs: AssistantToolConfigs = {
   },
   'tool-requestDeleteProject': {
     displayName: 'Delete project',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-listTeams': {
     displayName: 'List teams',
@@ -667,7 +627,7 @@ const toolConfigs: AssistantToolConfigs = {
   },
   'tool-requestDeleteTeam': {
     displayName: 'Delete team',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-addTeamMember': { displayName: 'Add team member' },
   'tool-removeTeamMember': { displayName: 'Remove team member' },
@@ -681,7 +641,7 @@ const toolConfigs: AssistantToolConfigs = {
   'tool-updateFolder': { displayName: 'Update folder' },
   'tool-requestDeleteFolder': {
     displayName: 'Delete folder',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-moveDocumentToFolder': { displayName: 'Move document' },
   'tool-listFolders': { displayName: 'List folders' },
@@ -690,10 +650,13 @@ const toolConfigs: AssistantToolConfigs = {
     displayName: 'Email preview',
     resultComponent: EmailPreviewResult,
   },
-  'tool-sendEmailToMember': { displayName: 'Send email' },
+  'tool-sendEmailToMember': {
+    displayName: 'Send email',
+    resultComponent: PendingActionToolResult,
+  },
   'tool-requestBulkDelete': {
     displayName: 'Bulk delete',
-    resultComponent: DeleteRequestToolResult,
+    resultComponent: PendingActionToolResult,
   },
   'tool-changeIssueKey': { displayName: 'Change issue key' },
   'tool-renameMember': { displayName: 'Rename member' },

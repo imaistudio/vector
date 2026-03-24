@@ -15,23 +15,15 @@ import { useDroppable } from '@dnd-kit/core';
 import { useConvexAuth } from 'convex/react';
 import { useQuery, useMutation, useAction } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
-import { Button } from '@/components/ui/button';
-import {
-  AssistantInput,
-  type AssistantInputHandle,
-  type MentionRef,
-} from './assistant-input';
-import { BarsSpinner } from '@/components/bars-spinner';
+import { type MentionRef } from './assistant-input';
 import { cn } from '@/lib/utils';
 import {
-  ArrowUp,
   ChevronsDown,
   ChevronsUp,
   ExternalLink,
   Loader2,
   Plus,
   Trash2,
-  X,
 } from 'lucide-react';
 import {
   type UIMessage,
@@ -46,15 +38,16 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
 import { useAssistantIssueDnd } from './assistant-issue-dnd';
 import { useRouter } from 'nextjs-toploader/app';
-
-type PendingAction = {
-  id: string;
-  kind?: 'delete_entity' | 'bulk_delete_entities';
-  entityType: 'document' | 'issue' | 'project' | 'team';
-  entityLabel?: string;
-  entities?: Array<{ entityId: string; entityLabel: string }>;
-  summary: string;
-};
+import {
+  AssistantComposer,
+  type AssistantComposerHandle,
+  type AssistantComposerSubmitOptions,
+} from './assistant-composer';
+import {
+  AssistantPendingActions,
+  normalizePendingActions,
+  type AssistantPendingAction,
+} from './assistant-pending-actions';
 
 const CHAT_PANEL_TRANSITION = {
   height: {
@@ -119,8 +112,14 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const [isSending, setIsSending] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
+    null,
+  );
+  const [cancellingActionId, setCancellingActionId] = useState<string | null>(
+    null,
+  );
   const [confirmAction, ConfirmActionDialog] = useConfirm();
-  const inputRef = useRef<AssistantInputHandle>(null);
+  const inputRef = useRef<AssistantComposerHandle>(null);
   const assistantDropId = useId();
   const { activeIssueDrag } = useAssistantIssueDnd();
   const { setNodeRef: setAssistantDropRef, isOver: isIssueDropOver } =
@@ -175,8 +174,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     () => (uiMessages.results ?? []) as UIMessage[],
     [uiMessages.results],
   );
-  const pendingAction = (threadRow?.pendingAction ??
-    null) as PendingAction | null;
+  const pendingActions = normalizePendingActions(threadRow?.pendingAction);
   const hasMessages = messages.length > 0;
   const isAssistantActive =
     isSending ||
@@ -408,15 +406,6 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     };
   }, []);
 
-  // Hide dock on thread detail pages
-  if (isOnThreadPage) {
-    return null;
-  }
-
-  if (!isReadyForAssistant || threadRowQuery.isError) {
-    return null;
-  }
-
   if (
     pendingThreadIdRef.current &&
     threadRow?.threadId === pendingThreadIdRef.current
@@ -424,11 +413,15 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     pendingThreadIdRef.current = null;
   }
 
-  const handleSend = async (text: string, mentions: MentionRef[]) => {
+  const handleSend = async (
+    text: string,
+    mentions: MentionRef[],
+    options: AssistantComposerSubmitOptions,
+  ) => {
     if (isSending) return false;
 
     let prompt = text.trim();
-    if (!prompt) return false;
+    if (!prompt && options.attachments.length === 0) return false;
 
     if (mentions.length > 0) {
       const mentionContext = mentions
@@ -449,7 +442,17 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
         ensuredThreadId = ensuredThread?.threadId ?? null;
       }
       pendingThreadIdRef.current = ensuredThreadId;
-      await sendMessage({ orgSlug, pageContext, prompt });
+      await sendMessage({
+        orgSlug,
+        pageContext,
+        prompt,
+        model: options.model,
+        attachments: options.attachments.map(attachment => ({
+          storageId: attachment.storageId,
+          filename: attachment.filename,
+          mediaType: attachment.mediaType,
+        })),
+      });
       scrollToTail('smooth');
       return true;
     } catch (error) {
@@ -463,32 +466,36 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     }
   };
 
-  const handleConfirmAction = async () => {
-    if (!pendingAction) return;
+  const handleConfirmAction = useCallback(
+    async (action: AssistantPendingAction) => {
+      setConfirmingActionId(action.id);
+      try {
+        await executeConfirmedAction({
+          orgSlug,
+          actionId: action.id,
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Action failed');
+      } finally {
+        setConfirmingActionId(null);
+      }
+    },
+    [executeConfirmedAction, orgSlug],
+  );
 
-    const isBulk = pendingAction.kind === 'bulk_delete_entities';
-    const description = isBulk
-      ? `This will permanently delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}(s) and cannot be undone.\n\n${(pendingAction as any).entities.map((e: any) => `• ${e.entityLabel}`).join('\n')}`
-      : `This will permanently delete "${(pendingAction as any).entityLabel}" and cannot be undone.`;
-    const ok = await confirmAction({
-      title: isBulk
-        ? `Delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}s`
-        : `Delete ${pendingAction.entityType}`,
-      description,
-      confirmLabel: 'Delete',
-      variant: 'destructive',
-    });
-    if (!ok) return;
-
-    try {
-      await executeConfirmedAction({
-        orgSlug,
-        actionId: pendingAction.id,
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Delete failed');
-    }
-  };
+  const handleCancelPendingAction = useCallback(
+    async (action: AssistantPendingAction) => {
+      setCancellingActionId(action.id);
+      try {
+        await cancelPendingAction({ orgSlug, actionId: action.id });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Cancel failed');
+      } finally {
+        setCancellingActionId(null);
+      }
+    },
+    [cancelPendingAction, orgSlug],
+  );
 
   const handleClearHistory = async () => {
     const ok = await confirmAction({
@@ -534,6 +541,34 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
       router.push(`/${orgSlug}/threads/${threadRow._id}`);
     }
   };
+
+  useEffect(() => {
+    if (pendingActions.length === 0) return;
+    if (confirmingActionId || cancellingActionId) return;
+
+    const nextAction = pendingActions[0];
+    const storedSkip =
+      typeof window !== 'undefined' &&
+      window.localStorage.getItem('vector.assistant.skip-confirmations') ===
+        'true';
+
+    if (!storedSkip || !nextAction) return;
+
+    void handleConfirmAction(nextAction);
+  }, [
+    cancellingActionId,
+    confirmingActionId,
+    handleConfirmAction,
+    pendingActions,
+  ]);
+
+  if (isOnThreadPage) {
+    return null;
+  }
+
+  if (!isReadyForAssistant || threadRowQuery.isError) {
+    return null;
+  }
 
   return (
     <>
@@ -695,32 +730,14 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
           ) : null}
         </AnimatePresence>
 
-        {/* Pending action banner */}
-        {pendingAction ? (
-          <div className='mx-2 mb-1 flex items-center gap-2 rounded-md border border-[#cb706f]/20 px-2 py-1'>
-            <Trash2 className='size-3 text-[#cb706f]' />
-            <div className='min-w-0 flex-1'>
-              <div className='truncate text-[11px]'>
-                {pendingAction.summary}
-              </div>
-            </div>
-            <Button
-              size='sm'
-              variant='outline'
-              className='h-5 text-[10px]'
-              onClick={handleConfirmAction}
-            >
-              Confirm
-            </Button>
-            <button
-              type='button'
-              className='text-muted-foreground hover:text-foreground'
-              onClick={() => void cancelPendingAction({ orgSlug })}
-            >
-              <X className='size-3' />
-            </button>
-          </div>
-        ) : null}
+        <AssistantPendingActions
+          actions={pendingActions}
+          variant='dock'
+          confirmingActionId={confirmingActionId}
+          cancellingActionId={cancellingActionId}
+          onConfirm={action => void handleConfirmAction(action)}
+          onCancel={action => void handleCancelPendingAction(action)}
+        />
 
         {/* Error banner */}
         {threadRow?.threadStatus === 'error' && threadRow.errorMessage ? (
@@ -734,24 +751,22 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
           <div
             ref={setAssistantDropRef}
             className={cn(
-              'border-border/60 bg-background/60 overflow-hidden rounded-lg border',
+              'rounded-lg',
               activeIssueDrag && 'transition-colors',
-              isIssueDropOver &&
-                'border-primary/35 bg-primary/5 ring-primary/20 ring-1',
+              isIssueDropOver && 'bg-primary/5 ring-primary/20 ring-1',
             )}
           >
-            <div className='flex items-center gap-0.5'>
-              <AssistantInput
-                ref={inputRef}
-                orgSlug={orgSlug}
-                onSubmit={handleSend}
-                onFocus={() => setIsExpanded(true)}
-                disabled={isSending}
-                className='min-h-8 flex-1 px-2 py-1.5 text-xs'
-                placeholder='Ask anything...'
-              />
-              <div className='flex shrink-0 items-center gap-0.5 px-0.5'>
-                {hasMessages ? (
+            <AssistantComposer
+              ref={inputRef}
+              orgSlug={orgSlug}
+              onSubmit={handleSend}
+              onFocus={() => setIsExpanded(true)}
+              disabled={isSending}
+              busy={isSending || threadRow?.threadStatus === 'pending'}
+              variant='dock'
+              placeholder='Ask anything...'
+              auxiliaryActions={
+                hasMessages ? (
                   <button
                     type='button'
                     onClick={() => void handleClearHistory()}
@@ -765,21 +780,13 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                       <Trash2 className='size-2.5' />
                     )}
                   </button>
-                ) : null}
-                <Button
-                  size='sm'
-                  className='size-7 rounded-md p-0'
-                  disabled={isSending}
-                  onClick={() => inputRef.current?.submit()}
-                >
-                  {isSending || threadRow?.threadStatus === 'pending' ? (
-                    <BarsSpinner size={10} />
-                  ) : (
-                    <ArrowUp className='size-2.5' />
-                  )}
-                </Button>
-              </div>
-            </div>
+                ) : null
+              }
+              className={cn(
+                isIssueDropOver &&
+                  'border-primary/35 bg-primary/5 ring-primary/20 ring-1',
+              )}
+            />
           </div>
         </div>
       </div>

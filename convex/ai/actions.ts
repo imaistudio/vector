@@ -155,11 +155,13 @@ export const generateResponse = internalAction({
     promptMessageId: v.string(),
     pageContext: assistantPageContextValidator,
     promptText: v.optional(v.string()),
+    model: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
       assertAssistantModelConfigured();
+      const selectedModel = args.model?.trim() || defaultAssistantModel;
 
       const organization = await ctx.runQuery(
         internal.ai.internal.getAssistantOrganization,
@@ -209,6 +211,9 @@ export const generateResponse = internalAction({
           userId: args.userId,
         },
         {
+          model: openrouterChatWithAnnotations(selectedModel, {
+            parallelToolCalls: false,
+          }),
           promptMessageId: args.promptMessageId,
           system: buildSystemPrompt(
             pageContextSummary,

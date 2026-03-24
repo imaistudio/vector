@@ -54,9 +54,49 @@ export type AssistantPendingAction =
       entities: Array<{ entityId: string; entityLabel: string }>;
       summary: string;
       createdAt: number;
+    }
+  | {
+      id: string;
+      kind: 'send_email';
+      recipientName: string;
+      recipientEmail: string;
+      subject: string;
+      body: string;
+      template?: string;
+      html: string;
+      summary: string;
+      createdAt: number;
     };
 
 export const assistantPageContextValidator = v.any();
+
+export function normalizePendingActions(
+  value: unknown,
+): AssistantPendingAction[] {
+  if (!value) return [];
+  return Array.isArray(value)
+    ? (value as AssistantPendingAction[])
+    : [value as AssistantPendingAction];
+}
+
+export function appendPendingAction(
+  currentValue: unknown,
+  nextAction: AssistantPendingAction,
+) {
+  return [...normalizePendingActions(currentValue), nextAction];
+}
+
+export function removePendingAction(
+  currentValue: unknown,
+  actionId?: string | null,
+) {
+  if (!actionId) return undefined;
+
+  const remaining = normalizePendingActions(currentValue).filter(
+    action => action.id !== actionId,
+  );
+  return remaining.length > 0 ? remaining : undefined;
+}
 
 export async function requireOrgForAssistant(
   ctx: QueryCtx | MutationCtx,

@@ -15,21 +15,8 @@ import { useQuery, useMutation, useAction } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
 import { Button } from '@/components/ui/button';
-import {
-  AssistantInput,
-  type AssistantInputHandle,
-  type MentionRef,
-} from './assistant-input';
-import { BarsSpinner } from '@/components/bars-spinner';
-import {
-  ArrowLeft,
-  ArrowUp,
-  Check,
-  Loader2,
-  Pencil,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { type MentionRef } from './assistant-input';
+import { ArrowLeft, Check, Loader2, Pencil, Trash2, X } from 'lucide-react';
 import {
   type UIMessage,
   optimisticallySendMessage,
@@ -48,15 +35,16 @@ import {
   VisibilitySelector,
   type VisibilityOption,
 } from '@/components/ui/visibility-selector';
-
-type PendingAction = {
-  id: string;
-  kind?: 'delete_entity' | 'bulk_delete_entities';
-  entityType: 'document' | 'issue' | 'project' | 'team';
-  entityLabel?: string;
-  entities?: Array<{ entityId: string; entityLabel: string }>;
-  summary: string;
-};
+import {
+  AssistantComposer,
+  type AssistantComposerHandle,
+  type AssistantComposerSubmitOptions,
+} from './assistant-composer';
+import {
+  AssistantPendingActions,
+  normalizePendingActions,
+  type AssistantPendingAction,
+} from './assistant-pending-actions';
 
 function ThreadLoadingSkeleton() {
   return (
@@ -185,8 +173,7 @@ export function ThreadViewClient() {
     [uiMessages.results],
   );
 
-  const pendingAction = (threadRow?.pendingAction ??
-    null) as PendingAction | null;
+  const pendingActions = normalizePendingActions(threadRow?.pendingAction);
   const hasMessages = messages.length > 0;
 
   // UI state
@@ -194,8 +181,14 @@ export function ThreadViewClient() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
+    null,
+  );
+  const [cancellingActionId, setCancellingActionId] = useState<string | null>(
+    null,
+  );
   const [confirmAction, ConfirmDialog] = useConfirm();
-  const inputRef = useRef<AssistantInputHandle>(null);
+  const inputRef = useRef<AssistantComposerHandle>(null);
 
   const isAssistantActive =
     isSending ||
@@ -372,11 +365,15 @@ export function ThreadViewClient() {
   }, []);
 
   // Handlers
-  const handleSend = async (text: string, mentions: MentionRef[]) => {
+  const handleSend = async (
+    text: string,
+    mentions: MentionRef[],
+    options: AssistantComposerSubmitOptions,
+  ) => {
     if (isSending) return false;
 
     let prompt = text.trim();
-    if (!prompt) return false;
+    if (!prompt && options.attachments.length === 0) return false;
 
     if (mentions.length > 0) {
       const mentionContext = mentions
@@ -395,6 +392,12 @@ export function ThreadViewClient() {
         pageContext,
         prompt,
         threadId: assistantThreadId,
+        model: options.model,
+        attachments: options.attachments.map(attachment => ({
+          storageId: attachment.storageId,
+          filename: attachment.filename,
+          mediaType: attachment.mediaType,
+        })),
       });
       scrollToTail('smooth');
       return true;
@@ -458,31 +461,56 @@ export function ThreadViewClient() {
     }
   };
 
-  const handleConfirmAction = async () => {
-    if (!pendingAction) return;
-    const isBulk = pendingAction.kind === 'bulk_delete_entities';
-    const description = isBulk
-      ? `This will permanently delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}(s) and cannot be undone.\n\n${(pendingAction as any).entities.map((e: any) => `• ${e.entityLabel}`).join('\n')}`
-      : `This will permanently delete "${(pendingAction as any).entityLabel}" and cannot be undone.`;
-    const ok = await confirmAction({
-      title: isBulk
-        ? `Delete ${(pendingAction as any).entities.length} ${pendingAction.entityType}s`
-        : `Delete ${pendingAction.entityType}`,
-      description,
-      confirmLabel: 'Delete',
-      variant: 'destructive',
-    });
-    if (!ok) return;
+  const handleConfirmAction = useCallback(
+    async (action: AssistantPendingAction) => {
+      setConfirmingActionId(action.id);
+      try {
+        await executeConfirmedAction({
+          orgSlug,
+          actionId: action.id,
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Action failed');
+      } finally {
+        setConfirmingActionId(null);
+      }
+    },
+    [executeConfirmedAction, orgSlug],
+  );
 
-    try {
-      await executeConfirmedAction({
-        orgSlug,
-        actionId: pendingAction.id,
-      });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Delete failed');
-    }
-  };
+  const handleCancelPendingAction = useCallback(
+    async (action: AssistantPendingAction) => {
+      setCancellingActionId(action.id);
+      try {
+        await cancelPendingAction({ orgSlug, actionId: action.id });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Cancel failed');
+      } finally {
+        setCancellingActionId(null);
+      }
+    },
+    [cancelPendingAction, orgSlug],
+  );
+
+  useEffect(() => {
+    if (pendingActions.length === 0) return;
+    if (confirmingActionId || cancellingActionId) return;
+
+    const nextAction = pendingActions[0];
+    const storedSkip =
+      typeof window !== 'undefined' &&
+      window.localStorage.getItem('vector.assistant.skip-confirmations') ===
+        'true';
+
+    if (!storedSkip || !nextAction) return;
+
+    void handleConfirmAction(nextAction);
+  }, [
+    cancellingActionId,
+    confirmingActionId,
+    handleConfirmAction,
+    pendingActions,
+  ]);
 
   // Loading state
   if (!isReady || threadQuery.isPending) {
@@ -688,30 +716,14 @@ export function ThreadViewClient() {
           className='pointer-events-none absolute inset-0'
         />
         <div className='relative mx-auto max-w-[700px]'>
-          {/* Pending action banner */}
-          {pendingAction ? (
-            <div className='mb-2 flex items-center gap-2 rounded-md border border-[#cb706f]/20 px-3 py-1.5'>
-              <Trash2 className='size-3.5 text-[#cb706f]' />
-              <div className='min-w-0 flex-1'>
-                <div className='truncate text-xs'>{pendingAction.summary}</div>
-              </div>
-              <Button
-                size='sm'
-                variant='outline'
-                className='h-6 text-xs'
-                onClick={handleConfirmAction}
-              >
-                Confirm
-              </Button>
-              <button
-                type='button'
-                className='text-muted-foreground hover:text-foreground'
-                onClick={() => void cancelPendingAction({ orgSlug })}
-              >
-                <X className='size-3.5' />
-              </button>
-            </div>
-          ) : null}
+          <AssistantPendingActions
+            actions={pendingActions}
+            variant='thread'
+            confirmingActionId={confirmingActionId}
+            cancellingActionId={cancellingActionId}
+            onConfirm={action => void handleConfirmAction(action)}
+            onCancel={action => void handleCancelPendingAction(action)}
+          />
 
           {/* Error banner */}
           {threadRow.threadStatus === 'error' && threadRow.errorMessage ? (
@@ -720,33 +732,15 @@ export function ThreadViewClient() {
             </div>
           ) : null}
 
-          {/* Input */}
-          <div className='border-border/60 bg-background/80 overflow-hidden rounded-lg border backdrop-blur-sm'>
-            <div className='flex items-center'>
-              <AssistantInput
-                ref={inputRef}
-                orgSlug={orgSlug}
-                onSubmit={handleSend}
-                disabled={isSending || isAssistantActive}
-                className='min-h-10 flex-1 px-3 py-2 text-sm leading-10 placeholder:text-center'
-                placeholder='Ask anything...'
-              />
-              <div className='flex shrink-0 items-center pr-1'>
-                <Button
-                  size='sm'
-                  className='size-8 rounded-md p-0'
-                  disabled={isSending || isAssistantActive}
-                  onClick={() => inputRef.current?.submit()}
-                >
-                  {isSending || threadRow.threadStatus === 'pending' ? (
-                    <BarsSpinner size={12} />
-                  ) : (
-                    <ArrowUp className='size-3.5' />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
+          <AssistantComposer
+            ref={inputRef}
+            orgSlug={orgSlug}
+            onSubmit={handleSend}
+            disabled={isSending || isAssistantActive}
+            busy={isSending || threadRow.threadStatus === 'pending'}
+            variant='thread'
+            placeholder='Ask anything...'
+          />
         </div>
       </div>
 

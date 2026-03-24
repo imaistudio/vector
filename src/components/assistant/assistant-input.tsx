@@ -46,6 +46,7 @@ export type AssistantInputProps = {
   orgSlug: string;
   placeholder?: string;
   disabled?: boolean;
+  hasExternalContent?: boolean;
   onSubmit: (
     text: string,
     mentions: MentionRef[],
@@ -135,6 +136,7 @@ export const AssistantInput = forwardRef<
     orgSlug,
     placeholder = 'Ask anything or tell me what to do...',
     disabled = false,
+    hasExternalContent = false,
     onSubmit,
     onFocus,
     className,
@@ -151,7 +153,7 @@ export const AssistantInput = forwardRef<
     const editor = editorRef.current;
     if (!editor) return;
     const { text, bodyText, mentions } = extractPromptAndMentions(editor);
-    if (!bodyText.trim()) return;
+    if (!bodyText.trim() && !hasExternalContent) return;
     const previousContent = editor.getJSON();
     editor.commands.clearContent();
     const shouldClear = await onSubmitRef.current(text, mentions);
@@ -159,7 +161,7 @@ export const AssistantInput = forwardRef<
       editor.commands.setContent(previousContent);
       editor.commands.focus('end');
     }
-  }, []);
+  }, [hasExternalContent]);
 
   // Stable getter for the submit function
   const getSubmitFn = useCallback(

@@ -23,14 +23,18 @@ type ConfirmedActionEntityType =
 
 type ConfirmedActionResult = {
   actionId: string;
-  entityType: ConfirmedActionEntityType;
-  entityLabel: string;
+  kind: 'delete_entity' | 'bulk_delete_entities' | 'send_email';
+  summary: string;
+  entityType?: ConfirmedActionEntityType;
+  entityLabel?: string;
 };
 
 type ExecutedPendingAction = {
   id: string;
-  entityType: ConfirmedActionEntityType;
-  entityLabel: string;
+  kind: 'delete_entity' | 'bulk_delete_entities' | 'send_email';
+  summary: string;
+  entityType?: ConfirmedActionEntityType;
+  entityLabel?: string;
 };
 
 // --- Active thread helpers ---
@@ -384,12 +388,34 @@ export const ensureThread = mutation({
   },
 });
 
+export const generateAttachmentUploadUrl = mutation({
+  args: {
+    orgSlug: v.string(),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    await requireOrgForAssistant(ctx, args.orgSlug, userId);
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
 export const sendMessage = mutation({
   args: {
     orgSlug: v.string(),
     pageContext: assistantPageContextValidator,
     prompt: v.string(),
     threadId: v.optional(v.id('assistantThreads')),
+    model: v.optional(v.string()),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id('_storage'),
+          filename: v.optional(v.string()),
+          mediaType: v.string(),
+        }),
+      ),
+    ),
   },
   returns: v.object({
     threadId: v.string(),
@@ -404,7 +430,8 @@ export const sendMessage = mutation({
     );
 
     const prompt = args.prompt.trim();
-    if (!prompt) {
+    const attachments = args.attachments ?? [];
+    if (!prompt && attachments.length === 0) {
       throw new ConvexError('PROMPT_REQUIRED');
     }
 
@@ -451,10 +478,62 @@ export const sendMessage = mutation({
       throw new ConvexError('THREAD_CREATE_FAILED');
     }
 
+    const content: Array<
+      | { type: 'text'; text: string }
+      | {
+          type: 'image';
+          image: URL;
+          mediaType: string;
+        }
+      | {
+          type: 'file';
+          data: URL;
+          mediaType: string;
+          filename?: string;
+        }
+    > = [];
+
+    if (prompt) {
+      content.push({ type: 'text', text: prompt });
+    }
+
+    for (const attachment of attachments) {
+      const url = await ctx.storage.getUrl(attachment.storageId);
+      if (!url) {
+        throw new ConvexError(
+          `ATTACHMENT_NOT_FOUND:${String(attachment.storageId)}`,
+        );
+      }
+
+      if (attachment.mediaType.startsWith('image/')) {
+        content.push({
+          type: 'image',
+          image: new URL(url),
+          mediaType: attachment.mediaType,
+        });
+      } else {
+        content.push({
+          type: 'file',
+          data: new URL(url),
+          mediaType: attachment.mediaType,
+          filename: attachment.filename,
+        });
+      }
+    }
+
     const saved = await saveMessage(ctx, components.agent, {
       threadId: row.threadId,
       userId,
-      prompt,
+      message:
+        content.length === 1 && content[0]?.type === 'text'
+          ? {
+              role: 'user',
+              content: content[0].text,
+            }
+          : {
+              role: 'user',
+              content,
+            },
     });
 
     await ctx.db.patch('assistantThreads', row._id, {
@@ -471,7 +550,8 @@ export const sendMessage = mutation({
       threadId: row.threadId,
       promptMessageId: saved.messageId,
       pageContext: args.pageContext,
-      promptText: prompt,
+      promptText: prompt || undefined,
+      model: args.model?.trim() || undefined,
     });
 
     return {
@@ -492,14 +572,22 @@ export const executeConfirmedAction: RegisteredMutation<
   },
   returns: v.object({
     actionId: v.string(),
-    entityType: v.union(
-      v.literal('document'),
-      v.literal('issue'),
-      v.literal('project'),
-      v.literal('team'),
-      v.literal('folder'),
+    kind: v.union(
+      v.literal('delete_entity'),
+      v.literal('bulk_delete_entities'),
+      v.literal('send_email'),
     ),
-    entityLabel: v.string(),
+    summary: v.string(),
+    entityType: v.optional(
+      v.union(
+        v.literal('document'),
+        v.literal('issue'),
+        v.literal('project'),
+        v.literal('team'),
+        v.literal('folder'),
+      ),
+    ),
+    entityLabel: v.optional(v.string()),
   }),
   handler: async (ctx, args): Promise<ConfirmedActionResult> => {
     const userId = await requireAuthUserId(ctx);
@@ -528,7 +616,10 @@ export const executeConfirmedAction: RegisteredMutation<
           content: [
             {
               type: 'text',
-              text: `Confirmed and completed deletion of ${executed.entityType} "${executed.entityLabel}".`,
+              text:
+                executed.kind === 'send_email'
+                  ? `Confirmed and sent: ${executed.summary}.`
+                  : `Confirmed and completed: ${executed.summary}.`,
             },
           ],
         },
@@ -537,6 +628,8 @@ export const executeConfirmedAction: RegisteredMutation<
 
     return {
       actionId: executed.id,
+      kind: executed.kind,
+      summary: executed.summary,
       entityType: executed.entityType,
       entityLabel: executed.entityLabel,
     };
@@ -546,6 +639,7 @@ export const executeConfirmedAction: RegisteredMutation<
 export const cancelPendingAction = mutation({
   args: {
     orgSlug: v.string(),
+    actionId: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -553,6 +647,7 @@ export const cancelPendingAction = mutation({
     await ctx.runMutation(internal.ai.internal.clearPendingAction, {
       orgSlug: args.orgSlug,
       userId,
+      actionId: args.actionId,
     });
     return null;
   },

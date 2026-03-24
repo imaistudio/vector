@@ -31,6 +31,17 @@ function getCombinedText(parts: ReadonlyArray<MessagePart>) {
     .join('');
 }
 
+function getFileParts(parts: ReadonlyArray<MessagePart>) {
+  return parts.filter(
+    (
+      part,
+    ): part is Extract<
+      MessagePart,
+      { type: 'file'; url?: string; filename?: string }
+    > => part.type === 'file',
+  );
+}
+
 function getToolName(part: MessagePart) {
   if (
     'toolName' in part &&
@@ -59,6 +70,11 @@ function getPreviewText(message: UIMessage) {
 
     if (part.type === 'reasoning' && typeof part.text === 'string') {
       fragments.push(part.text);
+      continue;
+    }
+
+    if (part.type === 'file') {
+      fragments.push(`[file:${part.filename ?? 'attachment'}]`);
       continue;
     }
 
@@ -164,6 +180,7 @@ function PreviewMessage({ message }: { message: UIMessage }) {
 function UserMessage({ message }: { message: UIMessage }) {
   const parts = Array.isArray(message.parts) ? message.parts : [];
   const text = getCombinedText(parts).trim();
+  const fileParts = getFileParts(parts);
 
   return (
     <motion.div
@@ -174,9 +191,33 @@ function UserMessage({ message }: { message: UIMessage }) {
       className='sticky top-0 z-10 mt-4 ml-auto w-fit max-w-[85%]'
     >
       <div className='bg-muted text-foreground inline-block w-fit rounded-3xl px-4 py-2'>
-        <AssistantResponse className='text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
-          {text}
-        </AssistantResponse>
+        <div className='space-y-2'>
+          {text ? (
+            <AssistantResponse className='text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0'>
+              {text}
+            </AssistantResponse>
+          ) : null}
+          {fileParts.length > 0 ? (
+            <div className='flex flex-wrap gap-1.5'>
+              {fileParts.map((part, index) => (
+                <a
+                  key={`${message.id}-file-${index}`}
+                  href={part.url}
+                  target='_blank'
+                  rel='noreferrer'
+                  className='bg-background/80 hover:bg-background flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors'
+                >
+                  <span>
+                    {part.mediaType.startsWith('image/') ? 'Image' : 'File'}
+                  </span>
+                  <span className='max-w-[180px] truncate'>
+                    {part.filename ?? 'attachment'}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : null}
+        </div>
       </div>
     </motion.div>
   );

@@ -1224,7 +1224,7 @@ export const renameMember: any = createTool({
 
 export const sendEmailToMember: any = createTool({
   description:
-    'Send an email to an organization member. Requires admin or owner role. Consider using previewEmail first so the user can review the email before sending.',
+    'Queue an email to an organization member for explicit confirmation in the UI. Requires admin or owner role. Consider using previewEmail first so the user can review the email before sending.',
   args: z.object({
     recipientName: z
       .string()
@@ -1250,6 +1250,7 @@ export const sendEmailToMember: any = createTool({
     return await ctx.runMutation(internal.ai.internal.sendEmailToMember, {
       orgSlug: ctx.currentPageContext.orgSlug,
       userId: ctx.userId,
+      assistantThreadId: ctx.assistantThreadId,
       recipientName: args.recipientName,
       subject: args.subject,
       body: args.body,
