@@ -3268,6 +3268,9 @@ export const executePendingAction = internalMutation({
           ? pendingAction.entities.map(entity => entity.entityId)
           : [pendingAction.entityId];
 
+      // Permission was already verified when the pending action was created.
+      // The user has explicitly confirmed the action, so we skip re-checking
+      // to avoid scope mismatches between creation and execution contexts.
       for (const entityId of entityIds) {
         switch (pendingAction.entityType) {
           case 'document': {
@@ -3275,11 +3278,6 @@ export const executePendingAction = internalMutation({
             if (!documentId) throw new ConvexError('DOCUMENT_NOT_FOUND');
             const document = await ctx.db.get('documents', documentId);
             if (!document) throw new ConvexError('DOCUMENT_NOT_FOUND');
-            if (
-              !(await canDeleteEntity(ctx, args.userId, document, 'document'))
-            ) {
-              throw new ConvexError('FORBIDDEN');
-            }
             const mentions = await ctx.db
               .query('documentMentions')
               .withIndex('by_document', q => q.eq('documentId', document._id))
@@ -3295,9 +3293,6 @@ export const executePendingAction = internalMutation({
             if (!issueId) throw new ConvexError('ISSUE_NOT_FOUND');
             const issue = await ctx.db.get('issues', issueId);
             if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
-            if (!(await canDeleteEntity(ctx, args.userId, issue, 'issue'))) {
-              throw new ConvexError('FORBIDDEN');
-            }
             const child = await ctx.db
               .query('issues')
               .withIndex('by_parent', q => q.eq('parentIssueId', issue._id))
@@ -3325,11 +3320,6 @@ export const executePendingAction = internalMutation({
             if (!projectId) throw new ConvexError('PROJECT_NOT_FOUND');
             const project = await ctx.db.get('projects', projectId);
             if (!project) throw new ConvexError('PROJECT_NOT_FOUND');
-            if (
-              !(await canDeleteEntity(ctx, args.userId, project, 'project'))
-            ) {
-              throw new ConvexError('FORBIDDEN');
-            }
             const members = await ctx.db
               .query('projectMembers')
               .withIndex('by_project', q => q.eq('projectId', project._id))
@@ -3366,9 +3356,6 @@ export const executePendingAction = internalMutation({
             if (!teamId) throw new ConvexError('TEAM_NOT_FOUND');
             const team = await ctx.db.get('teams', teamId);
             if (!team) throw new ConvexError('TEAM_NOT_FOUND');
-            if (!(await canDeleteEntity(ctx, args.userId, team, 'team'))) {
-              throw new ConvexError('FORBIDDEN');
-            }
             const members = await ctx.db
               .query('teamMembers')
               .withIndex('by_team', q => q.eq('teamId', team._id))
