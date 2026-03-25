@@ -477,3 +477,27 @@ export const failDisposableDomainSync = internalMutation({
     return null;
   },
 });
+
+export const updateAssistantModels = mutation({
+  args: {
+    models: v.array(
+      v.object({
+        modelId: v.string(),
+        name: v.string(),
+        hint: v.optional(v.string()),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new ConvexError('UNAUTHORIZED');
+    await requirePlatformAdminUser(ctx.db, userId);
+
+    const settingsId = await ensureSiteSettings(ctx.db);
+    await ctx.db.patch('siteSettings', settingsId, {
+      assistantModels: args.models,
+    });
+
+    return { success: true };
+  },
+});

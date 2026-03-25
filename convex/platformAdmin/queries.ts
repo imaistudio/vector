@@ -159,6 +159,17 @@ export const getBranding = query({
   },
 });
 
+export const getAssistantModels = query({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new ConvexError('UNAUTHORIZED');
+
+    const settings = await getSiteSettings(ctx.db);
+    return settings?.assistantModels ?? [];
+  },
+});
+
 export const getEmailFromAddress = internalQuery({
   args: {},
   handler: async ctx => {

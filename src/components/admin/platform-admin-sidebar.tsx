@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Shield, Palette, Blocks } from 'lucide-react';
+import { Shield, Palette, Blocks, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, useQuery } from '@/lib/convex';
 
@@ -54,6 +54,20 @@ export function PlatformAdminSidebar() {
       >
         <Palette className='size-4 shrink-0' />
         <span className='truncate'>Branding</span>
+      </Link>
+
+      <Link
+        href='/admin/assistant'
+        className={cn(
+          'group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+          'hover:bg-foreground/5 hover:text-foreground',
+          pathname === '/admin/assistant'
+            ? 'bg-foreground/5 text-foreground'
+            : 'text-muted-foreground',
+        )}
+      >
+        <Bot className='size-4 shrink-0' />
+        <span className='truncate'>Assistant</span>
       </Link>
 
       <Link

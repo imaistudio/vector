@@ -105,6 +105,16 @@ export default defineSchema({
     brandThemeColor: v.optional(v.string()),
     brandAccentColor: v.optional(v.string()),
     defaultOrgSlug: v.optional(v.string()),
+    // Assistant model configuration
+    assistantModels: v.optional(
+      v.array(
+        v.object({
+          modelId: v.string(),
+          name: v.string(),
+          hint: v.optional(v.string()),
+        }),
+      ),
+    ),
     // WIP: reserved for future GitHub App install/auth flows.
     // Do not treat these as the primary workspace GitHub integration source;
     // workspace webhook/token state lives on githubIntegrations.

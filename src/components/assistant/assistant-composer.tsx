@@ -20,10 +20,14 @@ import {
   Paperclip,
   ArrowUp,
   X,
+  Settings2,
+  ShieldCheck,
+  Lightbulb,
 } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api } from '@/convex/_generated/api';
 import { useMutation } from '@/lib/convex';
+import { useCachedQuery } from '@/lib/convex';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { BarsSpinner } from '@/components/bars-spinner';
@@ -43,6 +47,11 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
   AssistantInput,
   type AssistantInputHandle,
   type AssistantInputIssueMention,
@@ -51,9 +60,10 @@ import {
 
 const MODEL_STORAGE_KEY = 'vector.assistant.model';
 const SKIP_CONFIRM_STORAGE_KEY = 'vector.assistant.skip-confirmations';
+const THINKING_STORAGE_KEY = 'vector.assistant.thinking';
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
-const MODEL_OPTIONS = [
+const FALLBACK_MODEL_OPTIONS = [
   {
     value: '',
     label: 'Workspace default',
@@ -74,7 +84,9 @@ const MODEL_OPTIONS = [
     label: 'GPT-5 Mini',
     hint: 'Compact OpenAI option',
   },
-] as const;
+];
+
+type ModelOption = { value: string; label: string; hint: string };
 
 type AssistantComposerVariant = 'dock' | 'thread';
 
@@ -122,13 +134,6 @@ function formatBytes(size: number) {
   return `${Math.round((size / (1024 * 1024)) * 10) / 10} MB`;
 }
 
-function modelLabel(value: string) {
-  const builtIn = MODEL_OPTIONS.find(option => option.value === value);
-  if (builtIn) return builtIn.label;
-  if (!value.trim()) return 'Workspace default';
-  return value;
-}
-
 export const AssistantComposer = forwardRef<
   AssistantComposerHandle,
   AssistantComposerProps
@@ -155,12 +160,47 @@ export const AssistantComposer = forwardRef<
   const [model, setModel] = useState('');
   const [customModelDraft, setCustomModelDraft] = useState('');
   const [skipConfirmations, setSkipConfirmations] = useState(false);
+  const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const attachmentIdPrefix = useId();
   const attachmentsRef = useRef<AssistantComposerAttachment[]>([]);
   const generateAttachmentUploadUrl = useMutation(
     api.ai.mutations.generateAttachmentUploadUrl,
   );
+
+  // Load admin-configured models
+  const adminModels = useCachedQuery(
+    api.platformAdmin.queries.getAssistantModels,
+  );
+
+  const modelOptions: ModelOption[] = useMemo(() => {
+    const workspaceDefault: ModelOption = {
+      value: '',
+      label: 'Workspace default',
+      hint: 'Use the workspace OpenRouter default',
+    };
+
+    if (adminModels && adminModels.length > 0) {
+      return [
+        workspaceDefault,
+        ...adminModels.map(m => ({
+          value: m.modelId,
+          label: m.name,
+          hint: m.hint ?? m.modelId,
+        })),
+      ];
+    }
+
+    return FALLBACK_MODEL_OPTIONS;
+  }, [adminModels]);
+
+  function modelLabel(value: string) {
+    const builtIn = modelOptions.find(option => option.value === value);
+    if (builtIn) return builtIn.label;
+    if (!value.trim()) return 'Workspace default';
+    return value;
+  }
 
   useEffect(() => {
     const storedModel = window.localStorage.getItem(MODEL_STORAGE_KEY);
@@ -171,6 +211,9 @@ export const AssistantComposer = forwardRef<
 
     setSkipConfirmations(
       window.localStorage.getItem(SKIP_CONFIRM_STORAGE_KEY) === 'true',
+    );
+    setThinkingEnabled(
+      window.localStorage.getItem(THINKING_STORAGE_KEY) === 'true',
     );
   }, []);
 
@@ -202,6 +245,17 @@ export const AssistantComposer = forwardRef<
       const next = !current;
       window.localStorage.setItem(
         SKIP_CONFIRM_STORAGE_KEY,
+        next ? 'true' : 'false',
+      );
+      return next;
+    });
+  }, []);
+
+  const handleToggleThinking = useCallback(() => {
+    setThinkingEnabled(current => {
+      const next = !current;
+      window.localStorage.setItem(
+        THINKING_STORAGE_KEY,
         next ? 'true' : 'false',
       );
       return next;
@@ -278,7 +332,13 @@ export const AssistantComposer = forwardRef<
 
   const handleSubmit = useCallback(
     async (text: string, mentions: MentionRef[]) => {
-      const shouldClear = await onSubmit(text, mentions, {
+      // Prepend thinking instruction if enabled
+      let finalText = text;
+      if (thinkingEnabled && text.trim()) {
+        finalText = `[Think step-by-step before responding]\n\n${text}`;
+      }
+
+      const shouldClear = await onSubmit(finalText, mentions, {
         attachments,
         model: model.trim() || undefined,
         skipConfirmations,
@@ -295,11 +355,11 @@ export const AssistantComposer = forwardRef<
 
       return shouldClear;
     },
-    [attachments, model, onSubmit, skipConfirmations],
+    [attachments, model, onSubmit, skipConfirmations, thinkingEnabled],
   );
 
   const canInteract = !disabled && !busy && !isUploadingAttachment;
-  const triggerLabel = useMemo(() => modelLabel(model), [model]);
+  const triggerLabel = useMemo(() => modelLabel(model), [model, modelOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(
     ref,
@@ -315,12 +375,166 @@ export const AssistantComposer = forwardRef<
     variant === 'dock'
       ? 'h-6 gap-1.5 rounded-md px-2 text-[11px]'
       : 'h-7 gap-1.5 rounded-md px-2.5 text-xs';
+  const iconButtonClass =
+    variant === 'dock' ? 'size-6 rounded-md p-0' : 'size-7 rounded-md p-0';
   const sendButtonClass =
     variant === 'dock' ? 'size-7 rounded-md p-0' : 'size-8 rounded-md p-0';
   const inputClass =
     variant === 'dock'
       ? 'min-h-8 flex-1 px-2 py-1.5 text-xs'
       : 'min-h-10 flex-1 px-3 py-2 text-sm';
+
+  // ── Toolbar content (shared between inline and popover) ────────────
+
+  const toolbarContent = (
+    <>
+      <input
+        ref={fileInputRef}
+        type='file'
+        className='hidden'
+        multiple
+        onChange={event => void handleFileSelect(event)}
+        accept='image/*,.txt,.md,.json,.csv,.pdf,.js,.ts,.tsx,.jsx,.py,.go,.rs,.sh'
+      />
+      <Button
+        type='button'
+        size='sm'
+        variant='ghost'
+        className={toolbarButtonClass}
+        disabled={!canInteract}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {isUploadingAttachment ? (
+          <Loader2 className='size-3 animate-spin' />
+        ) : (
+          <Paperclip className='size-3' />
+        )}
+        Attach
+      </Button>
+
+      <Popover open={modelOpen} onOpenChange={setModelOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            className={cn(toolbarButtonClass, 'min-w-0 justify-between')}
+            disabled={!canInteract}
+          >
+            <span className='truncate'>{triggerLabel}</span>
+            <ChevronDown className='size-3 shrink-0' />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align='start' className='w-[320px] p-0'>
+          <Command>
+            <CommandInput placeholder='Search model...' className='h-9' />
+            <CommandList>
+              <CommandEmpty>No models found.</CommandEmpty>
+              <CommandGroup>
+                {modelOptions.map(option => (
+                  <CommandItem
+                    key={option.label}
+                    value={`${option.label} ${option.value} ${option.hint}`}
+                    onSelect={() => {
+                      persistModel(option.value);
+                      setCustomModelDraft(option.value);
+                      setModelOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        'mr-2 size-3.5',
+                        model === option.value ? 'opacity-100' : 'opacity-0',
+                      )}
+                    />
+                    <div className='min-w-0 flex-1'>
+                      <div className='truncate text-xs'>{option.label}</div>
+                      <div className='text-muted-foreground truncate text-[10px]'>
+                        {option.hint}
+                      </div>
+                    </div>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+          <div className='border-border/60 space-y-2 border-t p-2'>
+            <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
+              Custom model ID
+            </div>
+            <div className='flex items-center gap-1.5'>
+              <Input
+                value={customModelDraft}
+                onChange={event => setCustomModelDraft(event.target.value)}
+                placeholder='openrouter/model-id'
+                className='h-8 text-xs'
+              />
+              <Button
+                type='button'
+                size='sm'
+                className='h-8 px-2 text-xs'
+                onClick={() => {
+                  persistModel(customModelDraft.trim());
+                  setModelOpen(false);
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            className={cn(
+              iconButtonClass,
+              thinkingEnabled &&
+                'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400',
+            )}
+            onClick={handleToggleThinking}
+          >
+            <Lightbulb
+              className={cn(variant === 'dock' ? 'size-3' : 'size-3.5')}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='top'>
+          {thinkingEnabled ? 'Thinking: On' : 'Thinking: Off'}
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type='button'
+            size='sm'
+            variant='ghost'
+            className={cn(
+              iconButtonClass,
+              'ml-auto',
+              skipConfirmations &&
+                'bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400',
+            )}
+            onClick={handleToggleSkipConfirmations}
+          >
+            <ShieldCheck
+              className={cn(variant === 'dock' ? 'size-3' : 'size-3.5')}
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side='top'>
+          {skipConfirmations
+            ? 'Skip confirmations: On'
+            : 'Skip confirmations: Off'}
+        </TooltipContent>
+      </Tooltip>
+    </>
+  );
 
   return (
     <div
@@ -330,129 +544,7 @@ export const AssistantComposer = forwardRef<
         className,
       )}
     >
-      <div className='border-border/50 flex flex-wrap items-center gap-1 border-b px-1.5 py-1'>
-        <input
-          ref={fileInputRef}
-          type='file'
-          className='hidden'
-          multiple
-          onChange={event => void handleFileSelect(event)}
-          accept='image/*,.txt,.md,.json,.csv,.pdf,.js,.ts,.tsx,.jsx,.py,.go,.rs,.sh'
-        />
-        <Button
-          type='button'
-          size='sm'
-          variant='ghost'
-          className={toolbarButtonClass}
-          disabled={!canInteract}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {isUploadingAttachment ? (
-            <Loader2 className='size-3 animate-spin' />
-          ) : (
-            <Paperclip className='size-3' />
-          )}
-          Attach
-        </Button>
-
-        <Popover open={modelOpen} onOpenChange={setModelOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              type='button'
-              size='sm'
-              variant='ghost'
-              className={cn(toolbarButtonClass, 'min-w-0 justify-between')}
-              disabled={!canInteract}
-            >
-              <span className='truncate'>{triggerLabel}</span>
-              <ChevronDown className='size-3 shrink-0' />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align='start' className='w-[320px] p-0'>
-            <Command>
-              <CommandInput placeholder='Search model...' className='h-9' />
-              <CommandList>
-                <CommandEmpty>No models found.</CommandEmpty>
-                <CommandGroup>
-                  {MODEL_OPTIONS.map(option => (
-                    <CommandItem
-                      key={option.label}
-                      value={`${option.label} ${option.value} ${option.hint}`}
-                      onSelect={() => {
-                        persistModel(option.value);
-                        setCustomModelDraft(option.value);
-                        setModelOpen(false);
-                      }}
-                    >
-                      <Check
-                        className={cn(
-                          'mr-2 size-3.5',
-                          model === option.value ? 'opacity-100' : 'opacity-0',
-                        )}
-                      />
-                      <div className='min-w-0 flex-1'>
-                        <div className='truncate text-xs'>{option.label}</div>
-                        <div className='text-muted-foreground truncate text-[10px]'>
-                          {option.hint}
-                        </div>
-                      </div>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
-            <div className='border-border/60 space-y-2 border-t p-2'>
-              <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
-                Custom model ID
-              </div>
-              <div className='flex items-center gap-1.5'>
-                <Input
-                  value={customModelDraft}
-                  onChange={event => setCustomModelDraft(event.target.value)}
-                  placeholder='openrouter/model-id'
-                  className='h-8 text-xs'
-                />
-                <Button
-                  type='button'
-                  size='sm'
-                  className='h-8 px-2 text-xs'
-                  onClick={() => {
-                    persistModel(customModelDraft.trim());
-                    setModelOpen(false);
-                  }}
-                >
-                  Save
-                </Button>
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
-
-        <button
-          type='button'
-          className={cn(
-            'border-border/60 hover:bg-muted/60 inline-flex items-center gap-1.5 rounded-md border px-2 text-[11px] transition-colors',
-            variant === 'dock' ? 'h-6' : 'h-7 text-xs',
-            skipConfirmations
-              ? 'border-emerald-500/25 bg-emerald-500/8 text-emerald-700 dark:text-emerald-300'
-              : 'text-muted-foreground',
-          )}
-          onClick={handleToggleSkipConfirmations}
-        >
-          <span
-            className={cn(
-              'inline-flex size-3 items-center justify-center rounded-sm border',
-              skipConfirmations
-                ? 'border-current bg-current text-white'
-                : 'border-current/40 text-transparent',
-            )}
-          >
-            <Check className='size-2.5' />
-          </span>
-          Skip confirms
-        </button>
-      </div>
-
+      {/* Attachments bar */}
       {attachments.length > 0 ? (
         <div className='border-border/50 flex flex-wrap gap-1.5 border-b px-2 py-2'>
           {attachments.map(attachment => (
@@ -493,6 +585,7 @@ export const AssistantComposer = forwardRef<
         </div>
       ) : null}
 
+      {/* Input row */}
       <div className='flex items-center gap-1'>
         <AssistantInput
           ref={inputRef}
@@ -527,6 +620,41 @@ export const AssistantComposer = forwardRef<
           </Button>
         </div>
       </div>
+
+      {/* Toolbar — below input for thread, behind a settings icon for dock */}
+      {variant === 'dock' ? (
+        <div className='border-border/50 flex items-center border-t px-1 py-0.5'>
+          <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type='button'
+                size='sm'
+                variant='ghost'
+                className='h-5 gap-1 rounded px-1.5 text-[10px]'
+              >
+                <Settings2 className='size-3' />
+                <span className='text-muted-foreground'>Options</span>
+                {(skipConfirmations || thinkingEnabled || model) && (
+                  <span className='bg-primary size-1.5 rounded-full' />
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align='start'
+              sideOffset={8}
+              className='w-auto min-w-[280px] p-0'
+            >
+              <div className='flex flex-wrap items-center gap-1 p-1.5'>
+                {toolbarContent}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      ) : (
+        <div className='border-border/50 flex flex-wrap items-center gap-1 border-t px-1.5 py-1'>
+          {toolbarContent}
+        </div>
+      )}
     </div>
   );
 });
