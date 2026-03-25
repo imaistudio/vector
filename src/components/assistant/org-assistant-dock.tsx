@@ -447,6 +447,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
         pageContext,
         prompt,
         model: options.model,
+        thinkingLevel: options.thinkingLevel,
         attachments: options.attachments.map(attachment => ({
           storageId: attachment.storageId,
           filename: attachment.filename,

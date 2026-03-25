@@ -393,6 +393,7 @@ export function ThreadViewClient() {
         prompt,
         threadId: assistantThreadId,
         model: options.model,
+        thinkingLevel: options.thinkingLevel,
         attachments: options.attachments.map(attachment => ({
           storageId: attachment.storageId,
           filename: attachment.filename,

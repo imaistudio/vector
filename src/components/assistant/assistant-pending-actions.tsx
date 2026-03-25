@@ -1,6 +1,6 @@
 'use client';
 
-import { Mail, Trash2 } from 'lucide-react';
+import { Loader2, Mail, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -101,12 +101,29 @@ export function AssistantPendingActions({
               <div className='min-w-0 flex-1'>
                 <div
                   className={cn(
-                    'min-w-0 truncate',
+                    'min-w-0',
                     variant === 'dock' ? 'text-[11px]' : 'text-xs',
                   )}
                 >
-                  {action.summary}
+                  {action.summary ||
+                    (action.kind === 'bulk_delete_entities'
+                      ? `Delete ${action.entities.length} ${action.entityType}${action.entities.length !== 1 ? 's' : ''}`
+                      : action.kind === 'delete_entity'
+                        ? `Delete ${action.entityType}: ${action.entityLabel}`
+                        : 'Pending action')}
                 </div>
+                {action.kind === 'bulk_delete_entities' &&
+                action.entities.length > 0 ? (
+                  <div className='text-muted-foreground mt-0.5 text-[10px]'>
+                    {action.entities
+                      .slice(0, 5)
+                      .map(e => e.entityLabel)
+                      .join(', ')}
+                    {action.entities.length > 5
+                      ? ` and ${action.entities.length - 5} more`
+                      : ''}
+                  </div>
+                ) : null}
                 {isEmail ? (
                   <div className='text-muted-foreground mt-0.5 text-[10px]'>
                     {action.subject} · {action.recipientEmail}
@@ -165,6 +182,9 @@ export function AssistantPendingActions({
                 disabled={isBusy}
                 onClick={() => onConfirm(action)}
               >
+                {isConfirming && (
+                  <Loader2 className='mr-1 size-3 animate-spin' />
+                )}
                 {actionButtonLabel(action)}
               </Button>
               <Button
@@ -180,6 +200,9 @@ export function AssistantPendingActions({
                 disabled={isBusy}
                 onClick={() => onCancel(action)}
               >
+                {isCancelling && (
+                  <Loader2 className='mr-1 size-3 animate-spin' />
+                )}
                 Cancel
               </Button>
             </div>

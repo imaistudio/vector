@@ -24,6 +24,8 @@ import {
   syncDocumentMentions,
 } from '../documents/mentions';
 import {
+  matchesActivityEventFilters,
+  queryOrganizationActivityPage,
   recordActivity,
   resolveIssueScope,
   snapshotForIssue,
@@ -31,6 +33,7 @@ import {
 import {
   activityEntityTypeValidator,
   activityEventTypeValidator,
+  activityFieldValidator,
 } from '../_shared/activity';
 import {
   AssistantPageContext,
@@ -1457,6 +1460,16 @@ export const listIssues = internalQuery({
     projectKey: v.optional(v.string()),
     teamKey: v.optional(v.string()),
     assigneeName: v.optional(v.string()),
+    stateName: v.optional(v.string()),
+    stateType: v.optional(
+      v.union(
+        v.literal('backlog'),
+        v.literal('todo'),
+        v.literal('in_progress'),
+        v.literal('done'),
+        v.literal('canceled'),
+      ),
+    ),
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -1529,9 +1542,9 @@ export const listIssues = internalQuery({
       }
     }
 
-    const issueSlice = visible.slice(0, args.limit ?? 25);
     const results = [];
-    for (const issue of issueSlice) {
+    const maxResults = args.limit ?? 25;
+    for (const issue of visible) {
       const assignees = await ctx.db
         .query('issueAssignees')
         .withIndex('by_issue', q => q.eq('issueId', issue._id))
@@ -1546,6 +1559,17 @@ export const listIssues = internalQuery({
       const priority = issue.priorityId
         ? await ctx.db.get('issuePriorities', issue.priorityId)
         : null;
+
+      if (
+        args.stateName &&
+        state?.name.toLowerCase() !== args.stateName.toLowerCase()
+      ) {
+        continue;
+      }
+
+      if (args.stateType && state?.type !== args.stateType) {
+        continue;
+      }
 
       results.push({
         id: String(issue._id),
@@ -1565,6 +1589,10 @@ export const listIssues = internalQuery({
           : undefined,
         createdAt: issue._creationTime,
       });
+
+      if (results.length >= maxResults) {
+        break;
+      }
     }
     return results;
   },
@@ -4861,34 +4889,6 @@ export const sendEmailToMember = internalMutation({
 
 type ActivityEventDoc = Doc<'activityEvents'>;
 
-function matchesAssistantActivityFilters(
-  event: ActivityEventDoc,
-  args: {
-    entityType?: ActivityEventDoc['entityType'];
-    eventType?: ActivityEventDoc['eventType'];
-    since?: number;
-    until?: number;
-  },
-) {
-  if (args.since != null && event._creationTime < args.since) {
-    return false;
-  }
-
-  if (args.until != null && event._creationTime > args.until) {
-    return false;
-  }
-
-  if (args.entityType && event.entityType !== args.entityType) {
-    return false;
-  }
-
-  if (args.eventType && event.eventType !== args.eventType) {
-    return false;
-  }
-
-  return true;
-}
-
 async function canUserViewActivityEvent(
   ctx: QueryCtx,
   userId: Id<'users'>,
@@ -4929,6 +4929,9 @@ async function collectAssistantActivityPage(
     userId: Id<'users'>;
     entityType?: ActivityEventDoc['entityType'];
     eventType?: ActivityEventDoc['eventType'];
+    field?: ActivityEventDoc['details']['field'];
+    fromLabel?: string;
+    toLabel?: string;
     since?: number;
     until?: number;
     limit?: number;
@@ -4941,17 +4944,14 @@ async function collectAssistantActivityPage(
   let isDone = false;
 
   while (events.length < limit && !isDone) {
-    const page = await ctx.db
-      .query('activityEvents')
-      .withIndex('by_organization', q => q.eq('organizationId', organizationId))
-      .order('desc')
-      .paginate({
-        cursor,
-        numItems: limit - events.length,
-      });
+    const page = await queryOrganizationActivityPage(ctx, organizationId, {
+      ...args,
+      cursor,
+      numItems: limit - events.length,
+    });
 
     const matchingEvents = page.page.filter(event =>
-      matchesAssistantActivityFilters(event, args),
+      matchesActivityEventFilters(event, args),
     );
     const visibility = await Promise.all(
       matchingEvents.map(event =>
@@ -4979,6 +4979,9 @@ export const listActivity = internalQuery({
     userId: v.id('users'),
     entityType: v.optional(activityEntityTypeValidator),
     eventType: v.optional(activityEventTypeValidator),
+    field: v.optional(activityFieldValidator),
+    fromLabel: v.optional(v.string()),
+    toLabel: v.optional(v.string()),
     since: v.optional(v.number()),
     until: v.optional(v.number()),
     limit: v.optional(v.number()),

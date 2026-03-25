@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'nextjs-toploader/app';
 import { toast } from 'sonner';
-import { Menu, Plus, Shield, Trash2 } from 'lucide-react';
+import { Menu, Plus, Shield, Star, Trash2 } from 'lucide-react';
 import { api, useQuery, useMutation } from '@/lib/convex';
+import { cn } from '@/lib/utils';
 import { UserMenu } from '@/components/user-menu';
 import { PlatformAdminSidebar } from './platform-admin-sidebar';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
@@ -77,6 +78,7 @@ export function PlatformAssistantPage() {
   );
 
   const [models, setModels] = useState<ModelEntry[]>([]);
+  const [defaultModel, setDefaultModel] = useState('');
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -84,12 +86,13 @@ export function PlatformAssistantPage() {
   useEffect(() => {
     if (!modelsQuery.data || hasLocalEdits) return;
     setModels(
-      modelsQuery.data.map(m => ({
+      modelsQuery.data.models.map(m => ({
         modelId: m.modelId,
         name: m.name,
         hint: m.hint ?? '',
       })),
     );
+    setDefaultModel(modelsQuery.data.defaultModel ?? '');
   }, [modelsQuery.data, hasLocalEdits]);
 
   // Auth guard
@@ -136,6 +139,11 @@ export function PlatformAssistantPage() {
     setHasLocalEdits(true);
   };
 
+  const handleSetDefault = (modelId: string) => {
+    setDefaultModel(current => (current === modelId ? '' : modelId));
+    setHasLocalEdits(true);
+  };
+
   const handleSave = async () => {
     const valid = models.filter(m => m.modelId.trim() && m.name.trim());
     setIsSaving(true);
@@ -146,6 +154,7 @@ export function PlatformAssistantPage() {
           name: m.name.trim(),
           hint: m.hint.trim() || undefined,
         })),
+        defaultModel: defaultModel.trim() || undefined,
       });
       setHasLocalEdits(false);
       toast.success('Assistant models updated');
@@ -220,48 +229,73 @@ export function PlatformAssistantPage() {
           </div>
 
           <div className='space-y-3'>
-            {models.map((entry, index) => (
-              <div
-                key={index}
-                className='bg-muted/30 flex items-start gap-2 rounded-lg border p-3'
-              >
-                <div className='grid min-w-0 flex-1 gap-2 sm:grid-cols-3'>
-                  <Input
-                    value={entry.modelId}
-                    onChange={e =>
-                      handleUpdateModel(index, 'modelId', e.target.value)
-                    }
-                    placeholder='openrouter/model-id'
-                    className='h-8 font-mono text-xs'
-                  />
-                  <Input
-                    value={entry.name}
-                    onChange={e =>
-                      handleUpdateModel(index, 'name', e.target.value)
-                    }
-                    placeholder='Display name'
-                    className='h-8 text-xs'
-                  />
-                  <Input
-                    value={entry.hint}
-                    onChange={e =>
-                      handleUpdateModel(index, 'hint', e.target.value)
-                    }
-                    placeholder='Short description (optional)'
-                    className='h-8 text-xs'
-                  />
-                </div>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='sm'
-                  className='text-muted-foreground hover:text-destructive size-8 shrink-0 p-0'
-                  onClick={() => handleRemoveModel(index)}
+            {models.map((entry, index) => {
+              const isDefault = defaultModel === entry.modelId && entry.modelId;
+              return (
+                <div
+                  key={index}
+                  className={cn(
+                    'flex items-start gap-2 rounded-lg border p-3',
+                    isDefault
+                      ? 'border-primary/30 bg-primary/5'
+                      : 'bg-muted/30',
+                  )}
                 >
-                  <Trash2 className='size-3.5' />
-                </Button>
-              </div>
-            ))}
+                  <div className='grid min-w-0 flex-1 gap-2 sm:grid-cols-3'>
+                    <Input
+                      value={entry.modelId}
+                      onChange={e =>
+                        handleUpdateModel(index, 'modelId', e.target.value)
+                      }
+                      placeholder='openrouter/model-id'
+                      className='h-8 font-mono text-xs'
+                    />
+                    <Input
+                      value={entry.name}
+                      onChange={e =>
+                        handleUpdateModel(index, 'name', e.target.value)
+                      }
+                      placeholder='Display name'
+                      className='h-8 text-xs'
+                    />
+                    <Input
+                      value={entry.hint}
+                      onChange={e =>
+                        handleUpdateModel(index, 'hint', e.target.value)
+                      }
+                      placeholder='Short description (optional)'
+                      className='h-8 text-xs'
+                    />
+                  </div>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    className={cn(
+                      'size-8 shrink-0 p-0',
+                      isDefault
+                        ? 'text-amber-500 hover:text-amber-600'
+                        : 'text-muted-foreground hover:text-amber-500',
+                    )}
+                    onClick={() => handleSetDefault(entry.modelId)}
+                    title={isDefault ? 'Remove as default' : 'Set as default'}
+                  >
+                    <Star
+                      className={cn('size-3.5', isDefault && 'fill-current')}
+                    />
+                  </Button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    className='text-muted-foreground hover:text-destructive size-8 shrink-0 p-0'
+                    onClick={() => handleRemoveModel(index)}
+                  >
+                    <Trash2 className='size-3.5' />
+                  </Button>
+                </div>
+              );
+            })}
 
             <Button
               type='button'

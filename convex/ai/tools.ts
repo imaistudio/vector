@@ -3,7 +3,7 @@ import type { Tool } from 'ai';
 import { z } from 'zod';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import type { ActivityEventType } from '../_shared/activity';
+import { ACTIVITY_FIELDS, type ActivityEventType } from '../_shared/activity';
 import { searchAvailableIcons } from './icons';
 import type { AssistantPageContext } from './lib';
 
@@ -163,7 +163,7 @@ export const requestDeleteDocument: any = createTool({
 
 export const listIssues: any = createTool({
   description:
-    'List issues with key details. If projectKey or teamKey is omitted, the current project or team page scope is used when available. Filter by assignee using assigneeName. Returns key, title, priority, state, assignee, dates, and parent for each issue.',
+    'List issues with key details. If projectKey or teamKey is omitted, the current project or team page scope is used when available. Filter by assignee using assigneeName and by current workflow state using stateName/stateType. Returns key, title, priority, state, assignee, dates, and parent for each issue.',
   args: z.object({
     projectKey: z.string().optional(),
     teamKey: z.string().optional(),
@@ -172,6 +172,16 @@ export const listIssues: any = createTool({
       .optional()
       .describe(
         'Filter by assignee name or email. Use listWorkspaceReferenceData to look up member names.',
+      ),
+    stateName: z
+      .string()
+      .optional()
+      .describe('Filter by the current workflow state name, such as "Done"'),
+    stateType: z
+      .enum(['backlog', 'todo', 'in_progress', 'done', 'canceled'])
+      .optional()
+      .describe(
+        'Filter by the current workflow state type, such as "done" or "in_progress".',
       ),
     limit: z.number().int().positive().max(50).optional(),
   }),
@@ -1016,6 +1026,14 @@ export const showIssues: any = createTool({
       .string()
       .optional()
       .describe('Filter by assignee name or email'),
+    stateName: z
+      .string()
+      .optional()
+      .describe('Filter by the current workflow state name'),
+    stateType: z
+      .enum(['backlog', 'todo', 'in_progress', 'done', 'canceled'])
+      .optional()
+      .describe('Filter by the current workflow state type'),
     limit: z.number().int().positive().max(10).optional(),
   }),
   handler: async (ctx: AssistantToolCtx, args) => {
@@ -1263,7 +1281,7 @@ export const sendEmailToMember: any = createTool({
 
 export const listActivity: any = createTool({
   description:
-    'List recent activity across the organization. Filter by entity type (issue, project, team, document), specific event type (e.g. issue_created, issue_priority_changed), and time range. Use this to answer questions like "what happened today?", "what issues were created this week?", or "show me recent activity".',
+    'List recent activity across the organization. Filter by entity type, event type, activity field, before/after labels, and time range. Use this for historical questions like "what happened today?", "what issues moved to Done yesterday?", or "show me recent activity". Do not use listIssues as a substitute for historical answers.',
   args: z.object({
     entityType: z
       .enum(['issue', 'project', 'team', 'document'])
@@ -1275,6 +1293,22 @@ export const listActivity: any = createTool({
       .describe(
         'Filter by specific event type (e.g. issue_created, issue_priority_changed, project_status_changed, document_created)',
       ),
+    field: z
+      .enum(ACTIVITY_FIELDS)
+      .optional()
+      .describe(
+        'Filter by the activity field that changed, such as "workflow_state" or "status".',
+      ),
+    fromLabel: z
+      .string()
+      .optional()
+      .describe(
+        'Filter by the previous human-readable label, such as "In Progress".',
+      ),
+    toLabel: z
+      .string()
+      .optional()
+      .describe('Filter by the new human-readable label, such as "Done".'),
     since: z
       .string()
       .optional()
@@ -1298,6 +1332,9 @@ export const listActivity: any = createTool({
     args: {
       entityType?: 'issue' | 'project' | 'team' | 'document';
       eventType?: string;
+      field?: (typeof ACTIVITY_FIELDS)[number];
+      fromLabel?: string;
+      toLabel?: string;
       since?: string;
       until?: string;
       limit?: number;
@@ -1309,6 +1346,9 @@ export const listActivity: any = createTool({
       userId: ctx.userId,
       entityType: args.entityType,
       eventType: args.eventType as ActivityEventType | undefined,
+      field: args.field,
+      fromLabel: args.fromLabel,
+      toLabel: args.toLabel,
       since: args.since ? new Date(args.since).getTime() : undefined,
       until: args.until ? new Date(args.until).getTime() : undefined,
       limit: args.limit,

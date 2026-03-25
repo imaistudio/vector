@@ -1,5 +1,5 @@
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type {
   ActivityEntityType,
   ActivityEventType,
@@ -70,6 +70,171 @@ export interface ActivityWrite {
     entityKey?: string;
     entityName?: string;
   };
+}
+
+export type ActivityEventDoc = Doc<'activityEvents'>;
+
+export interface ActivityEventFilters {
+  entityType?: ActivityEntityType;
+  eventType?: ActivityEventType;
+  actorId?: Id<'users'>;
+  field?: ActivityField;
+  fromLabel?: string;
+  toLabel?: string;
+  since?: number;
+  until?: number;
+}
+
+function normalizeActivityLabel(value: string | null | undefined) {
+  return value?.trim().toLowerCase() ?? null;
+}
+
+export function matchesActivityEventFilters(
+  event: ActivityEventDoc,
+  filters: ActivityEventFilters,
+) {
+  if (filters.since != null && event._creationTime < filters.since) {
+    return false;
+  }
+
+  if (filters.until != null && event._creationTime > filters.until) {
+    return false;
+  }
+
+  if (filters.entityType && event.entityType !== filters.entityType) {
+    return false;
+  }
+
+  if (filters.eventType && event.eventType !== filters.eventType) {
+    return false;
+  }
+
+  if (filters.actorId && event.actorId !== filters.actorId) {
+    return false;
+  }
+
+  if (filters.field && event.details.field !== filters.field) {
+    return false;
+  }
+
+  const fromLabel = normalizeActivityLabel(filters.fromLabel);
+  if (
+    fromLabel &&
+    normalizeActivityLabel(event.details.fromLabel) !== fromLabel
+  ) {
+    return false;
+  }
+
+  const toLabel = normalizeActivityLabel(filters.toLabel);
+  if (toLabel && normalizeActivityLabel(event.details.toLabel) !== toLabel) {
+    return false;
+  }
+
+  return true;
+}
+
+function applyCreationTimeRange<T extends { gte: Function; lte: Function }>(
+  builder: T,
+  since?: number,
+  until?: number,
+) {
+  let next: T = builder;
+
+  if (since != null) {
+    next = next.gte('_creationTime', since);
+  }
+
+  if (until != null) {
+    next = next.lte('_creationTime', until);
+  }
+
+  return next;
+}
+
+export async function queryOrganizationActivityPage(
+  ctx: QueryCtx,
+  organizationId: Id<'organizations'>,
+  args: ActivityEventFilters & {
+    cursor?: string | null;
+    numItems: number;
+  },
+) {
+  const cursor = args.cursor ?? null;
+
+  if (args.entityType && args.eventType) {
+    return await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization_entity_event_type', q =>
+        applyCreationTimeRange(
+          q
+            .eq('organizationId', organizationId)
+            .eq('entityType', args.entityType!)
+            .eq('eventType', args.eventType!),
+          args.since,
+          args.until,
+        ),
+      )
+      .order('desc')
+      .paginate({ cursor, numItems: args.numItems });
+  }
+
+  if (args.entityType) {
+    return await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization_entity_type', q =>
+        applyCreationTimeRange(
+          q
+            .eq('organizationId', organizationId)
+            .eq('entityType', args.entityType!),
+          args.since,
+          args.until,
+        ),
+      )
+      .order('desc')
+      .paginate({ cursor, numItems: args.numItems });
+  }
+
+  if (args.eventType) {
+    return await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization_event_type', q =>
+        applyCreationTimeRange(
+          q
+            .eq('organizationId', organizationId)
+            .eq('eventType', args.eventType!),
+          args.since,
+          args.until,
+        ),
+      )
+      .order('desc')
+      .paginate({ cursor, numItems: args.numItems });
+  }
+
+  if (args.actorId) {
+    return await ctx.db
+      .query('activityEvents')
+      .withIndex('by_organization_actor', q =>
+        applyCreationTimeRange(
+          q.eq('organizationId', organizationId).eq('actorId', args.actorId!),
+          args.since,
+          args.until,
+        ),
+      )
+      .order('desc')
+      .paginate({ cursor, numItems: args.numItems });
+  }
+
+  return await ctx.db
+    .query('activityEvents')
+    .withIndex('by_organization', q =>
+      applyCreationTimeRange(
+        q.eq('organizationId', organizationId),
+        args.since,
+        args.until,
+      ),
+    )
+    .order('desc')
+    .paginate({ cursor, numItems: args.numItems });
 }
 
 export function getUserDisplayName(

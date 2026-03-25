@@ -487,6 +487,7 @@ export const updateAssistantModels = mutation({
         hint: v.optional(v.string()),
       }),
     ),
+    defaultModel: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -496,6 +497,7 @@ export const updateAssistantModels = mutation({
     const settingsId = await ensureSiteSettings(ctx.db);
     await ctx.db.patch('siteSettings', settingsId, {
       assistantModels: args.models,
+      defaultAssistantModel: args.defaultModel || undefined,
     });
 
     return { success: true };

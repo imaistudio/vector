@@ -407,6 +407,9 @@ export const sendMessage = mutation({
     prompt: v.string(),
     threadId: v.optional(v.id('assistantThreads')),
     model: v.optional(v.string()),
+    thinkingLevel: v.optional(
+      v.union(v.literal('low'), v.literal('medium'), v.literal('high')),
+    ),
     attachments: v.optional(
       v.array(
         v.object({
@@ -552,6 +555,7 @@ export const sendMessage = mutation({
       pageContext: args.pageContext,
       promptText: prompt || undefined,
       model: args.model?.trim() || undefined,
+      thinkingLevel: args.thinkingLevel,
     });
 
     return {

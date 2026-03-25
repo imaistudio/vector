@@ -156,12 +156,23 @@ export const generateResponse = internalAction({
     pageContext: assistantPageContextValidator,
     promptText: v.optional(v.string()),
     model: v.optional(v.string()),
+    thinkingLevel: v.optional(
+      v.union(v.literal('low'), v.literal('medium'), v.literal('high')),
+    ),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
       assertAssistantModelConfigured();
-      const selectedModel = args.model?.trim() || defaultAssistantModel;
+      // Check admin-configured default, then env var default
+      let selectedModel = args.model?.trim();
+      if (!selectedModel) {
+        const adminDefault = await ctx.runQuery(
+          internal.platformAdmin.queries.getDefaultAssistantModel,
+          {},
+        );
+        selectedModel = adminDefault || defaultAssistantModel;
+      }
 
       const organization = await ctx.runQuery(
         internal.ai.internal.getAssistantOrganization,
@@ -204,6 +215,25 @@ export const generateResponse = internalAction({
         currentPageContext: args.pageContext,
       });
 
+      // Build provider options for thinking/reasoning budget
+      const thinkingBudgets: Record<string, number> = {
+        low: 1024,
+        medium: 4096,
+        high: 16384,
+      };
+      const providerOptions = args.thinkingLevel
+        ? {
+            openrouter: {
+              reasoning: {
+                effort: args.thinkingLevel,
+                ...(thinkingBudgets[args.thinkingLevel]
+                  ? { max_tokens: thinkingBudgets[args.thinkingLevel] }
+                  : {}),
+              },
+            },
+          }
+        : undefined;
+
       const stream = await assistantAgent.streamText(
         assistantCtx,
         {
@@ -220,6 +250,7 @@ export const generateResponse = internalAction({
             currentUserContextSummary,
             currentUserDeviceContextSummary,
           ),
+          providerOptions,
           onError(error: unknown) {
             console.error('[ai.generateResponse] stream error', error);
           },

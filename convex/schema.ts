@@ -115,6 +115,7 @@ export default defineSchema({
         }),
       ),
     ),
+    defaultAssistantModel: v.optional(v.string()),
     // WIP: reserved for future GitHub App install/auth flows.
     // Do not treat these as the primary workspace GitHub integration source;
     // workspace webhook/token state lives on githubIntegrations.
@@ -946,6 +947,14 @@ export default defineSchema({
     snapshot: activitySnapshotValidator,
   })
     .index('by_organization', ['organizationId'])
+    .index('by_organization_actor', ['organizationId', 'actorId'])
+    .index('by_organization_entity_type', ['organizationId', 'entityType'])
+    .index('by_organization_event_type', ['organizationId', 'eventType'])
+    .index('by_organization_entity_event_type', [
+      'organizationId',
+      'entityType',
+      'eventType',
+    ])
     .index('by_team', ['teamId'])
     .index('by_project', ['projectId'])
     .index('by_issue', ['issueId'])

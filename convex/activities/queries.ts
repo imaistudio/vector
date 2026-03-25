@@ -9,7 +9,11 @@ import {
   canViewTeam,
 } from '../access';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
-import { getUserDisplayName } from './lib';
+import {
+  getUserDisplayName,
+  matchesActivityEventFilters,
+  queryOrganizationActivityPage,
+} from './lib';
 import {
   activityEntityTypeValidator,
   activityEventTypeValidator,
@@ -279,39 +283,6 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
   );
 }
 
-function matchesOrgActivityFilters(
-  event: ActivityEventDoc,
-  args: {
-    entityType?: ActivityEventDoc['entityType'];
-    eventType?: ActivityEventDoc['eventType'];
-    actorId?: Id<'users'>;
-    since?: number;
-    until?: number;
-  },
-) {
-  if (args.since != null && event._creationTime < args.since) {
-    return false;
-  }
-
-  if (args.until != null && event._creationTime > args.until) {
-    return false;
-  }
-
-  if (args.entityType && event.entityType !== args.entityType) {
-    return false;
-  }
-
-  if (args.eventType && event.eventType !== args.eventType) {
-    return false;
-  }
-
-  if (args.actorId && event.actorId !== args.actorId) {
-    return false;
-  }
-
-  return true;
-}
-
 async function collectOrgActivityItems(
   ctx: QueryCtx,
   organizationId: Id<'organizations'>,
@@ -331,17 +302,14 @@ async function collectOrgActivityItems(
   let isDone = false;
 
   while (items.length < limit && !isDone) {
-    const page = await ctx.db
-      .query('activityEvents')
-      .withIndex('by_organization', q => q.eq('organizationId', organizationId))
-      .order('desc')
-      .paginate({
-        cursor,
-        numItems: limit - items.length,
-      });
+    const page = await queryOrganizationActivityPage(ctx, organizationId, {
+      ...args,
+      cursor,
+      numItems: limit - items.length,
+    });
 
     const matchingEvents = page.page.filter(event =>
-      matchesOrgActivityFilters(event, args),
+      matchesActivityEventFilters(event, args),
     );
 
     items.push(...(await enrichEvents(ctx, matchingEvents)));

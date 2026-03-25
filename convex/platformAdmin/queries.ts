@@ -166,7 +166,18 @@ export const getAssistantModels = query({
     if (userId === null) throw new ConvexError('UNAUTHORIZED');
 
     const settings = await getSiteSettings(ctx.db);
-    return settings?.assistantModels ?? [];
+    return {
+      models: settings?.assistantModels ?? [],
+      defaultModel: settings?.defaultAssistantModel ?? null,
+    };
+  },
+});
+
+export const getDefaultAssistantModel = internalQuery({
+  args: {},
+  handler: async ctx => {
+    const settings = await getSiteSettings(ctx.db);
+    return settings?.defaultAssistantModel || null;
   },
 });
 
