@@ -1,4 +1,4 @@
-<div align="center">
+<div>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/xrehpicx/vector/main/public/icons/vector-wordmark.png">
