@@ -475,6 +475,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
         await executeConfirmedAction({
           orgSlug,
           actionId: action.id,
+          assistantThreadId: threadRow?._id as never,
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Action failed');
@@ -482,21 +483,25 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
         setConfirmingActionId(null);
       }
     },
-    [executeConfirmedAction, orgSlug],
+    [executeConfirmedAction, orgSlug, threadRow?._id],
   );
 
   const handleCancelPendingAction = useCallback(
     async (action: AssistantPendingAction) => {
       setCancellingActionId(action.id);
       try {
-        await cancelPendingAction({ orgSlug, actionId: action.id });
+        await cancelPendingAction({
+          orgSlug,
+          actionId: action.id,
+          assistantThreadId: threadRow?._id as never,
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Cancel failed');
       } finally {
         setCancellingActionId(null);
       }
     },
-    [cancelPendingAction, orgSlug],
+    [cancelPendingAction, orgSlug, threadRow?._id],
   );
 
   const handleClearHistory = async () => {

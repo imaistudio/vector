@@ -3246,12 +3246,14 @@ export const setPendingDeleteAction = internalMutation({
     const entityId = String(entity._id);
     const pendingAction: AssistantPendingAction = {
       id: makePendingActionId(),
+      assistantThreadId: row._id,
       kind: 'delete_entity',
       entityType: args.entityType,
       entityId,
       entityLabel: label,
       summary: `Delete ${args.entityType} "${label}"`,
       createdAt: Date.now(),
+      pageContext: args.pageContext,
     };
 
     if (args.autoConfirm) {
@@ -3275,8 +3277,13 @@ export const setPendingDeleteAction = internalMutation({
       return { ...pendingAction, executed: true };
     }
 
+    const pendingToolResult = {
+      ...pendingAction,
+      stop_chat: true,
+    };
+
     await ctx.db.patch('assistantThreads', row._id, {
-      pendingAction: appendPendingAction(row.pendingAction, pendingAction),
+      pendingAction: appendPendingAction(row.pendingAction, pendingToolResult),
       updatedAt: Date.now(),
       ...buildAssistantThreadPatch(
         args.pageContext ?? {
@@ -3287,7 +3294,7 @@ export const setPendingDeleteAction = internalMutation({
       ),
     });
 
-    return pendingAction;
+    return pendingToolResult;
   },
 });
 
@@ -3367,11 +3374,13 @@ export const setBulkPendingDeleteAction = internalMutation({
 
     const pendingAction: AssistantPendingAction = {
       id: makePendingActionId(),
+      assistantThreadId: row._id,
       kind: 'bulk_delete_entities',
       entityType: args.entityType,
       entities,
       summary: `Delete ${entities.length} ${args.entityType}${entities.length > 1 ? 's' : ''}: ${entities.map(e => e.entityLabel).join(', ')}`,
       createdAt: Date.now(),
+      pageContext: args.pageContext,
     };
 
     if (args.autoConfirm) {
@@ -3397,8 +3406,13 @@ export const setBulkPendingDeleteAction = internalMutation({
       return { ...pendingAction, executed: true };
     }
 
+    const pendingToolResult = {
+      ...pendingAction,
+      stop_chat: true,
+    };
+
     await ctx.db.patch('assistantThreads', row._id, {
-      pendingAction: appendPendingAction(row.pendingAction, pendingAction),
+      pendingAction: appendPendingAction(row.pendingAction, pendingToolResult),
       updatedAt: Date.now(),
       ...buildAssistantThreadPatch(
         args.pageContext ?? {
@@ -3409,7 +3423,7 @@ export const setBulkPendingDeleteAction = internalMutation({
       ),
     });
 
-    return pendingAction;
+    return pendingToolResult;
   },
 });
 
@@ -3417,6 +3431,7 @@ export const executePendingAction = internalMutation({
   args: {
     orgSlug: v.string(),
     userId: v.id('users'),
+    assistantThreadId: v.optional(v.id('assistantThreads')),
     actionId: v.string(),
   },
   handler: async (ctx, args) => {
@@ -3425,11 +3440,14 @@ export const executePendingAction = internalMutation({
       args.orgSlug,
       args.userId,
     );
-    const row = await requireAssistantThreadRow(
-      ctx,
-      organization._id,
-      args.userId,
-    );
+    const row = args.assistantThreadId
+      ? await requireAssistantThreadById(
+          ctx,
+          args.assistantThreadId,
+          organization._id,
+          args.userId,
+        )
+      : await requireAssistantThreadRow(ctx, organization._id, args.userId);
     const pendingActions = normalizePendingActions(row.pendingAction);
     const pendingAction = pendingActions.find(
       action => action.id === args.actionId,
@@ -3516,6 +3534,7 @@ export const clearPendingAction = internalMutation({
   args: {
     orgSlug: v.string(),
     userId: v.id('users'),
+    assistantThreadId: v.optional(v.id('assistantThreads')),
     actionId: v.optional(v.string()),
   },
   returns: v.null(),
@@ -3525,11 +3544,14 @@ export const clearPendingAction = internalMutation({
       args.orgSlug,
       args.userId,
     );
-    const row = await requireAssistantThreadRow(
-      ctx,
-      organization._id,
-      args.userId,
-    );
+    const row = args.assistantThreadId
+      ? await requireAssistantThreadById(
+          ctx,
+          args.assistantThreadId,
+          organization._id,
+          args.userId,
+        )
+      : await requireAssistantThreadRow(ctx, organization._id, args.userId);
     await ctx.db.patch('assistantThreads', row._id, {
       pendingAction: args.actionId
         ? removePendingAction(row.pendingAction, args.actionId)
@@ -4229,6 +4251,7 @@ export const requestDeleteFolder = internalMutation({
     const actionId = makePendingActionId();
     const pendingAction: AssistantPendingAction = {
       id: actionId,
+      assistantThreadId: row._id,
       kind: 'delete_entity',
       entityType: 'folder',
       entityId: args.folderId,
@@ -4251,12 +4274,17 @@ export const requestDeleteFolder = internalMutation({
       return { ...pendingAction, executed: true };
     }
 
+    const pendingToolResult = {
+      ...pendingAction,
+      stop_chat: true,
+    };
+
     await ctx.db.patch('assistantThreads', row._id, {
-      pendingAction: appendPendingAction(row.pendingAction, pendingAction),
+      pendingAction: appendPendingAction(row.pendingAction, pendingToolResult),
       updatedAt: Date.now(),
     });
 
-    return pendingAction;
+    return pendingToolResult;
   },
 });
 
@@ -4927,6 +4955,7 @@ export const sendEmailToMember = internalMutation({
       memberMatch.user.name ?? memberMatch.user.email ?? 'Unknown';
     const pendingAction: AssistantPendingAction = {
       id: makePendingActionId(),
+      assistantThreadId: row._id,
       kind: 'send_email',
       recipientName: displayName,
       recipientEmail,
@@ -4938,13 +4967,18 @@ export const sendEmailToMember = internalMutation({
       createdAt: Date.now(),
     };
 
+    const pendingToolResult = {
+      ...pendingAction,
+      stop_chat: true,
+    };
+
     await ctx.db.patch('assistantThreads', row._id, {
-      pendingAction: appendPendingAction(row.pendingAction, pendingAction),
+      pendingAction: appendPendingAction(row.pendingAction, pendingToolResult),
       updatedAt: Date.now(),
     });
 
     return {
-      ...pendingAction,
+      ...pendingToolResult,
       message: `Queued email to ${displayName} (${recipientEmail}) for confirmation`,
     };
   },

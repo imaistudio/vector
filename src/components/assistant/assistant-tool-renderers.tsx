@@ -226,7 +226,9 @@ function PendingActionToolResult({ tool }: AssistantToolComponentProps) {
   const [cancellingActionId, setCancellingActionId] = useState<string | null>(
     null,
   );
-  const [isDone, setIsDone] = useState(false);
+  const [completedStatus, setCompletedStatus] = useState<
+    'executed' | 'canceled' | null
+  >(null);
 
   const handleConfirm = async () => {
     if (!output?.id || !orgSlug) return;
@@ -235,8 +237,9 @@ function PendingActionToolResult({ tool }: AssistantToolComponentProps) {
       await executeConfirmedAction({
         orgSlug,
         actionId: output.id,
+        assistantThreadId: output.assistantThreadId as never,
       });
-      setIsDone(true);
+      setCompletedStatus('executed');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Action failed');
     } finally {
@@ -248,8 +251,12 @@ function PendingActionToolResult({ tool }: AssistantToolComponentProps) {
     if (!orgSlug || !output?.id) return;
     setCancellingActionId(output.id);
     try {
-      await cancelPendingAction({ orgSlug, actionId: output.id });
-      setIsDone(true);
+      await cancelPendingAction({
+        orgSlug,
+        actionId: output.id,
+        assistantThreadId: output.assistantThreadId as never,
+      });
+      setCompletedStatus('canceled');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Cancel failed');
     } finally {
@@ -260,12 +267,13 @@ function PendingActionToolResult({ tool }: AssistantToolComponentProps) {
   // When Skip confirmations is on, the server executes the delete inline and
   // returns output.executed === true. Render the done state immediately so the
   // user doesn't see a confirmation card for an action that has already run.
-  if (isDone || output?.executed) {
+  if (completedStatus || output?.executed || output?.canceled) {
+    const isCanceled = completedStatus === 'canceled' || output?.canceled;
     return (
       <DenseToolShell
         icon={<CheckCircle2 className='size-3' />}
         title={getDisplayName(tool)}
-        status='done'
+        status={isCanceled ? 'canceled' : 'done'}
         tone='success'
       >
         {output?.summary ? (
