@@ -1,8 +1,9 @@
 'use client';
 
-import { Loader2, Mail, Trash2 } from 'lucide-react';
+import { Mail, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { BarsSpinner } from '@/components/bars-spinner';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import {
 export type AssistantPendingAction =
   | {
       id: string;
+      assistantThreadId?: string;
       kind: 'delete_entity';
       entityType: 'document' | 'issue' | 'project' | 'team' | 'folder';
       entityId: string;
@@ -21,18 +23,24 @@ export type AssistantPendingAction =
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
     }
   | {
       id: string;
+      assistantThreadId?: string;
       kind: 'bulk_delete_entities';
       entityType: 'document' | 'issue' | 'project' | 'team';
       entities: Array<{ entityId: string; entityLabel: string }>;
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
     }
   | {
       id: string;
+      assistantThreadId?: string;
       kind: 'send_email';
       recipientName: string;
       recipientEmail: string;
@@ -43,6 +51,8 @@ export type AssistantPendingAction =
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
     };
 
 export function normalizePendingActions(
@@ -185,9 +195,7 @@ export function AssistantPendingActions({
                 disabled={isBusy}
                 onClick={() => onConfirm(action)}
               >
-                {isConfirming && (
-                  <Loader2 className='mr-1 size-3 animate-spin' />
-                )}
+                {isConfirming && <BarsSpinner className='mr-1' size={12} />}
                 {actionButtonLabel(action)}
               </Button>
               <Button
@@ -203,9 +211,7 @@ export function AssistantPendingActions({
                 disabled={isBusy}
                 onClick={() => onCancel(action)}
               >
-                {isCancelling && (
-                  <Loader2 className='mr-1 size-3 animate-spin' />
-                )}
+                {isCancelling && <BarsSpinner className='mr-1' size={12} />}
                 Cancel
               </Button>
             </div>

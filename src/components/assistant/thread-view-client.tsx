@@ -521,6 +521,7 @@ export function ThreadViewClient() {
         await executeConfirmedAction({
           orgSlug,
           actionId: action.id,
+          assistantThreadId: assistantThreadId as never,
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Action failed');
@@ -528,21 +529,25 @@ export function ThreadViewClient() {
         setConfirmingActionId(null);
       }
     },
-    [executeConfirmedAction, orgSlug],
+    [assistantThreadId, executeConfirmedAction, orgSlug],
   );
 
   const handleCancelPendingAction = useCallback(
     async (action: AssistantPendingAction) => {
       setCancellingActionId(action.id);
       try {
-        await cancelPendingAction({ orgSlug, actionId: action.id });
+        await cancelPendingAction({
+          orgSlug,
+          actionId: action.id,
+          assistantThreadId: assistantThreadId as never,
+        });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Cancel failed');
       } finally {
         setCancellingActionId(null);
       }
     },
-    [cancelPendingAction, orgSlug],
+    [assistantThreadId, cancelPendingAction, orgSlug],
   );
 
   useEffect(() => {

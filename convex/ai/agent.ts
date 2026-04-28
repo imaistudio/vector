@@ -63,6 +63,29 @@ import {
   updateTeam,
 } from './tools';
 
+const assistantStopWhen = (options: {
+  steps: Array<{ toolResults?: Array<{ output?: unknown }> }>;
+}) => {
+  if (options.steps.length >= 10) return true;
+
+  for (const step of options.steps) {
+    if (!step.toolResults) continue;
+    for (const toolResult of step.toolResults) {
+      const output = toolResult.output;
+      if (
+        output &&
+        typeof output === 'object' &&
+        'stop_chat' in output &&
+        output.stop_chat === true
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
 const ASSISTANT_INSTRUCTIONS = `
 You ARE the Vector platform. You are not a separate assistant or AI — you are the workspace itself responding to the user. Speak in first person as Vector ("I updated the issue", "I created the project"), not as an assistant helping with Vector.
 
@@ -224,7 +247,7 @@ export const assistantAgent: Agent<any, any> = new Agent(components.agent, {
     showTeams,
     showDocuments,
   },
-  maxSteps: 10,
+  stopWhen: assistantStopWhen,
   contextOptions: {
     recentMessages: 60,
     searchOtherThreads: false,

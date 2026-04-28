@@ -2,15 +2,19 @@ import { saveMessage } from '@convex-dev/agent';
 import type { RegisteredMutation } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { components, internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation, mutation } from '../_generated/server';
 import { requireAuthUserId } from '../authUtils';
 import { assistantAgent } from './agent';
 import {
+  type AssistantPageContext,
+  type AssistantPendingAction,
   assistantPageContextValidator,
   buildAssistantThreadPatch,
   canEditThread,
   canViewThread,
   getAssistantThreadRow,
+  normalizePendingActions,
   requireOrgForAssistant,
 } from './lib';
 
@@ -35,7 +39,199 @@ type ExecutedPendingAction = {
   summary: string;
   entityType?: ConfirmedActionEntityType;
   entityLabel?: string;
+  assistantThreadId?: Id<'assistantThreads'>;
+  pageContext?: AssistantPageContext;
 };
+
+type PendingActionPatchStatus = 'executed' | 'canceled';
+
+function readPendingActionToolOutput(
+  part: unknown,
+): AssistantPendingAction | null {
+  if (!part || typeof part !== 'object') return null;
+  const candidate = part as {
+    type?: string;
+    output?: { type?: string; value?: unknown };
+    result?: unknown;
+  };
+  if (candidate.type !== 'tool-result') return null;
+
+  if (candidate.output?.type === 'json' && candidate.output.value) {
+    return candidate.output.value as AssistantPendingAction;
+  }
+
+  if (
+    candidate.output?.type === 'text' &&
+    typeof candidate.output.value === 'string'
+  ) {
+    try {
+      return JSON.parse(candidate.output.value) as AssistantPendingAction;
+    } catch {
+      return null;
+    }
+  }
+
+  if (candidate.result && typeof candidate.result === 'object') {
+    return candidate.result as AssistantPendingAction;
+  }
+
+  return null;
+}
+
+async function patchPendingActionToolResult(
+  ctx: any,
+  threadId: string,
+  action: AssistantPendingAction,
+  status: PendingActionPatchStatus,
+) {
+  const messages = await ctx.runQuery(
+    components.agent.messages.listMessagesByThreadId,
+    {
+      threadId,
+      order: 'desc',
+      statuses: ['success'],
+      paginationOpts: { cursor: null, numItems: 50 },
+    },
+  );
+
+  const page = messages.page as Array<{
+    _id: string;
+    message?: { role?: string; content?: unknown };
+  }>;
+
+  let patchedMessageId: string | null = null;
+  let originalMessage: { role?: string; content?: unknown } | null = null;
+  let mutatedContent: unknown[] | null = null;
+
+  for (const msg of page) {
+    const message = msg.message;
+    if (!message) continue;
+    const content = Array.isArray(message?.content) ? message.content : null;
+    if (!content) continue;
+
+    for (let index = 0; index < content.length; index += 1) {
+      const part = content[index];
+      const pendingAction = readPendingActionToolOutput(part);
+      if (!pendingAction || pendingAction.id !== action.id) continue;
+
+      const patchedAction = {
+        ...pendingAction,
+        executed: status === 'executed',
+        canceled: status === 'canceled',
+        stop_chat: false,
+        message:
+          status === 'executed'
+            ? `The user confirmed this action and it completed: ${action.summary}. Continue from here.`
+            : `The user canceled this action: ${action.summary}. Continue from here without performing it.`,
+      };
+
+      mutatedContent = [...content];
+      mutatedContent[index] = {
+        ...(part as object),
+        output: { type: 'json' as const, value: patchedAction },
+        result: patchedAction,
+      };
+      patchedMessageId = msg._id;
+      originalMessage = message;
+      break;
+    }
+
+    if (patchedMessageId) break;
+  }
+
+  if (!patchedMessageId || !originalMessage || !mutatedContent) {
+    return { patched: false, originatingUserMessageId: undefined };
+  }
+
+  await ctx.runMutation(components.agent.messages.updateMessage, {
+    messageId: patchedMessageId,
+    patch: {
+      message: {
+        ...(originalMessage as object),
+        content: mutatedContent,
+      },
+    },
+  });
+
+  let foundPatchedMessage = false;
+  let originatingUserMessageId: string | undefined;
+  for (const msg of page) {
+    if (msg._id === patchedMessageId) {
+      foundPatchedMessage = true;
+      continue;
+    }
+    if (!foundPatchedMessage) continue;
+    if (msg.message?.role === 'user') {
+      originatingUserMessageId = msg._id;
+      break;
+    }
+  }
+
+  return { patched: true, originatingUserMessageId };
+}
+
+function fallbackPageContext(
+  orgSlug: string,
+  row: {
+    lastContextType?: string;
+    lastContextPath?: string;
+    lastEntityId?: string;
+    lastEntityKey?: string;
+  } | null,
+): AssistantPageContext {
+  return {
+    kind: 'org_generic',
+    orgSlug,
+    path: row?.lastContextPath ?? `/${orgSlug}`,
+    entityId: row?.lastEntityId,
+    entityKey: row?.lastEntityKey,
+  };
+}
+
+async function resumeAfterPendingActionDecision(
+  ctx: any,
+  args: {
+    orgSlug: string;
+    userId: Id<'users'>;
+    row: {
+      _id: Id<'assistantThreads'>;
+      threadId: string;
+      lastContextPath?: string;
+    } & Record<string, unknown>;
+    action: AssistantPendingAction;
+    status: PendingActionPatchStatus;
+  },
+) {
+  const patched = await patchPendingActionToolResult(
+    ctx,
+    args.row.threadId,
+    args.action,
+    args.status,
+  );
+
+  if (!patched.patched || !patched.originatingUserMessageId) {
+    return false;
+  }
+
+  await ctx.db.patch('assistantThreads', args.row._id, {
+    threadStatus: 'pending',
+    errorMessage: undefined,
+    updatedAt: Date.now(),
+  });
+
+  await ctx.scheduler.runAfter(0, internal.ai.actions.generateResponse, {
+    assistantThreadId: args.row._id,
+    orgSlug: args.orgSlug,
+    userId: args.userId,
+    threadId: args.row.threadId,
+    promptMessageId: patched.originatingUserMessageId,
+    pageContext:
+      args.action.pageContext ?? fallbackPageContext(args.orgSlug, args.row),
+    skipConfirmations: false,
+  });
+
+  return true;
+}
 
 // --- Active thread helpers ---
 
@@ -569,12 +765,17 @@ export const sendMessage = mutation({
 
 export const executeConfirmedAction: RegisteredMutation<
   'public',
-  { orgSlug: string; actionId: string },
+  {
+    orgSlug: string;
+    actionId: string;
+    assistantThreadId?: Id<'assistantThreads'>;
+  },
   ConfirmedActionResult
 > = mutation({
   args: {
     orgSlug: v.string(),
     actionId: v.string(),
+    assistantThreadId: v.optional(v.id('assistantThreads')),
   },
   returns: v.object({
     actionId: v.string(),
@@ -602,6 +803,7 @@ export const executeConfirmedAction: RegisteredMutation<
       {
         orgSlug: args.orgSlug,
         userId,
+        assistantThreadId: args.assistantThreadId,
         actionId: args.actionId,
       },
     )) as ExecutedPendingAction;
@@ -611,25 +813,39 @@ export const executeConfirmedAction: RegisteredMutation<
       args.orgSlug,
       userId,
     );
-    const row = await resolveActiveThread(ctx, organization._id, userId);
+    const row = args.assistantThreadId
+      ? await ctx.db.get('assistantThreads', args.assistantThreadId)
+      : executed.assistantThreadId
+        ? await ctx.db.get('assistantThreads', executed.assistantThreadId)
+        : await resolveActiveThread(ctx, organization._id, userId);
 
     if (row) {
-      await saveMessage(ctx, components.agent, {
-        threadId: row.threadId,
+      const resumed = await resumeAfterPendingActionDecision(ctx, {
+        orgSlug: args.orgSlug,
         userId,
-        message: {
-          role: 'assistant',
-          content: [
-            {
-              type: 'text',
-              text:
-                executed.kind === 'send_email'
-                  ? `Confirmed and sent: ${executed.summary}.`
-                  : `Confirmed and completed: ${executed.summary}.`,
-            },
-          ],
-        },
+        row,
+        action: executed as AssistantPendingAction,
+        status: 'executed',
       });
+
+      if (!resumed) {
+        await saveMessage(ctx, components.agent, {
+          threadId: row.threadId,
+          userId,
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text:
+                  executed.kind === 'send_email'
+                    ? `Confirmed and sent: ${executed.summary}.`
+                    : `Confirmed and completed: ${executed.summary}.`,
+              },
+            ],
+          },
+        });
+      }
     }
 
     return {
@@ -646,15 +862,58 @@ export const cancelPendingAction = mutation({
   args: {
     orgSlug: v.string(),
     actionId: v.optional(v.string()),
+    assistantThreadId: v.optional(v.id('assistantThreads')),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     const userId = await requireAuthUserId(ctx);
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      userId,
+    );
+    const row = args.assistantThreadId
+      ? await ctx.db.get('assistantThreads', args.assistantThreadId)
+      : await resolveActiveThread(ctx, organization._id, userId);
+    const pendingAction = args.actionId
+      ? normalizePendingActions(row?.pendingAction).find(
+          action => action.id === args.actionId,
+        )
+      : undefined;
+
     await ctx.runMutation(internal.ai.internal.clearPendingAction, {
       orgSlug: args.orgSlug,
       userId,
+      assistantThreadId: args.assistantThreadId,
       actionId: args.actionId,
     });
+
+    if (row && pendingAction) {
+      const resumed = await resumeAfterPendingActionDecision(ctx, {
+        orgSlug: args.orgSlug,
+        userId,
+        row,
+        action: pendingAction,
+        status: 'canceled',
+      });
+
+      if (!resumed) {
+        await saveMessage(ctx, components.agent, {
+          threadId: row.threadId,
+          userId,
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'text',
+                text: `Canceled: ${pendingAction.summary}.`,
+              },
+            ],
+          },
+        });
+      }
+    }
+
     return null;
   },
 });

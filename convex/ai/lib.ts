@@ -40,6 +40,7 @@ export type AssistantPageContext = {
 export type AssistantPendingAction =
   | {
       id: string;
+      assistantThreadId?: Id<'assistantThreads'>;
       kind: 'delete_entity';
       entityType: 'document' | 'issue' | 'project' | 'team' | 'folder';
       entityId: string;
@@ -47,18 +48,26 @@ export type AssistantPendingAction =
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
+      pageContext?: AssistantPageContext;
     }
   | {
       id: string;
+      assistantThreadId?: Id<'assistantThreads'>;
       kind: 'bulk_delete_entities';
       entityType: 'document' | 'issue' | 'project' | 'team';
       entities: Array<{ entityId: string; entityLabel: string }>;
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
+      pageContext?: AssistantPageContext;
     }
   | {
       id: string;
+      assistantThreadId?: Id<'assistantThreads'>;
       kind: 'send_email';
       recipientName: string;
       recipientEmail: string;
@@ -69,6 +78,9 @@ export type AssistantPendingAction =
       summary: string;
       createdAt: number;
       executed?: boolean;
+      canceled?: boolean;
+      stop_chat?: boolean;
+      pageContext?: AssistantPageContext;
     };
 
 export const assistantPageContextValidator = v.any();
