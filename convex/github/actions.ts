@@ -43,8 +43,11 @@ import {
   verifyGitHubWebhookSignature,
   withGitHubToken,
 } from './node';
-import { buildArtifactExternalKey } from './shared';
-import { extractIssueKeysFromText } from './shared';
+import {
+  buildArtifactExternalKey,
+  extractIssueKeysFromText,
+  normalizeIssueKey,
+} from './shared';
 
 async function requireOrgSettingsAccess(ctx: any, orgSlug: string) {
   const allowed = await ctx.runQuery(api.permissions.queries.has, {
@@ -276,19 +279,20 @@ async function resolveAutoLinkIssueKeys(
     const result = await generateObject({
       model: openrouterLanguageModelWithAnnotations(defaultAssistantModel),
       providerOptions: STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
-      maxOutputTokens: 512,
+      maxOutputTokens: 768,
       schema: z.object({
-        issueKey: z.string().nullable(),
+        issueKeys: z.array(z.string()),
         confidence: z.enum(['high', 'low']),
       }),
       prompt: [
-        'Choose at most one Vector issue that this GitHub artifact should link to.',
+        'Choose every Vector issue that this GitHub artifact should link to.',
+        'A single pull request can correctly resolve or track multiple Vector issues.',
         'A single Vector issue can correctly have multiple linked pull requests.',
         'If a candidate already has related pull requests linked, treat that as supporting evidence instead of a reason to reject it.',
         'Match based on semantic similarity — the PR and issue describe the same work even if worded differently.',
         'Consider the branch name as a strong signal (e.g. "fix-login-bug" matches an issue about login authentication).',
-        'Only choose an issue if the match is clearly the same work item.',
-        'If the match is uncertain, return null with low confidence.',
+        'Only choose issues where the match is clearly the same work item or a clearly included part of the work.',
+        'If all matches are uncertain, return an empty issueKeys array with low confidence.',
         '',
         `Artifact type: ${args.artifactType}`,
         `Repository: ${args.repoFullName}`,
@@ -324,21 +328,22 @@ async function resolveAutoLinkIssueKeys(
             ].filter((line): line is string => Boolean(line)),
         ),
         '',
-        'Return only one issueKey from the candidate list when the match is clearly correct, including when this PR looks like another part of work already tracked on the same issue.',
+        'Return issueKeys from the candidate list only. Include multiple keys when the PR clearly covers multiple issues.',
       ]
         .filter(Boolean)
         .join('\n'),
     });
 
-    if (
-      result.object.confidence === 'high' &&
-      result.object.issueKey &&
-      candidates.some(
-        (candidate: { key: string }) =>
-          candidate.key === result.object.issueKey,
-      )
-    ) {
-      return [result.object.issueKey];
+    if (result.object.confidence === 'high') {
+      const candidateKeys = new Set(
+        candidates.map((candidate: { key: string }) => candidate.key),
+      );
+      const selectedKeys = Array.from(
+        new Set(result.object.issueKeys.map(normalizeIssueKey)),
+      ).filter(issueKey => candidateKeys.has(issueKey));
+      if (selectedKeys.length > 0) {
+        return selectedKeys;
+      }
     }
   } catch (error) {
     console.error('[github.autoLink] model fallback failed', error);
@@ -833,13 +838,14 @@ async function persistPullRequestPayload(
     payload: any;
   },
 ) {
-  const state = args.payload.merged_at
-    ? 'merged'
-    : args.payload.state === 'closed'
-      ? 'closed'
-      : args.payload.draft
-        ? 'draft'
-        : 'open';
+  const state =
+    args.payload.merged === true || args.payload.merged_at
+      ? 'merged'
+      : args.payload.state === 'closed'
+        ? 'closed'
+        : args.payload.draft
+          ? 'draft'
+          : 'open';
 
   const upsertResult = await ctx.runMutation(
     internal.github.mutations.upsertPullRequest,

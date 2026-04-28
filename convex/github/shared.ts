@@ -1,7 +1,7 @@
 import type { Doc } from '../_generated/dataModel';
 
 export const ISSUE_KEY_REFERENCE_RE =
-  /(^|[^A-Z0-9_])([A-Z]+-\d+)(?=$|[^A-Z0-9_])/gi;
+  /(^|[^A-Z0-9_])([A-Z0-9]+(?:-[A-Z0-9]+)*-\d+)(?=$|[^A-Z0-9_])/gi;
 
 export type GitHubArtifactType = 'pull_request' | 'issue' | 'commit';
 

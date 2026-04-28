@@ -1434,7 +1434,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       .query('githubArtifactLinks')
       .withIndex('by_pr', q => q.eq('pullRequestId', args.pullRequestId))
       .collect();
-    if (existingLinks.some(link => link.active)) {
+    if (existingLinks.length > 0) {
       return { created: false } as const;
     }
 
