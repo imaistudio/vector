@@ -127,6 +127,19 @@ export default defineSchema({
       ),
     ),
     defaultAssistantModel: v.optional(v.string()),
+    assistantThinkingLevels: v.optional(
+      v.array(
+        v.union(v.literal('low'), v.literal('medium'), v.literal('high')),
+      ),
+    ),
+    defaultAssistantThinkingLevel: v.optional(
+      v.union(
+        v.literal('off'),
+        v.literal('low'),
+        v.literal('medium'),
+        v.literal('high'),
+      ),
+    ),
     // WIP: reserved for future GitHub App install/auth flows.
     // Do not treat these as the primary workspace GitHub integration source;
     // workspace webhook/token state lives on githubIntegrations.

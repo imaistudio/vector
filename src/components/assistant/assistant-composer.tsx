@@ -88,6 +88,8 @@ const FALLBACK_MODEL_OPTIONS = [
 ];
 
 type ModelOption = { value: string; label: string; hint: string };
+type ThinkingLevel = 'low' | 'medium' | 'high';
+type ComposerThinkingLevel = 'off' | ThinkingLevel;
 
 type AssistantComposerVariant = 'dock' | 'thread';
 
@@ -182,6 +184,8 @@ export const AssistantComposer = forwardRef<
   }, [onSubmit]);
   const attachmentIdPrefix = useId();
   const attachmentsRef = useRef<AssistantComposerAttachment[]>([]);
+  const [hasStoredThinkingPreference, setHasStoredThinkingPreference] =
+    useState(false);
   const generateAttachmentUploadUrl = useMutation(
     api.ai.mutations.generateAttachmentUploadUrl,
   );
@@ -221,6 +225,25 @@ export const AssistantComposer = forwardRef<
     return FALLBACK_MODEL_OPTIONS;
   }, [adminModels]);
 
+  const enabledThinkingLevels = useMemo<ThinkingLevel[]>(() => {
+    const configured = adminModels?.thinkingLevels?.filter(
+      (level): level is ThinkingLevel =>
+        level === 'low' || level === 'medium' || level === 'high',
+    );
+    return configured && configured.length > 0
+      ? configured
+      : ['low', 'medium', 'high'];
+  }, [adminModels]);
+
+  const adminDefaultThinkingLevel = useMemo<ComposerThinkingLevel>(() => {
+    const configured = adminModels?.defaultThinkingLevel;
+    return configured === 'low' ||
+      configured === 'medium' ||
+      configured === 'high'
+      ? configured
+      : 'off';
+  }, [adminModels]);
+
   function modelLabel(value: string) {
     const builtIn = modelOptions.find(option => option.value === value);
     if (builtIn) return builtIn.label;
@@ -245,8 +268,38 @@ export const AssistantComposer = forwardRef<
       storedThinking === 'high'
     ) {
       setThinkingLevel(storedThinking);
+      setHasStoredThinkingPreference(true);
+    } else if (storedThinking) {
+      window.localStorage.removeItem(THINKING_STORAGE_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    if (!adminModels || hasStoredThinkingPreference) return;
+    setThinkingLevel(
+      adminDefaultThinkingLevel !== 'off' &&
+        enabledThinkingLevels.includes(adminDefaultThinkingLevel)
+        ? adminDefaultThinkingLevel
+        : 'off',
+    );
+  }, [
+    adminDefaultThinkingLevel,
+    adminModels,
+    enabledThinkingLevels,
+    hasStoredThinkingPreference,
+  ]);
+
+  useEffect(() => {
+    if (
+      thinkingLevel === 'off' ||
+      enabledThinkingLevels.includes(thinkingLevel)
+    ) {
+      return;
+    }
+
+    setThinkingLevel('off');
+    window.localStorage.removeItem(THINKING_STORAGE_KEY);
+  }, [enabledThinkingLevels, thinkingLevel]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -284,7 +337,7 @@ export const AssistantComposer = forwardRef<
 
   const handleCycleThinking = useCallback(() => {
     setThinkingLevel(current => {
-      const order = ['off', 'low', 'medium', 'high'] as const;
+      const order: ComposerThinkingLevel[] = ['off', ...enabledThinkingLevels];
       const nextIndex = (order.indexOf(current) + 1) % order.length;
       const next = order[nextIndex];
       if (next === 'off') {
@@ -292,9 +345,10 @@ export const AssistantComposer = forwardRef<
       } else {
         window.localStorage.setItem(THINKING_STORAGE_KEY, next);
       }
+      setHasStoredThinkingPreference(true);
       return next;
     });
-  }, []);
+  }, [enabledThinkingLevels]);
 
   const handleRemoveAttachment = useCallback((attachmentId: string) => {
     setAttachments(current => {

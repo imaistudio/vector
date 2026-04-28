@@ -62,7 +62,7 @@ async function dispatchOtpEmail(
   }: {
     email: string;
     otp: string;
-    type: 'sign-in' | 'email-verification' | 'forget-password';
+    type: 'sign-in' | 'email-verification' | 'forget-password' | 'change-email';
   },
 ) {
   const payload = {
