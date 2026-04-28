@@ -169,6 +169,12 @@ export const getAssistantModels = query({
     return {
       models: settings?.assistantModels ?? [],
       defaultModel: settings?.defaultAssistantModel ?? null,
+      thinkingLevels: settings?.assistantThinkingLevels ?? [
+        'low',
+        'medium',
+        'high',
+      ],
+      defaultThinkingLevel: settings?.defaultAssistantThinkingLevel ?? 'off',
     };
   },
 });
@@ -178,6 +184,14 @@ export const getDefaultAssistantModel = internalQuery({
   handler: async ctx => {
     const settings = await getSiteSettings(ctx.db);
     return settings?.defaultAssistantModel || null;
+  },
+});
+
+export const getDefaultAssistantThinkingLevel = internalQuery({
+  args: {},
+  handler: async ctx => {
+    const settings = await getSiteSettings(ctx.db);
+    return settings?.defaultAssistantThinkingLevel || null;
   },
 });
 

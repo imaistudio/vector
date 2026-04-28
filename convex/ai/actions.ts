@@ -174,6 +174,17 @@ export const generateResponse = internalAction({
         );
         selectedModel = adminDefault || defaultAssistantModel;
       }
+      let selectedThinkingLevel = args.thinkingLevel;
+      if (!selectedThinkingLevel) {
+        const adminDefaultThinkingLevel = await ctx.runQuery(
+          internal.platformAdmin.queries.getDefaultAssistantThinkingLevel,
+          {},
+        );
+        selectedThinkingLevel =
+          adminDefaultThinkingLevel && adminDefaultThinkingLevel !== 'off'
+            ? adminDefaultThinkingLevel
+            : undefined;
+      }
 
       const organization = await ctx.runQuery(
         internal.ai.internal.getAssistantOrganization,
@@ -223,13 +234,13 @@ export const generateResponse = internalAction({
         medium: 4096,
         high: 16384,
       };
-      const providerOptions = args.thinkingLevel
+      const providerOptions = selectedThinkingLevel
         ? {
             openrouter: {
               reasoning: {
-                effort: args.thinkingLevel,
-                ...(thinkingBudgets[args.thinkingLevel]
-                  ? { max_tokens: thinkingBudgets[args.thinkingLevel] }
+                effort: selectedThinkingLevel,
+                ...(thinkingBudgets[selectedThinkingLevel]
+                  ? { max_tokens: thinkingBudgets[selectedThinkingLevel] }
                   : {}),
               },
             },

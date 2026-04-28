@@ -4,7 +4,15 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useRouter } from 'nextjs-toploader/app';
 import { toast } from 'sonner';
-import { Menu, Plus, Shield, Star, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Lightbulb,
+  Menu,
+  Plus,
+  Shield,
+  Star,
+  Trash2,
+} from 'lucide-react';
 import { api, useQuery, useMutation } from '@/lib/convex';
 import { cn } from '@/lib/utils';
 import { UserMenu } from '@/components/user-menu';
@@ -21,6 +29,19 @@ type ModelEntry = {
   name: string;
   hint: string;
 };
+
+type ThinkingLevel = 'low' | 'medium' | 'high';
+type DefaultThinkingLevel = 'off' | ThinkingLevel;
+
+const THINKING_LEVELS: Array<{
+  value: ThinkingLevel;
+  label: string;
+  hint: string;
+}> = [
+  { value: 'low', label: 'Low', hint: 'Small reasoning budget' },
+  { value: 'medium', label: 'Medium', hint: 'Balanced reasoning budget' },
+  { value: 'high', label: 'High', hint: 'Largest reasoning budget' },
+];
 
 function AssistantPageSkeleton() {
   return (
@@ -79,6 +100,13 @@ export function PlatformAssistantPage() {
 
   const [models, setModels] = useState<ModelEntry[]>([]);
   const [defaultModel, setDefaultModel] = useState('');
+  const [thinkingLevels, setThinkingLevels] = useState<ThinkingLevel[]>([
+    'low',
+    'medium',
+    'high',
+  ]);
+  const [defaultThinkingLevel, setDefaultThinkingLevel] =
+    useState<DefaultThinkingLevel>('off');
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -93,6 +121,13 @@ export function PlatformAssistantPage() {
       })),
     );
     setDefaultModel(modelsQuery.data.defaultModel ?? '');
+    setThinkingLevels(
+      modelsQuery.data.thinkingLevels.filter(
+        (level): level is ThinkingLevel =>
+          level === 'low' || level === 'medium' || level === 'high',
+      ),
+    );
+    setDefaultThinkingLevel(modelsQuery.data.defaultThinkingLevel ?? 'off');
   }, [modelsQuery.data, hasLocalEdits]);
 
   // Auth guard
@@ -144,8 +179,38 @@ export function PlatformAssistantPage() {
     setHasLocalEdits(true);
   };
 
+  const handleToggleThinkingLevel = (level: ThinkingLevel) => {
+    setThinkingLevels(current => {
+      const next = current.includes(level)
+        ? current.filter(item => item !== level)
+        : [...current, level].sort(
+            (a, b) =>
+              THINKING_LEVELS.findIndex(item => item.value === a) -
+              THINKING_LEVELS.findIndex(item => item.value === b),
+          );
+
+      if (defaultThinkingLevel === level && !next.includes(level)) {
+        setDefaultThinkingLevel('off');
+      }
+
+      return next;
+    });
+    setHasLocalEdits(true);
+  };
+
+  const handleSetDefaultThinkingLevel = (level: DefaultThinkingLevel) => {
+    setDefaultThinkingLevel(current => (current === level ? 'off' : level));
+    setHasLocalEdits(true);
+  };
+
   const handleSave = async () => {
     const valid = models.filter(m => m.modelId.trim() && m.name.trim());
+    const normalizedDefaultThinkingLevel =
+      defaultThinkingLevel === 'off' ||
+      thinkingLevels.includes(defaultThinkingLevel)
+        ? defaultThinkingLevel
+        : 'off';
+
     setIsSaving(true);
     try {
       await updateModels({
@@ -155,6 +220,8 @@ export function PlatformAssistantPage() {
           hint: m.hint.trim() || undefined,
         })),
         defaultModel: defaultModel.trim() || undefined,
+        thinkingLevels,
+        defaultThinkingLevel: normalizedDefaultThinkingLevel,
       });
       setHasLocalEdits(false);
       toast.success('Assistant models updated');
@@ -309,13 +376,107 @@ export function PlatformAssistantPage() {
             </Button>
           </div>
 
+          <div className='space-y-2'>
+            <div className='flex items-center gap-2'>
+              <Lightbulb className='text-muted-foreground size-4' />
+              <div className='min-w-0'>
+                <h2 className='text-sm font-medium'>Thinking Levels</h2>
+                <p className='text-muted-foreground text-xs'>
+                  Choose which reasoning levels appear in chat and which one is
+                  selected by default.
+                </p>
+              </div>
+            </div>
+
+            <div className='bg-muted/20 space-y-2 rounded-lg border p-2'>
+              <div className='grid gap-2 md:grid-cols-3'>
+                {THINKING_LEVELS.map(level => {
+                  const enabled = thinkingLevels.includes(level.value);
+                  const isDefault = defaultThinkingLevel === level.value;
+
+                  return (
+                    <div
+                      key={level.value}
+                      className={cn(
+                        'flex min-w-0 items-center gap-2 rounded-md border px-2 py-2',
+                        enabled ? 'bg-background' : 'bg-muted/30 opacity-70',
+                        isDefault && 'border-primary/30 bg-primary/5',
+                      )}
+                    >
+                      <Button
+                        type='button'
+                        variant={enabled ? 'secondary' : 'ghost'}
+                        size='sm'
+                        className='size-7 shrink-0 p-0'
+                        onClick={() => handleToggleThinkingLevel(level.value)}
+                        title={enabled ? 'Hide from chat' : 'Show in chat'}
+                      >
+                        {enabled ? (
+                          <Check className='size-3.5' />
+                        ) : (
+                          <span className='size-3.5' />
+                        )}
+                      </Button>
+                      <div className='min-w-0 flex-1'>
+                        <div className='truncate text-xs font-medium'>
+                          {level.label}
+                        </div>
+                        <div className='text-muted-foreground truncate text-[10px]'>
+                          {level.hint}
+                        </div>
+                      </div>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='sm'
+                        className={cn(
+                          'size-7 shrink-0 p-0',
+                          isDefault
+                            ? 'text-amber-500 hover:text-amber-600'
+                            : 'text-muted-foreground hover:text-amber-500',
+                        )}
+                        disabled={!enabled}
+                        onClick={() =>
+                          handleSetDefaultThinkingLevel(level.value)
+                        }
+                        title={
+                          isDefault
+                            ? 'Remove thinking default'
+                            : 'Set as default thinking level'
+                        }
+                      >
+                        <Star
+                          className={cn(
+                            'size-3.5',
+                            isDefault && 'fill-current',
+                          )}
+                        />
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <Button
+                type='button'
+                variant={defaultThinkingLevel === 'off' ? 'secondary' : 'ghost'}
+                size='sm'
+                className='h-7 gap-1.5 px-2 text-xs'
+                onClick={() => handleSetDefaultThinkingLevel('off')}
+              >
+                <Lightbulb className='size-3.5' />
+                Default off
+              </Button>
+            </div>
+          </div>
+
           <div className='flex items-center gap-2 pt-2'>
             <Button
               onClick={handleSave}
               disabled={isSaving || !hasLocalEdits}
               size='sm'
             >
-              {isSaving ? 'Saving...' : 'Save'}
+              Save
             </Button>
             {hasLocalEdits && (
               <span className='text-muted-foreground text-xs'>

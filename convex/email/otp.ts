@@ -4,7 +4,11 @@ import nodemailer from 'nodemailer';
 import { v } from 'convex/values';
 import { internalAction } from '../_generated/server';
 
-export type OtpEmailType = 'sign-in' | 'email-verification' | 'forget-password';
+export type OtpEmailType =
+  | 'sign-in'
+  | 'email-verification'
+  | 'forget-password'
+  | 'change-email';
 
 const colors = {
   bg: '#f5f7fb',
@@ -69,6 +73,11 @@ const templates: Record<
     title: 'Reset your password',
     description: 'Use the 4-digit code below to reset your password:',
   },
+  'change-email': {
+    subject: 'Confirm your new email — Vector',
+    title: 'Confirm your new email',
+    description: 'Use the 4-digit code below to confirm this email address:',
+  },
 };
 
 export const sendOtpEmail = internalAction({
@@ -79,6 +88,7 @@ export const sendOtpEmail = internalAction({
       v.literal('sign-in'),
       v.literal('email-verification'),
       v.literal('forget-password'),
+      v.literal('change-email'),
     ),
   },
   handler: async (_ctx, { to, otp, type }) => {

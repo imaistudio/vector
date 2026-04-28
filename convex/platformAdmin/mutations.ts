@@ -488,6 +488,19 @@ export const updateAssistantModels = mutation({
       }),
     ),
     defaultModel: v.optional(v.string()),
+    thinkingLevels: v.optional(
+      v.array(
+        v.union(v.literal('low'), v.literal('medium'), v.literal('high')),
+      ),
+    ),
+    defaultThinkingLevel: v.optional(
+      v.union(
+        v.literal('off'),
+        v.literal('low'),
+        v.literal('medium'),
+        v.literal('high'),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -495,9 +508,20 @@ export const updateAssistantModels = mutation({
     await requirePlatformAdminUser(ctx.db, userId);
 
     const settingsId = await ensureSiteSettings(ctx.db);
+    const thinkingLevels = Array.from(new Set(args.thinkingLevels ?? []));
+    const defaultThinkingLevel =
+      args.defaultThinkingLevel &&
+      (args.defaultThinkingLevel === 'off' ||
+        thinkingLevels.includes(args.defaultThinkingLevel))
+        ? args.defaultThinkingLevel
+        : undefined;
+
     await ctx.db.patch('siteSettings', settingsId, {
       assistantModels: args.models,
       defaultAssistantModel: args.defaultModel || undefined,
+      assistantThinkingLevels:
+        thinkingLevels.length > 0 ? thinkingLevels : undefined,
+      defaultAssistantThinkingLevel: defaultThinkingLevel,
     });
 
     return { success: true };
