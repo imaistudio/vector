@@ -6,13 +6,17 @@ export const openrouter = createOpenRouter({
   compatibility: 'strict',
 });
 
-export const defaultAssistantModel =
-  process.env.OPENROUTER_MODEL?.trim() || 'moonshotai/kimi-k2.5:nitro';
+export const defaultAssistantModel = process.env.OPENROUTER_MODEL?.trim() || '';
 
-export function assertAssistantModelConfigured(): void {
+export function assertAssistantModelConfigured(modelId?: string): void {
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
     throw new Error(
       'Assistant is temporarily unavailable because OPENROUTER_API_KEY is not configured.',
+    );
+  }
+  if (!modelId?.trim()) {
+    throw new Error(
+      'Assistant is temporarily unavailable because no default assistant model is configured.',
     );
   }
 }

@@ -64,29 +64,6 @@ const SKIP_CONFIRM_STORAGE_KEY = 'vector.assistant.skip-confirmations';
 const THINKING_STORAGE_KEY = 'vector.assistant.thinking';
 const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 
-const FALLBACK_MODEL_OPTIONS = [
-  {
-    value: '',
-    label: 'Workspace default',
-    hint: 'Use the workspace OpenRouter default',
-  },
-  {
-    value: 'moonshotai/kimi-k2.5:nitro',
-    label: 'Kimi K2.5',
-    hint: 'Fast general-purpose default',
-  },
-  {
-    value: 'anthropic/claude-sonnet-4',
-    label: 'Claude Sonnet 4',
-    hint: 'Stronger reasoning and writing',
-  },
-  {
-    value: 'openai/gpt-5-mini',
-    label: 'GPT-5 Mini',
-    hint: 'Compact OpenAI option',
-  },
-];
-
 type ModelOption = { value: string; label: string; hint: string };
 type ThinkingLevel = 'low' | 'medium' | 'high';
 type ComposerThinkingLevel = 'off' | ThinkingLevel;
@@ -222,7 +199,7 @@ export const AssistantComposer = forwardRef<
       ];
     }
 
-    return FALLBACK_MODEL_OPTIONS;
+    return [workspaceDefault];
   }, [adminModels]);
 
   const enabledThinkingLevels = useMemo<ThinkingLevel[]>(() => {
@@ -252,11 +229,7 @@ export const AssistantComposer = forwardRef<
   }
 
   useEffect(() => {
-    const storedModel = window.localStorage.getItem(MODEL_STORAGE_KEY);
-    if (storedModel) {
-      setModel(storedModel);
-      setCustomModelDraft(storedModel);
-    }
+    window.localStorage.removeItem(MODEL_STORAGE_KEY);
 
     setSkipConfirmations(
       window.localStorage.getItem(SKIP_CONFIRM_STORAGE_KEY) === 'true',
@@ -317,11 +290,6 @@ export const AssistantComposer = forwardRef<
 
   const persistModel = useCallback((nextModel: string) => {
     setModel(nextModel);
-    if (nextModel) {
-      window.localStorage.setItem(MODEL_STORAGE_KEY, nextModel);
-    } else {
-      window.localStorage.removeItem(MODEL_STORAGE_KEY);
-    }
   }, []);
 
   const handleToggleSkipConfirmations = useCallback(() => {
