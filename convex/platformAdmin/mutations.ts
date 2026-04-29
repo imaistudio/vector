@@ -195,6 +195,8 @@ export const updateBranding = mutation({
     removeLogo: v.optional(v.boolean()),
     themeColor: v.optional(v.string()),
     accentColor: v.optional(v.string()),
+    publicFooterAttributionEnabled: v.optional(v.boolean()),
+    publicFooterAttributionText: v.optional(v.string()),
     defaultOrgSlug: v.optional(v.string()),
   },
   returns: v.null(),
@@ -244,6 +246,17 @@ export const updateBranding = mutation({
 
     if (args.accentColor !== undefined) {
       patch.brandAccentColor = args.accentColor;
+    }
+
+    if (args.publicFooterAttributionEnabled !== undefined) {
+      patch.publicFooterAttributionEnabled =
+        args.publicFooterAttributionEnabled;
+    }
+
+    if (args.publicFooterAttributionText !== undefined) {
+      const trimmed = args.publicFooterAttributionText.trim();
+      patch.publicFooterAttributionText =
+        trimmed.length > 0 ? trimmed.slice(0, 80) : undefined;
     }
 
     if (args.defaultOrgSlug !== undefined) {

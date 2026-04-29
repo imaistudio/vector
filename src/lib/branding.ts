@@ -6,6 +6,8 @@ export interface Branding {
   themeColor: string;
   accentColor: string;
   defaultOrgSlug: string | null;
+  publicFooterAttributionEnabled: boolean;
+  publicFooterAttributionText: string;
   showPublicSignupButton: boolean;
 }
 
@@ -17,6 +19,8 @@ export const DEFAULT_BRANDING: Branding = {
   themeColor: '#111827',
   accentColor: '#2563eb',
   defaultOrgSlug: null,
+  publicFooterAttributionEnabled: true,
+  publicFooterAttributionText: 'Powered by Vector',
   showPublicSignupButton: true,
 };
 

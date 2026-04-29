@@ -156,6 +156,10 @@ export const getBranding = query({
       themeColor: settings?.brandThemeColor ?? '#111827',
       accentColor: settings?.brandAccentColor ?? '#2563eb',
       defaultOrgSlug: defaultOrg?.slug ?? null,
+      publicFooterAttributionEnabled:
+        settings?.publicFooterAttributionEnabled ?? true,
+      publicFooterAttributionText:
+        settings?.publicFooterAttributionText ?? 'Powered by Vector',
       showPublicSignupButton: settings?.showPublicSignupButton ?? true,
     };
   },

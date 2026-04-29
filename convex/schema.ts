@@ -116,6 +116,8 @@ export default defineSchema({
     brandLogo: v.optional(v.id('_storage')),
     brandThemeColor: v.optional(v.string()),
     brandAccentColor: v.optional(v.string()),
+    publicFooterAttributionEnabled: v.optional(v.boolean()),
+    publicFooterAttributionText: v.optional(v.string()),
     defaultOrgSlug: v.optional(v.string()),
     // Assistant model configuration
     assistantModels: v.optional(

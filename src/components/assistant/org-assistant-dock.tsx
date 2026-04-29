@@ -44,7 +44,6 @@ import {
   type AssistantComposerSubmitOptions,
 } from './assistant-composer';
 import {
-  AssistantPendingActions,
   normalizePendingActions,
   type AssistantPendingAction,
 } from './assistant-pending-actions';
@@ -105,7 +104,6 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const executeConfirmedAction = useMutation(
     api.ai.mutations.executeConfirmedAction,
   );
-  const cancelPendingAction = useMutation(api.ai.mutations.cancelPendingAction);
   const clearThreadHistory = useAction(api.ai.actions.clearThreadHistory);
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -113,9 +111,6 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const [isClearing, setIsClearing] = useState(false);
   const [isCreatingThread, setIsCreatingThread] = useState(false);
   const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
-    null,
-  );
-  const [cancellingActionId, setCancellingActionId] = useState<string | null>(
     null,
   );
   const [confirmAction, ConfirmActionDialog] = useConfirm();
@@ -490,24 +485,6 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     [executeConfirmedAction, orgSlug, threadRow?._id],
   );
 
-  const handleCancelPendingAction = useCallback(
-    async (action: AssistantPendingAction) => {
-      setCancellingActionId(action.id);
-      try {
-        await cancelPendingAction({
-          orgSlug,
-          actionId: action.id,
-          assistantThreadId: threadRow?._id as never,
-        });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Cancel failed');
-      } finally {
-        setCancellingActionId(null);
-      }
-    },
-    [cancelPendingAction, orgSlug, threadRow?._id],
-  );
-
   const handleClearHistory = async () => {
     const ok = await confirmAction({
       title: 'Clear conversation',
@@ -555,7 +532,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
 
   useEffect(() => {
     if (pendingActions.length === 0) return;
-    if (confirmingActionId || cancellingActionId) return;
+    if (confirmingActionId) return;
 
     const nextAction = pendingActions[0];
     const storedSkip =
@@ -566,12 +543,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     if (!storedSkip || !nextAction) return;
 
     void handleConfirmAction(nextAction);
-  }, [
-    cancellingActionId,
-    confirmingActionId,
-    handleConfirmAction,
-    pendingActions,
-  ]);
+  }, [confirmingActionId, handleConfirmAction, pendingActions]);
 
   if (isOnThreadPage) {
     return null;
@@ -740,15 +712,6 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
             </motion.div>
           ) : null}
         </AnimatePresence>
-
-        <AssistantPendingActions
-          actions={pendingActions}
-          variant='dock'
-          confirmingActionId={confirmingActionId}
-          cancellingActionId={cancellingActionId}
-          onConfirm={action => void handleConfirmAction(action)}
-          onCancel={action => void handleCancelPendingAction(action)}
-        />
 
         {/* Error banner */}
         {threadRow?.threadStatus === 'error' && threadRow.errorMessage ? (
