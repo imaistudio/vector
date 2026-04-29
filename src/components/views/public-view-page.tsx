@@ -18,6 +18,7 @@ import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { formatDateHuman } from '@/lib/date';
 import { cn } from '@/lib/utils';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import {
   PublicKanbanView,
   PublicListView,
@@ -73,6 +74,13 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
   const publicProfile = useCachedQuery(
     api.organizations.queries.getPublicProfileBySlug,
     { orgSlug },
+  );
+  useDocumentTitle(
+    view && view !== null
+      ? view.name
+      : publicProfile?.name
+        ? `${publicProfile.name} public view`
+        : null,
   );
 
   const issuesData = useCachedQuery(

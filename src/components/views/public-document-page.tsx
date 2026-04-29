@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { formatDateHuman } from '@/lib/date';
 import { FileText, Globe, Lock, PencilLine } from 'lucide-react';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 interface PublicDocumentPageProps {
   orgSlug: string;
@@ -22,6 +23,9 @@ export function PublicDocumentPage({
     orgSlug,
     documentId,
   });
+  useDocumentTitle(
+    document && document !== null ? document.title || 'Untitled' : null,
+  );
 
   if (document === undefined) {
     return (

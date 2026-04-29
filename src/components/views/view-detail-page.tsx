@@ -39,6 +39,7 @@ import type { ViewMode } from '@/hooks/use-persisted-view-mode';
 import { usePermissionCheck } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import type { Id } from '@/convex/_generated/dataModel';
 import { toast } from 'sonner';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
@@ -64,6 +65,7 @@ export function ViewDetailPage() {
   const viewId = params.viewId as Id<'views'>;
 
   const view = useCachedQuery(api.views.queries.getById, { viewId });
+  useDocumentTitle(view?.name);
   const user = useCachedQuery(api.users.currentUser);
   const currentUserId = user?._id ?? '';
 

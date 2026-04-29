@@ -25,7 +25,10 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'Vector',
+  title: {
+    default: 'Vector',
+    template: '%s · Vector',
+  },
   description: 'Project management platform',
   manifest: '/manifest.webmanifest',
   icons: {
