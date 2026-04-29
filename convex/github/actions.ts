@@ -3,6 +3,7 @@
 import { generateObject } from 'ai';
 import { ConvexError, v } from 'convex/values';
 import { action, internalAction } from '../_generated/server';
+import type { ActionCtx } from '../_generated/server';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { z } from 'zod';
@@ -11,22 +12,6 @@ import {
   defaultAssistantModel,
   openrouterLanguageModelWithAnnotations,
 } from '../ai/provider';
-
-/**
- * Provider options used for all `generateObject` calls in this file.
- *
- * The workspace default model is a reasoning model (Kimi K2.5 at time of
- * writing). For structured-output calls the reasoning channel eats into the
- * generation budget and frequently truncates the final JSON, which then
- * fails schema validation and propagates up as `AI_NoObjectGeneratedError`.
- * Disabling reasoning here keeps the full token budget available for the
- * actual JSON response.
- */
-const STRUCTURED_OUTPUT_PROVIDER_OPTIONS = {
-  openrouter: {
-    reasoning: { enabled: false, exclude: true },
-  },
-} as const;
 import {
   decryptSecret,
   encryptSecret,
@@ -48,6 +33,30 @@ import {
   extractIssueKeysFromText,
   normalizeIssueKey,
 } from './shared';
+
+/**
+ * Provider options used for all `generateObject` calls in this file.
+ *
+ * Reasoning-capable models can spend the output budget on hidden reasoning and
+ * then truncate the final JSON. Disabling reasoning here keeps the full token
+ * budget available for the schema response.
+ */
+const STRUCTURED_OUTPUT_PROVIDER_OPTIONS = {
+  openrouter: {
+    reasoning: { enabled: false, exclude: true },
+  },
+} as const;
+
+async function resolveConfiguredAssistantModel(ctx: ActionCtx) {
+  if (!process.env.OPENROUTER_API_KEY?.trim()) {
+    return null;
+  }
+  const adminDefault = await ctx.runQuery(
+    internal.platformAdmin.queries.getDefaultAssistantModel,
+    {},
+  );
+  return adminDefault || defaultAssistantModel || null;
+}
 
 async function requireOrgSettingsAccess(ctx: any, orgSlug: string) {
   const allowed = await ctx.runQuery(api.permissions.queries.has, {
@@ -275,9 +284,14 @@ async function resolveAutoLinkIssueKeys(
     return [];
   }
 
+  const assistantModel = await resolveConfiguredAssistantModel(ctx);
+  if (!assistantModel) {
+    return [];
+  }
+
   try {
     const result = await generateObject({
-      model: openrouterLanguageModelWithAnnotations(defaultAssistantModel),
+      model: openrouterLanguageModelWithAnnotations(assistantModel),
       providerOptions: STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
       maxOutputTokens: 768,
       schema: z.object({
@@ -426,10 +440,11 @@ export const refreshIssuePullRequestSummary = internalAction({
 
     let summaryMarkdown = fallbackSummary;
 
-    if (process.env.OPENROUTER_API_KEY?.trim()) {
+    const assistantModel = await resolveConfiguredAssistantModel(ctx);
+    if (assistantModel) {
       try {
         const result = await generateObject({
-          model: openrouterLanguageModelWithAnnotations(defaultAssistantModel),
+          model: openrouterLanguageModelWithAnnotations(assistantModel),
           providerOptions: STRUCTURED_OUTPUT_PROVIDER_OPTIONS,
           maxOutputTokens: 2048,
           schema: z.object({

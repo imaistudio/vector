@@ -3,6 +3,7 @@ import { saveMessage } from '@convex-dev/agent';
 import { ConvexError, v } from 'convex/values';
 import { api, components, internal } from '../_generated/api';
 import { action, internalAction } from '../_generated/server';
+import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { assistantAgent } from './agent';
 import { assistantPageContextValidator } from './lib';
@@ -39,6 +40,14 @@ function sanitizeAssistantError(error: unknown) {
     return error.trim().slice(0, 240);
   }
   return 'Assistant response failed. Please try again.';
+}
+
+async function resolveDefaultAssistantModel(ctx: ActionCtx) {
+  const adminDefault = await ctx.runQuery(
+    internal.platformAdmin.queries.getDefaultAssistantModel,
+    {},
+  );
+  return adminDefault || defaultAssistantModel;
 }
 
 export const clearThreadHistory = action({
@@ -118,9 +127,10 @@ export const autoTitleThread = internalAction({
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
-      assertAssistantModelConfigured();
+      const selectedModel = await resolveDefaultAssistantModel(ctx);
+      assertAssistantModelConfigured(selectedModel);
 
-      const model = openrouterChatWithAnnotations(defaultAssistantModel, {});
+      const model = openrouterChatWithAnnotations(selectedModel, {});
       const result = await generateText({
         model,
         system:
@@ -164,16 +174,12 @@ export const generateResponse = internalAction({
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
-      assertAssistantModelConfigured();
       // Check admin-configured default, then env var default
       let selectedModel = args.model?.trim();
       if (!selectedModel) {
-        const adminDefault = await ctx.runQuery(
-          internal.platformAdmin.queries.getDefaultAssistantModel,
-          {},
-        );
-        selectedModel = adminDefault || defaultAssistantModel;
+        selectedModel = await resolveDefaultAssistantModel(ctx);
       }
+      assertAssistantModelConfigured(selectedModel);
       let selectedThinkingLevel = args.thinkingLevel;
       if (!selectedThinkingLevel) {
         const adminDefaultThinkingLevel = await ctx.runQuery(
@@ -228,20 +234,13 @@ export const generateResponse = internalAction({
         skipConfirmations: args.skipConfirmations ?? false,
       });
 
-      // Build provider options for thinking/reasoning budget
-      const thinkingBudgets: Record<string, number> = {
-        low: 1024,
-        medium: 4096,
-        high: 16384,
-      };
+      // OpenRouter accepts either reasoning.effort or reasoning.max_tokens,
+      // but not both. The UI exposes effort levels, so only send effort.
       const providerOptions = selectedThinkingLevel
         ? {
             openrouter: {
               reasoning: {
                 effort: selectedThinkingLevel,
-                ...(thinkingBudgets[selectedThinkingLevel]
-                  ? { max_tokens: thinkingBudgets[selectedThinkingLevel] }
-                  : {}),
               },
             },
           }

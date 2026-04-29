@@ -11,7 +11,11 @@ import { components, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { internalAction, internalMutation } from '../_generated/server';
 import { assistantAgent } from './agent';
-import { assertAssistantModelConfigured } from './provider';
+import {
+  assertAssistantModelConfigured,
+  defaultAssistantModel,
+  openrouterChatWithAnnotations,
+} from './provider';
 
 // ─── Detect @Vector mention in comment body ──────────────────────────────────
 
@@ -154,7 +158,12 @@ export const generateCommentResponse = internalAction({
   returns: v.null(),
   handler: async (ctx, args) => {
     try {
-      assertAssistantModelConfigured();
+      const adminDefault = await ctx.runQuery(
+        internal.platformAdmin.queries.getDefaultAssistantModel,
+        {},
+      );
+      const selectedModel = adminDefault || defaultAssistantModel;
+      assertAssistantModelConfigured(selectedModel);
 
       const { systemPrompt, userPrompt, issueKey } = await ctx.runMutation(
         internal.ai.comment_agent.buildIssueContext,
@@ -217,6 +226,9 @@ export const generateCommentResponse = internalAction({
         assistantCtx,
         { threadId, userId: args.userId },
         {
+          model: openrouterChatWithAnnotations(selectedModel, {
+            parallelToolCalls: false,
+          }),
           promptMessageId: saved.messageId,
           system: [
             currentUserContextSummary,
