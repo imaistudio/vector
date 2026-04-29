@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Clock3,
   ExternalLink,
-  Globe,
   Lock,
   Map,
 } from 'lucide-react';
@@ -155,18 +154,14 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
           </div>
 
           <div className='flex flex-col items-start gap-2 sm:items-end'>
-            <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
-              <div className='flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300'>
-                <Globe className='size-3.5' />
-                Public
-              </div>
-              {view.updatedAt ? (
+            {view.updatedAt ? (
+              <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
                 <div className='text-muted-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
                   <Clock3 className='size-3.5' />
                   Updated {formatDateHuman(new Date(view.updatedAt))}
                 </div>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
 
             {hasHeaderActions ? (
               <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
