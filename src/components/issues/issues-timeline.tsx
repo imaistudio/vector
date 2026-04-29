@@ -300,6 +300,7 @@ export function IssuesTimeline({
       a => a.assigneeId === currentUserId,
     );
     const displayStateId = viewerAssignment?.stateId ?? issue.workflowStateId;
+    const displayState = states.find(state => state._id === displayStateId);
     const displayAssignmentId =
       viewerAssignment?.assignmentId ??
       assignments.find(assignment => assignment.assignmentId !== 'unassigned')
@@ -397,6 +398,27 @@ export function IssuesTimeline({
                     onAssignmentStateChange(displayAssignmentId, stateId)
                   }
                   displayMode='labelOnly'
+                  trigger={
+                    <Button
+                      variant='ghost'
+                      size='sm'
+                      className='h-8 gap-2 border-none bg-transparent shadow-none hover:bg-transparent dark:bg-transparent dark:hover:bg-transparent'
+                      aria-label='Change issue state'
+                    >
+                      <DynamicIcon
+                        name={displayState?.icon}
+                        fallback={Circle}
+                        className='h-3 w-3'
+                        style={{
+                          color:
+                            displayState?.color ??
+                            issue.workflowStateColor ??
+                            '#94a3b8',
+                        }}
+                      />
+                      {displayState?.name ?? issue.workflowStateName ?? 'State'}
+                    </Button>
+                  }
                   className='border-none bg-transparent p-0 shadow-none'
                 />
               </PermissionAware>

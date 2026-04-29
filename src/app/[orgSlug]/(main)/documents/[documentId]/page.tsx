@@ -10,6 +10,27 @@ interface DocumentViewPageProps {
   params: Promise<{ orgSlug: string; documentId: string }>;
 }
 
+function unavailableDocumentMetadata(orgSlug?: string): Metadata {
+  const title = 'Document — Vector';
+  const description = 'This document is private or unavailable on Vector.';
+  const siteName = orgSlug ? `${orgSlug} on Vector` : 'Vector';
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+  };
+}
+
 export async function generateMetadata({
   params,
 }: DocumentViewPageProps): Promise<Metadata> {
@@ -23,7 +44,7 @@ export async function generateMetadata({
     });
 
     if (!data) {
-      return { title: 'Document — Vector' };
+      return unavailableDocumentMetadata(orgSlug);
     }
 
     const description = data.author
@@ -45,7 +66,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: 'Document — Vector' };
+    return unavailableDocumentMetadata(orgSlug);
   }
 }
 

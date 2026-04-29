@@ -76,11 +76,16 @@ function DocumentOgImage({ data }: { data: DocumentData }) {
   );
 }
 
-function NotFoundImage() {
+function UnavailableDocumentImage({ orgSlug }: { orgSlug: string }) {
   return (
-    <OgCard orgName='Vector' entityType='Document' entityKey=''>
-      <div style={{ fontSize: 44, fontWeight: 700, color: '#6b7280' }}>
-        Document not found
+    <OgCard orgName={orgSlug} entityType='Document' entityKey=''>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontSize: 44, fontWeight: 700, color: '#f9fafb' }}>
+          Document
+        </div>
+        <div style={{ fontSize: 24, color: '#6b7280' }}>
+          This document is private or unavailable.
+        </div>
       </div>
     </OgCard>
   );
@@ -105,7 +110,11 @@ export default async function Image({
   }
 
   return new ImageResponse(
-    data ? <DocumentOgImage data={data} /> : <NotFoundImage />,
+    data ? (
+      <DocumentOgImage data={data} />
+    ) : (
+      <UnavailableDocumentImage orgSlug={orgSlug} />
+    ),
     { ...size },
   );
 }

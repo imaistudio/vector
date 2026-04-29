@@ -96,11 +96,22 @@ function ProjectOgImage({ data }: { data: ProjectData }) {
   );
 }
 
-function NotFoundImage() {
+function UnavailableProjectImage({
+  orgSlug,
+  projectKey,
+}: {
+  orgSlug: string;
+  projectKey: string;
+}) {
   return (
-    <OgCard orgName='Vector' entityType='Project' entityKey=''>
-      <div style={{ fontSize: 44, fontWeight: 700, color: '#6b7280' }}>
-        Project not found
+    <OgCard orgName={orgSlug} entityType='Project' entityKey={projectKey}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontSize: 44, fontWeight: 700, color: '#f9fafb' }}>
+          {projectKey}
+        </div>
+        <div style={{ fontSize: 24, color: '#6b7280' }}>
+          This project is private or unavailable.
+        </div>
       </div>
     </OgCard>
   );
@@ -125,7 +136,11 @@ export default async function Image({
   }
 
   return new ImageResponse(
-    data ? <ProjectOgImage data={data} /> : <NotFoundImage />,
+    data ? (
+      <ProjectOgImage data={data} />
+    ) : (
+      <UnavailableProjectImage orgSlug={orgSlug} projectKey={projectKey} />
+    ),
     { ...size },
   );
 }

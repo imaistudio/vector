@@ -80,6 +80,8 @@ interface ProjectsPageContentProps {
 
 const PROJECTS_LAYOUT_STORAGE_KEY = 'vector:projects-list-layout';
 const PROJECTS_GROUP_BY_STORAGE_KEY = 'vector:projects-group-by';
+const ACTIVE_FILTER_TAB_CLASS =
+  'bg-secondary shadow-sm dark:border-border dark:bg-muted/70 dark:hover:bg-muted/80';
 const VALID_PROJECT_GROUP_BY: ProjectGroupByField[] = [
   'none',
   'status',
@@ -383,7 +385,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
                 size='sm'
                 className={cn(
                   'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === 'mine' && 'bg-secondary',
+                  scopeTab === 'mine' && ACTIVE_FILTER_TAB_CLASS,
                 )}
                 onClick={() => {
                   setScopeTab('mine');
@@ -400,7 +402,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
                 size='sm'
                 className={cn(
                   'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === 'all' && 'bg-secondary',
+                  scopeTab === 'all' && ACTIVE_FILTER_TAB_CLASS,
                 )}
                 onClick={() => {
                   setScopeTab('all');
@@ -426,7 +428,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
                       size='sm'
                       className={cn(
                         'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                        activeFilter === tab.key && 'bg-secondary',
+                        activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
                       )}
                       onClick={() => setActiveFilter(tab.key)}
                     >

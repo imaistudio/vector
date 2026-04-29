@@ -82,6 +82,8 @@ const filterTabs = [
 const ISSUES_LAYOUT_STORAGE_KEY = 'vector:issues-list-layout';
 const ISSUES_TABLE_GROUP_BY_KEY = 'vector:issues-table-group-by';
 const ISSUES_KANBAN_GROUP_BY_KEY = 'vector:issues-kanban-group-by';
+const ACTIVE_FILTER_TAB_CLASS =
+  'bg-secondary shadow-sm dark:border-border dark:bg-muted/70 dark:hover:bg-muted/80';
 const VALID_ISSUE_GROUP_BY: IssueGroupByField[] = [
   'none',
   'priority',
@@ -588,7 +590,7 @@ export default function IssuesPage() {
                 size='sm'
                 className={cn(
                   'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === tab.key && 'bg-secondary',
+                  scopeTab === tab.key && ACTIVE_FILTER_TAB_CLASS,
                 )}
                 onClick={() => {
                   setScopeTab(tab.key);
@@ -611,7 +613,7 @@ export default function IssuesPage() {
                     size='sm'
                     className={cn(
                       'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                      activeFilter === tab.key && 'bg-secondary',
+                      activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
                     )}
                     onClick={() => setActiveFilter(tab.key)}
                   >

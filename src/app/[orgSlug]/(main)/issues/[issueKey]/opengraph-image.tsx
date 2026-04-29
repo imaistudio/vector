@@ -127,11 +127,22 @@ function PrivateIssueImage({ data }: { data: IssueData }) {
   );
 }
 
-function NotFoundImage({ orgSlug }: { orgSlug: string }) {
+function UnavailableIssueImage({
+  orgSlug,
+  issueKey,
+}: {
+  orgSlug: string;
+  issueKey: string;
+}) {
   return (
-    <OgCard orgName={orgSlug} entityType='Issue' entityKey=''>
-      <div style={{ fontSize: 44, fontWeight: 700, color: '#6b7280' }}>
-        Issue not found
+    <OgCard orgName={orgSlug} entityType='Issue' entityKey={issueKey}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontSize: 44, fontWeight: 700, color: '#f9fafb' }}>
+          {issueKey}
+        </div>
+        <div style={{ fontSize: 24, color: '#6b7280' }}>
+          This issue is private or unavailable.
+        </div>
       </div>
     </OgCard>
   );
@@ -161,7 +172,7 @@ export default async function Image({
   } else if (data) {
     content = <PrivateIssueImage data={data} />;
   } else {
-    content = <NotFoundImage orgSlug={orgSlug} />;
+    content = <UnavailableIssueImage orgSlug={orgSlug} issueKey={issueKey} />;
   }
 
   return new ImageResponse(content, { ...size });

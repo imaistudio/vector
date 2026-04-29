@@ -91,11 +91,22 @@ function TeamOgImage({ data }: { data: TeamData }) {
   );
 }
 
-function NotFoundImage() {
+function UnavailableTeamImage({
+  orgSlug,
+  teamKey,
+}: {
+  orgSlug: string;
+  teamKey: string;
+}) {
   return (
-    <OgCard orgName='Vector' entityType='Team' entityKey=''>
-      <div style={{ fontSize: 44, fontWeight: 700, color: '#6b7280' }}>
-        Team not found
+    <OgCard orgName={orgSlug} entityType='Team' entityKey={teamKey}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ fontSize: 44, fontWeight: 700, color: '#f9fafb' }}>
+          {teamKey}
+        </div>
+        <div style={{ fontSize: 24, color: '#6b7280' }}>
+          This team is private or unavailable.
+        </div>
       </div>
     </OgCard>
   );
@@ -120,7 +131,11 @@ export default async function Image({
   }
 
   return new ImageResponse(
-    data ? <TeamOgImage data={data} /> : <NotFoundImage />,
+    data ? (
+      <TeamOgImage data={data} />
+    ) : (
+      <UnavailableTeamImage orgSlug={orgSlug} teamKey={teamKey} />
+    ),
     { ...size },
   );
 }
