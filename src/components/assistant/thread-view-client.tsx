@@ -241,9 +241,13 @@ export function ThreadViewClient() {
   const [confirmAction, ConfirmDialog] = useConfirm();
   const inputRef = useRef<AssistantComposerHandle>(null);
 
+  const isAwaitingPendingAction =
+    threadRow?.threadStatus === 'pending' && pendingActions.length > 0;
+  const isGeneratingResponse =
+    threadRow?.threadStatus === 'pending' && !isAwaitingPendingAction;
   const isAssistantActive =
     isSending ||
-    threadRow?.threadStatus === 'pending' ||
+    isGeneratingResponse ||
     messages.some(message => message.status === 'streaming');
 
   // --- Scroll management ---

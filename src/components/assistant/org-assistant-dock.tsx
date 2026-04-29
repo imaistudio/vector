@@ -176,9 +176,13 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   );
   const pendingActions = normalizePendingActions(threadRow?.pendingAction);
   const hasMessages = messages.length > 0;
+  const isAwaitingPendingAction =
+    threadRow?.threadStatus === 'pending' && pendingActions.length > 0;
+  const isGeneratingResponse =
+    threadRow?.threadStatus === 'pending' && !isAwaitingPendingAction;
   const isAssistantActive =
     isSending ||
-    threadRow?.threadStatus === 'pending' ||
+    isGeneratingResponse ||
     messages.some(message => message.status === 'streaming');
 
   // Thread title for dock header
