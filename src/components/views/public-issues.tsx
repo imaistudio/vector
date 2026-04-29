@@ -175,13 +175,28 @@ export function PublicKanbanView({
     effectiveGroupBy,
     effectiveGroupBy === 'status' ? allStatuses : undefined,
   );
+  const gridMinWidth = Math.max(groups.length * 240, 1);
+
+  if (groups.length === 0) {
+    return (
+      <div className='border-border text-muted-foreground rounded-lg border border-dashed py-16 text-center text-sm'>
+        No issues to show.
+      </div>
+    );
+  }
 
   return (
     <ScrollArea className='w-full' type='scroll'>
-      <div className='flex min-h-[50vh] gap-3 px-4 pb-16'>
+      <div
+        className='grid w-full gap-3 pb-8'
+        style={{
+          gridTemplateColumns: `repeat(${groups.length}, minmax(220px, 1fr))`,
+          minWidth: `${gridMinWidth}px`,
+        }}
+      >
         {groups.map(group => (
-          <div key={group.key} className='min-w-[260px] flex-shrink-0'>
-            <div className='mb-2 flex items-center gap-1.5'>
+          <section key={group.key} className='min-w-0'>
+            <div className='mb-2 flex h-7 items-center gap-1.5'>
               {group.icon && (
                 <DynamicIcon
                   name={group.icon}
@@ -189,8 +204,10 @@ export function PublicKanbanView({
                   style={{ color: group.color ?? undefined }}
                 />
               )}
-              <span className='text-sm font-medium'>{group.label}</span>
-              <span className='text-muted-foreground text-xs'>
+              <span className='truncate text-sm font-medium'>
+                {group.label}
+              </span>
+              <span className='text-muted-foreground shrink-0 text-xs tabular-nums'>
                 {group.items.length}
               </span>
             </div>
@@ -210,7 +227,7 @@ export function PublicKanbanView({
                 ))
               )}
             </div>
-          </div>
+          </section>
         ))}
       </div>
       <ScrollBar orientation='horizontal' />

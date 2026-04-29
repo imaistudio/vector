@@ -1,7 +1,7 @@
 'use client';
 
 import { api, useCachedQuery } from '@/lib/convex';
-import { Lock, ChevronLeft, ChevronRight, Globe } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock3, Globe, Lock } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
@@ -20,6 +20,38 @@ interface PublicViewPageProps {
 
 const PAGE_SIZE = 50;
 
+function PublicViewSkeleton() {
+  return (
+    <div className='mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8'>
+      <div className='space-y-4'>
+        <div className='flex items-center justify-between gap-3'>
+          <div className='flex items-center gap-2'>
+            <Skeleton className='size-6 rounded-full' />
+            <Skeleton className='h-4 w-40' />
+          </div>
+          <Skeleton className='h-6 w-16 rounded-full' />
+        </div>
+        <div className='space-y-2'>
+          <Skeleton className='h-8 w-64' />
+          <Skeleton className='h-4 w-full max-w-md' />
+        </div>
+      </div>
+
+      <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-5'>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className='space-y-2'>
+            <div className='flex h-7 items-center gap-2'>
+              <Skeleton className='size-3.5 rounded-sm' />
+              <Skeleton className='h-4 w-24' />
+            </div>
+            <Skeleton className='h-20 w-full rounded-lg' />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
   const [page, setPage] = useState(1);
 
@@ -34,26 +66,7 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
   );
 
   if (view === undefined) {
-    return (
-      <>
-        {/* Skeleton navbar */}
-        <div className='border-b px-4 py-2'>
-          <div className='flex items-center gap-2'>
-            <Skeleton className='size-5 rounded' />
-            <Skeleton className='h-4 w-24' />
-          </div>
-        </div>
-        <div className='mx-auto max-w-3xl space-y-4 px-4 py-10'>
-          <Skeleton className='h-7 w-48' />
-          <Skeleton className='h-4 w-72' />
-          <div className='mt-6 space-y-2'>
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className='h-10 w-full' />
-            ))}
-          </div>
-        </div>
-      </>
-    );
+    return <PublicViewSkeleton />;
   }
 
   if (view === null) {
@@ -73,13 +86,11 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
   const viewGroupBy = view.layout?.groupBy ?? 'none';
 
   return (
-    <div className='flex min-h-screen flex-col'>
-      {/* ── Top navbar ────────────────────────────────────────────── */}
-      <header className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 border-b backdrop-blur'>
-        <div className='flex flex-col gap-1 px-4 py-2'>
-          {/* Row 1: org breadcrumb (left) + Public badge (right) */}
-          <div className='flex items-center justify-between gap-2'>
-            <div className='flex min-w-0 items-center gap-2'>
+    <div className='mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8'>
+      <header className='space-y-5'>
+        <div className='flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between'>
+          <div className='min-w-0 space-y-3'>
+            <div className='text-muted-foreground flex min-w-0 flex-wrap items-center gap-2 text-xs'>
               {view.orgLogo ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -88,73 +99,76 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
                   className='size-5 flex-shrink-0 rounded-full object-cover'
                 />
               ) : (
-                <div className='bg-muted flex size-5 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold'>
-                  {view.orgName?.charAt(0).toUpperCase()}
+                <div className='bg-muted flex size-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-semibold uppercase'>
+                  {view.orgName?.charAt(0)}
                 </div>
               )}
-              <span className='flex-shrink-0 text-sm font-medium'>
+              <span className='text-foreground font-medium'>
                 {view.orgName}
               </span>
-              <span className='text-muted-foreground flex-shrink-0 text-xs'>
-                /
-              </span>
-              <span className='text-muted-foreground min-w-0 truncate text-xs'>
-                {view.name}
-              </span>
+              <span>/</span>
+              <span className='min-w-0 truncate'>{view.name}</span>
             </div>
-            <div className='flex flex-shrink-0 items-center gap-1 rounded-full border px-2 py-0.5'>
-              <Globe className='size-3 text-emerald-500' />
-              <span className='text-xs text-emerald-600 dark:text-emerald-400'>
-                Public
-              </span>
+
+            <div className='space-y-2'>
+              <h1 className='text-2xl leading-tight font-semibold tracking-tight sm:text-3xl'>
+                {view.name}
+              </h1>
+              {view.description ? (
+                <div className='prose prose-sm dark:prose-invert text-muted-foreground max-w-2xl'>
+                  <Markdown>{view.description}</Markdown>
+                </div>
+              ) : null}
             </div>
           </div>
 
-          {/* Row 2: creator (left) + updated (right) */}
-          <div className='flex items-center justify-between gap-2'>
-            {view.creator ? (
-              <div className='flex items-center gap-1.5'>
-                <span className='text-muted-foreground text-xs'>by</span>
-                <UserAvatar
-                  name={view.creator.name}
-                  email={view.creator.email}
-                  image={view.creator.image}
-                  size='sm'
-                />
-                <span className='text-muted-foreground text-xs'>
-                  {view.creator.name ?? view.creator.email}
-                </span>
-              </div>
-            ) : (
-              <span />
-            )}
-            {view.updatedAt && (
-              <span className='text-muted-foreground flex-shrink-0 text-xs'>
+          <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+            <div className='flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300'>
+              <Globe className='size-3.5' />
+              Public
+            </div>
+            {view.updatedAt ? (
+              <div className='text-muted-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
+                <Clock3 className='size-3.5' />
                 Updated {formatDateHuman(new Date(view.updatedAt))}
-              </span>
-            )}
+              </div>
+            ) : null}
           </div>
         </div>
-      </header>
 
-      {/* ── Header content ─────────────────────────────────────────── */}
-      <div className='mx-auto w-full max-w-3xl px-4 py-8'>
-        <h1 className='text-2xl font-semibold tracking-tight'>{view.name}</h1>
-        {view.description && (
-          <div className='prose prose-sm dark:prose-invert text-muted-foreground mt-2 max-w-none'>
-            <Markdown>{view.description}</Markdown>
+        {view.creator ? (
+          <div className='text-muted-foreground flex items-center gap-2 text-xs'>
+            <span>by</span>
+            <UserAvatar
+              name={view.creator.name}
+              email={view.creator.email}
+              image={view.creator.image}
+              size='sm'
+            />
+            <span className='min-w-0 truncate'>
+              {view.creator.name ?? view.creator.email}
+            </span>
           </div>
-        )}
-      </div>
+        ) : null}
+      </header>
 
       {/* ── Issues ─────────────────────────────────────────────────── */}
       {!issuesData ? (
-        <div className='mx-auto w-full max-w-3xl px-4'>
-          <div className='space-y-2'>
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className='h-10 w-full' />
-            ))}
-          </div>
+        <div
+          className={
+            viewLayout === 'kanban' ? 'grid gap-3 xl:grid-cols-5' : 'space-y-2'
+          }
+        >
+          {viewLayout === 'kanban'
+            ? Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className='space-y-2'>
+                  <Skeleton className='h-5 w-24' />
+                  <Skeleton className='h-20 w-full rounded-lg' />
+                </div>
+              ))
+            : Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className='h-10 w-full' />
+              ))}
         </div>
       ) : viewLayout === 'kanban' ? (
         <PublicKanbanView
@@ -164,9 +178,9 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
           allStatuses={view.allStatuses}
         />
       ) : (
-        <div className='mx-auto w-full max-w-3xl px-4'>
+        <div className='w-full max-w-3xl'>
           {issues.length === 0 ? (
-            <div className='text-muted-foreground py-20 text-center text-sm'>
+            <div className='border-border text-muted-foreground rounded-lg border border-dashed py-16 text-center text-sm'>
               No issues to show.
             </div>
           ) : (
@@ -181,7 +195,7 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
 
       {/* ── Pagination ─────────────────────────────────────────────── */}
       {totalPages > 1 && (
-        <div className='mx-auto mt-6 w-full max-w-3xl px-4'>
+        <div className='w-full max-w-3xl'>
           <div className='flex items-center justify-between'>
             <span className='text-muted-foreground text-xs'>
               {total} issue{total !== 1 ? 's' : ''}
@@ -197,7 +211,7 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
                 <ChevronLeft className='size-3.5' />
                 Prev
               </Button>
-              <span className='text-muted-foreground text-xs'>
+              <span className='text-muted-foreground text-xs tabular-nums'>
                 {page} / {totalPages}
               </span>
               <Button
