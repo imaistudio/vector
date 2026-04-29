@@ -134,7 +134,9 @@ export function PublicLayout({
           </div>
 
           <div className='text-muted-foreground flex flex-col gap-2 border-t pt-4 text-xs sm:flex-row sm:items-center sm:justify-between'>
-            <span>Powered by {branding.name}</span>
+            {branding.publicFooterAttributionEnabled ? (
+              <span>{branding.publicFooterAttributionText}</span>
+            ) : null}
             <span className='truncate'>
               {branding.description || 'Project management platform'}
             </span>

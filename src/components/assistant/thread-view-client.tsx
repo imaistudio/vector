@@ -42,7 +42,6 @@ import {
   type AssistantComposerSubmitOptions,
 } from './assistant-composer';
 import {
-  AssistantPendingActions,
   normalizePendingActions,
   type AssistantPendingAction,
 } from './assistant-pending-actions';
@@ -209,7 +208,6 @@ export function ThreadViewClient() {
   const executeConfirmedAction = useMutation(
     api.ai.mutations.executeConfirmedAction,
   );
-  const cancelPendingAction = useMutation(api.ai.mutations.cancelPendingAction);
 
   // Messages
   const agentThreadId = threadRow?.threadId;
@@ -235,9 +233,6 @@ export function ThreadViewClient() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
-    null,
-  );
-  const [cancellingActionId, setCancellingActionId] = useState<string | null>(
     null,
   );
   const [confirmAction, ConfirmDialog] = useConfirm();
@@ -538,27 +533,9 @@ export function ThreadViewClient() {
     [assistantThreadId, executeConfirmedAction, orgSlug],
   );
 
-  const handleCancelPendingAction = useCallback(
-    async (action: AssistantPendingAction) => {
-      setCancellingActionId(action.id);
-      try {
-        await cancelPendingAction({
-          orgSlug,
-          actionId: action.id,
-          assistantThreadId: assistantThreadId as never,
-        });
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Cancel failed');
-      } finally {
-        setCancellingActionId(null);
-      }
-    },
-    [assistantThreadId, cancelPendingAction, orgSlug],
-  );
-
   useEffect(() => {
     if (pendingActions.length === 0) return;
-    if (confirmingActionId || cancellingActionId) return;
+    if (confirmingActionId) return;
 
     const nextAction = pendingActions[0];
     const storedSkip =
@@ -569,12 +546,7 @@ export function ThreadViewClient() {
     if (!storedSkip || !nextAction) return;
 
     void handleConfirmAction(nextAction);
-  }, [
-    cancellingActionId,
-    confirmingActionId,
-    handleConfirmAction,
-    pendingActions,
-  ]);
+  }, [confirmingActionId, handleConfirmAction, pendingActions]);
 
   // Loading state
   if (!isReady || threadQuery.isPending) {
@@ -771,15 +743,6 @@ export function ThreadViewClient() {
           className='pointer-events-none absolute inset-0'
         />
         <div className='relative mx-auto max-w-[700px]'>
-          <AssistantPendingActions
-            actions={pendingActions}
-            variant='thread'
-            confirmingActionId={confirmingActionId}
-            cancellingActionId={cancellingActionId}
-            onConfirm={action => void handleConfirmAction(action)}
-            onCancel={action => void handleCancelPendingAction(action)}
-          />
-
           {/* Error banner */}
           {threadRow.threadStatus === 'error' && threadRow.errorMessage ? (
             <div className='mb-2 rounded-md border border-[#cb706f]/20 px-3 py-1.5 text-xs text-[#cb706f]'>

@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const PLATFORM_ADMIN_ROLE = 'platform_admin';
 
@@ -133,6 +134,10 @@ export function PlatformBrandingPage() {
   const [description, setDescription] = useState('');
   const [themeColor, setThemeColor] = useState('#111827');
   const [accentColor, setAccentColor] = useState('#2563eb');
+  const [publicFooterAttributionEnabled, setPublicFooterAttributionEnabled] =
+    useState(true);
+  const [publicFooterAttributionText, setPublicFooterAttributionText] =
+    useState('Powered by Vector');
   const [defaultOrgSlug, setDefaultOrgSlug] = useState('');
   const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -146,6 +151,12 @@ export function PlatformBrandingPage() {
     setDescription(brandingQuery.data.description);
     setThemeColor(brandingQuery.data.themeColor);
     setAccentColor(brandingQuery.data.accentColor);
+    setPublicFooterAttributionEnabled(
+      brandingQuery.data.publicFooterAttributionEnabled,
+    );
+    setPublicFooterAttributionText(
+      brandingQuery.data.publicFooterAttributionText,
+    );
     setDefaultOrgSlug(brandingQuery.data.defaultOrgSlug ?? '');
   }, [brandingQuery.data, hasLocalEdits]);
 
@@ -183,6 +194,9 @@ export function PlatformBrandingPage() {
     description !== branding.description ||
     themeColor !== branding.themeColor ||
     accentColor !== branding.accentColor ||
+    publicFooterAttributionEnabled !==
+      branding.publicFooterAttributionEnabled ||
+    publicFooterAttributionText !== branding.publicFooterAttributionText ||
     defaultOrgSlug !== (branding.defaultOrgSlug ?? '');
 
   const handleSave = async () => {
@@ -193,6 +207,8 @@ export function PlatformBrandingPage() {
         description,
         themeColor,
         accentColor,
+        publicFooterAttributionEnabled,
+        publicFooterAttributionText,
         defaultOrgSlug,
       });
       setHasLocalEdits(false);
@@ -319,6 +335,7 @@ export function PlatformBrandingPage() {
             <div className='flex items-center gap-4 p-3'>
               {branding.logoUrl ? (
                 <div className='relative'>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={branding.logoUrl}
                     alt='Brand logo'
@@ -435,6 +452,75 @@ export function PlatformBrandingPage() {
             </div>
           </div>
 
+          {/* Public footer */}
+          <div className='rounded-md border'>
+            <div className='border-b px-3 py-2'>
+              <div className='text-sm font-medium'>Public footer</div>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                Controls the small attribution line shown on public workspace
+                pages.
+              </p>
+            </div>
+
+            <div className='space-y-3 p-3'>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
+                <div className='min-w-0'>
+                  <div className='text-xs font-medium'>Footer attribution</div>
+                  <p className='text-muted-foreground mt-1 text-xs'>
+                    Hide the powered-by line, or keep it visible with custom
+                    text.
+                  </p>
+                </div>
+                <button
+                  type='button'
+                  role='switch'
+                  aria-checked={publicFooterAttributionEnabled}
+                  onClick={() => {
+                    setPublicFooterAttributionEnabled(value => !value);
+                    setHasLocalEdits(true);
+                  }}
+                  className='hover:bg-accent focus-visible:ring-ring flex h-8 flex-shrink-0 items-center gap-2 rounded-md px-1.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none'
+                >
+                  <span className='text-muted-foreground'>
+                    {publicFooterAttributionEnabled ? 'Visible' : 'Hidden'}
+                  </span>
+                  <span
+                    className={cn(
+                      'relative h-5 w-9 rounded-full border transition-colors',
+                      publicFooterAttributionEnabled
+                        ? 'border-primary bg-primary'
+                        : 'bg-muted',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'bg-background absolute top-0.5 size-4 rounded-full shadow-sm transition-transform',
+                        publicFooterAttributionEnabled
+                          ? 'translate-x-[18px]'
+                          : 'translate-x-0.5',
+                      )}
+                    />
+                  </span>
+                </button>
+              </div>
+
+              <div className='space-y-2'>
+                <div className='text-xs font-medium'>Attribution text</div>
+                <Input
+                  value={publicFooterAttributionText}
+                  onChange={e => {
+                    setPublicFooterAttributionText(e.target.value);
+                    setHasLocalEdits(true);
+                  }}
+                  placeholder='Powered by Vector'
+                  className='h-8 max-w-lg'
+                  maxLength={80}
+                  disabled={!publicFooterAttributionEnabled}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Colors */}
           <div className='rounded-md border'>
             <div className='border-b px-3 py-2'>
@@ -477,6 +563,7 @@ export function PlatformBrandingPage() {
                 style={{ backgroundColor: accentColor }}
               >
                 {branding.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={branding.logoUrl}
                     alt=''
