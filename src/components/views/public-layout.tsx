@@ -52,6 +52,8 @@ export function PublicLayout({
 
   const redirectTo = pathname ?? `/${orgSlug}`;
   const showAuthActions = currentUser === null;
+  const showSignupButton =
+    showAuthActions && branding.showPublicSignupButton !== false;
   const orgName = publicProfile?.name ?? orgSlug;
   const orgSubtitle = publicProfile?.subtitle?.trim() || 'Public workspace';
 
@@ -119,12 +121,14 @@ export function PublicLayout({
                 >
                   Log in
                 </Link>
-                <Link
-                  href={`/auth/signup?redirectTo=${encodeURIComponent(redirectTo)}`}
-                  className={cn(buttonVariants({ size: 'sm' }), 'h-8')}
-                >
-                  Sign up
-                </Link>
+                {showSignupButton ? (
+                  <Link
+                    href={`/auth/signup?redirectTo=${encodeURIComponent(redirectTo)}`}
+                    className={cn(buttonVariants({ size: 'sm' }), 'h-8')}
+                  >
+                    Sign up
+                  </Link>
+                ) : null}
               </div>
             ) : null}
           </div>

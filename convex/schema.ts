@@ -93,6 +93,7 @@ export default defineSchema({
   siteSettings: defineTable({
     signupBlockedEmailDomains: v.optional(v.array(v.string())),
     signupAllowedEmailDomains: v.optional(v.array(v.string())),
+    showPublicSignupButton: v.optional(v.boolean()),
     signupDisposableDomainSync: v.optional(
       v.object({
         lastStartedAt: v.optional(v.number()),

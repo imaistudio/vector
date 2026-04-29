@@ -6,6 +6,7 @@ export interface Branding {
   themeColor: string;
   accentColor: string;
   defaultOrgSlug: string | null;
+  showPublicSignupButton: boolean;
 }
 
 export const DEFAULT_BRANDING: Branding = {
@@ -16,6 +17,7 @@ export const DEFAULT_BRANDING: Branding = {
   themeColor: '#111827',
   accentColor: '#2563eb',
   defaultOrgSlug: null,
+  showPublicSignupButton: true,
 };
 
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}){1,2}$/;

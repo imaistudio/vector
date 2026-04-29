@@ -23,6 +23,7 @@ export const getSignupPolicy = query({
     return {
       blockedDomains: settings?.signupBlockedEmailDomains ?? [],
       allowedDomains: settings?.signupAllowedEmailDomains ?? [],
+      showPublicSignupButton: settings?.showPublicSignupButton ?? true,
       sync: settings?.signupDisposableDomainSync ?? {
         totalRulesCount: 0,
         fetchedCount: 0,
@@ -155,6 +156,7 @@ export const getBranding = query({
       themeColor: settings?.brandThemeColor ?? '#111827',
       accentColor: settings?.brandAccentColor ?? '#2563eb',
       defaultOrgSlug: defaultOrg?.slug ?? null,
+      showPublicSignupButton: settings?.showPublicSignupButton ?? true,
     };
   },
 });
