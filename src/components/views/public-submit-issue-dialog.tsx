@@ -1,20 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { api, useMutation } from '@/lib/convex';
 import { toast } from 'sonner';
-import {
-  AlertCircle,
-  ArrowRight,
-  CheckCircle2,
-  Loader2,
-  Send,
-} from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, Send } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { BarsSpinner } from '@/components/bars-spinner';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -80,6 +75,10 @@ export function PublicSubmitIssueDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submittedKey, setSubmittedKey] = useState<string | null>(null);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const titleId = useId();
+  const descriptionId = useId();
+  const nameId = useId();
+  const emailId = useId();
 
   const submit = useMutation(api.issues.mutations.createPublicSubmission);
 
@@ -163,31 +162,44 @@ export function PublicSubmitIssueDialog({
           </Button>
         )}
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className='sm:max-w-lg'>
-        <ResponsiveDialogHeader>
-          <ResponsiveDialogTitle className='text-base'>
-            Submit a request to {orgName}
+      <ResponsiveDialogContent className='gap-0 overflow-hidden p-0 sm:max-w-xl'>
+        <ResponsiveDialogHeader className='border-border/70 border-b px-4 py-3 text-left'>
+          <ResponsiveDialogTitle className='flex items-center gap-2 text-base'>
+            <span className='bg-muted text-muted-foreground flex size-7 shrink-0 items-center justify-center rounded-md border'>
+              {submittedKey ? (
+                <CheckCircle2 className='size-3.5 text-emerald-500' />
+              ) : (
+                <Send className='size-3.5' />
+              )}
+            </span>
+            {submittedKey
+              ? 'Request submitted'
+              : `Submit a request to ${orgName}`}
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className='text-xs'>
-            Your request will show up as a public issue in this workspace. You
-            don&apos;t need an account — leave your email if you want a reply.
+          <ResponsiveDialogDescription className='max-w-md text-xs leading-5'>
+            {submittedKey
+              ? 'Your request is now visible to the workspace.'
+              : 'Share the request publicly. Add contact details only if you want a reply.'}
           </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
 
         {submittedKey ? (
-          <div className='flex flex-col items-center gap-3 py-6 text-center'>
-            <CheckCircle2 className='size-10 text-emerald-500' />
-            <div className='space-y-1'>
-              <div className='text-sm font-medium'>Thanks — got it.</div>
-              <div className='text-muted-foreground text-xs'>
-                Tracking ID: <span className='font-mono'>{submittedKey}</span>
+          <div className='px-4 py-4'>
+            <div className='border-border bg-muted/20 flex items-start gap-3 rounded-lg border px-3 py-3'>
+              <CheckCircle2 className='mt-0.5 size-5 shrink-0 text-emerald-500' />
+              <div className='min-w-0 space-y-1'>
+                <div className='text-sm font-medium'>Thanks, got it.</div>
+                <div className='text-muted-foreground text-xs'>
+                  Tracking ID:{' '}
+                  <span className='font-mono tabular-nums'>{submittedKey}</span>
+                </div>
               </div>
             </div>
-            <div className='flex flex-wrap items-center justify-center gap-2'>
+            <div className='mt-4 flex flex-wrap items-center justify-between gap-2'>
               <Button
                 type='button'
                 size='sm'
-                variant='outline'
+                variant='ghost'
                 className='h-8'
                 onClick={() => {
                   resetForm();
@@ -208,61 +220,85 @@ export function PublicSubmitIssueDialog({
             </div>
           </div>
         ) : (
-          <div className='space-y-3 py-1'>
+          <form
+            className='space-y-3 px-4 py-3'
+            onSubmit={event => {
+              event.preventDefault();
+              void handleSubmit();
+            }}
+          >
             {errors.form ? (
-              <div className='flex items-start gap-2 rounded-md border border-[#cb706f]/30 bg-[#cb706f]/5 px-2.5 py-1.5 text-[11px] text-[#cb706f]'>
+              <div className='border-destructive/30 bg-destructive/5 text-destructive flex items-start gap-2 rounded-md border px-2.5 py-1.5 text-[11px]'>
                 <AlertCircle className='mt-0.5 size-3.5 shrink-0' />
                 <span>{errors.form}</span>
               </div>
             ) : null}
 
-            <div className='space-y-1.5'>
-              <label className='text-xs font-medium'>
-                Title <span className='text-destructive'>*</span>
+            <div className='space-y-1'>
+              <label htmlFor={titleId} className='sr-only'>
+                Title
               </label>
-              <Input
-                value={title}
-                onChange={event => {
-                  setTitle(event.target.value);
-                  if (errors.title) {
-                    setErrors(prev => ({ ...prev, title: undefined }));
-                  }
-                }}
-                placeholder='Short summary of the request'
-                className={cn(
-                  'h-8 text-sm',
-                  errors.title &&
-                    'border-destructive focus-visible:ring-destructive/30',
-                )}
-                aria-invalid={errors.title ? true : undefined}
-                maxLength={200}
-                disabled={isSubmitting}
-              />
+              <div className='relative'>
+                <Input
+                  id={titleId}
+                  value={title}
+                  onChange={event => {
+                    setTitle(event.target.value);
+                    if (errors.title) {
+                      setErrors(prev => ({ ...prev, title: undefined }));
+                    }
+                  }}
+                  placeholder='Short summary of the request'
+                  className={cn(
+                    'h-9 pr-24 text-base md:text-sm',
+                    errors.title &&
+                      'border-destructive focus-visible:ring-destructive/30',
+                  )}
+                  aria-invalid={errors.title ? true : undefined}
+                  maxLength={200}
+                  disabled={isSubmitting}
+                  autoFocus
+                />
+                <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+                  Title <span className='text-destructive'>*</span>
+                </span>
+              </div>
               {errors.title ? (
                 <p className='text-destructive text-[11px]'>{errors.title}</p>
               ) : null}
             </div>
 
-            <div className='space-y-1.5'>
-              <label className='text-xs font-medium'>Description</label>
-              <Textarea
-                value={description}
-                onChange={event => {
-                  setDescription(event.target.value);
-                  if (errors.description) {
-                    setErrors(prev => ({ ...prev, description: undefined }));
-                  }
-                }}
-                placeholder='Context, steps, screenshots...'
-                className={cn(
-                  'min-h-[120px] resize-none text-sm',
-                  errors.description &&
-                    'border-destructive focus-visible:ring-destructive/30',
-                )}
-                aria-invalid={errors.description ? true : undefined}
-                maxLength={10_000}
-                disabled={isSubmitting}
-              />
+            <div className='space-y-1'>
+              <label htmlFor={descriptionId} className='sr-only'>
+                Description
+              </label>
+              <div className='relative'>
+                <Textarea
+                  id={descriptionId}
+                  value={description}
+                  onChange={event => {
+                    setDescription(event.target.value);
+                    if (errors.description) {
+                      setErrors(prev => ({
+                        ...prev,
+                        description: undefined,
+                      }));
+                    }
+                  }}
+                  placeholder='Context, expected behavior, screenshots...'
+                  className={cn(
+                    'min-h-[128px] resize-none pb-8 text-base md:text-sm',
+                    errors.description &&
+                      'border-destructive focus-visible:ring-destructive/30',
+                  )}
+                  aria-invalid={errors.description ? true : undefined}
+                  maxLength={10_000}
+                  disabled={isSubmitting}
+                />
+                <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+                  Description
+                </span>
+              </div>
               {errors.description ? (
                 <p className='text-destructive text-[11px]'>
                   {errors.description}
@@ -270,95 +306,105 @@ export function PublicSubmitIssueDialog({
               ) : null}
             </div>
 
-            <div className='grid gap-3 sm:grid-cols-2'>
-              <div className='space-y-1.5'>
-                <label className='text-xs font-medium'>
-                  Your name{' '}
-                  <span className='text-muted-foreground font-normal'>
-                    (optional)
-                  </span>
+            <div className='grid gap-2 sm:grid-cols-2'>
+              <div className='space-y-1'>
+                <label htmlFor={nameId} className='sr-only'>
+                  Your name
                 </label>
-                <Input
-                  value={name}
-                  onChange={event => {
-                    setName(event.target.value);
-                    if (errors.name) {
-                      setErrors(prev => ({ ...prev, name: undefined }));
-                    }
-                  }}
-                  placeholder='Jane Doe'
-                  className={cn(
-                    'h-8 text-sm',
-                    errors.name &&
-                      'border-destructive focus-visible:ring-destructive/30',
-                  )}
-                  aria-invalid={errors.name ? true : undefined}
-                  maxLength={120}
-                  disabled={isSubmitting}
-                />
+                <div className='relative'>
+                  <Input
+                    id={nameId}
+                    value={name}
+                    onChange={event => {
+                      setName(event.target.value);
+                      if (errors.name) {
+                        setErrors(prev => ({ ...prev, name: undefined }));
+                      }
+                    }}
+                    placeholder='Jane Doe'
+                    className={cn(
+                      'h-9 pr-24 text-base md:text-sm',
+                      errors.name &&
+                        'border-destructive focus-visible:ring-destructive/30',
+                    )}
+                    aria-invalid={errors.name ? true : undefined}
+                    maxLength={120}
+                    disabled={isSubmitting}
+                  />
+                  <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+                    Name
+                  </span>
+                </div>
                 {errors.name ? (
                   <p className='text-destructive text-[11px]'>{errors.name}</p>
                 ) : null}
               </div>
-              <div className='space-y-1.5'>
-                <label className='text-xs font-medium'>
-                  Email{' '}
-                  <span className='text-muted-foreground font-normal'>
-                    (optional)
-                  </span>
+              <div className='space-y-1'>
+                <label htmlFor={emailId} className='sr-only'>
+                  Email
                 </label>
-                <Input
-                  type='email'
-                  value={email}
-                  onChange={event => {
-                    setEmail(event.target.value);
-                    if (errors.email) {
-                      setErrors(prev => ({ ...prev, email: undefined }));
-                    }
-                  }}
-                  placeholder='you@example.com'
-                  className={cn(
-                    'h-8 text-sm',
-                    errors.email &&
-                      'border-destructive focus-visible:ring-destructive/30',
-                  )}
-                  aria-invalid={errors.email ? true : undefined}
-                  maxLength={200}
-                  disabled={isSubmitting}
-                />
+                <div className='relative'>
+                  <Input
+                    id={emailId}
+                    type='email'
+                    value={email}
+                    onChange={event => {
+                      setEmail(event.target.value);
+                      if (errors.email) {
+                        setErrors(prev => ({ ...prev, email: undefined }));
+                      }
+                    }}
+                    placeholder='you@example.com'
+                    className={cn(
+                      'h-9 pr-24 text-base md:text-sm',
+                      errors.email &&
+                        'border-destructive focus-visible:ring-destructive/30',
+                    )}
+                    aria-invalid={errors.email ? true : undefined}
+                    maxLength={200}
+                    disabled={isSubmitting}
+                  />
+                  <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+                    Email
+                  </span>
+                </div>
                 {errors.email ? (
                   <p className='text-destructive text-[11px]'>{errors.email}</p>
                 ) : null}
               </div>
             </div>
 
-            <div className='flex items-center justify-end gap-2 pt-2'>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='h-8'
-                onClick={() => handleOpenChange(false)}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type='button'
-                size='sm'
-                className='h-8 gap-1.5'
-                onClick={() => void handleSubmit()}
-                disabled={isSubmitting || !title.trim()}
-              >
-                {isSubmitting ? (
-                  <Loader2 className='size-3.5 animate-spin' />
-                ) : (
-                  <Send className='size-3.5' />
-                )}
-                Submit
-              </Button>
+            <div className='border-border/70 -mx-4 mt-1 flex flex-col gap-2 border-t px-4 pt-3 sm:flex-row sm:items-center sm:justify-between'>
+              <p className='text-muted-foreground min-w-0 text-xs'>
+                Contact fields are optional.
+              </p>
+              <div className='flex shrink-0 items-center justify-end gap-2'>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  className='h-8'
+                  onClick={() => handleOpenChange(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type='submit'
+                  size='sm'
+                  className='h-8 gap-1.5'
+                  disabled={isSubmitting || !title.trim()}
+                >
+                  {isSubmitting ? (
+                    <BarsSpinner size={10} />
+                  ) : (
+                    <Send className='size-3.5' />
+                  )}
+                  Submit
+                </Button>
+              </div>
             </div>
-          </div>
+          </form>
         )}
       </ResponsiveDialogContent>
     </ResponsiveDialog>
