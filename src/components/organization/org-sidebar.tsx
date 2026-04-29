@@ -20,12 +20,13 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { CreateTeamButton } from '@/components/teams/create-team-button';
 import { CreateProjectButton } from '@/components/projects/create-project-button';
 import { ScopedPermissionGate } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
-import { api, useCachedQuery, useMutation } from '@/lib/convex';
+import { api, useCachedPaginatedQuery, useMutation } from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'nextjs-toploader/app';
@@ -98,6 +99,29 @@ function SidebarSection({
   );
 }
 
+function SidebarItemsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className='space-y-1' aria-hidden='true'>
+      {Array.from({ length: rows }).map((_, index) => (
+        <div
+          key={index}
+          className='flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2'
+        >
+          <Skeleton className='size-3 shrink-0 rounded-sm' />
+          <Skeleton
+            className={cn(
+              'h-3 flex-1',
+              index === 0 && 'max-w-32',
+              index === 1 && 'max-w-24',
+              index === 2 && 'max-w-28',
+            )}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CreateThreadButton({
   orgSlug,
   onNavigate,
@@ -142,35 +166,58 @@ function CreateThreadButton({
 export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const pathname = usePathname();
 
-  // Fetch only teams/projects the user is a member of
-  const userTeamsData = useCachedQuery(api.teams.queries.listMyTeams, {
-    orgSlug: orgSlug,
-  });
-
-  const userProjectsData = useCachedQuery(api.projects.queries.listMyProjects, {
-    orgSlug: orgSlug,
-  });
-
-  // Transform data to maintain frontend compatibility
-  const userTeams = userTeamsData ? withIds(userTeamsData) : [];
-  const userProjects = userProjectsData ? withIds(userProjectsData) : [];
-
-  const userDocumentsData = useCachedQuery(
-    api.documents.queries.listMyDocuments,
-    {
-      orgSlug: orgSlug,
-    },
+  const userTeamsPage = useCachedPaginatedQuery(
+    api.teams.queries.listPage,
+    { orgSlug, scope: 'mine' },
+    { initialNumItems: 4 },
   );
-  const userDocuments = userDocumentsData ?? [];
-  const visibleViewsData = useCachedQuery(api.views.queries.listViews, {
-    orgSlug,
-  });
-  const visibleViews = visibleViewsData ?? [];
+  const userTeamsLoading = userTeamsPage.status === 'LoadingFirstPage';
 
-  const threadsData = useCachedQuery(api.ai.queries.listMyThreads, {
-    orgSlug,
-  });
-  const threads = threadsData ?? [];
+  const userProjectsPage = useCachedPaginatedQuery(
+    api.projects.queries.listPage,
+    { orgSlug, scope: 'mine' },
+    { initialNumItems: 4 },
+  );
+  const userProjectsLoading = userProjectsPage.status === 'LoadingFirstPage';
+
+  const userDocumentsPage = useCachedPaginatedQuery(
+    api.documents.queries.listPage,
+    { orgSlug, scope: 'mine' },
+    { initialNumItems: 4 },
+  );
+  const userDocumentsLoading = userDocumentsPage.status === 'LoadingFirstPage';
+
+  const visibleViewsPage = useCachedPaginatedQuery(
+    api.views.queries.listViewsPage,
+    { orgSlug, scope: 'all' },
+    { initialNumItems: 4 },
+  );
+  const visibleViewsLoading = visibleViewsPage.status === 'LoadingFirstPage';
+
+  const threadsPage = useCachedPaginatedQuery(
+    api.ai.queries.listOrgThreads,
+    { orgSlug },
+    { initialNumItems: 4 },
+  );
+  const threadsLoading = threadsPage.status === 'LoadingFirstPage';
+
+  // Transform data to maintain frontend compatibility.
+  const userTeams = withIds(userTeamsPage.results);
+  const userProjects = withIds(userProjectsPage.results);
+  const userDocuments = userDocumentsPage.results;
+  const visibleViews = visibleViewsPage.results;
+  const threads = threadsPage.results;
+
+  const hasMoreTeams =
+    userTeams.length > 3 || userTeamsPage.status === 'CanLoadMore';
+  const hasMoreProjects =
+    userProjects.length > 3 || userProjectsPage.status === 'CanLoadMore';
+  const hasMoreDocuments =
+    userDocuments.length > 3 || userDocumentsPage.status === 'CanLoadMore';
+  const hasMoreViews =
+    visibleViews.length > 3 || visibleViewsPage.status === 'CanLoadMore';
+  const hasMoreThreads =
+    threads.length > 3 || threadsPage.status === 'CanLoadMore';
 
   const navItems: NavItem[] = [
     {
@@ -252,7 +299,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             />
           }
         >
-          {userTeams.length > 0 ? (
+          {userTeamsLoading ? (
+            <SidebarItemsSkeleton />
+          ) : userTeams.length > 0 ? (
             userTeams.slice(0, 3).map(team => {
               const teamHref = `/${orgSlug}/teams/${team.key}`;
               const isActive =
@@ -287,13 +336,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </div>
           )}
 
-          {userTeams.length > 3 && (
+          {!userTeamsLoading && hasMoreTeams && (
             <Link
               href={`/${orgSlug}/teams`}
               onClick={onNavigate}
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
-              +{userTeams.length - 3} more teams
+              View all teams
             </Link>
           )}
         </SidebarSection>
@@ -311,7 +360,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             />
           }
         >
-          {userProjects.length > 0 ? (
+          {userProjectsLoading ? (
+            <SidebarItemsSkeleton />
+          ) : userProjects.length > 0 ? (
             userProjects.slice(0, 3).map(project => {
               const projectHref = `/${orgSlug}/projects/${project.key}`;
               const isActive =
@@ -359,13 +410,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </div>
           )}
 
-          {userProjects.length > 3 && (
+          {!userProjectsLoading && hasMoreProjects && (
             <Link
               href={`/${orgSlug}/projects`}
               onClick={onNavigate}
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
-              +{userProjects.length - 3} more projects
+              View all projects
             </Link>
           )}
         </SidebarSection>
@@ -395,7 +446,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </ScopedPermissionGate>
           }
         >
-          {visibleViews.length > 0 ? (
+          {visibleViewsLoading ? (
+            <SidebarItemsSkeleton />
+          ) : visibleViews.length > 0 ? (
             visibleViews.slice(0, 3).map(view => {
               const viewHref = `/${orgSlug}/views/${view._id}`;
               const isActive =
@@ -447,13 +500,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </div>
           )}
 
-          {visibleViews.length > 3 && (
+          {!visibleViewsLoading && hasMoreViews && (
             <Link
               href={`/${orgSlug}/views`}
               onClick={onNavigate}
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
-              +{visibleViews.length - 3} more views
+              View all views
             </Link>
           )}
         </SidebarSection>
@@ -467,7 +520,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             <CreateThreadButton orgSlug={orgSlug} onNavigate={onNavigate} />
           }
         >
-          {threads.length > 0 ? (
+          {threadsLoading ? (
+            <SidebarItemsSkeleton />
+          ) : threads.length > 0 ? (
             threads.slice(0, 3).map(thread => {
               const threadHref = `/${orgSlug}/threads/${thread._id}`;
               const isActive =
@@ -506,13 +561,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </div>
           )}
 
-          {threads.length > 3 && (
+          {!threadsLoading && hasMoreThreads && (
             <Link
               href={`/${orgSlug}/threads`}
               onClick={onNavigate}
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
-              +{threads.length - 3} more threads
+              View all threads
             </Link>
           )}
         </SidebarSection>
@@ -529,7 +584,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             />
           }
         >
-          {userDocuments.length > 0 ? (
+          {userDocumentsLoading ? (
+            <SidebarItemsSkeleton />
+          ) : userDocuments.length > 0 ? (
             userDocuments.slice(0, 3).map(doc => {
               const docHref = `/${orgSlug}/documents/${doc._id}`;
               const isActive =
@@ -571,13 +628,13 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
             </div>
           )}
 
-          {userDocuments.length > 3 && (
+          {!userDocumentsLoading && hasMoreDocuments && (
             <Link
               href={`/${orgSlug}/documents`}
               onClick={onNavigate}
               className='text-muted-foreground hover:text-foreground block py-1.5 pr-1 pl-2 text-xs transition-colors'
             >
-              +{userDocuments.length - 3} more documents
+              View all documents
             </Link>
           )}
         </SidebarSection>
