@@ -165,6 +165,28 @@ export const updateSignupEmailDomainPolicy = mutation({
   },
 });
 
+export const updatePublicSignupButtonVisibility = mutation({
+  args: {
+    showPublicSignupButton: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    await requirePlatformAdminUser(ctx.db, userId);
+
+    const settingsId = await ensureSiteSettings(ctx.db);
+    await ctx.db.patch('siteSettings', settingsId, {
+      showPublicSignupButton: args.showPublicSignupButton,
+    });
+
+    return null;
+  },
+});
+
 export const updateBranding = mutation({
   args: {
     name: v.optional(v.string()),

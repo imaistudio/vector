@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { GradientWaveText } from '@/components/gradient-wave-text';
+import { cn } from '@/lib/utils';
 
 const PLATFORM_ADMIN_ROLE = 'platform_admin';
 
@@ -107,6 +108,9 @@ export function PlatformAdminPage() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [emailFrom, setEmailFrom] = useState('');
   const [isSavingEmail, setIsSavingEmail] = useState(false);
+  const [publicSignupButtonOverride, setPublicSignupButtonOverride] = useState<
+    boolean | null
+  >(null);
 
   const userQuery = useQuery(api.users.currentUser);
   const user = userQuery.data;
@@ -117,6 +121,9 @@ export function PlatformAdminPage() {
 
   const updatePolicy = useMutation(
     api.platformAdmin.mutations.updateSignupEmailDomainPolicy,
+  );
+  const updatePublicSignupButtonVisibility = useMutation(
+    api.platformAdmin.mutations.updatePublicSignupButtonVisibility,
   );
   const updateEmailConfig = useMutation(
     api.platformAdmin.mutations.updateEmailConfig,
@@ -208,6 +215,8 @@ export function PlatformAdminPage() {
   }
 
   const syncStats = policy.sync;
+  const showPublicSignupButton =
+    publicSignupButtonOverride ?? policy.showPublicSignupButton;
   const isDirty =
     blockedInput !== policy.blockedDomains.join('\n') ||
     allowedInput !== policy.allowedDomains.join('\n');
@@ -246,6 +255,31 @@ export function PlatformAdminPage() {
       );
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handlePublicSignupButtonToggle = async () => {
+    const nextValue = !showPublicSignupButton;
+    setPublicSignupButtonOverride(nextValue);
+
+    try {
+      await updatePublicSignupButtonVisibility({
+        showPublicSignupButton: nextValue,
+      });
+      toast.success(
+        nextValue
+          ? 'Public sign up button enabled'
+          : 'Public sign up button hidden',
+      );
+    } catch (error) {
+      setPublicSignupButtonOverride(showPublicSignupButton);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update public sign up button',
+      );
+    } finally {
+      setPublicSignupButtonOverride(null);
     }
   };
 
@@ -365,6 +399,47 @@ export function PlatformAdminPage() {
               Control who can create accounts on this Vector instance and keep a
               synced blacklist of temporary email providers.
             </p>
+          </div>
+
+          <div className='flex flex-col gap-3 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between'>
+            <div className='min-w-0'>
+              <div className='text-sm font-medium'>
+                Public page sign up button
+              </div>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                Controls whether anonymous visitors see the sign up button in
+                public page footers.
+              </p>
+            </div>
+            <button
+              type='button'
+              role='switch'
+              aria-checked={showPublicSignupButton}
+              disabled={publicSignupButtonOverride !== null}
+              onClick={handlePublicSignupButtonToggle}
+              className='hover:bg-accent focus-visible:ring-ring flex h-8 flex-shrink-0 items-center gap-2 rounded-md px-1.5 text-xs transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-70'
+            >
+              <span className='text-muted-foreground'>
+                {showPublicSignupButton ? 'Enabled' : 'Hidden'}
+              </span>
+              <span
+                className={cn(
+                  'relative h-5 w-9 rounded-full border transition-colors',
+                  showPublicSignupButton
+                    ? 'border-primary bg-primary'
+                    : 'bg-muted',
+                )}
+              >
+                <span
+                  className={cn(
+                    'bg-background absolute top-0.5 size-4 rounded-full shadow-sm transition-transform',
+                    showPublicSignupButton
+                      ? 'translate-x-[18px]'
+                      : 'translate-x-0.5',
+                  )}
+                />
+              </span>
+            </button>
           </div>
 
           <div className='grid gap-2 xl:grid-cols-4'>
