@@ -10,6 +10,30 @@ interface ProjectViewPageProps {
   searchParams?: Promise<{ issueView?: string | string[] }>;
 }
 
+function unavailableProjectMetadata(
+  projectKey: string,
+  orgSlug?: string,
+): Metadata {
+  const title = `${projectKey} — Vector`;
+  const description = 'This project is private or unavailable on Vector.';
+  const siteName = orgSlug ? `${orgSlug} on Vector` : 'Vector';
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+  };
+}
+
 export async function generateMetadata({
   params,
 }: ProjectViewPageProps): Promise<Metadata> {
@@ -23,7 +47,7 @@ export async function generateMetadata({
     });
 
     if (!data) {
-      return { title: `${projectKey} — Vector` };
+      return unavailableProjectMetadata(projectKey, orgSlug);
     }
 
     const description =
@@ -45,7 +69,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: `${projectKey} — Vector` };
+    return unavailableProjectMetadata(projectKey, orgSlug);
   }
 }
 

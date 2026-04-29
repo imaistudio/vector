@@ -9,6 +9,30 @@ interface IssueViewPageProps {
   params: Promise<{ orgSlug: string; issueKey: string }>;
 }
 
+function unavailableIssueMetadata(
+  issueKey: string,
+  orgSlug?: string,
+): Metadata {
+  const title = `${issueKey} — Vector`;
+  const description = 'This issue is private or unavailable on Vector.';
+  const siteName = orgSlug ? `${orgSlug} on Vector` : 'Vector';
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+  };
+}
+
 export async function generateMetadata({
   params,
 }: IssueViewPageProps): Promise<Metadata> {
@@ -22,7 +46,27 @@ export async function generateMetadata({
     });
 
     if (!data) {
-      return { title: `${issueKey} — Vector` };
+      return unavailableIssueMetadata(issueKey, orgSlug);
+    }
+
+    if (!data.title) {
+      const title = `${data.key} — ${data.orgName}`;
+      const description = 'This issue is private. Sign in to view it.';
+
+      return {
+        title,
+        description,
+        openGraph: {
+          title: data.key,
+          description,
+          siteName: 'Vector',
+        },
+        twitter: {
+          card: 'summary_large_image',
+          title: data.key,
+          description,
+        },
+      };
     }
 
     const description = [
@@ -48,7 +92,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: `${issueKey} — Vector` };
+    return unavailableIssueMetadata(issueKey, orgSlug);
   }
 }
 

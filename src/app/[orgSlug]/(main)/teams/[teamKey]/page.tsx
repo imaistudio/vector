@@ -9,6 +9,27 @@ interface TeamViewPageProps {
   params: Promise<{ orgSlug: string; teamKey: string }>;
 }
 
+function unavailableTeamMetadata(teamKey: string, orgSlug?: string): Metadata {
+  const title = `${teamKey} — Vector`;
+  const description = 'This team is private or unavailable on Vector.';
+  const siteName = orgSlug ? `${orgSlug} on Vector` : 'Vector';
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      siteName,
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+    },
+  };
+}
+
 export async function generateMetadata({
   params,
 }: TeamViewPageProps): Promise<Metadata> {
@@ -22,7 +43,7 @@ export async function generateMetadata({
     });
 
     if (!data) {
-      return { title: `${teamKey} — Vector` };
+      return unavailableTeamMetadata(teamKey, orgSlug);
     }
 
     const description =
@@ -44,7 +65,7 @@ export async function generateMetadata({
       },
     };
   } catch {
-    return { title: `${teamKey} — Vector` };
+    return unavailableTeamMetadata(teamKey, orgSlug);
   }
 }
 
