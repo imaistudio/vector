@@ -1,17 +1,28 @@
 'use client';
 
+import Link from 'next/link';
 import { api, useCachedQuery } from '@/lib/convex';
-import { ChevronLeft, ChevronRight, Clock3, Globe, Lock } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  ExternalLink,
+  Globe,
+  Lock,
+  Map,
+} from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
 import { useState } from 'react';
 import Markdown from 'react-markdown';
 import { formatDateHuman } from '@/lib/date';
+import { cn } from '@/lib/utils';
 import {
   PublicKanbanView,
   PublicListView,
 } from '@/components/views/public-issues';
+import { PublicSubmitIssueDialog } from '@/components/views/public-submit-issue-dialog';
 
 interface PublicViewPageProps {
   orgSlug: string;
@@ -59,6 +70,10 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
     orgSlug,
     viewId,
   });
+  const publicProfile = useCachedQuery(
+    api.organizations.queries.getPublicProfileBySlug,
+    { orgSlug },
+  );
 
   const issuesData = useCachedQuery(
     api.views.queries.listPublicViewIssues,
@@ -84,6 +99,15 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const viewLayout = view.layout?.viewMode ?? 'table';
   const viewGroupBy = view.layout?.groupBy ?? 'none';
+  const submissionsEnabled =
+    publicProfile?.publicIssueSubmissionEnabled === true;
+  const publicIssueViewId = publicProfile?.publicIssueViewId ?? null;
+  const publicLandingViewId = publicProfile?.publicLandingViewId ?? null;
+  const isRequestsView = publicIssueViewId === viewId;
+  const showRoadmapLink = isRequestsView && publicLandingViewId;
+  const showRequestsLink = !isRequestsView && publicIssueViewId;
+  const hasHeaderActions =
+    Boolean(showRoadmapLink || showRequestsLink) || submissionsEnabled;
 
   return (
     <div className='mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8'>
@@ -122,15 +146,53 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
             </div>
           </div>
 
-          <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
-            <div className='flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300'>
-              <Globe className='size-3.5' />
-              Public
+          <div className='flex flex-col items-start gap-2 sm:items-end'>
+            <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+              <div className='flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-700 dark:text-emerald-300'>
+                <Globe className='size-3.5' />
+                Public
+              </div>
+              {view.updatedAt ? (
+                <div className='text-muted-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
+                  <Clock3 className='size-3.5' />
+                  Updated {formatDateHuman(new Date(view.updatedAt))}
+                </div>
+              ) : null}
             </div>
-            {view.updatedAt ? (
-              <div className='text-muted-foreground flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs'>
-                <Clock3 className='size-3.5' />
-                Updated {formatDateHuman(new Date(view.updatedAt))}
+
+            {hasHeaderActions ? (
+              <div className='flex flex-wrap items-center gap-2 sm:justify-end'>
+                {showRoadmapLink ? (
+                  <Link
+                    href={`/${orgSlug}`}
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'h-8 gap-1.5',
+                    )}
+                  >
+                    <Map className='size-3.5' />
+                    Roadmap
+                  </Link>
+                ) : null}
+                {showRequestsLink ? (
+                  <Link
+                    href={`/${orgSlug}/views/${publicIssueViewId}/public`}
+                    className={cn(
+                      buttonVariants({ variant: 'outline', size: 'sm' }),
+                      'h-8 gap-1.5',
+                    )}
+                  >
+                    <ExternalLink className='size-3.5' />
+                    View requests
+                  </Link>
+                ) : null}
+                {submissionsEnabled ? (
+                  <PublicSubmitIssueDialog
+                    orgSlug={orgSlug}
+                    orgName={publicProfile?.name ?? view.orgName ?? orgSlug}
+                    publicIssueViewId={publicIssueViewId}
+                  />
+                ) : null}
               </div>
             ) : null}
           </div>
