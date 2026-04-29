@@ -6,6 +6,7 @@ import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
 import { PublicSubmitIssueDialog } from '@/components/views/public-submit-issue-dialog';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 interface PublicLandingHeroProps {
   orgSlug: string;
@@ -20,6 +21,8 @@ export function PublicLandingHero({
   publicDescription,
   publicIssueViewId,
 }: PublicLandingHeroProps) {
+  useDocumentTitle(orgName);
+
   return (
     <div className='mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-4 py-16 text-center sm:py-24'>
       <div className='space-y-2'>

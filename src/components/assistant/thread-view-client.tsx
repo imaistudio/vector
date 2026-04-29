@@ -25,6 +25,7 @@ import {
 import { resolveAssistantPageContext } from '@/lib/assistant-context';
 import { useAssistantActions } from '@/hooks/use-assistant-actions';
 import { useConfirm } from '@/hooks/use-confirm';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { toast } from 'sonner';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AssistantDockMessage } from './assistant-message-renderer';
@@ -181,6 +182,7 @@ export function ThreadViewClient() {
     isReady ? { threadId: assistantThreadId } : 'skip',
   );
   const threadRow = threadQuery.data;
+  useDocumentTitle(threadRow?.title || 'Thread');
 
   // Set as active thread on mount
   const setActiveThread = useMutation(api.ai.mutations.setActiveThread);

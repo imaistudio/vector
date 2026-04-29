@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { UserAvatar } from '@/components/user-avatar';
 import { PublicListView } from '@/components/views/public-issues';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 interface PublicProjectPageProps {
   orgSlug: string;
@@ -21,6 +22,7 @@ export function PublicProjectPage({
     orgSlug,
     projectKey,
   });
+  useDocumentTitle(project && project !== null ? project.name : null);
 
   if (project === undefined) {
     return (

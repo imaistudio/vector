@@ -6,6 +6,7 @@ import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { UserAvatar } from '@/components/user-avatar';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 interface PublicIssuePageProps {
   orgSlug: string;
@@ -17,6 +18,9 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
     orgSlug,
     issueKey,
   });
+  useDocumentTitle(
+    issue && issue !== null ? `${issue.key} ${issue.title}` : null,
+  );
 
   if (issue === undefined) {
     return (

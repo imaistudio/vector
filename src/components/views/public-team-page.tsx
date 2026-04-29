@@ -6,6 +6,7 @@ import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { PublicListView } from '@/components/views/public-issues';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 interface PublicTeamPageProps {
   orgSlug: string;
@@ -17,6 +18,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
     orgSlug,
     teamKey,
   });
+  useDocumentTitle(team && team !== null ? team.name : null);
 
   if (team === undefined) {
     return (
