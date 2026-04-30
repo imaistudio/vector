@@ -7,8 +7,9 @@ import { RichEditor } from '@/components/ui/rich-editor';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { formatDateHuman } from '@/lib/date';
-import { FileText, Globe, Lock, PencilLine } from 'lucide-react';
+import { FileText, Lock, PencilLine } from 'lucide-react';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { PublicOrgIcon } from '@/components/views/public-org-icon';
 
 interface PublicDocumentPageProps {
   orgSlug: string;
@@ -61,7 +62,7 @@ export function PublicDocumentPage({
   return (
     <div className='mx-auto w-full max-w-4xl px-6 py-8 sm:px-8 sm:py-10'>
       <div className='text-muted-foreground mb-4 flex flex-wrap items-center gap-1.5 text-xs'>
-        <Globe className='size-3 text-emerald-500' />
+        <PublicOrgIcon name={document.orgName} logoUrl={document.orgLogo} />
         <span>{document.orgName}</span>
         {document.team ? (
           <>

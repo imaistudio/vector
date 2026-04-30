@@ -1,12 +1,13 @@
 'use client';
 
 import { api, useCachedQuery } from '@/lib/convex';
-import { Lock, Globe, Users } from 'lucide-react';
+import { Lock, Users } from 'lucide-react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { PublicListView } from '@/components/views/public-issues';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { PublicOrgIcon } from '@/components/views/public-org-icon';
 
 interface PublicTeamPageProps {
   orgSlug: string;
@@ -47,7 +48,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
     <div className='mx-auto max-w-4xl p-6'>
       {/* Breadcrumb */}
       <div className='text-muted-foreground mb-4 flex items-center gap-1.5 text-xs'>
-        <Globe className='size-3 text-emerald-500' />
+        <PublicOrgIcon name={team.orgName} logoUrl={team.orgLogo} />
         <span>{team.orgName}</span>
       </div>
 

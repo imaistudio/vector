@@ -1,12 +1,13 @@
 'use client';
 
 import { api, useCachedQuery } from '@/lib/convex';
-import { Lock, Globe, Calendar } from 'lucide-react';
+import { Lock, Calendar } from 'lucide-react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { UserAvatar } from '@/components/user-avatar';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { PublicOrgIcon } from '@/components/views/public-org-icon';
 
 interface PublicIssuePageProps {
   orgSlug: string;
@@ -47,7 +48,7 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
     <div className='mx-auto max-w-3xl p-6'>
       {/* Breadcrumb */}
       <div className='text-muted-foreground mb-4 flex items-center gap-1.5 text-xs'>
-        <Globe className='size-3 text-emerald-500' />
+        <PublicOrgIcon name={issue.orgName} logoUrl={issue.orgLogo} />
         <span>{issue.orgName}</span>
         {issue.project && (
           <>

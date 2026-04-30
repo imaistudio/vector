@@ -174,7 +174,12 @@ export function PublicKanbanView({
     issues,
     effectiveGroupBy,
     effectiveGroupBy === 'status' ? allStatuses : undefined,
-  ).filter(group => group.items.length > 0);
+  )
+    .filter(group => group.items.length > 0)
+    .sort(
+      (a, b) =>
+        b.items.length - a.items.length || a.label.localeCompare(b.label),
+    );
   const gridMinWidth = Math.max(groups.length * 240, 1);
 
   if (groups.length === 0) {
