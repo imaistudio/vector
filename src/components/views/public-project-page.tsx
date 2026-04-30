@@ -1,13 +1,14 @@
 'use client';
 
 import { api, useCachedQuery } from '@/lib/convex';
-import { Lock, Globe, Calendar } from 'lucide-react';
+import { Lock, Calendar } from 'lucide-react';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { UserAvatar } from '@/components/user-avatar';
 import { PublicListView } from '@/components/views/public-issues';
 import { useDocumentTitle } from '@/hooks/use-document-title';
+import { PublicOrgIcon } from '@/components/views/public-org-icon';
 
 interface PublicProjectPageProps {
   orgSlug: string;
@@ -51,7 +52,7 @@ export function PublicProjectPage({
     <div className='mx-auto max-w-4xl p-6'>
       {/* Breadcrumb */}
       <div className='text-muted-foreground mb-4 flex items-center gap-1.5 text-xs'>
-        <Globe className='size-3 text-emerald-500' />
+        <PublicOrgIcon name={project.orgName} logoUrl={project.orgLogo} />
         <span>{project.orgName}</span>
       </div>
 

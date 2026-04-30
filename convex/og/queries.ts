@@ -219,6 +219,7 @@ export const getPublicIssueFull = query({
       description: issue.description ?? null,
       orgName: org.name,
       orgSlug: org.slug,
+      orgLogo: org.logo ? await ctx.storage.getUrl(org.logo) : null,
       startDate: issue.startDate ?? null,
       dueDate: issue.dueDate ?? null,
       createdAt: issue._creationTime,
@@ -354,6 +355,7 @@ export const getPublicProjectFull = query({
       description: project.description ?? null,
       orgName: org.name,
       orgSlug: org.slug,
+      orgLogo: org.logo ? await ctx.storage.getUrl(org.logo) : null,
       startDate: project.startDate ?? null,
       dueDate: project.dueDate ?? null,
       status: status
@@ -482,6 +484,7 @@ export const getPublicTeamFull = query({
       color: team.color ?? null,
       orgName: org.name,
       orgSlug: org.slug,
+      orgLogo: org.logo ? await ctx.storage.getUrl(org.logo) : null,
       memberCount: members.length,
       lead: lead
         ? {
@@ -577,6 +580,7 @@ export const getPublicDocumentFull = query({
       content: doc.content ?? '',
       orgName: org.name,
       orgSlug: org.slug,
+      orgLogo: org.logo ? await ctx.storage.getUrl(org.logo) : null,
       icon: doc.icon ?? null,
       color: doc.color ?? null,
       createdAt: doc._creationTime,
