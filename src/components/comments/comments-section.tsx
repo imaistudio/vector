@@ -162,6 +162,7 @@ function InlineReplyInput({
           mode='compact'
           borderless
           orgSlug={orgSlug}
+          showPlaceholderOnlyCurrent={false}
           className='[&_.tiptap]:min-h-[24px] [&_.tiptap]:p-0 [&_.tiptap]:text-sm [&_.tiptap]:leading-6'
         />
       </div>
@@ -575,6 +576,7 @@ function CommentInput({
           mode='compact'
           borderless
           orgSlug={orgSlug}
+          showPlaceholderOnlyCurrent={false}
           className={cn(
             'px-3 py-2',
             expanded ? '[&_.tiptap]:min-h-[60px]' : '[&_.tiptap]:min-h-[28px]',

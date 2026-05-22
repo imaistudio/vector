@@ -129,6 +129,8 @@ export type EditorProps = {
   orgSlug?: string;
   /** Custom placeholder text (defaults to "Press '/' for commands") */
   placeholder?: string;
+  /** Limit placeholder rendering to the active paragraph. */
+  showPlaceholderOnlyCurrent?: boolean;
   className?: string;
   editorClassName?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'onChange' | 'className'>;
@@ -238,6 +240,7 @@ export function Editor({
   onPendingUploadsChange,
   orgSlug,
   placeholder: customPlaceholder,
+  showPlaceholderOnlyCurrent = true,
   className,
   editorClassName,
   ...props
@@ -326,7 +329,7 @@ export function Editor({
           node.type.name === 'paragraph'
             ? (customPlaceholder ?? "Press '/' for commands")
             : '',
-        showOnlyCurrent: true,
+        showOnlyCurrent: showPlaceholderOnlyCurrent,
         showOnlyWhenEditable: false,
         includeChildren: true,
       }),

@@ -37,6 +37,15 @@ const eslintConfig = [
       'comma-dangle': 'off',
       '@typescript-eslint/comma-dangle': 'off',
       '@typescript-eslint/no-floating-promises': 'error',
+      // Next 16.2 enables newer React Compiler lint rules through the
+      // core-web-vitals preset. Keep the upgrade behavior-compatible for now;
+      // these existing patterns need a dedicated cleanup pass.
+      'react-hooks/error-boundaries': 'off',
+      'react-hooks/immutability': 'off',
+      'react-hooks/preserve-manual-memoization': 'off',
+      'react-hooks/refs': 'off',
+      'react-hooks/set-state-in-effect': 'off',
+      'react-hooks/static-components': 'off',
       'unused-imports/no-unused-imports': 'warn',
       'unused-imports/no-unused-vars': [
         'warn',

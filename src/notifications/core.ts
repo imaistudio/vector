@@ -48,7 +48,8 @@ export function defineNotification<Schema extends z.ZodTypeAny>(
         `Channel '${channel}' not supported for notification type '${def.type}'`,
       );
     }
-    await sender(payload);
+    const typedSender = sender as (data: z.infer<Schema>) => Promise<void>;
+    await typedSender(payload);
   };
 }
 
@@ -72,6 +73,9 @@ export async function notify<T extends NotificationType>(
     const channelSpecificData = channels[
       channelKey
     ] as ChannelPayloadMap[typeof channelKey];
-    await sender({ ...payload, ...channelSpecificData });
+    const typedSender = sender as (
+      data: NotificationPayloadMap[T] & ChannelPayloadMap[typeof channelKey],
+    ) => Promise<void>;
+    await typedSender({ ...payload, ...channelSpecificData });
   }
 }
