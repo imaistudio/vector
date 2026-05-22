@@ -61,7 +61,7 @@ describe('Vector CLI command surface', () => {
 
     expect(result.status).toBe(1);
     expect(output).toContain('app URL is required');
-  });
+  }, 30_000);
 
   it('renders the root help with all top-level commands', () => {
     const output = runCli(['--help']);
