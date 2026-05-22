@@ -205,7 +205,12 @@ export function VectorAgentChatPanel({
         }}
       >
         <ScrollArea className='h-full min-w-0' viewportClassName='rounded-none'>
-          <div className='mx-auto min-h-full w-[calc(100%-2rem)] max-w-3xl px-0 pt-10 pb-40'>
+          <div
+            className={cn(
+              'mx-auto min-h-full w-[calc(100%-2rem)] px-0 pt-10 pb-36',
+              mode === 'expanded' ? 'max-w-4xl' : 'max-w-3xl',
+            )}
+          >
             {groups.length === 0 ? (
               <EmptyAgentState
                 agent={snapshot.agent}
@@ -236,7 +241,12 @@ export function VectorAgentChatPanel({
       </div>
 
       <div className='pointer-events-none absolute inset-x-0 bottom-0 z-20 px-3 pb-3'>
-        <div className='pointer-events-auto mx-auto max-w-3xl'>
+        <div
+          className={cn(
+            'pointer-events-auto mx-auto',
+            mode === 'expanded' ? 'max-w-4xl' : 'max-w-2xl',
+          )}
+        >
           {snapshot.pendingApproval ? (
             <AgentAuthCard
               approval={snapshot.pendingApproval}
@@ -289,8 +299,8 @@ export function VectorAgentChatPanel({
                     }
                   }}
                   placeholder={getComposerPlaceholder(snapshot.agent)}
-                  rows={messageInput.includes('\n') ? 4 : 3}
-                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-22 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
+                  rows={messageInput.includes('\n') ? 4 : 2}
+                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-16 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
                   disabled={sending}
                 />
                 <div className='flex min-w-0 items-center gap-1.5 px-3 pt-0.5 pb-3'>

@@ -8,10 +8,12 @@ export function LiveActivityTranscript({
   liveActivityId,
   isOwner,
   currentUser,
+  mode = 'embedded',
 }: {
   liveActivityId: Id<'issueLiveActivities'>;
   isOwner: boolean;
   status: LiveActivityStatus;
+  mode?: 'embedded' | 'expanded';
   currentUser?: {
     name: string;
     email: string | null;
@@ -24,7 +26,7 @@ export function LiveActivityTranscript({
       liveActivityId={liveActivityId}
       isOwner={isOwner}
       currentUser={currentUser}
-      mode='embedded'
+      mode={mode}
     />
   );
 }

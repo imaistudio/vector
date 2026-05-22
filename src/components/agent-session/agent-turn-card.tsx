@@ -1,10 +1,12 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import {
   CheckCircle2,
   ChevronRight,
   Circle,
   Code2,
+  Copy,
   FileText,
   MessageCircleDashed,
   TriangleAlert,
@@ -131,22 +133,92 @@ function ResponseCard({
   message: AgentSessionMessage;
   isStreaming: boolean;
 }) {
+  const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'rendered' | 'source'>('rendered');
+  const visible = useMemo(() => [message], [message]);
+  const combinedText = message.text;
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(combinedText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // Clipboard access can be denied by the browser; keep the transcript quiet.
+    }
+  };
+
   return (
-    <div className='bg-background/70 ring-border/45 rounded-[12px] px-4 py-3 shadow-sm ring-1'>
-      {message.title ? (
-        <div className='text-muted-foreground mb-2 flex items-center gap-2 text-[12px]'>
-          <FileText className='size-3.5' />
-          <span className='truncate'>{message.title}</span>
-        </div>
-      ) : null}
-      <AgentMarkdown className='text-[14px]'>{message.text}</AgentMarkdown>
-      {isStreaming ? (
-        <LoadingIndicator
-          label='streaming'
-          className='mt-2 text-[11px]'
-          spinnerClassName='text-[9px] text-muted-foreground/70'
-        />
-      ) : null}
+    <div className='group relative overflow-visible rounded-[12px]'>
+      <div
+        aria-hidden
+        className='shadow-minimal pointer-events-none absolute inset-0 rounded-[12px]'
+        style={{ backgroundColor: 'var(--elevated-surface)' }}
+      />
+      <div className='scrollbar-hover text-foreground/90 relative max-h-[520px] overflow-y-auto px-4 pt-1 text-sm select-text'>
+        {message.title ? (
+          <div className='text-muted-foreground mb-2 flex items-center gap-2 text-[12px]'>
+            <FileText className='size-3.5' />
+            <span className='truncate'>{message.title}</span>
+          </div>
+        ) : null}
+        {visible.map(response => (
+          <div key={response.id}>
+            {viewMode === 'source' ? (
+              <pre className='py-2 font-sans break-words whitespace-pre-wrap'>
+                {response.text}
+              </pre>
+            ) : (
+              <AgentMarkdown className='text-[14px]'>
+                {response.text}
+              </AgentMarkdown>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className='relative flex items-center gap-3 px-4 py-2 text-[13px]'>
+        {isStreaming ? (
+          <div className='text-muted-foreground flex items-center gap-1.5'>
+            <Spinner className='text-[10px]' />
+            <span>Streaming...</span>
+          </div>
+        ) : (
+          <>
+            <button
+              type='button'
+              onClick={handleCopy}
+              className='text-foreground/40 hover:text-foreground/80 flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:underline'
+            >
+              {copied ? (
+                <>
+                  <CheckCircle2 className='size-3' />
+                  <span>Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className='size-3' />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+            <button
+              type='button'
+              onClick={() =>
+                setViewMode(current =>
+                  current === 'source' ? 'rendered' : 'source',
+                )
+              }
+              className='text-foreground/40 hover:text-foreground/80 flex items-center gap-1.5 transition-colors focus:outline-none focus-visible:underline'
+              title={
+                viewMode === 'source' ? 'Show rendered' : 'Show raw markdown'
+              }
+            >
+              <FileText className='size-3' />
+              <span>Markdown</span>
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
