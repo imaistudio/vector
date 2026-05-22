@@ -261,7 +261,7 @@ export function VectorAgentChatPanel({
             />
           ) : null}
           <div
-            className='group/composer border-border/45 bg-popover/95 overflow-hidden rounded-[12px] border shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl'
+            className='group/composer border-border/45 bg-popover/95 overflow-hidden rounded-[18px] border shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl'
             style={{
               backgroundColor: 'var(--elevated-surface, var(--popover))',
             }}
@@ -284,11 +284,11 @@ export function VectorAgentChatPanel({
                     }
                   }}
                   placeholder={getComposerPlaceholder(snapshot.agent)}
-                  rows={messageInput.includes('\n') ? 3 : 2}
-                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-16 w-full resize-none bg-transparent px-3 py-3 text-[14px] leading-relaxed outline-none'
+                  rows={messageInput.includes('\n') ? 4 : 3}
+                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-24 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
                   disabled={sending}
                 />
-                <div className='flex min-w-0 items-center gap-1.5 px-2 pt-0.5 pb-2'>
+                <div className='flex min-w-0 items-center gap-1.5 px-3 pt-0.5 pb-3'>
                   <AgentComposerToolbar
                     provider={snapshot.agent}
                     model={snapshot.model}
@@ -306,17 +306,6 @@ export function VectorAgentChatPanel({
                         fastMode: patch.fastMode,
                         contextLength: patch.contextLength,
                       });
-                    }}
-                    onProviderChange={(provider: LocalAgentProvider) => {
-                      if (
-                        !snapshot.workSessionId ||
-                        provider === 'vector_cli'
-                      ) {
-                        return;
-                      }
-                      toast.message(
-                        `Provider changes apply to new launches: ${provider}`,
-                      );
                     }}
                   />
                   <div className='min-w-2 flex-1' />
@@ -336,21 +325,6 @@ export function VectorAgentChatPanel({
                       />
                     </div>
                   ) : null}
-                  {running && !messageInput.trim() ? (
-                    <button
-                      type='button'
-                      onClick={() => void pauseSession()}
-                      disabled={pausing}
-                      className='bg-foreground/5 text-muted-foreground/85 hover:bg-foreground/10 hover:text-foreground inline-flex h-7 shrink-0 items-center gap-1.5 rounded-[8px] px-2.5 text-[11.5px] font-medium transition-colors disabled:opacity-60'
-                    >
-                      {pausing ? (
-                        <Loader2 className='size-3 animate-spin' />
-                      ) : (
-                        <Square className='size-3 fill-current' />
-                      )}
-                      Pause
-                    </button>
-                  ) : null}
                   <Button
                     type='button'
                     variant={running ? 'secondary' : 'default'}
@@ -358,7 +332,7 @@ export function VectorAgentChatPanel({
                     className={cn(
                       'ml-1 size-7 shrink-0 rounded-full transition-colors',
                       running &&
-                        'bg-foreground/5 text-muted-foreground/80 hover:bg-foreground/10 hover:text-foreground',
+                        'bg-foreground text-background hover:bg-foreground/90',
                     )}
                     disabled={
                       pausing || (!running && (sending || !messageInput.trim()))
