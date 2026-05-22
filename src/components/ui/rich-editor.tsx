@@ -13,6 +13,8 @@ interface RichEditorProps {
   borderless?: boolean;
   /** Pass orgSlug to enable @mentions */
   orgSlug?: string;
+  /** Limit placeholder rendering to the active paragraph. */
+  showPlaceholderOnlyCurrent?: boolean;
   className?: string;
 }
 
@@ -24,6 +26,7 @@ export function RichEditor({
   mode = 'compact',
   borderless = false,
   orgSlug,
+  showPlaceholderOnlyCurrent,
   className,
 }: RichEditorProps) {
   const isBorderless = borderless || className?.includes('notion-editor');
@@ -38,6 +41,7 @@ export function RichEditor({
       enableImagePasteDrop={mode === 'full'}
       orgSlug={orgSlug}
       placeholder={placeholder}
+      showPlaceholderOnlyCurrent={showPlaceholderOnlyCurrent}
       className={cn(className?.replace('notion-editor', '').trim())}
       editorClassName={cn(
         'prose prose-sm dark:prose-invert max-w-none',
