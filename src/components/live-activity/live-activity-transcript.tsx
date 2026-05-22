@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
 import { ArrowUp, ChevronUp, Sparkles } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { cn } from '@/lib/utils';
 import { formatDateHuman } from '@/lib/date';
 import { toast } from 'sonner';
@@ -187,6 +188,7 @@ function MessageRow({
     direction: string;
     role: string;
     body: string;
+    structuredPayload?: unknown;
     createdAt: number;
   };
   currentUser?: {
@@ -199,6 +201,8 @@ function MessageRow({
 }) {
   const isUser = message.direction === 'vector_to_agent';
   const isStatus = message.role === 'status';
+  const title = readPayloadString(message.structuredPayload, 'title');
+  const eventStatus = readEventStatus(message.structuredPayload);
 
   // Status messages: compact activity-feed style row
   if (isStatus) {
@@ -218,6 +222,49 @@ function MessageRow({
         <span className='text-muted-foreground shrink-0 text-xs'>
           {formatDateHuman(new Date(message.createdAt))}
         </span>
+      </div>
+    );
+  }
+
+  if (message.role === 'tool') {
+    return (
+      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
+        <div className='bg-muted/40 rounded-md border px-2.5 py-2'>
+          <div className='mb-1 flex items-center justify-between gap-2'>
+            <span className='text-muted-foreground min-w-0 truncate font-mono text-xs'>
+              {title ?? 'Tool'}
+            </span>
+            {eventStatus && (
+              <span className='text-muted-foreground shrink-0 text-[11px]'>
+                {eventStatus.replace('_', ' ')}
+              </span>
+            )}
+          </div>
+          <pre className='text-foreground/90 max-h-40 overflow-auto font-mono text-xs leading-relaxed whitespace-pre-wrap'>
+            {message.body}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
+  if (message.role === 'reasoning') {
+    return (
+      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
+        <div className='text-muted-foreground bg-muted/30 rounded-md px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap italic'>
+          {message.body}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.role === 'error') {
+    return (
+      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
+        <div className='border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-2.5 py-2 text-sm whitespace-pre-wrap'>
+          {title && <div className='mb-1 text-xs font-medium'>{title}</div>}
+          {message.body}
+        </div>
       </div>
     );
   }
@@ -257,9 +304,70 @@ function MessageRow({
           {formatDateHuman(new Date(message.createdAt))}
         </span>
       </div>
-      <p className='text-sm leading-relaxed break-words whitespace-pre-wrap'>
-        {message.body}
-      </p>
+      <div className='text-sm leading-relaxed break-words'>
+        <AgentMessageMarkdown>{message.body}</AgentMessageMarkdown>
+      </div>
     </div>
   );
+}
+
+function AgentMessageMarkdown({ children }: { children: string }) {
+  return (
+    <ReactMarkdown
+      components={{
+        p: ({ children }) => <p className='mb-2 last:mb-0'>{children}</p>,
+        ul: ({ children }) => (
+          <ul className='mb-2 list-disc space-y-1 pl-5 last:mb-0'>
+            {children}
+          </ul>
+        ),
+        ol: ({ children }) => (
+          <ol className='mb-2 list-decimal space-y-1 pl-5 last:mb-0'>
+            {children}
+          </ol>
+        ),
+        code: ({ children, className }) => (
+          <code
+            className={cn(
+              'bg-muted rounded px-1 py-0.5 font-mono text-[0.92em]',
+              className,
+            )}
+          >
+            {children}
+          </code>
+        ),
+        pre: ({ children }) => (
+          <pre className='bg-muted/40 my-2 overflow-x-auto rounded-md border p-3 font-mono text-xs leading-relaxed'>
+            {children}
+          </pre>
+        ),
+      }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+}
+
+function readPayloadValue(value: unknown, key: string): unknown {
+  if (value === null || typeof value !== 'object') return undefined;
+  return Reflect.get(value, key);
+}
+
+function readPayloadString(value: unknown, key: string): string | null {
+  const raw = readPayloadValue(value, key);
+  return typeof raw === 'string' && raw.trim() ? raw : null;
+}
+
+function readEventStatus(
+  value: unknown,
+): 'in_progress' | 'completed' | 'failed' | null {
+  const status = readPayloadValue(value, 'status');
+  if (
+    status === 'in_progress' ||
+    status === 'completed' ||
+    status === 'failed'
+  ) {
+    return status;
+  }
+  return null;
 }

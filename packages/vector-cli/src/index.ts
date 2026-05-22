@@ -3179,7 +3179,7 @@ serviceCommand
 serviceCommand
   .command('status')
   .description('Show bridge service status')
-  .action((_options, command) => {
+  .action(() => {
     const status = getBridgeStatus();
     if (!status.configured) {
       console.log('Bridge not configured. Run: vcli service start');
@@ -3582,7 +3582,7 @@ program
         timeout: 120000,
       });
       s.stop('CLI updated successfully.');
-    } catch (err) {
+    } catch {
       s.stop('Update failed.');
       log.error(`Run manually: ${install.command.join(' ')}`);
       return;

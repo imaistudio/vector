@@ -13,6 +13,7 @@ import {
   liveActivityStatusValidator,
   liveMessageDirectionValidator,
   liveMessageRoleValidator,
+  liveMessageStructuredPayloadValidator,
   workSessionAccessLevelValidator,
   workspaceLaunchPolicyValidator,
   AGENT_PROVIDER_LABELS,
@@ -1043,7 +1044,7 @@ export const appendLiveMessage = mutation({
     direction: liveMessageDirectionValidator,
     role: liveMessageRoleValidator,
     body: v.string(),
-    structuredPayload: v.optional(v.any()),
+    structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUserId(ctx);

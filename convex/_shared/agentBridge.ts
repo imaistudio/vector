@@ -91,6 +91,11 @@ export const LIVE_MESSAGE_ROLES = [
   'assistant',
   'user',
   'system',
+  'reasoning',
+  'tool',
+  'error',
+  'auth_request',
+  'compaction',
 ] as const;
 export type LiveMessageRole = (typeof LIVE_MESSAGE_ROLES)[number];
 
@@ -114,6 +119,19 @@ export const liveMessageRoleValidator = v.union(
 export const liveMessageDeliveryStatusValidator = v.union(
   ...LIVE_MESSAGE_DELIVERY_STATUSES.map(s => v.literal(s)),
 );
+
+export const liveMessageStructuredPayloadValidator = v.object({
+  source: v.optional(v.literal('cells_agent_event')),
+  provider: v.optional(agentProviderValidator),
+  title: v.optional(v.string()),
+  status: v.optional(
+    v.union(
+      v.literal('in_progress'),
+      v.literal('completed'),
+      v.literal('failed'),
+    ),
+  ),
+});
 
 // ── Agent Commands ──────────────────────────────────────────────────────────
 

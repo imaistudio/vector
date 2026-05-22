@@ -283,7 +283,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
     log("menu bar launched")
     refreshState()
 
-    refreshTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+    refreshTimer = Timer.scheduledTimer(withTimeInterval: 8.0, repeats: true) { [weak self] _ in
       self?.refreshState()
     }
     blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
@@ -732,7 +732,6 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
       DispatchQueue.main.async {
         self.log("CLI finished (\(process.terminationStatus)): \(arguments.joined(separator: " "))")
         completion?(process.terminationStatus == 0, output)
-        self.refreshState()
       }
     }
 

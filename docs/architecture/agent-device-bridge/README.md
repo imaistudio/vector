@@ -1,6 +1,8 @@
 # Agent Device Bridge
 
-The agent device bridge connects local developer machines to Vector. It lets local Codex and Claude Code processes show up as **live activities** on issues, enables bidirectional messaging between Vector and local agents, and supports delegating issue work to a specific device.
+The agent device bridge connects local developer machines to Vector. It lets local Codex and Claude Code sessions show up as **live activities** on issues, enables bidirectional messaging between Vector and local agents, and supports delegating issue work to a specific device.
+
+Managed Codex and Claude launches are owned by the CLI client. The bridge calls the provider APIs locally, normalizes their events, and writes those events to Convex. Vector renders the Convex transcript reactively, so it no longer needs a live terminal connection for normal agent chat.
 
 ## Quick Start
 
@@ -31,9 +33,11 @@ vcli service start
                                 │  (vcli service start)     │
                                 │                           │
                                 │  • Device heartbeat       │
+                                │  • Agent session runtime  │
+                                │  • Agent event sync       │
                                 │  • Process discovery      │
                                 │  • Command polling        │
-                                │  • Message forwarding     │
+                                │  • Message delivery       │
                                 └────────────┬────────────┘
                                              │
                                     ps/lsof discovery
@@ -84,7 +88,7 @@ Key files:
 - `src/components/live-activity/live-activity-card.tsx` — Unified card with header + transcript
 - `src/components/live-activity/live-activity-section.tsx` — Section with attach/delegate buttons
 
-### 3. CLI Bridge (`src/cli/bridge-service.ts`)
+### 3. CLI Bridge (`packages/vector-cli/src/bridge-service.ts`)
 
 The bridge runs as a local Node.js process. It uses `ConvexHttpClient` to communicate directly with the Convex backend.
 
@@ -94,8 +98,19 @@ The bridge runs as a local Node.js process. It uses `ConvexHttpClient` to commun
 | ------------------- | -------- | -------------------------------------------------------- |
 | Heartbeat           | 30s      | Marks device as online                                   |
 | Command poll        | 5s       | Checks for pending messages/commands from Vector         |
-| Process discovery   | 60s      | Finds local Claude Code and Codex processes via `ps`     |
+| Process discovery   | 60s      | Finds local Claude Code, Codex, and tmux processes       |
+| Terminal snapshots  | 180s     | Refreshes tmux-backed shell session previews when needed |
 | Live activity cache | 30s      | Writes `~/.vector/live-activities.json` for the menu bar |
+
+For managed Codex and Claude launches, `packages/vector-cli/src/agent-adapters.ts` owns the provider session:
+
+- Codex uses `codex app-server` JSON-RPC.
+- Claude uses `@anthropic-ai/claude-agent-sdk`.
+- Both adapters emit normalized `AgentSessionEvent` objects.
+- The bridge stores those events in `issueLiveMessages` with structured payload fields for source, provider, title, and status.
+- Follow-up user messages resume the provider session by session key instead of typing into a terminal.
+
+Tmux is still supported for attached shell sessions and manually observed panes. Those sessions continue to use terminal snapshots and pane input.
 
 ### 4. macOS Menu Bar (`cli/macos/VectorMenuBar.swift`)
 
@@ -139,14 +154,24 @@ The menu bar app is also auto-installed as a LaunchAgent when you run `vcli serv
 
 ## Data Flow
 
-### Sending a message from Vector to the agent
+### Managed launch and reply flow
+
+1. User delegates an issue to Codex or Claude from Vector
+2. Vector creates an `issueLiveActivities` row plus an `agentCommands` launch command
+3. Bridge polls `getPendingCommands`, claims the command, and starts the provider session locally
+4. Provider events are normalized as assistant/reasoning/tool/status/error transcript rows
+5. Bridge writes those rows through `postAgentMessage`
+6. Vector UI updates in real time via Convex reactivity
+
+### Sending a follow-up message from Vector to the agent
 
 1. User types in the live activity composer on the issue page
 2. `appendLiveMessage` mutation saves the message and creates an `agentCommands` entry
 3. Bridge polls `getPendingCommands`, picks up the command
-4. Bridge posts a reply via `postAgentMessage`
-5. Bridge marks the command as `delivered`
-6. Vector UI updates in real-time via Convex reactivity
+4. If the activity has a managed provider session, bridge resumes it by session key and streams normalized events back to Convex
+5. If the activity is tmux-backed, bridge sends the text to the pane and refreshes the terminal snapshot
+6. Bridge marks the command as `delivered`
+7. Vector UI updates in real time via Convex reactivity
 
 ### Process discovery
 
@@ -186,7 +211,6 @@ All bridge state lives in `~/.vector/`:
 
 ## Future Work
 
-- Real agent integration via Claude Agent SDK and Codex app-server (currently uses simulated replies)
-- `tmux`-backed delegated launches
 - Linux support via `systemd --user`
+- Richer approval and permission-event rendering for provider sessions
 - Per-device sharing/collaboration controls

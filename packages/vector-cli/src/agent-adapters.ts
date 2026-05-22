@@ -29,6 +29,28 @@ export interface SessionRunResult extends SessionProcessRecord {
   launchCommand: string;
 }
 
+export type AgentSessionEventRole =
+  | 'assistant'
+  | 'reasoning'
+  | 'tool'
+  | 'system'
+  | 'error'
+  | 'auth_request'
+  | 'compaction'
+  | 'status';
+
+export interface AgentSessionEvent {
+  provider: BridgeProvider;
+  role: AgentSessionEventRole;
+  text: string;
+  title?: string;
+  status?: 'in_progress' | 'completed' | 'failed';
+}
+
+export type AgentSessionEventHandler = (
+  event: AgentSessionEvent,
+) => Promise<void> | void;
+
 const LSOF_PATHS = ['/usr/sbin/lsof', '/usr/bin/lsof'];
 const VECTOR_BRIDGE_CLIENT_VERSION = '0.1.0';
 
@@ -44,12 +66,14 @@ export async function launchProviderSession(
   provider: BridgeProvider,
   cwd: string,
   prompt: string,
+  onEvent?: AgentSessionEventHandler,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
     return runCodexAppServerTurn({
       cwd,
       prompt,
       launchCommand: 'codex app-server',
+      onEvent,
     });
   }
 
@@ -57,6 +81,7 @@ export async function launchProviderSession(
     cwd,
     prompt,
     launchCommand: '@anthropic-ai/claude-agent-sdk query()',
+    onEvent,
   });
 }
 
@@ -65,6 +90,7 @@ export async function resumeProviderSession(
   sessionKey: string,
   cwd: string,
   prompt: string,
+  onEvent?: AgentSessionEventHandler,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
     return runCodexAppServerTurn({
@@ -72,6 +98,7 @@ export async function resumeProviderSession(
       prompt,
       sessionKey,
       launchCommand: 'codex app-server (thread/resume)',
+      onEvent,
     });
   }
 
@@ -80,6 +107,7 @@ export async function resumeProviderSession(
     prompt,
     sessionKey,
     launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
+    onEvent,
   });
 }
 
@@ -88,6 +116,7 @@ async function runCodexAppServerTurn(args: {
   prompt: string;
   sessionKey?: string;
   launchCommand: string;
+  onEvent?: AgentSessionEventHandler;
 }): Promise<SessionRunResult> {
   const child = spawn('codex', ['app-server'], {
     cwd: args.cwd,
@@ -99,6 +128,8 @@ async function runCodexAppServerTurn(args: {
   let stdoutBuffer = '';
   let sessionKey = args.sessionKey;
   let finalAssistantText = '';
+  let activeAssistantText = '';
+  const eventWrites: Promise<void>[] = [];
   let completed = false;
   let nextRequestId = 1;
   const pending = new Map<
@@ -120,6 +151,9 @@ async function runCodexAppServerTurn(args: {
       reject(error);
     };
   });
+  const emitEvent = (event: AgentSessionEvent): void => {
+    eventWrites.push(Promise.resolve(args.onEvent?.(event)));
+  };
 
   child.stdout.on('data', chunk => {
     stdoutBuffer += chunk.toString();
@@ -141,11 +175,11 @@ async function runCodexAppServerTurn(args: {
         continue;
       }
 
-      const responseId = (payload as { id?: unknown }).id;
+      const responseId = readProperty(payload, 'id');
       if (typeof responseId === 'number' && pending.has(responseId)) {
         const entry = pending.get(responseId)!;
         pending.delete(responseId);
-        const errorRecord = asObject((payload as { error?: unknown }).error);
+        const errorRecord = asObject(readProperty(payload, 'error'));
         if (errorRecord) {
           entry.reject(
             new Error(
@@ -155,12 +189,12 @@ async function runCodexAppServerTurn(args: {
           continue;
         }
 
-        entry.resolve((payload as { result?: unknown }).result);
+        entry.resolve(readProperty(payload, 'result'));
         continue;
       }
 
-      const method = asString((payload as { method?: unknown }).method);
-      const params = asObject((payload as { params?: unknown }).params);
+      const method = asString(readProperty(payload, 'method'));
+      const params = asObject(readProperty(payload, 'params'));
       if (!method || !params) {
         continue;
       }
@@ -174,14 +208,56 @@ async function runCodexAppServerTurn(args: {
       }
 
       if (method === 'item/agentMessage/delta') {
-        finalAssistantText += asString(params.delta) ?? '';
+        const delta = asString(params.delta) ?? '';
+        finalAssistantText += delta;
+        activeAssistantText += delta;
         continue;
       }
 
       if (method === 'item/completed') {
         const item = asObject(params.item);
-        if (asString(item?.type) === 'agentMessage') {
+        const itemType = asString(item?.type);
+        if (itemType === 'agentMessage') {
           finalAssistantText = asString(item?.text) ?? finalAssistantText;
+          const text = finalAssistantText || activeAssistantText;
+          if (text.trim()) {
+            emitEvent({
+              provider: 'codex',
+              role: 'assistant',
+              text: text.trim(),
+              status: 'completed',
+            });
+          }
+          activeAssistantText = '';
+        } else if (itemType === 'reasoning') {
+          const text = asString(item?.text) ?? asString(item?.summary);
+          if (text?.trim()) {
+            emitEvent({
+              provider: 'codex',
+              role: 'reasoning',
+              text: text.trim(),
+              status: 'completed',
+            });
+          }
+        } else if (itemType === 'toolCall') {
+          const title =
+            asString(item?.title) ??
+            asString(item?.name) ??
+            asString(item?.command) ??
+            'Tool';
+          const text =
+            asString(item?.text) ??
+            asString(item?.output) ??
+            asString(item?.command) ??
+            title;
+          emitEvent({
+            provider: 'codex',
+            role: 'tool',
+            title,
+            text,
+            status:
+              asString(item?.status) === 'failed' ? 'failed' : 'completed',
+          });
         }
         continue;
       }
@@ -191,6 +267,15 @@ async function runCodexAppServerTurn(args: {
         const status = asString(turn?.status);
         if (status === 'failed') {
           const turnError = asObject(turn?.error);
+          emitEvent({
+            provider: 'codex',
+            role: 'error',
+            title: 'Codex turn failed',
+            text:
+              asString(turnError?.message) ??
+              'Codex turn failed without an error message',
+            status: 'failed',
+          });
           failTurn?.(
             new Error(
               asString(turnError?.message) ??
@@ -198,6 +283,12 @@ async function runCodexAppServerTurn(args: {
             ),
           );
         } else if (status === 'interrupted') {
+          emitEvent({
+            provider: 'codex',
+            role: 'status',
+            text: 'Codex turn was interrupted',
+            status: 'failed',
+          });
           failTurn?.(new Error('Codex turn was interrupted'));
         } else {
           completeTurn?.();
@@ -245,26 +336,28 @@ async function runCodexAppServerTurn(args: {
     ]);
     notify('initialized', {});
 
-    const threadResult = (await Promise.race([
-      args.sessionKey
-        ? request('thread/resume', {
-            threadId: args.sessionKey,
-            cwd: args.cwd,
-            approvalPolicy: 'never',
-            personality: 'pragmatic',
-          })
-        : request('thread/start', {
-            cwd: args.cwd,
-            approvalPolicy: 'never',
-            personality: 'pragmatic',
-            serviceName: 'vector_bridge',
-          }),
-      waitForExit,
-    ])) as { thread?: unknown };
+    const threadResult = asObject(
+      await Promise.race([
+        args.sessionKey
+          ? request('thread/resume', {
+              threadId: args.sessionKey,
+              cwd: args.cwd,
+              approvalPolicy: 'never',
+              personality: 'pragmatic',
+            })
+          : request('thread/start', {
+              cwd: args.cwd,
+              approvalPolicy: 'never',
+              personality: 'pragmatic',
+              serviceName: 'vector_bridge',
+            }),
+        waitForExit,
+      ]),
+    );
 
     sessionKey =
-      asString(asObject(threadResult.thread)?.id) ??
-      asString(asObject(threadResult.thread)?.threadId) ??
+      asString(asObject(readProperty(threadResult, 'thread'))?.id) ??
+      asString(asObject(readProperty(threadResult, 'thread'))?.threadId) ??
       sessionKey;
 
     if (!sessionKey) {
@@ -283,6 +376,7 @@ async function runCodexAppServerTurn(args: {
     ]);
 
     await Promise.race([turnCompleted, waitForExit]);
+    await Promise.allSettled(eventWrites);
 
     const gitInfo = getGitInfo(args.cwd);
 
@@ -315,6 +409,7 @@ async function runClaudeSdkTurn(args: {
   prompt: string;
   sessionKey?: string;
   launchCommand: string;
+  onEvent?: AgentSessionEventHandler;
 }): Promise<SessionRunResult> {
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
 
@@ -343,38 +438,46 @@ async function runClaudeSdkTurn(args: {
         continue;
       }
 
-      sessionKey =
-        asString((message as { session_id?: unknown }).session_id) ??
-        sessionKey;
+      sessionKey = asString(readProperty(message, 'session_id')) ?? sessionKey;
 
-      if ((message as { type?: unknown }).type === 'assistant') {
+      if (readProperty(message, 'type') === 'assistant') {
         const assistantText = extractClaudeMessageTexts(
-          (message as { message?: unknown }).message,
+          readProperty(message, 'message'),
         )
           .join('\n\n')
           .trim();
         if (assistantText) {
           responseText = assistantText;
+          await args.onEvent?.({
+            provider: 'claude_code',
+            role: 'assistant',
+            text: assistantText,
+            status: 'completed',
+          });
         }
         continue;
       }
 
-      if ((message as { type?: unknown }).type !== 'result') {
+      if (readProperty(message, 'type') !== 'result') {
         continue;
       }
 
-      if ((message as { subtype?: unknown }).subtype === 'success') {
-        const resultText = asString((message as { result?: unknown }).result);
+      if (readProperty(message, 'subtype') === 'success') {
+        const resultText = asString(readProperty(message, 'result'));
         if (resultText) {
           responseText = resultText;
+          await args.onEvent?.({
+            provider: 'claude_code',
+            role: 'assistant',
+            text: resultText,
+            status: 'completed',
+          });
         }
-        model = firstObjectKey(
-          (message as { modelUsage?: unknown }).modelUsage,
-        );
+        model = firstObjectKey(readProperty(message, 'modelUsage'));
         continue;
       }
 
-      const errors = (message as { errors?: unknown }).errors;
+      const errors = readProperty(message, 'errors');
       const detail =
         Array.isArray(errors) && errors.length > 0
           ? errors.join('\n')
@@ -519,10 +622,6 @@ function discoverTmuxSessions(): SessionProcessRecord[] {
   } catch {
     return [];
   }
-}
-
-function getCodexSessionsDir(): string {
-  return join(getRealHomeDir(), '.codex', 'sessions');
 }
 
 function getCodexHistoryFile(): string {
@@ -885,24 +984,6 @@ function parseObservedClaudeSession(
   };
 }
 
-function extractCodexResponseText(content: unknown): string | undefined {
-  const texts = extractTextSegments(content);
-  return texts.length > 0 ? texts.join('\n\n') : undefined;
-}
-
-function extractClaudeUserText(message: unknown): string | undefined {
-  const texts = extractClaudeMessageTexts(message);
-  if (texts.length > 0) {
-    return texts.join('\n\n');
-  }
-  return undefined;
-}
-
-function extractClaudeAssistantText(message: unknown): string | undefined {
-  const texts = extractClaudeMessageTexts(message);
-  return texts.length > 0 ? texts.join('\n\n') : undefined;
-}
-
 function summarizeTitle(message: string | undefined, cwd?: string): string {
   if (message) {
     return truncate(message.replace(/\s+/g, ' ').trim(), 96);
@@ -958,13 +1039,19 @@ function normalizeModelKey(value: string): string | undefined {
 }
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : undefined;
+  return isRecord(value) ? value : undefined;
+}
+
+function readProperty(value: unknown, key: string): unknown {
+  return isRecord(value) ? Reflect.get(value, key) : undefined;
 }
 
 function asString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object';
 }
 
 function pushIfPresent(target: string[], value: unknown): void {
@@ -1206,11 +1293,13 @@ function getGitInfo(cwd: string): { repoRoot?: string; branch?: string } {
     const repoRoot = execSync('git rev-parse --show-toplevel', {
       encoding: 'utf-8',
       cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000,
     }).trim();
     const branch = execSync('git rev-parse --abbrev-ref HEAD', {
       encoding: 'utf-8',
       cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000,
     }).trim();
 
