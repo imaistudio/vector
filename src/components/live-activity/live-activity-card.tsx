@@ -38,6 +38,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { BarsSpinner } from '@/components/bars-spinner';
 import { ProviderIcon } from './live-activity-section';
+import { LiveActivityTranscript } from './live-activity-transcript';
 import { WorkSessionTerminal } from './work-session-terminal';
 
 type LiveActivity = FunctionReturnType<
@@ -187,6 +188,7 @@ export function LiveActivityCard({
   const hasTmux = Boolean(
     workSession?.tmuxSessionName || workSession?.tmuxPaneId,
   );
+  const isAgentSession = Boolean(workSession?.agentProvider);
   const showTerminal = terminalSnapshot.length > 0 || hasTmux;
 
   const toggleExpanded = () => {
@@ -306,7 +308,7 @@ export function LiveActivityCard({
               )}
             </button>
           )}
-          {expanded && showTerminal && (
+          {expanded && showTerminal && !isAgentSession && (
             <button
               type='button'
               onClick={() => setFullscreen(f => !f)}
@@ -339,8 +341,19 @@ export function LiveActivityCard({
         </div>
       </div>
 
-      {/* Expanded: terminal view */}
-      {expanded && showTerminal && (
+      {/* Expanded: agent chat or terminal view */}
+      {expanded && isAgentSession && (
+        <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
+          <LiveActivityTranscript
+            liveActivityId={activity._id}
+            isOwner={canInteractSession}
+            status={activity.status}
+            currentUser={currentUser}
+          />
+        </div>
+      )}
+
+      {expanded && !isAgentSession && showTerminal && (
         <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
           <WorkSessionTerminal
             snapshot={terminalSnapshot}
@@ -355,7 +368,7 @@ export function LiveActivityCard({
         </div>
       )}
 
-      {expanded && !showTerminal && (
+      {expanded && !isAgentSession && !showTerminal && (
         <div className='text-muted-foreground mt-1 rounded-lg border py-6 text-center text-sm'>
           {isTerminal
             ? 'No terminal output available.'
