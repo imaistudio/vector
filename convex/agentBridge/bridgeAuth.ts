@@ -5,6 +5,10 @@
 import { internalMutation, internalQuery } from '../_generated/server';
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
+import {
+  liveMessageRoleValidator,
+  liveMessageStructuredPayloadValidator,
+} from '../_shared/agentBridge';
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -129,8 +133,9 @@ export const postAgentMessage = internalMutation({
   args: {
     deviceSecret: v.string(),
     liveActivityId: v.string(),
-    role: v.string(),
+    role: liveMessageRoleValidator,
     body: v.string(),
+    structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
   },
   handler: async (ctx, args) => {
     const activity = await ctx.db.get(
@@ -151,8 +156,9 @@ export const postAgentMessage = internalMutation({
     const messageId = await ctx.db.insert('issueLiveMessages', {
       liveActivityId: args.liveActivityId as Id<'issueLiveActivities'>,
       direction: 'agent_to_vector',
-      role: (args.role as 'status' | 'assistant') ?? 'assistant',
+      role: args.role,
       body: args.body,
+      structuredPayload: args.structuredPayload,
       deliveryStatus: 'sent',
       createdAt: now,
     });

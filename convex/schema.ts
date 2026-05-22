@@ -22,6 +22,7 @@ import {
   liveMessageDeliveryStatusValidator,
   liveMessageDirectionValidator,
   liveMessageRoleValidator,
+  liveMessageStructuredPayloadValidator,
   workSessionAccessLevelValidator,
   workspaceLaunchPolicyValidator,
 } from './_shared/agentBridge';
@@ -1359,7 +1360,7 @@ export default defineSchema({
     direction: liveMessageDirectionValidator,
     role: liveMessageRoleValidator,
     body: v.string(),
-    structuredPayload: v.optional(v.any()),
+    structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
     deliveryStatus: liveMessageDeliveryStatusValidator,
     createdAt: v.number(),
   })

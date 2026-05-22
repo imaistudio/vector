@@ -13,6 +13,7 @@ import {
   liveActivityStatusValidator,
   liveMessageDirectionValidator,
   liveMessageRoleValidator,
+  liveMessageStructuredPayloadValidator,
   workSessionAccessLevelValidator,
   workspaceLaunchPolicyValidator,
   AGENT_PROVIDER_LABELS,
@@ -522,6 +523,8 @@ async function enqueueDelegatedLaunchCommand(
     createdAt?: number;
   },
 ) {
+  const issueContext = await buildDelegatedIssueContext(ctx, args.issue);
+
   return ctx.db.insert('agentCommands', {
     deviceId: args.deviceId,
     liveActivityId: args.liveActivityId,
@@ -532,6 +535,7 @@ async function enqueueDelegatedLaunchCommand(
       issueKey: args.issue.key,
       issueTitle: args.issue.title,
       issueDescription: args.issue.description,
+      issueContext,
       provider: args.provider,
       workspacePath: args.workspace.path,
       workspaceLabel: args.workspace.label,
@@ -541,6 +545,102 @@ async function enqueueDelegatedLaunchCommand(
     status: 'pending',
     createdAt: args.createdAt ?? Date.now(),
   });
+}
+
+async function buildDelegatedIssueContext(
+  ctx: MutationCtx,
+  issue: Doc<'issues'>,
+) {
+  const [
+    org,
+    team,
+    project,
+    priority,
+    state,
+    reporter,
+    labelAssignments,
+    assignees,
+    recentComments,
+  ] = await Promise.all([
+    ctx.db.get('organizations', issue.organizationId),
+    issue.teamId ? ctx.db.get('teams', issue.teamId) : null,
+    issue.projectId ? ctx.db.get('projects', issue.projectId) : null,
+    issue.priorityId ? ctx.db.get('issuePriorities', issue.priorityId) : null,
+    issue.workflowStateId
+      ? ctx.db.get('issueStates', issue.workflowStateId)
+      : null,
+    issue.reporterId ? ctx.db.get('users', issue.reporterId) : null,
+    ctx.db
+      .query('issueLabelAssignments')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .take(12),
+    ctx.db
+      .query('issueAssignees')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .take(12),
+    ctx.db
+      .query('comments')
+      .withIndex('by_issue_deleted', q =>
+        q.eq('issueId', issue._id).eq('deleted', false),
+      )
+      .order('desc')
+      .take(8),
+  ]);
+
+  const [labels, assigneeNames, comments] = await Promise.all([
+    Promise.all(
+      labelAssignments.map(async assignment => {
+        const label = await ctx.db.get('issueLabels', assignment.labelId);
+        return label?.name ?? null;
+      }),
+    ),
+    Promise.all(
+      assignees.map(async assignment => {
+        if (!assignment.assigneeId) return null;
+        const user = await ctx.db.get('users', assignment.assigneeId);
+        return user?.name ?? user?.email ?? null;
+      }),
+    ),
+    Promise.all(
+      recentComments
+        .filter(
+          comment => !comment.agentStatus || comment.agentStatus === 'done',
+        )
+        .reverse()
+        .map(async comment => {
+          const author = await ctx.db.get('users', comment.authorId);
+          return {
+            authorName: author?.name ?? author?.email ?? 'Unknown',
+            body:
+              comment.body.length > 500
+                ? `${comment.body.slice(0, 497)}...`
+                : comment.body,
+          };
+        }),
+    ),
+  ]);
+
+  return {
+    organization: org ? { name: org.name, slug: org.slug } : null,
+    team: team ? { key: team.key, name: team.name } : null,
+    project: project
+      ? {
+          key: project.key,
+          name: project.name,
+          description: project.description,
+        }
+      : null,
+    priority: priority?.name ?? null,
+    state: state ? { name: state.name, type: state.type } : null,
+    reporter: reporter?.name ?? reporter?.email ?? null,
+    labels: labels.filter((label): label is string => Boolean(label)),
+    assignees: assigneeNames.filter((name): name is string => Boolean(name)),
+    dates: {
+      startDate: issue.startDate ?? null,
+      dueDate: issue.dueDate ?? null,
+    },
+    recentComments: comments,
+  };
 }
 
 /**
@@ -1043,7 +1143,7 @@ export const appendLiveMessage = mutation({
     direction: liveMessageDirectionValidator,
     role: liveMessageRoleValidator,
     body: v.string(),
-    structuredPayload: v.optional(v.any()),
+    structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUserId(ctx);
@@ -1069,7 +1169,11 @@ export const appendLiveMessage = mutation({
       throw new ConvexError('FORBIDDEN');
     }
 
+    const issue = await ctx.db.get('issues', activity.issueId);
+    if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
+
     const now = Date.now();
+    const issueContext = await buildDelegatedIssueContext(ctx, issue);
 
     const messageId = await ctx.db.insert('issueLiveMessages', {
       liveActivityId: args.liveActivityId,
@@ -1100,7 +1204,7 @@ export const appendLiveMessage = mutation({
       liveActivityId: args.liveActivityId,
       senderUserId: userId,
       kind: 'message',
-      payload: { body: args.body, messageId },
+      payload: { body: args.body, messageId, issueContext },
       status: 'pending',
       createdAt: now,
     });

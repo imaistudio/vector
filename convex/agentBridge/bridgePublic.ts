@@ -7,6 +7,10 @@ import { mutation, query } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
+import {
+  liveMessageRoleValidator,
+  liveMessageStructuredPayloadValidator,
+} from '../_shared/agentBridge';
 
 // ── Auth helper ─────────────────────────────────────────────────────────────
 
@@ -206,8 +210,9 @@ export const postAgentMessage = mutation({
     deviceId: v.id('agentDevices'),
     deviceSecret: v.string(),
     liveActivityId: v.id('issueLiveActivities'),
-    role: v.union(v.literal('status'), v.literal('assistant')),
+    role: liveMessageRoleValidator,
     body: v.string(),
+    structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
   },
   handler: async (ctx, args) => {
     await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
@@ -227,6 +232,7 @@ export const postAgentMessage = mutation({
       direction: 'agent_to_vector',
       role: args.role,
       body: args.body,
+      structuredPayload: args.structuredPayload,
       deliveryStatus: 'sent',
       createdAt: now,
     });
@@ -583,7 +589,7 @@ export const updateWorkSessionTerminal = mutation({
     deviceId: v.id('agentDevices'),
     deviceSecret: v.string(),
     workSessionId: v.id('workSessions'),
-    terminalSnapshot: v.string(),
+    terminalSnapshot: v.optional(v.string()),
     tmuxSessionName: v.optional(v.string()),
     tmuxWindowName: v.optional(v.string()),
     tmuxPaneId: v.optional(v.string()),
@@ -598,6 +604,7 @@ export const updateWorkSessionTerminal = mutation({
       ),
     ),
     agentSessionKey: v.optional(v.string()),
+    agentProcessId: v.optional(v.id('agentProcesses')),
   },
   handler: async (ctx, args) => {
     await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
@@ -609,8 +616,10 @@ export const updateWorkSessionTerminal = mutation({
 
     const now = Date.now();
     await ctx.db.patch('workSessions', args.workSessionId, {
-      terminalSnapshot: args.terminalSnapshot,
-      terminalUpdatedAt: now,
+      ...(args.terminalSnapshot !== undefined && {
+        terminalSnapshot: args.terminalSnapshot,
+        terminalUpdatedAt: now,
+      }),
       lastEventAt: now,
       ...(args.tmuxSessionName && { tmuxSessionName: args.tmuxSessionName }),
       ...(args.tmuxWindowName && { tmuxWindowName: args.tmuxWindowName }),
@@ -623,6 +632,9 @@ export const updateWorkSessionTerminal = mutation({
       }),
       ...(args.agentSessionKey !== undefined && {
         agentSessionKey: args.agentSessionKey,
+      }),
+      ...(args.agentProcessId !== undefined && {
+        agentProcessId: args.agentProcessId,
       }),
     });
   },

@@ -27,8 +27,11 @@ import type {
 } from '../../../convex/_shared/agentBridge';
 import {
   discoverAttachableSessions,
+  launchProviderSession,
   resumeProviderSession,
   type BridgeProvider,
+  type AgentSessionEvent,
+  type AgentSessionEventRole,
   type SessionProcessRecord,
 } from './agent-adapters';
 
@@ -143,6 +146,8 @@ export class BridgeService {
   private config: BridgeConfig;
   private timers: ReturnType<typeof setInterval>[] = [];
   private terminalPeer: TerminalPeerManager | null = null;
+  private stopping = false;
+  private runningLoops = new Set<string>();
   private deviceLiveActivities: Array<{
     _id: Id<'issueLiveActivities'>;
     title?: string;
@@ -184,6 +189,43 @@ export class BridgeService {
 
     for (const cmd of commands) {
       await this.handleCommand(cmd);
+    }
+  }
+
+  private scheduleLoop(
+    name: string,
+    intervalMs: number,
+    run: () => Promise<void>,
+  ): void {
+    this.timers.push(
+      setInterval(() => {
+        if (this.stopping || this.runningLoops.has(name)) {
+          return;
+        }
+
+        this.runningLoops.add(name);
+        run()
+          .catch(error => {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            console.error(`[${ts()}] ${name} error:`, message);
+          })
+          .finally(() => {
+            this.runningLoops.delete(name);
+          });
+      }, intervalMs),
+    );
+  }
+
+  private async runStartupStep(
+    label: string,
+    step: () => Promise<void>,
+  ): Promise<void> {
+    try {
+      await step();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`[${ts()}] Startup ${label} failed: ${message}`);
     }
   }
 
@@ -434,13 +476,16 @@ export class BridgeService {
       branch?: string;
       agentProvider?: AgentProvider;
       agentSessionKey?: string;
+      agentProcessId?: Id<'agentProcesses'>;
     },
   ): Promise<void> {
-    if (!workSessionId || !metadata.tmuxPaneId) {
+    if (!workSessionId) {
       return;
     }
 
-    const terminalSnapshot = captureTmuxPane(metadata.tmuxPaneId);
+    const terminalSnapshot = metadata.tmuxPaneId
+      ? captureTmuxPane(metadata.tmuxPaneId)
+      : undefined;
     await this.client.mutation(
       api.agentBridge.bridgePublic.updateWorkSessionTerminal,
       {
@@ -456,6 +501,7 @@ export class BridgeService {
         branch: metadata.branch,
         agentProvider: metadata.agentProvider,
         agentSessionKey: metadata.agentSessionKey,
+        agentProcessId: metadata.agentProcessId,
       },
     );
   }
@@ -491,59 +537,56 @@ export class BridgeService {
     }
     console.log('');
 
-    // Initial sync
-    await this.heartbeat();
-    await this.reportProcesses();
-    await this.refreshLiveActivities();
-    await this.syncWorkSessionTerminals(this.deviceLiveActivities);
+    process.on('uncaughtException', error => {
+      console.error(`[${ts()}] Uncaught error:`, error.message);
+    });
+    process.on('unhandledRejection', reason => {
+      console.error(
+        `[${ts()}] Unhandled rejection:`,
+        reason instanceof Error ? reason.message : String(reason),
+      );
+    });
+
+    // Initial sync is best-effort. A network or auth blip should leave the
+    // bridge alive so the periodic loops can recover without LaunchAgent churn.
+    await this.runStartupStep('heartbeat', () => this.heartbeat());
+    await this.runStartupStep('process discovery', () =>
+      this.reportProcesses(),
+    );
+    await this.runStartupStep('live activity sync', () =>
+      this.refreshLiveActivities(),
+    );
+    await this.runStartupStep('terminal snapshot sync', () =>
+      this.syncWorkSessionTerminals(this.deviceLiveActivities),
+    );
     console.log(`[${ts()}] Service running. Ctrl+C to stop.\n`);
 
-    // Loops
-    this.timers.push(
-      setInterval(() => {
-        this.heartbeat().catch(e =>
-          console.error(`[${ts()}] Heartbeat error:`, e.message),
-        );
-      }, HEARTBEAT_INTERVAL_MS),
+    this.scheduleLoop('Heartbeat', HEARTBEAT_INTERVAL_MS, () =>
+      this.heartbeat(),
     );
-
-    this.timers.push(
-      setInterval(() => {
-        this.pollCommands().catch(e =>
-          console.error(`[${ts()}] Command poll error:`, e.message),
-        );
-      }, COMMAND_POLL_INTERVAL_MS),
+    this.scheduleLoop('Command poll', COMMAND_POLL_INTERVAL_MS, () =>
+      this.pollCommands(),
     );
-
-    this.timers.push(
-      setInterval(() => {
-        this.refreshLiveActivities().catch(e =>
-          console.error(`[${ts()}] Live activity sync error:`, e.message),
-        );
-      }, LIVE_ACTIVITY_SYNC_INTERVAL_MS),
+    this.scheduleLoop(
+      'Live activity sync',
+      LIVE_ACTIVITY_SYNC_INTERVAL_MS,
+      () => this.refreshLiveActivities(),
     );
-
-    this.timers.push(
-      setInterval(() => {
-        this.reportProcesses().catch(e =>
-          console.error(`[${ts()}] Discovery error:`, e.message),
-        );
-      }, PROCESS_DISCOVERY_INTERVAL_MS),
+    this.scheduleLoop('Discovery', PROCESS_DISCOVERY_INTERVAL_MS, () =>
+      this.reportProcesses(),
     );
-
-    this.timers.push(
-      setInterval(() => {
-        this.syncWorkSessionTerminals(this.deviceLiveActivities).catch(e =>
-          console.error(
-            `[${ts()}] Terminal snapshot refresh error:`,
-            e.message,
-          ),
-        );
-      }, TERMINAL_SNAPSHOT_REFRESH_INTERVAL_MS),
+    this.scheduleLoop(
+      'Terminal snapshot refresh',
+      TERMINAL_SNAPSHOT_REFRESH_INTERVAL_MS,
+      () => this.syncWorkSessionTerminals(this.deviceLiveActivities),
     );
 
     // Graceful shutdown
     const shutdown = () => {
+      if (this.stopping) {
+        return;
+      }
+      this.stopping = true;
       console.log(`\n[${ts()}] Shutting down...`);
       for (const t of this.timers) clearInterval(t);
       this.terminalPeer?.stop();
@@ -571,17 +614,22 @@ export class BridgeService {
       throw new Error('Message command is missing liveActivityId');
     }
 
-    const payload = cmd.payload as { body?: string } | undefined;
-    const body = payload?.body?.trim();
+    const body = readPayloadString(cmd.payload, 'body')?.trim();
     if (!body) {
       throw new Error('Message command is missing a body');
     }
+    const issueContext = readPayloadValue(cmd.payload, 'issueContext');
 
     const process = cmd.process;
     console.log(`  > "${truncateForLog(body)}"`);
 
     if (cmd.workSession?.tmuxPaneId) {
-      sendTextToTmuxPane(cmd.workSession.tmuxPaneId, body);
+      const terminalInput =
+        cmd.workSession.agentProvider &&
+        isBridgeProvider(cmd.workSession.agentProvider)
+          ? buildFollowUpPrompt(body, issueContext)
+          : body;
+      sendTextToTmuxPane(cmd.workSession.tmuxPaneId, terminalInput);
       const attachedSession =
         cmd.workSession.agentProvider &&
         isBridgeProvider(cmd.workSession.agentProvider)
@@ -649,15 +697,21 @@ export class BridgeService {
       title: cmd.liveActivity?.title ?? process.title,
     });
 
+    const liveActivityId = cmd.liveActivityId;
+    let emittedAssistantEvent = false;
     const result = await resumeProviderSession(
       process.provider,
       process.sessionKey,
       process.cwd,
-      body,
+      buildFollowUpPrompt(body, issueContext),
+      event => {
+        if (event.role === 'assistant') emittedAssistantEvent = true;
+        return this.postAgentSessionEvent(liveActivityId, event);
+      },
     );
     const processId = await this.reportProcess(result);
 
-    if (result.responseText) {
+    if (result.responseText && !emittedAssistantEvent) {
       await this.postAgentMessage(
         cmd.liveActivityId,
         'assistant',
@@ -675,9 +729,8 @@ export class BridgeService {
   }
 
   private async handleResizeCommand(cmd: PendingBridgeCommand): Promise<void> {
-    const payload = cmd.payload as { cols?: number; rows?: number } | undefined;
-    const cols = payload?.cols;
-    const rows = payload?.rows;
+    const cols = readPayloadNumber(cmd.payload, 'cols');
+    const rows = readPayloadNumber(cmd.payload, 'rows');
     const paneId = cmd.workSession?.tmuxPaneId;
 
     if (!paneId || !cols || !rows) {
@@ -707,37 +760,38 @@ export class BridgeService {
       throw new Error('Launch command is missing liveActivityId');
     }
 
-    const payload = cmd.payload as
-      | {
-          issueKey?: string;
-          issueTitle?: string;
-          issueDescription?: string;
-          provider?: AgentProvider;
-          workspacePath?: string;
-          workspaceLabel?: string;
-          delegatedRunId?: Id<'delegatedRuns'>;
-          liveActivityId?: Id<'issueLiveActivities'>;
-        }
-      | undefined;
-
-    const workspacePath = payload?.workspacePath?.trim();
+    const workspacePath = readPayloadString(
+      cmd.payload,
+      'workspacePath',
+    )?.trim();
     if (!workspacePath) {
       throw new Error('Launch command is missing workspacePath');
     }
-    const requestedProvider = payload?.provider;
+    const requestedProvider = readPayloadAgentProvider(cmd.payload, 'provider');
     const provider =
       requestedProvider && isBridgeProvider(requestedProvider)
         ? requestedProvider
         : undefined;
-    const issueKey = payload?.issueKey ?? cmd.liveActivity?.issueKey ?? 'ISSUE';
+    const issueKey =
+      readPayloadString(cmd.payload, 'issueKey') ??
+      cmd.liveActivity?.issueKey ??
+      'ISSUE';
     const issueTitle =
-      payload?.issueTitle ?? cmd.liveActivity?.issueTitle ?? 'Untitled issue';
-    const issueDescription = payload?.issueDescription;
+      readPayloadString(cmd.payload, 'issueTitle') ??
+      cmd.liveActivity?.issueTitle ??
+      'Untitled issue';
+    const issueDescription = readPayloadString(cmd.payload, 'issueDescription');
+    const issueContext = readPayloadValue(cmd.payload, 'issueContext');
+    const delegatedRunId = readPayloadId<'delegatedRuns'>(
+      cmd.payload,
+      'delegatedRunId',
+    );
     const prompt = buildLaunchPrompt(
       issueKey,
       issueTitle,
       workspacePath,
       issueDescription,
+      issueContext,
     );
     const launchLabel = provider ? providerLabel(provider) : 'shell session';
     const workSessionTitle = `${issueKey}: ${issueTitle}`;
@@ -745,13 +799,47 @@ export class BridgeService {
     await this.updateLiveActivity(cmd.liveActivityId, {
       status: 'active',
       latestSummary: `Launching ${launchLabel} in ${workspacePath}`,
-      delegatedRunId: payload?.delegatedRunId,
+      delegatedRunId,
       launchStatus: 'launching',
       title: workSessionTitle,
     });
 
-    // All session types (shell, codex, claude) are the same:
-    // create a tmux session, type the command in, done.
+    if (provider) {
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'status',
+        `Starting ${launchLabel} session in ${workspacePath}`,
+      );
+
+      const liveActivityId = cmd.liveActivityId;
+      const result = await launchProviderSession(
+        provider,
+        workspacePath,
+        prompt,
+        event => this.postAgentSessionEvent(liveActivityId, event),
+      );
+      const processId = await this.reportProcess(result);
+
+      await this.refreshWorkSessionTerminal(cmd.workSession?._id, {
+        cwd: workspacePath,
+        repoRoot: result.repoRoot ?? workspacePath,
+        branch: result.branch ?? currentGitBranch(workspacePath),
+        agentProvider: result.provider,
+        agentSessionKey: result.sessionKey,
+        agentProcessId: processId,
+      });
+
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'waiting_for_input',
+        latestSummary: summarizeMessage(result.responseText),
+        delegatedRunId,
+        launchStatus: 'running',
+        title: workSessionTitle,
+        processId,
+      });
+      return;
+    }
+
     const tmuxSession = createTmuxWorkSession({
       workspacePath,
       issueKey,
@@ -773,7 +861,7 @@ export class BridgeService {
     await this.updateLiveActivity(cmd.liveActivityId, {
       status: 'active',
       latestSummary: `Running ${launchLabel} in ${tmuxSession.sessionName}`,
-      delegatedRunId: payload?.delegatedRunId,
+      delegatedRunId,
       launchStatus: 'running',
       title: workSessionTitle,
     });
@@ -899,8 +987,9 @@ export class BridgeService {
 
   private async postAgentMessage(
     liveActivityId: Id<'issueLiveActivities'>,
-    role: 'status' | 'assistant',
+    role: AgentSessionEventRole | 'user',
     body: string,
+    structuredPayload?: unknown,
   ): Promise<void> {
     await this.client.mutation(api.agentBridge.bridgePublic.postAgentMessage, {
       deviceId: this.config.deviceId as Id<'agentDevices'>,
@@ -908,6 +997,22 @@ export class BridgeService {
       liveActivityId,
       role,
       body,
+      structuredPayload,
+    });
+  }
+
+  private async postAgentSessionEvent(
+    liveActivityId: Id<'issueLiveActivities'>,
+    event: AgentSessionEvent,
+  ): Promise<void> {
+    const body = event.text.trim();
+    if (!body) return;
+
+    await this.postAgentMessage(liveActivityId, event.role, body, {
+      source: 'cells_agent_event',
+      provider: event.provider,
+      title: event.title,
+      status: event.status,
     });
   }
 
@@ -928,13 +1033,13 @@ export class BridgeService {
     errorMessage: string,
   ): Promise<void> {
     if (cmd.kind === 'launch' && cmd.liveActivityId) {
-      const payload = cmd.payload as
-        | { delegatedRunId?: Id<'delegatedRuns'> }
-        | undefined;
       await this.updateLiveActivity(cmd.liveActivityId, {
         status: 'failed',
         latestSummary: errorMessage,
-        delegatedRunId: payload?.delegatedRunId,
+        delegatedRunId: readPayloadId<'delegatedRuns'>(
+          cmd.payload,
+          'delegatedRunId',
+        ),
         launchStatus: 'failed',
       });
       await this.postAgentMessage(cmd.liveActivityId, 'status', errorMessage);
@@ -1063,6 +1168,7 @@ function currentGitBranch(cwd: string): string | undefined {
     return execSync('git rev-parse --abbrev-ref HEAD', {
       encoding: 'utf-8',
       cwd,
+      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000,
     }).trim();
   } catch {
@@ -1155,11 +1261,17 @@ function buildLaunchPrompt(
   issueTitle: string,
   workspacePath: string,
   issueDescription?: string,
+  issueContext?: unknown,
 ): string {
   const lines = [`You are working on issue ${issueKey}: ${issueTitle}`];
 
   if (issueDescription?.trim()) {
     lines.push('', 'Issue description:', issueDescription.trim());
+  }
+
+  const contextLines = formatIssueContext(issueContext);
+  if (contextLines.length > 0) {
+    lines.push('', 'Vector context:', ...contextLines);
   }
 
   lines.push(
@@ -1171,6 +1283,106 @@ function buildLaunchPrompt(
   );
 
   return lines.join('\n');
+}
+
+function buildFollowUpPrompt(
+  userMessage: string,
+  issueContext?: unknown,
+): string {
+  const contextLines = formatIssueContext(issueContext);
+  if (contextLines.length === 0) {
+    return userMessage;
+  }
+
+  return [
+    'Vector context for the current issue:',
+    ...contextLines,
+    '',
+    'User message:',
+    userMessage,
+  ].join('\n');
+}
+
+function formatIssueContext(issueContext: unknown): string[] {
+  const lines: string[] = [];
+  const organization = readPayloadValue(issueContext, 'organization');
+  const organizationName = readPayloadString(organization, 'name');
+  const organizationSlug = readPayloadString(organization, 'slug');
+  if (organizationName || organizationSlug) {
+    lines.push(
+      `- Organization: ${[organizationName, organizationSlug ? `(${organizationSlug})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const team = readPayloadValue(issueContext, 'team');
+  const teamName = readPayloadString(team, 'name');
+  const teamKey = readPayloadString(team, 'key');
+  if (teamName || teamKey) {
+    lines.push(
+      `- Team: ${[teamName, teamKey ? `(${teamKey})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const project = readPayloadValue(issueContext, 'project');
+  const projectName = readPayloadString(project, 'name');
+  const projectKey = readPayloadString(project, 'key');
+  const projectDescription = readPayloadString(project, 'description');
+  if (projectName || projectKey) {
+    lines.push(
+      `- Project: ${[projectName, projectKey ? `(${projectKey})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+  if (projectDescription) {
+    lines.push(`- Project description: ${projectDescription}`);
+  }
+
+  const state = readPayloadValue(issueContext, 'state');
+  const stateName = readPayloadString(state, 'name');
+  const stateType = readPayloadString(state, 'type');
+  if (stateName || stateType) {
+    lines.push(
+      `- State: ${[stateName, stateType ? `(${stateType})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const priority = readPayloadString(issueContext, 'priority');
+  if (priority) lines.push(`- Priority: ${priority}`);
+
+  const reporter = readPayloadString(issueContext, 'reporter');
+  if (reporter) lines.push(`- Reporter: ${reporter}`);
+
+  const assignees = readPayloadStringArray(issueContext, 'assignees');
+  if (assignees.length > 0) {
+    lines.push(`- Assignees: ${assignees.join(', ')}`);
+  }
+
+  const labels = readPayloadStringArray(issueContext, 'labels');
+  if (labels.length > 0) {
+    lines.push(`- Labels: ${labels.join(', ')}`);
+  }
+
+  const dates = readPayloadValue(issueContext, 'dates');
+  const startDate = readPayloadString(dates, 'startDate');
+  const dueDate = readPayloadString(dates, 'dueDate');
+  if (startDate || dueDate) {
+    lines.push(
+      `- Dates: ${[startDate ? `start ${startDate}` : undefined, dueDate ? `due ${dueDate}` : undefined].filter(Boolean).join(', ')}`,
+    );
+  }
+
+  const recentComments = readPayloadArray(issueContext, 'recentComments');
+  if (recentComments.length > 0) {
+    lines.push('- Recent comments:');
+    for (const comment of recentComments) {
+      const author = readPayloadString(comment, 'authorName') ?? 'Unknown';
+      const body = readPayloadString(comment, 'body');
+      if (body) {
+        lines.push(`  - ${author}: ${body}`);
+      }
+    }
+  }
+
+  return lines;
 }
 
 function summarizeMessage(message: string | undefined): string | undefined {
@@ -1296,6 +1508,54 @@ function compareLocalSessionRecency(
 
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function readPayloadValue(payload: unknown, key: string): unknown {
+  return payload !== null && typeof payload === 'object'
+    ? Reflect.get(payload, key)
+    : undefined;
+}
+
+function readPayloadString(payload: unknown, key: string): string | undefined {
+  const value = readPayloadValue(payload, key);
+  return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function readPayloadNumber(payload: unknown, key: string): number | undefined {
+  const value = readPayloadValue(payload, key);
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function readPayloadArray(payload: unknown, key: string): unknown[] {
+  const value = readPayloadValue(payload, key);
+  return Array.isArray(value) ? value : [];
+}
+
+function readPayloadStringArray(payload: unknown, key: string): string[] {
+  return readPayloadArray(payload, key).filter(
+    (value): value is string =>
+      typeof value === 'string' && value.trim() !== '',
+  );
+}
+
+function readPayloadId<TableName extends string>(
+  payload: unknown,
+  key: string,
+): Id<TableName> | undefined {
+  const value = readPayloadString(payload, key);
+  return value as Id<TableName> | undefined;
+}
+
+function readPayloadAgentProvider(
+  payload: unknown,
+  key: string,
+): AgentProvider | undefined {
+  const value = readPayloadValue(payload, key);
+  return value === 'codex' || value === 'claude_code' || value === 'vector_cli'
+    ? value
+    : undefined;
 }
 
 function isBridgeProvider(provider: AgentProvider): provider is BridgeProvider {
@@ -1619,8 +1879,9 @@ export async function launchMenuBar(): Promise<void> {
   const cliInvocation = getCurrentCliInvocation();
   if (!executable || !cliInvocation) return;
 
-  // Always kill and relaunch so the binary matches the installed CLI version
-  killExistingMenuBar();
+  if (getRunningMenuBarPid()) {
+    return;
+  }
 
   try {
     const { spawn: spawnChild } = await import('child_process');
