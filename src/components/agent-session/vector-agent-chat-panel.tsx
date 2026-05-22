@@ -12,7 +12,10 @@ import { ArrowUp, Clock, Loader2, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateHuman } from '@/lib/date';
 import { cn } from '@/lib/utils';
-import { AgentLoadingIndicator } from './agent-loading-indicator';
+import {
+  AgentLoadingIndicator,
+  LoadingIndicator,
+} from './agent-loading-indicator';
 import { AgentTurnCard, ErrorBubble, SystemLine } from './agent-turn-card';
 import { AgentAuthCard } from './agent-auth-card';
 import { AgentQueueReporter } from './agent-queue-reporter';
@@ -30,7 +33,9 @@ type ChatGroup =
       key: string;
       activities: AgentSessionMessage[];
       responses: AgentSessionMessage[];
+      changedFilesActivities?: AgentSessionMessage[];
       leadText?: string;
+      leadResponses?: AgentSessionMessage[];
     }
   | { kind: 'error'; key: string; message: AgentSessionMessage }
   | { kind: 'auth'; key: string; message: AgentSessionMessage }
@@ -261,7 +266,7 @@ export function VectorAgentChatPanel({
             />
           ) : null}
           <div
-            className='group/composer border-border/45 bg-popover/95 overflow-hidden rounded-[18px] border shadow-[0_18px_60px_rgba(0,0,0,0.32)] backdrop-blur-xl'
+            className='group/composer shadow-minimal border-border/45 bg-popover/95 overflow-hidden rounded-[12px] border backdrop-blur-xl'
             style={{
               backgroundColor: 'var(--elevated-surface, var(--popover))',
             }}
@@ -285,7 +290,7 @@ export function VectorAgentChatPanel({
                   }}
                   placeholder={getComposerPlaceholder(snapshot.agent)}
                   rows={messageInput.includes('\n') ? 4 : 3}
-                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-24 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
+                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-22 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
                   disabled={sending}
                 />
                 <div className='flex min-w-0 items-center gap-1.5 px-3 pt-0.5 pb-3'>
@@ -404,7 +409,9 @@ function MessageGroup({
       <AgentTurnCard
         activities={group.activities}
         responses={group.responses}
+        changedFilesActivities={group.changedFilesActivities}
         leadText={group.leadText}
+        leadResponses={group.leadResponses}
         agent={agent}
         isStreaming={isStreamingLastTurn}
       />
@@ -457,10 +464,12 @@ function UserBubble({
 
 function PendingTurnIndicator({ agent }: { agent: LocalAgentProvider }) {
   return (
-    <div className='text-muted-foreground/80 flex items-center gap-2 px-1 py-1.5 text-[12px]'>
-      <Loader2 className='size-3.5 animate-spin' />
-      <span>{getAgentDisplayName(agent)} is thinking</span>
-    </div>
+    <LoadingIndicator
+      label={`${getAgentDisplayName(agent)} is thinking`}
+      showElapsed
+      className='text-muted-foreground py-1.5 pr-2.5 pl-1.5 text-[12px]'
+      spinnerClassName='text-[10px] text-muted-foreground/80'
+    />
   );
 }
 
@@ -541,6 +550,9 @@ function groupMessages(messages: AgentSessionMessage[]): ChatGroup[] {
   };
 
   for (const message of messages) {
+    if (message.role === 'error' && getReconnectStatus(message.text)) {
+      continue;
+    }
     if (message.parentToolUseId) {
       if (message.role === 'user') continue;
       pending ??= { activities: [], responses: [] };
@@ -589,7 +601,56 @@ function groupMessages(messages: AgentSessionMessage[]): ChatGroup[] {
     }
   }
   flushPending();
-  return demoteInterimResponses(groups);
+  return finalizeTurnGroups(demoteInterimResponses(groups));
+}
+
+function turnHasVisibleResponse(group: Extract<ChatGroup, { kind: 'turn' }>) {
+  return group.responses.some(response => response.text.trim().length > 0);
+}
+
+function finalizeTurnGroups(groups: ChatGroup[]): ChatGroup[] {
+  const nextGroups = groups.slice();
+  let runStart = 0;
+
+  const finalizeRun = (start: number, endExclusive: number) => {
+    if (start >= endExclusive) return;
+    let anchorIndex = -1;
+    let lastActivityIndex = -1;
+    const aggregatedActivities: AgentSessionMessage[] = [];
+
+    for (let index = start; index < endExclusive; index += 1) {
+      const group = nextGroups[index];
+      if (group.kind !== 'turn') return;
+      aggregatedActivities.push(...group.activities);
+      if (group.activities.length > 0) lastActivityIndex = index;
+    }
+
+    if (lastActivityIndex >= start) {
+      for (let index = lastActivityIndex; index < endExclusive; index += 1) {
+        const group = nextGroups[index];
+        if (group.kind === 'turn' && turnHasVisibleResponse(group)) {
+          anchorIndex = index;
+        }
+      }
+    }
+
+    for (let index = start; index < endExclusive; index += 1) {
+      const group = nextGroups[index];
+      if (group.kind !== 'turn') continue;
+      const changedFilesActivities =
+        index === anchorIndex ? aggregatedActivities : undefined;
+      nextGroups[index] = { ...group, changedFilesActivities };
+    }
+  };
+
+  for (let index = 0; index <= nextGroups.length; index += 1) {
+    const group = nextGroups[index];
+    if (group?.kind === 'turn') continue;
+    finalizeRun(runStart, index);
+    runStart = index + 1;
+  }
+
+  return nextGroups;
 }
 
 function demoteInterimResponses(groups: ChatGroup[]): ChatGroup[] {
@@ -611,6 +672,7 @@ function demoteInterimResponses(groups: ChatGroup[]): ChatGroup[] {
         ...next,
         key: group.activities.length > 0 ? next.key : group.key,
         leadText: leadText || next.leadText,
+        leadResponses: group.responses,
       };
       if (group.activities.length > 0) {
         result.push({ ...group, responses: [] });
@@ -620,6 +682,13 @@ function demoteInterimResponses(groups: ChatGroup[]): ChatGroup[] {
     result.push(group);
   }
   return result;
+}
+
+function getReconnectStatus(text: string): 'stale' | 'expired' | null {
+  const normalized = text.toLowerCase();
+  if (normalized.includes('session has expired')) return 'expired';
+  if (normalized.includes('session not found')) return 'stale';
+  return null;
 }
 
 function findStreamingTurnKey(groups: ChatGroup[]) {

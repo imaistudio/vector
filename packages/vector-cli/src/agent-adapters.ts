@@ -77,6 +77,7 @@ export async function launchProviderSession(
   cwd: string,
   prompt: string,
   onEvent?: AgentSessionEventHandler,
+  signal?: AbortSignal,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
     return runCodexAppServerTurn({
@@ -84,6 +85,7 @@ export async function launchProviderSession(
       prompt,
       launchCommand: 'codex app-server',
       onEvent,
+      signal,
     });
   }
 
@@ -93,6 +95,7 @@ export async function launchProviderSession(
       prompt,
       launchCommand: '@anthropic-ai/claude-agent-sdk query()',
       onEvent,
+      signal,
     });
   }
 
@@ -102,6 +105,7 @@ export async function launchProviderSession(
     prompt,
     launchCommand: genericProviderLaunchCommand(provider),
     onEvent,
+    signal,
   });
 }
 
@@ -111,6 +115,7 @@ export async function resumeProviderSession(
   cwd: string,
   prompt: string,
   onEvent?: AgentSessionEventHandler,
+  signal?: AbortSignal,
 ): Promise<SessionRunResult> {
   if (provider === 'codex') {
     return runCodexAppServerTurn({
@@ -119,6 +124,7 @@ export async function resumeProviderSession(
       sessionKey,
       launchCommand: 'codex app-server (thread/resume)',
       onEvent,
+      signal,
     });
   }
 
@@ -129,6 +135,7 @@ export async function resumeProviderSession(
       sessionKey,
       launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
       onEvent,
+      signal,
     });
   }
 
@@ -139,6 +146,7 @@ export async function resumeProviderSession(
     sessionKey,
     launchCommand: genericProviderLaunchCommand(provider),
     onEvent,
+    signal,
   });
 }
 
@@ -149,7 +157,9 @@ async function runGenericCliAgentTurn(args: {
   sessionKey?: string;
   launchCommand: string;
   onEvent?: AgentSessionEventHandler;
+  signal?: AbortSignal;
 }): Promise<SessionRunResult> {
+  throwIfAborted(args.signal);
   const command = genericProviderCommand(args.provider);
   const child = spawn(command.bin, [...command.args, args.prompt], {
     cwd: args.cwd,
@@ -159,6 +169,8 @@ async function runGenericCliAgentTurn(args: {
 
   let stdout = '';
   let stderr = '';
+  const abort = () => child.kill('SIGTERM');
+  args.signal?.addEventListener('abort', abort, { once: true });
   await Promise.resolve(
     args.onEvent?.({
       provider: args.provider,
@@ -181,7 +193,11 @@ async function runGenericCliAgentTurn(args: {
   }>((resolve, reject) => {
     child.on('error', reject);
     child.on('close', (code, signal) => resolve({ code, signal }));
+  }).finally(() => {
+    args.signal?.removeEventListener('abort', abort);
   });
+
+  throwIfAborted(args.signal);
 
   if (exit.code && exit.code !== 0) {
     const message =
@@ -258,7 +274,9 @@ async function runCodexAppServerTurn(args: {
   sessionKey?: string;
   launchCommand: string;
   onEvent?: AgentSessionEventHandler;
+  signal?: AbortSignal;
 }): Promise<SessionRunResult> {
+  throwIfAborted(args.signal);
   const child = spawn('codex', ['app-server'], {
     cwd: args.cwd,
     env: { ...process.env },
@@ -282,6 +300,7 @@ async function runCodexAppServerTurn(args: {
   >();
   let completeTurn: (() => void) | undefined;
   let failTurn: ((error: Error) => void) | undefined;
+  let activeTurnId: string | undefined;
   const turnCompleted = new Promise<void>((resolve, reject) => {
     completeTurn = () => {
       completed = true;
@@ -435,6 +454,11 @@ async function runCodexAppServerTurn(args: {
           completeTurn?.();
         }
       }
+      if (method === 'turn/started') {
+        const turn = asObject(params.turn);
+        activeTurnId =
+          asString(turn?.id) ?? asString(turn?.turnId) ?? activeTurnId;
+      }
     }
   });
 
@@ -452,6 +476,18 @@ async function runCodexAppServerTurn(args: {
   const notify = (method: string, params?: unknown): void => {
     child.stdin.write(`${JSON.stringify({ method, params })}\n`);
   };
+
+  const abort = (): void => {
+    if (sessionKey && activeTurnId) {
+      notify('turn/interrupt', {
+        threadId: sessionKey,
+        turnId: activeTurnId,
+      });
+    }
+    child.kill('SIGTERM');
+    failTurn?.(new Error('Agent turn interrupted'));
+  };
+  args.signal?.addEventListener('abort', abort, { once: true });
 
   const waitForExit = new Promise<never>((_, reject) => {
     child.on('error', error => reject(error));
@@ -515,6 +551,7 @@ async function runCodexAppServerTurn(args: {
       }),
       waitForExit,
     ]);
+    throwIfAborted(args.signal);
 
     await Promise.race([turnCompleted, waitForExit]);
     await Promise.allSettled(eventWrites);
@@ -535,6 +572,7 @@ async function runCodexAppServerTurn(args: {
       launchCommand: args.launchCommand,
     };
   } finally {
+    args.signal?.removeEventListener('abort', abort);
     for (const entry of pending.values()) {
       entry.reject(
         new Error('codex app-server closed before request resolved'),
@@ -551,7 +589,9 @@ async function runClaudeSdkTurn(args: {
   sessionKey?: string;
   launchCommand: string;
   onEvent?: AgentSessionEventHandler;
+  signal?: AbortSignal;
 }): Promise<SessionRunResult> {
+  throwIfAborted(args.signal);
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
 
   const stream = query({
@@ -572,9 +612,14 @@ async function runClaudeSdkTurn(args: {
   let sessionKey = args.sessionKey;
   let responseText = '';
   let model: string | undefined;
+  const abort = (): void => {
+    stream.close();
+  };
+  args.signal?.addEventListener('abort', abort, { once: true });
 
   try {
     for await (const message of stream) {
+      throwIfAborted(args.signal);
       if (!message || typeof message !== 'object') {
         continue;
       }
@@ -626,6 +671,7 @@ async function runClaudeSdkTurn(args: {
       throw new Error(detail);
     }
   } finally {
+    args.signal?.removeEventListener('abort', abort);
     stream.close();
   }
 
@@ -649,6 +695,12 @@ async function runClaudeSdkTurn(args: {
     responseText: responseText.trim() || undefined,
     launchCommand: args.launchCommand,
   };
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new Error('Agent turn interrupted');
+  }
 }
 
 function discoverCodexSessions(): SessionProcessRecord[] {

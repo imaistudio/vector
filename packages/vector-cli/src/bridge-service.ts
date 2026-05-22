@@ -191,6 +191,7 @@ export class BridgeService {
   private terminalPeer: TerminalPeerManager | null = null;
   private stopping = false;
   private runningLoops = new Set<string>();
+  private activeAgentRuns = new Map<string, AbortController>();
   private deviceLiveActivities: Array<{
     _id: Id<'issueLiveActivities'>;
     title?: string;
@@ -309,14 +310,38 @@ export class BridgeService {
 
     console.log(`  ${cmd.kind}: ${cmd._id}`);
 
+    if (cmd.kind === 'launch' || cmd.kind === 'message') {
+      this.runAgentCommandInBackground(cmd);
+      return;
+    }
+
+    await this.runClaimedCommand(cmd);
+  }
+
+  private runAgentCommandInBackground(cmd: PendingBridgeCommand): void {
+    const runKey = this.agentRunKey(cmd);
+    const controller = new AbortController();
+    this.activeAgentRuns.set(runKey, controller);
+
+    void this.runClaimedCommand(cmd, controller.signal).finally(() => {
+      if (this.activeAgentRuns.get(runKey) === controller) {
+        this.activeAgentRuns.delete(runKey);
+      }
+    });
+  }
+
+  private async runClaimedCommand(
+    cmd: PendingBridgeCommand,
+    signal?: AbortSignal,
+  ): Promise<void> {
     try {
       switch (cmd.kind) {
         case 'message':
-          await this.handleMessageCommand(cmd);
+          await this.handleMessageCommand(cmd, signal);
           await this.completeCommand(cmd._id, 'delivered');
           return;
         case 'launch':
-          await this.handleLaunchCommand(cmd);
+          await this.handleLaunchCommand(cmd, signal);
           await this.completeCommand(cmd._id, 'delivered');
           return;
         case 'resize':
@@ -329,10 +354,20 @@ export class BridgeService {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown bridge error';
+      if (message === 'Agent turn interrupted') {
+        await this.completeCommand(cmd._id, 'delivered');
+        return;
+      }
       console.error(`  ! ${message}`);
       await this.postCommandError(cmd, message);
       await this.completeCommand(cmd._id, 'failed');
     }
+  }
+
+  private agentRunKey(cmd: PendingBridgeCommand): string {
+    return (
+      cmd.liveActivityId ?? cmd.workSession?._id ?? cmd.process?._id ?? cmd._id
+    );
   }
 
   async reportProcesses(): Promise<void> {
@@ -684,7 +719,10 @@ export class BridgeService {
     await new Promise(() => {});
   }
 
-  private async handleMessageCommand(cmd: PendingBridgeCommand): Promise<void> {
+  private async handleMessageCommand(
+    cmd: PendingBridgeCommand,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (!cmd.liveActivityId) {
       throw new Error('Message command is missing liveActivityId');
     }
@@ -787,6 +825,7 @@ export class BridgeService {
         if (event.role === 'assistant') emittedAssistantEvent = true;
         return this.postAgentSessionEvent(liveActivityId, event);
       },
+      signal,
     );
     const processId = await this.reportProcess(result);
 
@@ -860,14 +899,21 @@ export class BridgeService {
     }
 
     if (cmd.kind === 'stop') {
+      const runKey = this.agentRunKey(cmd);
+      const activeRun = this.activeAgentRuns.get(runKey);
+      activeRun?.abort();
       await this.updateLiveActivity(cmd.liveActivityId, {
         status: 'paused',
-        latestSummary: 'Agent turn stop requested',
+        latestSummary: activeRun
+          ? 'Agent turn paused'
+          : 'Agent turn stop requested',
       });
       await this.postAgentMessage(
         cmd.liveActivityId,
         'status',
-        'Stop requested for the local agent session',
+        activeRun
+          ? 'Paused the local agent session'
+          : 'Stop requested for the local agent session',
       );
       return;
     }
@@ -893,7 +939,10 @@ export class BridgeService {
     );
   }
 
-  private async handleLaunchCommand(cmd: PendingBridgeCommand): Promise<void> {
+  private async handleLaunchCommand(
+    cmd: PendingBridgeCommand,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (!cmd.liveActivityId) {
       throw new Error('Launch command is missing liveActivityId');
     }
@@ -971,6 +1020,7 @@ export class BridgeService {
         workspacePath,
         prompt,
         event => this.postAgentSessionEvent(liveActivityId, event),
+        signal,
       );
       const processId = await this.reportProcess(result);
 
