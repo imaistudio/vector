@@ -6,12 +6,11 @@ import {
   Circle,
   Code2,
   FileText,
-  Loader2,
   MessageCircleDashed,
-  Sparkles,
   TriangleAlert,
 } from 'lucide-react';
 import { AgentMarkdown } from './agent-markdown';
+import { LoadingIndicator, Spinner } from './agent-loading-indicator';
 import type {
   AgentSessionMessage,
   LocalAgentProvider,
@@ -20,13 +19,17 @@ import type {
 export function AgentTurnCard({
   activities,
   responses,
+  changedFilesActivities,
   leadText,
+  leadResponses,
   agent,
   isStreaming,
 }: {
   activities: AgentSessionMessage[];
   responses: AgentSessionMessage[];
+  changedFilesActivities?: AgentSessionMessage[];
   leadText?: string;
+  leadResponses?: AgentSessionMessage[];
   agent: LocalAgentProvider;
   isStreaming: boolean;
 }) {
@@ -44,9 +47,15 @@ export function AgentTurnCard({
       {activities.length > 0 ? (
         <ActivityStripe
           activities={activities}
+          changedFilesActivities={changedFilesActivities}
           agent={agent}
           isStreaming={isStreaming}
         />
+      ) : null}
+      {leadResponses && leadResponses.length > 0 ? (
+        <div className='sr-only'>
+          {leadResponses.map(response => response.text).join('\n')}
+        </div>
       ) : null}
       {visibleResponses.map(response => (
         <ResponseCard
@@ -56,10 +65,12 @@ export function AgentTurnCard({
         />
       ))}
       {activities.length > 0 && visibleResponses.length === 0 && isStreaming ? (
-        <div className='text-muted-foreground/80 flex items-center gap-2 px-1 py-1 text-[12px]'>
-          <Loader2 className='size-3.5 animate-spin' />
-          <span>{getAgentDisplayName(agent)} is working</span>
-        </div>
+        <LoadingIndicator
+          label={`${getAgentDisplayName(agent)} is working`}
+          showElapsed
+          className='text-muted-foreground py-1.5 pr-3 text-[13px]'
+          spinnerClassName='text-[11px] text-muted-foreground/80'
+        />
       ) : null}
     </div>
   );
@@ -86,18 +97,29 @@ export function SystemLine({
   message: AgentSessionMessage;
   kind?: 'system' | 'compaction' | 'status';
 }) {
-  const Icon =
-    kind === 'compaction'
-      ? MessageCircleDashed
-      : kind === 'status'
-        ? Sparkles
-        : Circle;
+  const isRunning = message.status === 'in_progress';
+  if (kind === 'compaction') {
+    return (
+      <div className='text-muted-foreground/55 flex items-center gap-2 px-3 py-1 text-[12px] select-none'>
+        <span className='bg-border/30 h-px flex-1' />
+        <span className='flex shrink-0 items-center gap-1.5'>
+          {isRunning ? (
+            <Spinner className='text-muted-foreground/45 text-[10px]' />
+          ) : (
+            <MessageCircleDashed className='text-muted-foreground/45 size-3' />
+          )}
+          <span>{message.text}</span>
+        </span>
+        <span className='bg-border/30 h-px flex-1' />
+      </div>
+    );
+  }
+
   return (
-    <div className='text-muted-foreground/80 flex items-center gap-2 px-1 py-1.5 text-[12px]'>
-      <span className='bg-foreground/6 flex size-6 shrink-0 items-center justify-center rounded-full'>
-        <Icon className='size-3.5' />
-      </span>
-      <span className='min-w-0 flex-1 truncate italic'>{message.text}</span>
+    <div className='text-muted-foreground flex items-center gap-2 px-3 py-0.5 text-[12px] select-none'>
+      <span className='bg-border/40 h-px flex-1' />
+      <span className='shrink-0'>{message.text}</span>
+      <span className='bg-border/40 h-px flex-1' />
     </div>
   );
 }
@@ -119,10 +141,11 @@ function ResponseCard({
       ) : null}
       <AgentMarkdown className='text-[14px]'>{message.text}</AgentMarkdown>
       {isStreaming ? (
-        <div className='text-muted-foreground mt-2 inline-flex items-center gap-1.5 text-[11px]'>
-          <Loader2 className='size-3 animate-spin' />
-          streaming
-        </div>
+        <LoadingIndicator
+          label='streaming'
+          className='mt-2 text-[11px]'
+          spinnerClassName='text-[9px] text-muted-foreground/70'
+        />
       ) : null}
     </div>
   );
@@ -130,21 +153,24 @@ function ResponseCard({
 
 function ActivityStripe({
   activities,
+  changedFilesActivities,
   agent,
   isStreaming,
 }: {
   activities: AgentSessionMessage[];
+  changedFilesActivities?: AgentSessionMessage[];
   agent: LocalAgentProvider;
   isStreaming: boolean;
 }) {
   const primary = activities[0];
+  const visibleActivities = changedFilesActivities ?? activities;
   const completed = activities.every(
     activity => activity.status === 'completed',
   );
   const failed = activities.some(activity => activity.status === 'failed');
 
   return (
-    <div className='bg-foreground/[0.035] ring-border/35 rounded-[10px] px-2 py-1.5 shadow-sm ring-1 select-none'>
+    <div className='shadow-minimal bg-foreground/[0.035] rounded-[10px] px-2 py-1.5 select-none'>
       <div className='flex min-w-0 items-center gap-2'>
         <ActivityStateIcon
           failed={failed}
@@ -156,21 +182,27 @@ function ActivityStripe({
         <span className='text-foreground/90 min-w-0 flex-1 truncate text-[12px] font-medium'>
           {primary?.title || getAgentActivityLabel(agent)}
         </span>
-        {activities.length > 1 ? (
+        {visibleActivities.length > 1 ? (
           <span className='text-muted-foreground/70 bg-background/60 rounded px-1.5 py-0.5 text-[10px]'>
-            {activities.length}
+            {visibleActivities.length}
           </span>
         ) : null}
         <ChevronRight className='text-muted-foreground/50 size-3.5' />
       </div>
-      {primary?.text ? (
-        <div className='text-muted-foreground/75 mt-1 flex min-w-0 items-start gap-2 pl-6 text-[11.5px]'>
-          <Code2 className='mt-0.5 size-3 shrink-0' />
-          <span className='line-clamp-2 min-w-0 whitespace-pre-wrap'>
-            {primary.text}
-          </span>
-        </div>
-      ) : null}
+      <div className='mt-1 space-y-1 pl-6'>
+        {visibleActivities.slice(0, 4).map(activity => (
+          <div
+            key={activity.id}
+            className='text-muted-foreground/75 flex min-w-0 items-start gap-2 text-[11.5px]'
+          >
+            <Code2 className='mt-0.5 size-3 shrink-0' />
+            <span className='min-w-0 flex-1 truncate'>
+              {activity.title ? `${activity.title}: ` : null}
+              {activity.text || activity.metadata || activity.role}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -186,7 +218,7 @@ function ActivityStateIcon({
 }) {
   if (failed) return <TriangleAlert className='text-destructive size-4' />;
   if (running)
-    return <Loader2 className='text-muted-foreground size-4 animate-spin' />;
+    return <Spinner className='text-muted-foreground size-4 text-[13px]' />;
   if (completed) return <CheckCircle2 className='size-4 text-emerald-500' />;
   return <Circle className='text-muted-foreground size-4' />;
 }
