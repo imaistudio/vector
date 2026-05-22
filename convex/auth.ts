@@ -239,6 +239,11 @@ export const createAuthOptions = (
       allowedAttempts: 5,
     }),
     deviceAuthorization({
+      schema: {
+        deviceCode: {
+          modelName: 'deviceCode',
+        },
+      },
       verificationUri: '/device',
       expiresIn: '15m',
       interval: '3s',
