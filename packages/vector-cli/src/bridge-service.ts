@@ -15,11 +15,12 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   writeFileSync,
   unlinkSync,
 } from 'fs';
 import { homedir, hostname, platform } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import type {
   AgentContextLength,
@@ -1829,13 +1830,14 @@ export function installLaunchAgent(vcliPath: string): void {
   }
 
   const programArguments = getLaunchAgentProgramArguments(vcliPath);
+  const launchPath = buildLaunchAgentPath();
   const environmentVariables = [
     '  <key>PATH</key>',
-    '  <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>',
+    `  <string>${escapePlistString(launchPath)}</string>`,
     ...(process.env.VECTOR_HOME?.trim()
       ? [
           '  <key>VECTOR_HOME</key>',
-          `  <string>${process.env.VECTOR_HOME.trim()}</string>`,
+          `  <string>${escapePlistString(process.env.VECTOR_HOME.trim())}</string>`,
         ]
       : []),
   ].join('\n');
@@ -1875,7 +1877,7 @@ function getLaunchAgentProgramArguments(vcliPath: string): string {
   const args = resolveCliInvocation(vcliPath);
   return [
     '<array>',
-    ...args.map(arg => `    <string>${arg}</string>`),
+    ...args.map(arg => `    <string>${escapePlistString(arg)}</string>`),
     '    <string>service</string>',
     '    <string>run</string>',
     '  </array>',
@@ -1883,11 +1885,13 @@ function getLaunchAgentProgramArguments(vcliPath: string): string {
 }
 
 function resolveCliInvocation(vcliPath: string): string[] {
-  if (vcliPath.endsWith('.js')) {
-    return [process.execPath, vcliPath];
+  const resolvedPath = resolveExecutablePath(vcliPath);
+
+  if (resolvedPath.endsWith('.js')) {
+    return [process.execPath, resolvedPath];
   }
 
-  if (vcliPath.endsWith('.ts')) {
+  if (resolvedPath.endsWith('.ts')) {
     const tsxPath = join(
       import.meta.dirname ?? process.cwd(),
       '..',
@@ -1899,11 +1903,42 @@ function resolveCliInvocation(vcliPath: string): string[] {
     );
 
     if (existsSync(tsxPath)) {
-      return [tsxPath, vcliPath];
+      return [tsxPath, resolvedPath];
     }
   }
 
-  return [vcliPath];
+  return [resolvedPath];
+}
+
+function resolveExecutablePath(executablePath: string): string {
+  try {
+    return realpathSync(executablePath);
+  } catch {
+    return executablePath;
+  }
+}
+
+function buildLaunchAgentPath(): string {
+  const entries = [
+    dirname(process.execPath),
+    join(homedir(), '.volta', 'bin'),
+    '/opt/homebrew/bin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ];
+  return [...new Set(entries.filter(Boolean))].join(':');
+}
+
+function escapePlistString(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 }
 
 export function loadLaunchAgent(): void {
