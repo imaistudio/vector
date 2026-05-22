@@ -108,10 +108,34 @@ writeFileSync(
 `,
 );
 
+signAppBundle();
+
 function buildTarget(target, outputPath) {
   execFileSync(
     'swiftc',
     ['-O', '-target', target, sourceFile, '-o', outputPath],
     { stdio: 'inherit' },
   );
+}
+
+function signAppBundle() {
+  const identity = process.env.VECTOR_MENUBAR_CODESIGN_IDENTITY?.trim();
+  if (!identity) {
+    execFileSync('codesign', ['--force', '--deep', '--sign', '-', appDir], {
+      stdio: 'inherit',
+    });
+    return;
+  }
+
+  const args = [
+    '--force',
+    '--deep',
+    '--options',
+    'runtime',
+    '--timestamp',
+    '--sign',
+    identity,
+    appDir,
+  ];
+  execFileSync('codesign', args, { stdio: 'inherit' });
 }
