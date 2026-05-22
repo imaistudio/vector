@@ -618,12 +618,18 @@ export class BridgeService {
     if (!body) {
       throw new Error('Message command is missing a body');
     }
+    const issueContext = readPayloadValue(cmd.payload, 'issueContext');
 
     const process = cmd.process;
     console.log(`  > "${truncateForLog(body)}"`);
 
     if (cmd.workSession?.tmuxPaneId) {
-      sendTextToTmuxPane(cmd.workSession.tmuxPaneId, body);
+      const terminalInput =
+        cmd.workSession.agentProvider &&
+        isBridgeProvider(cmd.workSession.agentProvider)
+          ? buildFollowUpPrompt(body, issueContext)
+          : body;
+      sendTextToTmuxPane(cmd.workSession.tmuxPaneId, terminalInput);
       const attachedSession =
         cmd.workSession.agentProvider &&
         isBridgeProvider(cmd.workSession.agentProvider)
@@ -697,7 +703,7 @@ export class BridgeService {
       process.provider,
       process.sessionKey,
       process.cwd,
-      body,
+      buildFollowUpPrompt(body, issueContext),
       event => {
         if (event.role === 'assistant') emittedAssistantEvent = true;
         return this.postAgentSessionEvent(liveActivityId, event);
@@ -775,6 +781,7 @@ export class BridgeService {
       cmd.liveActivity?.issueTitle ??
       'Untitled issue';
     const issueDescription = readPayloadString(cmd.payload, 'issueDescription');
+    const issueContext = readPayloadValue(cmd.payload, 'issueContext');
     const delegatedRunId = readPayloadId<'delegatedRuns'>(
       cmd.payload,
       'delegatedRunId',
@@ -784,6 +791,7 @@ export class BridgeService {
       issueTitle,
       workspacePath,
       issueDescription,
+      issueContext,
     );
     const launchLabel = provider ? providerLabel(provider) : 'shell session';
     const workSessionTitle = `${issueKey}: ${issueTitle}`;
@@ -1253,11 +1261,17 @@ function buildLaunchPrompt(
   issueTitle: string,
   workspacePath: string,
   issueDescription?: string,
+  issueContext?: unknown,
 ): string {
   const lines = [`You are working on issue ${issueKey}: ${issueTitle}`];
 
   if (issueDescription?.trim()) {
     lines.push('', 'Issue description:', issueDescription.trim());
+  }
+
+  const contextLines = formatIssueContext(issueContext);
+  if (contextLines.length > 0) {
+    lines.push('', 'Vector context:', ...contextLines);
   }
 
   lines.push(
@@ -1269,6 +1283,106 @@ function buildLaunchPrompt(
   );
 
   return lines.join('\n');
+}
+
+function buildFollowUpPrompt(
+  userMessage: string,
+  issueContext?: unknown,
+): string {
+  const contextLines = formatIssueContext(issueContext);
+  if (contextLines.length === 0) {
+    return userMessage;
+  }
+
+  return [
+    'Vector context for the current issue:',
+    ...contextLines,
+    '',
+    'User message:',
+    userMessage,
+  ].join('\n');
+}
+
+function formatIssueContext(issueContext: unknown): string[] {
+  const lines: string[] = [];
+  const organization = readPayloadValue(issueContext, 'organization');
+  const organizationName = readPayloadString(organization, 'name');
+  const organizationSlug = readPayloadString(organization, 'slug');
+  if (organizationName || organizationSlug) {
+    lines.push(
+      `- Organization: ${[organizationName, organizationSlug ? `(${organizationSlug})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const team = readPayloadValue(issueContext, 'team');
+  const teamName = readPayloadString(team, 'name');
+  const teamKey = readPayloadString(team, 'key');
+  if (teamName || teamKey) {
+    lines.push(
+      `- Team: ${[teamName, teamKey ? `(${teamKey})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const project = readPayloadValue(issueContext, 'project');
+  const projectName = readPayloadString(project, 'name');
+  const projectKey = readPayloadString(project, 'key');
+  const projectDescription = readPayloadString(project, 'description');
+  if (projectName || projectKey) {
+    lines.push(
+      `- Project: ${[projectName, projectKey ? `(${projectKey})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+  if (projectDescription) {
+    lines.push(`- Project description: ${projectDescription}`);
+  }
+
+  const state = readPayloadValue(issueContext, 'state');
+  const stateName = readPayloadString(state, 'name');
+  const stateType = readPayloadString(state, 'type');
+  if (stateName || stateType) {
+    lines.push(
+      `- State: ${[stateName, stateType ? `(${stateType})` : undefined].filter(Boolean).join(' ')}`,
+    );
+  }
+
+  const priority = readPayloadString(issueContext, 'priority');
+  if (priority) lines.push(`- Priority: ${priority}`);
+
+  const reporter = readPayloadString(issueContext, 'reporter');
+  if (reporter) lines.push(`- Reporter: ${reporter}`);
+
+  const assignees = readPayloadStringArray(issueContext, 'assignees');
+  if (assignees.length > 0) {
+    lines.push(`- Assignees: ${assignees.join(', ')}`);
+  }
+
+  const labels = readPayloadStringArray(issueContext, 'labels');
+  if (labels.length > 0) {
+    lines.push(`- Labels: ${labels.join(', ')}`);
+  }
+
+  const dates = readPayloadValue(issueContext, 'dates');
+  const startDate = readPayloadString(dates, 'startDate');
+  const dueDate = readPayloadString(dates, 'dueDate');
+  if (startDate || dueDate) {
+    lines.push(
+      `- Dates: ${[startDate ? `start ${startDate}` : undefined, dueDate ? `due ${dueDate}` : undefined].filter(Boolean).join(', ')}`,
+    );
+  }
+
+  const recentComments = readPayloadArray(issueContext, 'recentComments');
+  if (recentComments.length > 0) {
+    lines.push('- Recent comments:');
+    for (const comment of recentComments) {
+      const author = readPayloadString(comment, 'authorName') ?? 'Unknown';
+      const body = readPayloadString(comment, 'body');
+      if (body) {
+        lines.push(`  - ${author}: ${body}`);
+      }
+    }
+  }
+
+  return lines;
 }
 
 function summarizeMessage(message: string | undefined): string | undefined {
@@ -1412,6 +1526,18 @@ function readPayloadNumber(payload: unknown, key: string): number | undefined {
   return typeof value === 'number' && Number.isFinite(value)
     ? value
     : undefined;
+}
+
+function readPayloadArray(payload: unknown, key: string): unknown[] {
+  const value = readPayloadValue(payload, key);
+  return Array.isArray(value) ? value : [];
+}
+
+function readPayloadStringArray(payload: unknown, key: string): string[] {
+  return readPayloadArray(payload, key).filter(
+    (value): value is string =>
+      typeof value === 'string' && value.trim() !== '',
+  );
 }
 
 function readPayloadId<TableName extends string>(
