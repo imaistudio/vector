@@ -1,8 +1,8 @@
 # Agent Device Bridge
 
-The agent device bridge connects local developer machines to Vector. It lets local Codex and Claude Code sessions show up as **live activities** on issues, enables bidirectional messaging between Vector and local agents, and supports delegating issue work to a specific device.
+The agent device bridge connects local developer machines to Vector. It lets local Codex, Claude Code, Cursor, GitHub Copilot, OpenCode, and Pi sessions show up as **live activities** on issues, enables bidirectional messaging between Vector and local agents, and supports delegating issue work to a specific device.
 
-Managed Codex and Claude launches are owned by the CLI client. The bridge calls the provider APIs locally, normalizes their events, and writes those events to Convex. Vector renders the Convex transcript reactively, so it no longer needs a live terminal connection for normal agent chat.
+Managed launches are owned by the CLI client. The bridge calls provider APIs or provider CLIs locally, normalizes their events, and writes those events to Convex. Vector renders the Convex transcript reactively, so it no longer needs a live terminal connection for normal agent chat.
 
 ## Quick Start
 
@@ -44,7 +44,8 @@ vcli service start
                                              │
                                 ┌────────────▼────────────┐
                                 │  Local Agent Processes    │
-                                │  (Claude Code, Codex)     │
+                                │  (Codex, Claude, Cursor,  │
+                                │   Copilot, OpenCode, Pi)  │
                                 └─────────────────────────┘
 ```
 
@@ -102,13 +103,15 @@ The bridge runs as a local Node.js process. It uses `ConvexHttpClient` to commun
 | Terminal snapshots  | 180s     | Refreshes tmux-backed shell session previews when needed |
 | Live activity cache | 30s      | Writes `~/.vector/live-activities.json` for the menu bar |
 
-For managed Codex and Claude launches, `packages/vector-cli/src/agent-adapters.ts` owns the provider session:
+For managed launches, `packages/vector-cli/src/agent-adapters.ts` and `packages/vector-cli/src/local-agents/` own the provider session:
 
 - Codex uses `codex app-server` JSON-RPC.
 - Claude uses `@anthropic-ai/claude-agent-sdk`.
-- Both adapters emit normalized `AgentSessionEvent` objects.
-- The bridge stores those events in `issueLiveMessages` with structured payload fields for source, provider, title, and status.
+- Cursor, Copilot, OpenCode, and Pi are exposed as CLI-owned managed providers with native CLI fallbacks while the SDK-specific event streams are normalized behind the same runtime boundary.
+- Adapters emit normalized `AgentSessionEvent` objects.
+- The bridge stores those events in `issueLiveMessages` with structured payload fields for source, provider, title, status, attachments, auth URLs, tool ids, and usage metadata.
 - Follow-up user messages resume the provider session by session key instead of typing into a terminal.
+- Work session rows store Cells-style settings and state: model, permission mode, thinking level, fast mode, context length, queue, pending approvals, pending plan approval, pending questions, Codex plan state, and usage.
 
 Tmux is still supported for attached shell sessions and manually observed panes. Those sessions continue to use terminal snapshots and pane input.
 
@@ -156,10 +159,10 @@ The menu bar app is also auto-installed as a LaunchAgent when you run `vcli serv
 
 ### Managed launch and reply flow
 
-1. User delegates an issue to Codex or Claude from Vector
+1. User delegates an issue to a supported local provider from Vector
 2. Vector creates an `issueLiveActivities` row plus an `agentCommands` launch command
 3. Bridge polls `getPendingCommands`, claims the command, and starts the provider session locally
-4. Provider events are normalized as assistant/reasoning/tool/status/error transcript rows
+4. Provider events are normalized as assistant/reasoning/tool/status/error/auth/compaction transcript rows
 5. Bridge writes those rows through `postAgentMessage`
 6. Vector UI updates in real time via Convex reactivity
 
@@ -173,9 +176,19 @@ The menu bar app is also auto-installed as a LaunchAgent when you run `vcli serv
 6. Bridge marks the command as `delivered`
 7. Vector UI updates in real time via Convex reactivity
 
+### Queue, approvals, and settings
+
+The web UI reads `getAgentSessionSnapshot` for a Cells-style session view. User messages can be sent immediately or queued as:
+
+- `after-turn`
+- `after-tool`
+- `stop`
+
+The queue is stored on `workSessions.queuedMessages` so the bridge can drain it even if the browser tab closes. Settings changes create `settings_update` commands. Approval, plan approval, and question responses create dedicated command kinds so provider runtimes can unblock local SDK promises when the provider supports that flow.
+
 ### Process discovery
 
-1. Bridge runs `ps aux | grep claude` and `ps aux | grep codex` every 60s
+1. Bridge discovers local provider and tmux sessions every 60s
 2. For each found process, it resolves the working directory via `lsof`
 3. It reports each process to Convex via `reportProcess`
 4. Users can see discovered processes in the "Attach" popover on any issue
@@ -209,8 +222,17 @@ All bridge state lives in `~/.vector/`:
 - The staleness cron prevents stale devices from accumulating phantom state
 - The menu bar app reads local files only — no network access
 
+## Provider requirements
+
+- Codex: `codex` CLI available and logged in.
+- Claude: `@anthropic-ai/claude-agent-sdk` dependency available and Claude credentials configured.
+- Cursor: `cursor-agent` CLI available for managed CLI fallback.
+- GitHub Copilot: `copilot` CLI or SDK credentials available.
+- OpenCode: `opencode` CLI available and authenticated.
+- Pi: `pi` CLI available. The package is currently deprecated upstream, so Vector marks runtime failures as provider errors instead of faking availability.
+
 ## Future Work
 
 - Linux support via `systemd --user`
-- Richer approval and permission-event rendering for provider sessions
+- SDK-specific streaming parity for Cursor, Copilot, OpenCode, and Pi beyond the CLI fallback path
 - Per-device sharing/collaboration controls

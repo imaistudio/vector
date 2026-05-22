@@ -8,8 +8,18 @@ import { v, ConvexError } from 'convex/values';
 import type { Id, Doc } from '../_generated/dataModel';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import {
+  agentContextLengthValidator,
+  agentPermissionModeValidator,
+  agentProviderValidator,
+  agentThinkingLevelValidator,
+  agentUsageStatsValidator,
+  codexPlanValidator,
   liveMessageRoleValidator,
   liveMessageStructuredPayloadValidator,
+  pendingAgentApprovalValidator,
+  pendingPlanApprovalValidator,
+  pendingQuestionValidator,
+  queuedAgentMessageValidator,
 } from '../_shared/agentBridge';
 
 // ── Auth helper ─────────────────────────────────────────────────────────────
@@ -298,6 +308,17 @@ export const getDeviceLiveActivities = query({
             agentProvider: workSession?.agentProvider,
             agentProcessId: workSession?.agentProcessId,
             agentSessionKey: workSession?.agentSessionKey,
+            model: workSession?.model,
+            permissionMode: workSession?.permissionMode,
+            thinkingLevel: workSession?.thinkingLevel,
+            fastMode: workSession?.fastMode,
+            contextLength: workSession?.contextLength,
+            queuedMessages: workSession?.queuedMessages ?? [],
+            pendingApproval: workSession?.pendingApproval,
+            pendingPlanApproval: workSession?.pendingPlanApproval,
+            pendingQuestion: workSession?.pendingQuestion,
+            codexPlan: workSession?.codexPlan,
+            usage: workSession?.usage,
           };
         }),
     );
@@ -312,11 +333,7 @@ export const reportProcess = mutation({
   args: {
     deviceId: v.id('agentDevices'),
     deviceSecret: v.string(),
-    provider: v.union(
-      v.literal('codex'),
-      v.literal('claude_code'),
-      v.literal('vector_cli'),
-    ),
+    provider: agentProviderValidator,
     providerLabel: v.optional(v.string()),
     localProcessId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
@@ -325,6 +342,14 @@ export const reportProcess = mutation({
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    permissionMode: v.optional(agentPermissionModeValidator),
+    thinkingLevel: v.optional(agentThinkingLevelValidator),
+    fastMode: v.optional(v.boolean()),
+    contextLength: v.optional(agentContextLengthValidator),
+    usage: v.optional(agentUsageStatsValidator),
+    cursorRunId: v.optional(v.string()),
+    copilotSessionId: v.optional(v.string()),
+    opencodeSessionId: v.optional(v.string()),
     tmuxSessionName: v.optional(v.string()),
     tmuxWindowName: v.optional(v.string()),
     tmuxPaneId: v.optional(v.string()),
@@ -366,6 +391,14 @@ export const reportProcess = mutation({
           repoRoot: args.repoRoot,
           status: args.status,
           model: args.model,
+          permissionMode: args.permissionMode,
+          thinkingLevel: args.thinkingLevel,
+          fastMode: args.fastMode,
+          contextLength: args.contextLength,
+          usage: args.usage,
+          cursorRunId: args.cursorRunId,
+          copilotSessionId: args.copilotSessionId,
+          opencodeSessionId: args.opencodeSessionId,
           mode: args.mode,
           supportsInboundMessages: args.supportsInboundMessages,
           title: args.title,
@@ -393,11 +426,19 @@ export const reportProcess = mutation({
       providerLabel: args.providerLabel,
       localProcessId: args.localProcessId,
       sessionKey: args.sessionKey,
+      cursorRunId: args.cursorRunId,
+      copilotSessionId: args.copilotSessionId,
+      opencodeSessionId: args.opencodeSessionId,
       cwd: args.cwd,
       repoRoot: args.repoRoot,
       branch: args.branch,
       title: args.title,
       model: args.model,
+      permissionMode: args.permissionMode,
+      thinkingLevel: args.thinkingLevel,
+      fastMode: args.fastMode,
+      contextLength: args.contextLength,
+      usage: args.usage,
       tmuxSessionName: args.tmuxSessionName,
       tmuxWindowName: args.tmuxWindowName,
       tmuxPaneId: args.tmuxPaneId,
@@ -596,15 +637,14 @@ export const updateWorkSessionTerminal = mutation({
     cwd: v.optional(v.string()),
     repoRoot: v.optional(v.string()),
     branch: v.optional(v.string()),
-    agentProvider: v.optional(
-      v.union(
-        v.literal('codex'),
-        v.literal('claude_code'),
-        v.literal('vector_cli'),
-      ),
-    ),
+    agentProvider: v.optional(agentProviderValidator),
     agentSessionKey: v.optional(v.string()),
     agentProcessId: v.optional(v.id('agentProcesses')),
+    model: v.optional(v.string()),
+    permissionMode: v.optional(agentPermissionModeValidator),
+    thinkingLevel: v.optional(agentThinkingLevelValidator),
+    fastMode: v.optional(v.boolean()),
+    contextLength: v.optional(agentContextLengthValidator),
   },
   handler: async (ctx, args) => {
     await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
@@ -636,6 +676,101 @@ export const updateWorkSessionTerminal = mutation({
       ...(args.agentProcessId !== undefined && {
         agentProcessId: args.agentProcessId,
       }),
+      ...(args.model !== undefined && { model: args.model }),
+      ...(args.permissionMode !== undefined && {
+        permissionMode: args.permissionMode,
+      }),
+      ...(args.thinkingLevel !== undefined && {
+        thinkingLevel: args.thinkingLevel,
+      }),
+      ...(args.fastMode !== undefined && { fastMode: args.fastMode }),
+      ...(args.contextLength !== undefined && {
+        contextLength: args.contextLength,
+      }),
+    });
+  },
+});
+
+export const postAgentSessionSnapshot = mutation({
+  args: {
+    deviceId: v.id('agentDevices'),
+    deviceSecret: v.string(),
+    liveActivityId: v.id('issueLiveActivities'),
+    status: v.optional(
+      v.union(
+        v.literal('active'),
+        v.literal('waiting_for_input'),
+        v.literal('paused'),
+        v.literal('completed'),
+        v.literal('failed'),
+        v.literal('canceled'),
+        v.literal('disconnected'),
+      ),
+    ),
+    title: v.optional(v.string()),
+    model: v.optional(v.union(v.string(), v.null())),
+    permissionMode: v.optional(v.union(agentPermissionModeValidator, v.null())),
+    thinkingLevel: v.optional(v.union(agentThinkingLevelValidator, v.null())),
+    fastMode: v.optional(v.union(v.boolean(), v.null())),
+    contextLength: v.optional(v.union(agentContextLengthValidator, v.null())),
+    queuedMessages: v.optional(v.array(queuedAgentMessageValidator)),
+    pendingApproval: v.optional(
+      v.union(pendingAgentApprovalValidator, v.null()),
+    ),
+    pendingPlanApproval: v.optional(
+      v.union(pendingPlanApprovalValidator, v.null()),
+    ),
+    pendingQuestion: v.optional(v.union(pendingQuestionValidator, v.null())),
+    codexPlan: v.optional(v.union(codexPlanValidator, v.null())),
+    usage: v.optional(v.union(agentUsageStatsValidator, v.null())),
+  },
+  handler: async (ctx, args) => {
+    await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+    const activity = await ctx.db.get(
+      'issueLiveActivities',
+      args.liveActivityId,
+    );
+    if (!activity || activity.deviceId !== args.deviceId) {
+      throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
+    }
+    const now = Date.now();
+    await ctx.db.patch('issueLiveActivities', args.liveActivityId, {
+      ...(args.status !== undefined && { status: args.status }),
+      ...(args.title !== undefined && { title: args.title }),
+      lastEventAt: now,
+    });
+    if (!activity.workSessionId) return;
+    await ctx.db.patch('workSessions', activity.workSessionId, {
+      ...(args.status !== undefined && { status: args.status }),
+      ...(args.title !== undefined && { title: args.title }),
+      ...(args.model !== undefined && { model: args.model ?? undefined }),
+      ...(args.permissionMode !== undefined && {
+        permissionMode: args.permissionMode ?? undefined,
+      }),
+      ...(args.thinkingLevel !== undefined && {
+        thinkingLevel: args.thinkingLevel ?? undefined,
+      }),
+      ...(args.fastMode !== undefined && {
+        fastMode: args.fastMode ?? undefined,
+      }),
+      ...(args.contextLength !== undefined && {
+        contextLength: args.contextLength ?? undefined,
+      }),
+      ...(args.queuedMessages !== undefined && {
+        queuedMessages: args.queuedMessages,
+      }),
+      ...(args.pendingApproval !== undefined && {
+        pendingApproval: args.pendingApproval,
+      }),
+      ...(args.pendingPlanApproval !== undefined && {
+        pendingPlanApproval: args.pendingPlanApproval,
+      }),
+      ...(args.pendingQuestion !== undefined && {
+        pendingQuestion: args.pendingQuestion,
+      }),
+      ...(args.codexPlan !== undefined && { codexPlan: args.codexPlan }),
+      ...(args.usage !== undefined && { usage: args.usage }),
+      lastEventAt: now,
     });
   },
 });

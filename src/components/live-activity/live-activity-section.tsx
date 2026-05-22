@@ -44,6 +44,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { LiveActivityCard } from './live-activity-card';
+import type { AgentProvider } from '@/convex/_shared/agentBridge';
 
 type DelegationWorkspace = {
   _id: Id<'deviceWorkspaces'>;
@@ -228,7 +229,7 @@ export function AttachProcessPopover({
   const handleAttach = async (
     deviceId: Id<'agentDevices'>,
     processId: Id<'agentProcesses'>,
-    provider: 'codex' | 'claude_code' | 'vector_cli',
+    provider: AgentProvider,
     title?: string,
   ) => {
     if (attachingId) return;
@@ -380,7 +381,7 @@ export function DelegateRunPopover({
   const [selectedDeviceId, setSelectedDeviceId] =
     useState<Id<'agentDevices'> | null>(null);
   const [selectedLaunchMode, setSelectedLaunchMode] = useState<
-    'codex' | 'claude_code' | 'manual' | null
+    Exclude<AgentProvider, 'vector_cli'> | 'manual' | null
   >(null);
   const [workspaceDialogTarget, setWorkspaceDialogTarget] =
     useState<DelegationTarget | null>(null);
@@ -543,6 +544,54 @@ export function DelegateRunPopover({
                     </div>
                   </CommandItem>
                   <CommandItem
+                    onSelect={() => setSelectedLaunchMode('cursor')}
+                    className='gap-2'
+                  >
+                    <ProviderIcon provider='cursor' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>Cursor</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Open a managed Cursor agent session
+                      </div>
+                    </div>
+                  </CommandItem>
+                  <CommandItem
+                    onSelect={() => setSelectedLaunchMode('copilot')}
+                    className='gap-2'
+                  >
+                    <ProviderIcon provider='copilot' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>GitHub Copilot</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Open a managed Copilot coding session
+                      </div>
+                    </div>
+                  </CommandItem>
+                  <CommandItem
+                    onSelect={() => setSelectedLaunchMode('opencode')}
+                    className='gap-2'
+                  >
+                    <ProviderIcon provider='opencode' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>OpenCode</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Open a managed OpenCode session
+                      </div>
+                    </div>
+                  </CommandItem>
+                  <CommandItem
+                    onSelect={() => setSelectedLaunchMode('pi')}
+                    className='gap-2'
+                  >
+                    <ProviderIcon provider='pi' />
+                    <div className='min-w-0 flex-1'>
+                      <div className='text-sm'>Pi</div>
+                      <div className='text-muted-foreground text-xs'>
+                        Open a managed Pi session when available locally
+                      </div>
+                    </div>
+                  </CommandItem>
+                  <CommandItem
                     onSelect={() => setSelectedLaunchMode('manual')}
                     className='gap-2'
                   >
@@ -563,11 +612,9 @@ export function DelegateRunPopover({
               device={selectedTarget?.device}
               workspaces={selectedTarget?.workspaces ?? []}
               providerLabel={
-                selectedLaunchMode === 'codex'
-                  ? 'Codex'
-                  : selectedLaunchMode === 'claude_code'
-                    ? 'Claude'
-                    : 'Manual shell'
+                selectedLaunchMode === 'manual'
+                  ? 'Manual shell'
+                  : providerLabel(selectedLaunchMode)
               }
               onBack={() => setSelectedLaunchMode(null)}
               onSelect={handleDelegate}
@@ -926,6 +973,15 @@ export function ProviderIcon({
     default:
       return <Activity className={cn('size-4', className)} />;
   }
+}
+
+function providerLabel(provider: Exclude<AgentProvider, 'vector_cli'>): string {
+  if (provider === 'codex') return 'Codex';
+  if (provider === 'claude_code') return 'Claude';
+  if (provider === 'cursor') return 'Cursor';
+  if (provider === 'copilot') return 'GitHub Copilot';
+  if (provider === 'opencode') return 'OpenCode';
+  return 'Pi';
 }
 
 // ── Mode Badge ──────────────────────────────────────────────────────────────

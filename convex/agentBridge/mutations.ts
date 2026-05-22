@@ -5,10 +5,14 @@ import { requireAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
 import {
   agentDeviceServiceTypeValidator,
+  agentContextLengthValidator,
+  agentPermissionModeValidator,
   agentProcessModeValidator,
   agentProcessStatusValidator,
   agentProviderValidator,
+  agentThinkingLevelValidator,
   agentCommandKindValidator,
+  queuedAgentMessageValidator,
   delegatedRunLaunchStatusValidator,
   liveActivityStatusValidator,
   liveMessageDirectionValidator,
@@ -359,11 +363,18 @@ export const reportProcess = mutation({
     providerLabel: v.optional(v.string()),
     localProcessId: v.optional(v.string()),
     sessionKey: v.optional(v.string()),
+    cursorRunId: v.optional(v.string()),
+    copilotSessionId: v.optional(v.string()),
+    opencodeSessionId: v.optional(v.string()),
     cwd: v.optional(v.string()),
     repoRoot: v.optional(v.string()),
     branch: v.optional(v.string()),
     title: v.optional(v.string()),
     model: v.optional(v.string()),
+    permissionMode: v.optional(agentPermissionModeValidator),
+    thinkingLevel: v.optional(agentThinkingLevelValidator),
+    fastMode: v.optional(v.boolean()),
+    contextLength: v.optional(agentContextLengthValidator),
     responseText: v.optional(v.string()),
     launchCommand: v.optional(v.string()),
     mode: agentProcessModeValidator,
@@ -396,6 +407,13 @@ export const reportProcess = mutation({
           branch: args.branch,
           title: args.title,
           model: args.model,
+          permissionMode: args.permissionMode,
+          thinkingLevel: args.thinkingLevel,
+          fastMode: args.fastMode,
+          contextLength: args.contextLength,
+          cursorRunId: args.cursorRunId,
+          copilotSessionId: args.copilotSessionId,
+          opencodeSessionId: args.opencodeSessionId,
           mode: args.mode,
           status: args.status,
           supportsInboundMessages: args.supportsInboundMessages,
@@ -418,11 +436,18 @@ export const reportProcess = mutation({
       providerLabel: args.providerLabel,
       localProcessId: args.localProcessId,
       sessionKey: args.sessionKey,
+      cursorRunId: args.cursorRunId,
+      copilotSessionId: args.copilotSessionId,
+      opencodeSessionId: args.opencodeSessionId,
       cwd: args.cwd,
       repoRoot: args.repoRoot,
       branch: args.branch,
       title: args.title,
       model: args.model,
+      permissionMode: args.permissionMode,
+      thinkingLevel: args.thinkingLevel,
+      fastMode: args.fastMode,
+      contextLength: args.contextLength,
       mode: args.mode,
       status: args.status,
       supportsInboundMessages: args.supportsInboundMessages,
@@ -474,9 +499,14 @@ async function createWorkSessionForLiveActivity(
     workspacePath?: string;
     title?: string;
     status: 'active' | 'waiting_for_input' | 'paused';
-    agentProvider?: 'codex' | 'claude_code' | 'vector_cli';
+    agentProvider?: Doc<'issueLiveActivities'>['provider'];
     agentProcessId?: Id<'agentProcesses'>;
     agentSessionKey?: string;
+    model?: string;
+    permissionMode?: Doc<'workSessions'>['permissionMode'];
+    thinkingLevel?: Doc<'workSessions'>['thinkingLevel'];
+    fastMode?: boolean;
+    contextLength?: Doc<'workSessions'>['contextLength'];
     cwd?: string;
     repoRoot?: string;
     branch?: string;
@@ -505,6 +535,12 @@ async function createWorkSessionForLiveActivity(
     agentProvider: args.agentProvider,
     agentProcessId: args.agentProcessId,
     agentSessionKey: args.agentSessionKey,
+    model: args.model,
+    permissionMode: args.permissionMode,
+    thinkingLevel: args.thinkingLevel,
+    fastMode: args.fastMode,
+    contextLength: args.contextLength,
+    queuedMessages: [],
     startedAt: now,
     lastEventAt: now,
   });
@@ -519,7 +555,13 @@ async function enqueueDelegatedLaunchCommand(
     delegatedRunId: Id<'delegatedRuns'>;
     liveActivityId: Id<'issueLiveActivities'>;
     senderUserId: Id<'users'>;
-    provider?: 'codex' | 'claude_code' | 'vector_cli';
+    provider?: Doc<'issueLiveActivities'>['provider'];
+    model?: string;
+    permissionMode?: Doc<'workSessions'>['permissionMode'];
+    thinkingLevel?: Doc<'workSessions'>['thinkingLevel'];
+    fastMode?: boolean;
+    contextLength?: Doc<'workSessions'>['contextLength'];
+    initialPrompt?: string;
     createdAt?: number;
   },
 ) {
@@ -537,6 +579,12 @@ async function enqueueDelegatedLaunchCommand(
       issueDescription: args.issue.description,
       issueContext,
       provider: args.provider,
+      model: args.model,
+      permissionMode: args.permissionMode,
+      thinkingLevel: args.thinkingLevel,
+      fastMode: args.fastMode,
+      contextLength: args.contextLength,
+      initialPrompt: args.initialPrompt,
       workspacePath: args.workspace.path,
       workspaceLabel: args.workspace.label,
       delegatedRunId: args.delegatedRunId,
@@ -1143,6 +1191,30 @@ export const appendLiveMessage = mutation({
     direction: liveMessageDirectionValidator,
     role: liveMessageRoleValidator,
     body: v.string(),
+    attachments: v.optional(v.array(v.string())),
+    replyTo: v.optional(
+      v.union(
+        v.null(),
+        v.object({
+          id: v.string(),
+          role: v.string(),
+          label: v.string(),
+          preview: v.string(),
+          title: v.optional(v.union(v.string(), v.null())),
+        }),
+      ),
+    ),
+    queueMode: v.optional(
+      v.union(
+        v.literal('after-turn'),
+        v.literal('after-tool'),
+        v.literal('stop'),
+      ),
+    ),
+    model: v.optional(v.string()),
+    permissionMode: v.optional(agentPermissionModeValidator),
+    thinkingLevel: v.optional(agentThinkingLevelValidator),
+    fastMode: v.optional(v.boolean()),
     structuredPayload: v.optional(liveMessageStructuredPayloadValidator),
   },
   handler: async (ctx, args) => {
@@ -1180,7 +1252,11 @@ export const appendLiveMessage = mutation({
       direction: args.direction,
       role: args.role,
       body: args.body,
-      structuredPayload: args.structuredPayload,
+      structuredPayload: {
+        ...args.structuredPayload,
+        attachments: args.attachments,
+        replyTo: args.replyTo,
+      },
       deliveryStatus: 'pending',
       createdAt: now,
     });
@@ -1204,7 +1280,18 @@ export const appendLiveMessage = mutation({
       liveActivityId: args.liveActivityId,
       senderUserId: userId,
       kind: 'message',
-      payload: { body: args.body, messageId, issueContext },
+      payload: {
+        body: args.body,
+        attachments: args.attachments ?? [],
+        replyTo: args.replyTo,
+        queueMode: args.queueMode,
+        model: args.model,
+        permissionMode: args.permissionMode,
+        thinkingLevel: args.thinkingLevel,
+        fastMode: args.fastMode,
+        messageId,
+        issueContext,
+      },
       status: 'pending',
       createdAt: now,
     });
@@ -1234,6 +1321,254 @@ export const updateMessageDelivery = mutation({
 
     await ctx.db.patch('issueLiveMessages', args.messageId, {
       deliveryStatus: args.deliveryStatus,
+    });
+  },
+});
+
+export const updateAgentSettings = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    model: v.optional(v.union(v.string(), v.null())),
+    permissionMode: v.optional(v.union(agentPermissionModeValidator, v.null())),
+    thinkingLevel: v.optional(v.union(agentThinkingLevelValidator, v.null())),
+    fastMode: v.optional(v.union(v.boolean(), v.null())),
+    contextLength: v.optional(v.union(agentContextLengthValidator, v.null())),
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+
+    const patch: Partial<Doc<'workSessions'>> = { lastEventAt: Date.now() };
+    if (args.model !== undefined) patch.model = args.model ?? undefined;
+    if (args.permissionMode !== undefined) {
+      patch.permissionMode = args.permissionMode ?? undefined;
+    }
+    if (args.thinkingLevel !== undefined) {
+      patch.thinkingLevel = args.thinkingLevel ?? undefined;
+    }
+    if (args.fastMode !== undefined)
+      patch.fastMode = args.fastMode ?? undefined;
+    if (args.contextLength !== undefined) {
+      patch.contextLength = args.contextLength ?? undefined;
+    }
+
+    await ctx.db.patch('workSessions', args.workSessionId, patch);
+
+    if (workSession.liveActivityId) {
+      await ctx.db.insert('agentCommands', {
+        deviceId: workSession.deviceId,
+        processId: workSession.agentProcessId,
+        liveActivityId: workSession.liveActivityId,
+        senderUserId: access.userId,
+        kind: 'settings_update',
+        payload: {
+          model: args.model,
+          permissionMode: args.permissionMode,
+          thinkingLevel: args.thinkingLevel,
+          fastMode: args.fastMode,
+          contextLength: args.contextLength,
+        },
+        status: 'pending',
+        createdAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const enqueueAgentMessage = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    message: queuedAgentMessageValidator,
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+
+    const queuedMessages = [
+      ...(workSession.queuedMessages ?? []).filter(
+        message => message.id !== args.message.id,
+      ),
+      args.message,
+    ];
+
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      queuedMessages,
+      lastEventAt: Date.now(),
+    });
+
+    if (workSession.liveActivityId) {
+      await ctx.db.insert('agentCommands', {
+        deviceId: workSession.deviceId,
+        processId: workSession.agentProcessId,
+        liveActivityId: workSession.liveActivityId,
+        senderUserId: access.userId,
+        kind: 'queue_update',
+        payload: { queuedMessages },
+        status: 'pending',
+        createdAt: Date.now(),
+      });
+    }
+  },
+});
+
+export const cancelQueuedAgentMessage = mutation({
+  args: { workSessionId: v.id('workSessions'), messageId: v.string() },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      queuedMessages: (workSession.queuedMessages ?? []).filter(
+        message => message.id !== args.messageId,
+      ),
+      lastEventAt: Date.now(),
+    });
+  },
+});
+
+export const clearAgentQueue = mutation({
+  args: { workSessionId: v.id('workSessions') },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      queuedMessages: [],
+      lastEventAt: Date.now(),
+    });
+  },
+});
+
+async function enqueueSessionControlCommand(
+  ctx: MutationCtx,
+  args: {
+    workSession: Doc<'workSessions'>;
+    senderUserId: Id<'users'>;
+    kind:
+      | 'approval_response'
+      | 'plan_response'
+      | 'question_response'
+      | 'stop'
+      | 'resume';
+    payload?: unknown;
+  },
+) {
+  if (!args.workSession.liveActivityId) {
+    throw new ConvexError('LIVE_ACTIVITY_NOT_FOUND');
+  }
+  return ctx.db.insert('agentCommands', {
+    deviceId: args.workSession.deviceId,
+    processId: args.workSession.agentProcessId,
+    liveActivityId: args.workSession.liveActivityId,
+    senderUserId: args.senderUserId,
+    kind: args.kind,
+    payload: args.payload,
+    status: 'pending',
+    createdAt: Date.now(),
+  });
+}
+
+export const respondToApproval = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    approved: v.boolean(),
+    approveForSession: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await enqueueSessionControlCommand(ctx, {
+      workSession,
+      senderUserId: access.userId,
+      kind: 'approval_response',
+      payload: {
+        approved: args.approved,
+        approveForSession: args.approveForSession ?? false,
+      },
+    });
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      pendingApproval: null,
+    });
+  },
+});
+
+export const respondToPlanApproval = mutation({
+  args: { workSessionId: v.id('workSessions'), approved: v.boolean() },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await enqueueSessionControlCommand(ctx, {
+      workSession,
+      senderUserId: access.userId,
+      kind: 'plan_response',
+      payload: { approved: args.approved },
+    });
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      pendingPlanApproval: null,
+    });
+  },
+});
+
+export const respondToQuestion = mutation({
+  args: {
+    workSessionId: v.id('workSessions'),
+    answers: v.record(v.string(), v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await enqueueSessionControlCommand(ctx, {
+      workSession,
+      senderUserId: access.userId,
+      kind: 'question_response',
+      payload: { answers: args.answers },
+    });
+    await ctx.db.patch('workSessions', args.workSessionId, {
+      pendingQuestion: null,
+    });
+  },
+});
+
+export const stopAgentTurn = mutation({
+  args: { workSessionId: v.id('workSessions') },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await enqueueSessionControlCommand(ctx, {
+      workSession,
+      senderUserId: access.userId,
+      kind: 'stop',
+      payload: { reason: 'user_requested' },
+    });
+  },
+});
+
+export const resumeAgentSession = mutation({
+  args: { workSessionId: v.id('workSessions') },
+  handler: async (ctx, args) => {
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
+    await enqueueSessionControlCommand(ctx, {
+      workSession,
+      senderUserId: access.userId,
+      kind: 'resume',
+      payload: { reason: 'user_requested' },
     });
   },
 });
@@ -1378,13 +1713,13 @@ export const delegateIssue = mutation({
     issueId: v.id('issues'),
     deviceId: v.id('agentDevices'),
     workspaceId: v.id('deviceWorkspaces'),
-    provider: v.optional(
-      v.union(
-        v.literal('codex'),
-        v.literal('claude_code'),
-        v.literal('vector_cli'),
-      ),
-    ),
+    provider: v.optional(agentProviderValidator),
+    model: v.optional(v.string()),
+    permissionMode: v.optional(agentPermissionModeValidator),
+    thinkingLevel: v.optional(agentThinkingLevelValidator),
+    fastMode: v.optional(v.boolean()),
+    contextLength: v.optional(agentContextLengthValidator),
+    initialPrompt: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUserId(ctx);
@@ -1444,6 +1779,11 @@ export const delegateIssue = mutation({
       title: `${issue.key}: ${issue.title}`,
       status: 'active',
       agentProvider: args.provider,
+      model: args.model,
+      permissionMode: args.permissionMode,
+      thinkingLevel: args.thinkingLevel,
+      fastMode: args.fastMode,
+      contextLength: args.contextLength,
       cwd: workspace.path,
     });
 
@@ -1474,6 +1814,12 @@ export const delegateIssue = mutation({
       liveActivityId,
       senderUserId: userId,
       provider: args.provider,
+      model: args.model,
+      permissionMode: args.permissionMode,
+      thinkingLevel: args.thinkingLevel,
+      fastMode: args.fastMode,
+      contextLength: args.contextLength,
+      initialPrompt: args.initialPrompt,
       createdAt: now,
     });
 

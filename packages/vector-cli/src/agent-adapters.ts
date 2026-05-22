@@ -4,7 +4,13 @@ import { homedir, userInfo } from 'os';
 import { basename, join } from 'path';
 import type { AgentProvider } from '../../../convex/_shared/agentBridge';
 
-export type BridgeProvider = 'codex' | 'claude_code';
+export type BridgeProvider =
+  | 'codex'
+  | 'claude_code'
+  | 'cursor'
+  | 'copilot'
+  | 'opencode'
+  | 'pi';
 
 export interface SessionProcessRecord {
   provider: AgentProvider;
@@ -16,6 +22,10 @@ export interface SessionProcessRecord {
   branch?: string;
   title?: string;
   model?: string;
+  permissionMode?: 'plan' | 'ask' | 'bypass';
+  thinkingLevel?: 'off' | 'low' | 'medium' | 'high' | 'max' | 'xhigh';
+  fastMode?: boolean;
+  contextLength?: 'default' | 'extended';
   tmuxSessionName?: string;
   tmuxWindowName?: string;
   tmuxPaneId?: string;
@@ -77,10 +87,20 @@ export async function launchProviderSession(
     });
   }
 
-  return runClaudeSdkTurn({
+  if (provider === 'claude_code') {
+    return runClaudeSdkTurn({
+      cwd,
+      prompt,
+      launchCommand: '@anthropic-ai/claude-agent-sdk query()',
+      onEvent,
+    });
+  }
+
+  return runGenericCliAgentTurn({
+    provider,
     cwd,
     prompt,
-    launchCommand: '@anthropic-ai/claude-agent-sdk query()',
+    launchCommand: genericProviderLaunchCommand(provider),
     onEvent,
   });
 }
@@ -102,13 +122,134 @@ export async function resumeProviderSession(
     });
   }
 
-  return runClaudeSdkTurn({
+  if (provider === 'claude_code') {
+    return runClaudeSdkTurn({
+      cwd,
+      prompt,
+      sessionKey,
+      launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
+      onEvent,
+    });
+  }
+
+  return runGenericCliAgentTurn({
+    provider,
     cwd,
     prompt,
     sessionKey,
-    launchCommand: '@anthropic-ai/claude-agent-sdk query(resume)',
+    launchCommand: genericProviderLaunchCommand(provider),
     onEvent,
   });
+}
+
+async function runGenericCliAgentTurn(args: {
+  provider: Exclude<BridgeProvider, 'codex' | 'claude_code'>;
+  cwd: string;
+  prompt: string;
+  sessionKey?: string;
+  launchCommand: string;
+  onEvent?: AgentSessionEventHandler;
+}): Promise<SessionRunResult> {
+  const command = genericProviderCommand(args.provider);
+  const child = spawn(command.bin, [...command.args, args.prompt], {
+    cwd: args.cwd,
+    env: { ...process.env },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+  await Promise.resolve(
+    args.onEvent?.({
+      provider: args.provider,
+      role: 'status',
+      text: `Starting ${providerLabel(args.provider)} CLI session`,
+      status: 'in_progress',
+    }),
+  );
+
+  child.stdout.on('data', chunk => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', chunk => {
+    stderr += chunk.toString();
+  });
+
+  const exit = await new Promise<{
+    code: number | null;
+    signal: string | null;
+  }>((resolve, reject) => {
+    child.on('error', reject);
+    child.on('close', (code, signal) => resolve({ code, signal }));
+  });
+
+  if (exit.code && exit.code !== 0) {
+    const message =
+      stderr.trim() ||
+      `${providerLabel(args.provider)} exited with code ${exit.code}`;
+    await Promise.resolve(
+      args.onEvent?.({
+        provider: args.provider,
+        role: 'error',
+        text: message,
+        title: `${providerLabel(args.provider)} failed`,
+        status: 'failed',
+      }),
+    );
+    throw new Error(message);
+  }
+
+  const responseText = stdout.trim();
+  if (responseText) {
+    await Promise.resolve(
+      args.onEvent?.({
+        provider: args.provider,
+        role: 'assistant',
+        text: responseText,
+        status: 'completed',
+      }),
+    );
+  }
+
+  return {
+    provider: args.provider,
+    providerLabel: providerLabel(args.provider),
+    sessionKey: args.sessionKey ?? `${args.provider}:${Date.now()}`,
+    cwd: args.cwd,
+    ...getGitInfo(args.cwd),
+    title:
+      summarizeTitle(responseText, args.cwd) ?? providerLabel(args.provider),
+    mode: 'managed',
+    status: 'waiting',
+    supportsInboundMessages: true,
+    responseText,
+    launchCommand: args.launchCommand,
+  };
+}
+
+function genericProviderCommand(
+  provider: Exclude<BridgeProvider, 'codex' | 'claude_code'>,
+): { bin: string; args: string[] } {
+  if (provider === 'cursor') return { bin: 'cursor-agent', args: ['--print'] };
+  if (provider === 'copilot') return { bin: 'copilot', args: [] };
+  if (provider === 'opencode') return { bin: 'opencode', args: ['run'] };
+  return { bin: 'pi', args: [] };
+}
+
+function genericProviderLaunchCommand(
+  provider: Exclude<BridgeProvider, 'codex' | 'claude_code'>,
+): string {
+  const command = genericProviderCommand(provider);
+  return [command.bin, ...command.args].join(' ');
+}
+
+function providerLabel(provider: BridgeProvider): string {
+  if (provider === 'codex') return 'Codex';
+  if (provider === 'claude_code') return 'Claude';
+  if (provider === 'cursor') return 'Cursor';
+  if (provider === 'copilot') return 'GitHub Copilot';
+  if (provider === 'opencode') return 'OpenCode';
+  return 'Pi';
 }
 
 async function runCodexAppServerTurn(args: {
