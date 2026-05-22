@@ -1,92 +1,205 @@
 'use client';
 
-import { Code2, Sparkles, TriangleAlert } from 'lucide-react';
+import {
+  CheckCircle2,
+  ChevronRight,
+  Circle,
+  Code2,
+  FileText,
+  Loader2,
+  MessageCircleDashed,
+  Sparkles,
+  TriangleAlert,
+} from 'lucide-react';
 import { AgentMarkdown } from './agent-markdown';
-import { cn } from '@/lib/utils';
-import { formatDateHuman } from '@/lib/date';
-import type { AgentSessionMessage } from '@/lib/local-agents/types';
+import type {
+  AgentSessionMessage,
+  LocalAgentProvider,
+} from '@/lib/local-agents/types';
 
 export function AgentTurnCard({
-  message,
-  isFirst,
+  activities,
+  responses,
+  leadText,
+  agent,
+  isStreaming,
 }: {
-  message: AgentSessionMessage;
-  isFirst: boolean;
+  activities: AgentSessionMessage[];
+  responses: AgentSessionMessage[];
+  leadText?: string;
+  agent: LocalAgentProvider;
+  isStreaming: boolean;
 }) {
-  if (message.role === 'status') {
-    return (
-      <div
-        className={cn(
-          'flex items-center gap-3 px-3 py-1.5',
-          !isFirst && 'border-t',
-        )}
-      >
-        <div className='bg-muted flex size-5 shrink-0 items-center justify-center rounded-full'>
-          <Sparkles className='text-muted-foreground size-3' />
-        </div>
-        <span className='text-muted-foreground min-w-0 flex-1 text-xs italic'>
-          {message.text}
-        </span>
-        <span className='text-muted-foreground shrink-0 text-xs'>
-          {formatDateHuman(new Date(message.createdAt))}
-        </span>
-      </div>
-    );
-  }
-
-  if (message.role === 'tool') {
-    return (
-      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
-        <div className='bg-muted/40 rounded-md border px-2.5 py-2'>
-          <div className='text-muted-foreground mb-1 flex items-center gap-2 font-mono text-xs'>
-            <Code2 className='size-3.5' />
-            <span className='min-w-0 truncate'>{message.title ?? 'Tool'}</span>
-            {message.status ? (
-              <span className='ml-auto shrink-0'>{message.status}</span>
-            ) : null}
-          </div>
-          <pre className='max-h-48 overflow-auto font-mono text-xs whitespace-pre-wrap'>
-            {message.text}
-          </pre>
-        </div>
-      </div>
-    );
-  }
-
-  if (message.role === 'error') {
-    return (
-      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
-        <div className='border-destructive/30 bg-destructive/5 text-destructive rounded-md border px-2.5 py-2 text-sm'>
-          <div className='mb-1 flex items-center gap-2 font-medium'>
-            <TriangleAlert className='size-4' />
-            {message.title ?? 'Agent error'}
-          </div>
-          <pre className='text-xs whitespace-pre-wrap'>{message.text}</pre>
-        </div>
-      </div>
-    );
-  }
-
-  if (message.role === 'reasoning' || message.role === 'compaction') {
-    return (
-      <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
-        <div className='text-muted-foreground bg-muted/30 rounded-md px-2.5 py-2 text-xs leading-relaxed whitespace-pre-wrap italic'>
-          {message.text}
-        </div>
-      </div>
-    );
-  }
+  const visibleResponses = responses.filter(
+    response => response.text.trim().length > 0,
+  );
 
   return (
-    <div className={cn('px-3 py-2', !isFirst && 'border-t')}>
-      <div className='flex items-start justify-between gap-3'>
-        <AgentMarkdown className='min-w-0 flex-1 text-sm'>
-          {message.text}
-        </AgentMarkdown>
-        <span className='text-muted-foreground shrink-0 text-xs'>
-          {formatDateHuman(new Date(message.createdAt))}
-        </span>
-      </div>
+    <div className='min-w-0 space-y-2'>
+      {leadText ? (
+        <div className='text-muted-foreground/90 px-1 text-[13px] leading-relaxed whitespace-pre-wrap'>
+          {leadText}
+        </div>
+      ) : null}
+      {activities.length > 0 ? (
+        <ActivityStripe
+          activities={activities}
+          agent={agent}
+          isStreaming={isStreaming}
+        />
+      ) : null}
+      {visibleResponses.map(response => (
+        <ResponseCard
+          key={response.id}
+          message={response}
+          isStreaming={isStreaming && response.status === 'in_progress'}
+        />
+      ))}
+      {activities.length > 0 && visibleResponses.length === 0 && isStreaming ? (
+        <div className='text-muted-foreground/80 flex items-center gap-2 px-1 py-1 text-[12px]'>
+          <Loader2 className='size-3.5 animate-spin' />
+          <span>{getAgentDisplayName(agent)} is working</span>
+        </div>
+      ) : null}
     </div>
   );
+}
+
+export function ErrorBubble({ message }: { message: AgentSessionMessage }) {
+  return (
+    <div className='border-destructive/25 bg-destructive/8 text-destructive-foreground rounded-[10px] border px-3 py-2 shadow-sm'>
+      <div className='text-destructive mb-1 flex items-center gap-2 text-[13px] font-medium'>
+        <TriangleAlert className='size-4' />
+        {message.title ?? 'Agent error'}
+      </div>
+      <pre className='text-destructive/90 text-[12px] whitespace-pre-wrap'>
+        {message.text}
+      </pre>
+    </div>
+  );
+}
+
+export function SystemLine({
+  message,
+  kind = 'system',
+}: {
+  message: AgentSessionMessage;
+  kind?: 'system' | 'compaction' | 'status';
+}) {
+  const Icon =
+    kind === 'compaction'
+      ? MessageCircleDashed
+      : kind === 'status'
+        ? Sparkles
+        : Circle;
+  return (
+    <div className='text-muted-foreground/80 flex items-center gap-2 px-1 py-1.5 text-[12px]'>
+      <span className='bg-foreground/6 flex size-6 shrink-0 items-center justify-center rounded-full'>
+        <Icon className='size-3.5' />
+      </span>
+      <span className='min-w-0 flex-1 truncate italic'>{message.text}</span>
+    </div>
+  );
+}
+
+function ResponseCard({
+  message,
+  isStreaming,
+}: {
+  message: AgentSessionMessage;
+  isStreaming: boolean;
+}) {
+  return (
+    <div className='bg-background/70 ring-border/45 rounded-[12px] px-4 py-3 shadow-sm ring-1'>
+      {message.title ? (
+        <div className='text-muted-foreground mb-2 flex items-center gap-2 text-[12px]'>
+          <FileText className='size-3.5' />
+          <span className='truncate'>{message.title}</span>
+        </div>
+      ) : null}
+      <AgentMarkdown className='text-[14px]'>{message.text}</AgentMarkdown>
+      {isStreaming ? (
+        <div className='text-muted-foreground mt-2 inline-flex items-center gap-1.5 text-[11px]'>
+          <Loader2 className='size-3 animate-spin' />
+          streaming
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ActivityStripe({
+  activities,
+  agent,
+  isStreaming,
+}: {
+  activities: AgentSessionMessage[];
+  agent: LocalAgentProvider;
+  isStreaming: boolean;
+}) {
+  const primary = activities[0];
+  const completed = activities.every(
+    activity => activity.status === 'completed',
+  );
+  const failed = activities.some(activity => activity.status === 'failed');
+
+  return (
+    <div className='bg-foreground/[0.035] ring-border/35 rounded-[10px] px-2 py-1.5 shadow-sm ring-1 select-none'>
+      <div className='flex min-w-0 items-center gap-2'>
+        <ActivityStateIcon
+          failed={failed}
+          completed={completed}
+          running={
+            isStreaming || activities.some(a => a.status === 'in_progress')
+          }
+        />
+        <span className='text-foreground/90 min-w-0 flex-1 truncate text-[12px] font-medium'>
+          {primary?.title || getAgentActivityLabel(agent)}
+        </span>
+        {activities.length > 1 ? (
+          <span className='text-muted-foreground/70 bg-background/60 rounded px-1.5 py-0.5 text-[10px]'>
+            {activities.length}
+          </span>
+        ) : null}
+        <ChevronRight className='text-muted-foreground/50 size-3.5' />
+      </div>
+      {primary?.text ? (
+        <div className='text-muted-foreground/75 mt-1 flex min-w-0 items-start gap-2 pl-6 text-[11.5px]'>
+          <Code2 className='mt-0.5 size-3 shrink-0' />
+          <span className='line-clamp-2 min-w-0 whitespace-pre-wrap'>
+            {primary.text}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ActivityStateIcon({
+  failed,
+  completed,
+  running,
+}: {
+  failed: boolean;
+  completed: boolean;
+  running: boolean;
+}) {
+  if (failed) return <TriangleAlert className='text-destructive size-4' />;
+  if (running)
+    return <Loader2 className='text-muted-foreground size-4 animate-spin' />;
+  if (completed) return <CheckCircle2 className='size-4 text-emerald-500' />;
+  return <Circle className='text-muted-foreground size-4' />;
+}
+
+function getAgentActivityLabel(agent: LocalAgentProvider) {
+  return `${getAgentDisplayName(agent)} activity`;
+}
+
+function getAgentDisplayName(agent: LocalAgentProvider) {
+  if (agent === 'claude_code') return 'Claude Code';
+  if (agent === 'cursor') return 'Cursor';
+  if (agent === 'copilot') return 'GitHub Copilot';
+  if (agent === 'opencode') return 'OpenCode';
+  if (agent === 'pi') return 'Pi';
+  return 'Codex';
 }

@@ -8,17 +8,14 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import {
-  Activity,
   ChevronDown,
   ChevronUp,
   CircleDot,
   Copy,
-  Cpu,
   FolderOpen,
   Monitor,
   Play,
   Plus,
-  Terminal,
 } from 'lucide-react';
 import {
   Dialog,
@@ -43,6 +40,7 @@ import {
 } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { AgentIcon } from '@/components/agent-icon';
 import { LiveActivityCard } from './live-activity-card';
 import type { AgentProvider } from '@/convex/_shared/agentBridge';
 
@@ -523,7 +521,7 @@ export function DelegateRunPopover({
                     onSelect={() => setSelectedLaunchMode('codex')}
                     className='gap-2'
                   >
-                    <Cpu className='size-4' />
+                    <ProviderIcon provider='codex' />
                     <div className='min-w-0 flex-1'>
                       <div className='text-sm'>Codex</div>
                       <div className='text-muted-foreground text-xs'>
@@ -535,7 +533,7 @@ export function DelegateRunPopover({
                     onSelect={() => setSelectedLaunchMode('claude_code')}
                     className='gap-2'
                   >
-                    <Terminal className='size-4' />
+                    <ProviderIcon provider='claude_code' />
                     <div className='min-w-0 flex-1'>
                       <div className='text-sm'>Claude</div>
                       <div className='text-muted-foreground text-xs'>
@@ -965,14 +963,7 @@ export function ProviderIcon({
   provider: string;
   className?: string;
 }) {
-  switch (provider) {
-    case 'codex':
-      return <Cpu className={cn('size-4', className)} />;
-    case 'claude_code':
-      return <Terminal className={cn('size-4', className)} />;
-    default:
-      return <Activity className={cn('size-4', className)} />;
-  }
+  return <AgentIcon agent={provider} className={cn('size-4', className)} />;
 }
 
 function providerLabel(provider: Exclude<AgentProvider, 'vector_cli'>): string {

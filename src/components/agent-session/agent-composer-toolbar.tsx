@@ -1,8 +1,9 @@
 'use client';
 
-import { Check, Gauge, Shield, Zap } from 'lucide-react';
+import { Check, Gauge, Shield } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { AgentIcon } from '@/components/agent-icon';
 import {
   Popover,
   PopoverContent,
@@ -79,9 +80,9 @@ export function AgentComposerToolbar({
   }) => void;
 }) {
   return (
-    <div className='text-muted-foreground flex flex-wrap items-center gap-1 px-2 py-1.5 text-xs'>
+    <div className='text-muted-foreground flex min-w-0 flex-wrap items-center gap-1.5 text-xs'>
       <Picker
-        icon={<Zap className='size-3.5' />}
+        icon={<AgentIcon agent={provider} className='size-3.5' size={14} />}
         label={
           PROVIDERS.find(option => option.id === provider)?.label ?? provider
         }
@@ -98,7 +99,7 @@ export function AgentComposerToolbar({
           onSettingsChange({ model: event.target.value || null })
         }
         placeholder='auto model'
-        className='border-input bg-background h-7 w-32 rounded-md border px-2 text-xs outline-none'
+        className='placeholder:text-muted-foreground/55 bg-foreground/5 hover:bg-foreground/10 focus:bg-foreground/10 text-foreground/85 h-7 w-28 rounded-[8px] border-0 px-2 text-[11.5px] transition-colors outline-none'
       />
       <Picker
         icon={<Shield className='size-3.5' />}
@@ -128,9 +129,13 @@ export function AgentComposerToolbar({
       {provider === 'claude_code' ? (
         <Button
           type='button'
-          variant={contextLength === 'extended' ? 'secondary' : 'ghost'}
+          variant='ghost'
           size='xs'
-          className='h-7'
+          className={cn(
+            'bg-foreground/5 text-muted-foreground/85 hover:bg-foreground/10 hover:text-foreground h-7 rounded-[8px] px-2 text-[11.5px]',
+            contextLength === 'extended' &&
+              'bg-cyan-400/14 text-cyan-100 hover:bg-cyan-400/18',
+          )}
           onClick={() =>
             onSettingsChange({
               contextLength:
@@ -143,9 +148,12 @@ export function AgentComposerToolbar({
       ) : null}
       <Button
         type='button'
-        variant={fastMode ? 'secondary' : 'ghost'}
+        variant='ghost'
         size='xs'
-        className='h-7'
+        className={cn(
+          'bg-foreground/5 text-muted-foreground/85 hover:bg-foreground/10 hover:text-foreground h-7 rounded-[8px] px-2 text-[11.5px]',
+          fastMode && 'bg-cyan-400/14 text-cyan-100 hover:bg-cyan-400/18',
+        )}
         onClick={() => onSettingsChange({ fastMode: !fastMode })}
       >
         Fast
@@ -172,7 +180,12 @@ function Picker({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type='button' variant='ghost' size='xs' className='h-7 gap-1.5'>
+        <Button
+          type='button'
+          variant='ghost'
+          size='xs'
+          className='bg-foreground/5 text-muted-foreground/85 hover:bg-foreground/10 hover:text-foreground h-7 gap-1.5 rounded-[8px] px-2 text-[11.5px]'
+        >
           {icon}
           {label}
         </Button>
