@@ -40,6 +40,7 @@ import { BarsSpinner } from '@/components/bars-spinner';
 import { ProviderIcon } from './live-activity-section';
 import { LiveActivityTranscript } from './live-activity-transcript';
 import { WorkSessionTerminal } from './work-session-terminal';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 type LiveActivity = FunctionReturnType<
   typeof api.agentBridge.queries.listIssueLiveActivities
@@ -128,6 +129,7 @@ export function LiveActivityCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [markingDone, setMarkingDone] = useState(false);
   const [detaching, setDetaching] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
@@ -192,6 +194,10 @@ export function LiveActivityCard({
   const showTerminal = terminalSnapshot.length > 0 || hasTmux;
 
   const toggleExpanded = () => {
+    if (isAgentSession) {
+      setAgentDialogOpen(true);
+      return;
+    }
     setExpanded(current => !current);
   };
 
@@ -308,6 +314,16 @@ export function LiveActivityCard({
               )}
             </button>
           )}
+          {isAgentSession && (
+            <button
+              type='button'
+              onClick={() => setAgentDialogOpen(true)}
+              className='text-muted-foreground hover:text-foreground rounded p-0.5 transition-colors'
+              aria-label='Open agent session'
+            >
+              <Maximize2 className='size-3.5' />
+            </button>
+          )}
           {expanded && showTerminal && !isAgentSession && (
             <button
               type='button'
@@ -322,7 +338,7 @@ export function LiveActivityCard({
               )}
             </button>
           )}
-          {!fullscreen && (
+          {!fullscreen && !isAgentSession && (
             <button
               type='button'
               onClick={toggleExpanded}
@@ -342,17 +358,6 @@ export function LiveActivityCard({
       </div>
 
       {/* Expanded: agent chat or terminal view */}
-      {expanded && isAgentSession && (
-        <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
-          <LiveActivityTranscript
-            liveActivityId={activity._id}
-            isOwner={canInteractSession}
-            status={activity.status}
-            currentUser={currentUser}
-          />
-        </div>
-      )}
-
       {expanded && !isAgentSession && showTerminal && (
         <div className={cn(fullscreen ? 'flex-1' : 'mt-1')}>
           <WorkSessionTerminal
@@ -367,6 +372,36 @@ export function LiveActivityCard({
           />
         </div>
       )}
+
+      <Dialog open={agentDialogOpen} onOpenChange={setAgentDialogOpen}>
+        <DialogContent
+          showCloseButton
+          className='inset-4 top-4 left-4 grid h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-none translate-x-0 translate-y-0 grid-rows-[auto_minmax(0,1fr)] gap-3 rounded-xl p-3 sm:max-w-none'
+        >
+          <div className='flex min-w-0 items-center gap-2 border-b px-1 pb-2'>
+            <ProviderIcon
+              provider={workSession?.agentProvider ?? activity.provider}
+              className='text-muted-foreground size-3.5 shrink-0'
+            />
+            <DialogTitle className='min-w-0 flex-1 truncate text-sm'>
+              {workSessionTitle}
+            </DialogTitle>
+            <span className='bg-muted text-muted-foreground inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium'>
+              {sessionKindLabel}
+            </span>
+            <StatusBadge status={activity.status} />
+          </div>
+          <div className='min-h-0'>
+            <LiveActivityTranscript
+              liveActivityId={activity._id}
+              isOwner={canInteractSession}
+              status={activity.status}
+              currentUser={currentUser}
+              mode='expanded'
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {expanded && !isAgentSession && !showTerminal && (
         <div className='text-muted-foreground mt-1 rounded-lg border py-6 text-center text-sm'>
