@@ -476,6 +476,115 @@ export const listLiveMessages = query({
   },
 });
 
+export const getAgentSessionSnapshot = query({
+  args: { liveActivityId: v.id('issueLiveActivities') },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    const activity = await ctx.db.get(
+      'issueLiveActivities',
+      args.liveActivityId,
+    );
+    if (!activity) return null;
+
+    const issue = await ctx.db.get('issues', activity.issueId);
+    if (!issue || !(await canViewIssue(ctx, issue))) return null;
+
+    const workSession = activity.workSessionId
+      ? await ctx.db.get('workSessions', activity.workSessionId)
+      : null;
+    if (activity.workSessionId && !workSession) return null;
+
+    if (workSession) {
+      const workSessionAccess = await getWorkSessionAccess(
+        ctx,
+        workSession._id,
+      );
+      if (!workSessionAccess.workSession) return null;
+    }
+
+    const messages = await ctx.db
+      .query('issueLiveMessages')
+      .withIndex('by_live_activity_created', q =>
+        q.eq('liveActivityId', args.liveActivityId),
+      )
+      .take(200);
+
+    return {
+      liveActivityId: activity._id,
+      workSessionId: activity.workSessionId,
+      agent: activity.provider,
+      title: workSession?.title ?? activity.title ?? issue.title,
+      status: activity.status,
+      cwd: workSession?.cwd ?? workSession?.workspacePath ?? null,
+      model: workSession?.model ?? null,
+      permissionMode: workSession?.permissionMode ?? null,
+      thinkingLevel: workSession?.thinkingLevel ?? null,
+      fastMode: workSession?.fastMode ?? null,
+      contextLength: workSession?.contextLength ?? null,
+      queuedMessages: workSession?.queuedMessages ?? [],
+      pendingApproval: workSession?.pendingApproval ?? null,
+      pendingPlanApproval: workSession?.pendingPlanApproval ?? null,
+      pendingQuestion: workSession?.pendingQuestion ?? null,
+      codexPlan: workSession?.codexPlan ?? null,
+      usage: workSession?.usage ?? null,
+      messages: messages.map(message => ({
+        id: String(message._id),
+        role: message.role,
+        text: message.body,
+        title: message.structuredPayload?.title ?? null,
+        metadata: message.structuredPayload?.metadata ?? null,
+        status: message.structuredPayload?.status,
+        attachments: message.structuredPayload?.attachments ?? [],
+        replyTo: message.structuredPayload?.replyTo ?? null,
+        authLoginUrl: message.structuredPayload?.authLoginUrl ?? null,
+        parentToolUseId: message.structuredPayload?.parentToolUseId ?? null,
+        toolUseId: message.structuredPayload?.toolUseId ?? null,
+        createdAt: message.createdAt,
+        deliveryStatus: message.deliveryStatus,
+        direction: message.direction,
+      })),
+    };
+  },
+});
+
+export const listAgentProviderCapabilities = query({
+  args: { deviceId: v.optional(v.id('agentDevices')) },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('AUTH_REQUIRED');
+
+    if (args.deviceId) {
+      const device = await ctx.db.get('agentDevices', args.deviceId);
+      if (!device || device.userId !== userId) return [];
+      return [
+        'codex',
+        'claude_code',
+        'cursor',
+        'copilot',
+        'opencode',
+        'pi',
+        'vector_cli',
+      ].map(provider => ({
+        provider,
+        available: provider === 'vector_cli' || device.status === 'online',
+        reason: device.status === 'online' ? null : 'Device is offline',
+      }));
+    }
+
+    return [
+      'codex',
+      'claude_code',
+      'cursor',
+      'copilot',
+      'opencode',
+      'pi',
+      'vector_cli',
+    ].map(provider => ({ provider, available: true, reason: null }));
+  },
+});
+
 // ── Agent Commands ──────────────────────────────────────────────────────────
 
 /** List pending commands for a device (polled by the local bridge). */

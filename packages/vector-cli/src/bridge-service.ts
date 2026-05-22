@@ -8,7 +8,7 @@
 
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../../convex/_generated/api';
-import type { Id } from '../../../convex/_generated/dataModel';
+import type { Id, TableNames } from '../../../convex/_generated/dataModel';
 import { execFileSync, execSync } from 'child_process';
 import { TerminalPeerManager } from './terminal-peer';
 import {
@@ -22,7 +22,10 @@ import { homedir, hostname, platform } from 'os';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import type {
+  AgentContextLength,
+  AgentPermissionMode,
   AgentProvider,
+  AgentThinkingLevel,
   LiveActivityStatus,
 } from '../../../convex/_shared/agentBridge';
 import {
@@ -119,6 +122,11 @@ interface PendingBridgeCommand {
     terminalSnapshot?: string;
     agentProvider?: AgentProvider;
     agentSessionKey?: string;
+    model?: string;
+    permissionMode?: AgentPermissionMode;
+    thinkingLevel?: AgentThinkingLevel;
+    fastMode?: boolean;
+    contextLength?: AgentContextLength;
   } | null;
   process?: {
     _id: Id<'agentProcesses'>;
@@ -130,6 +138,10 @@ interface PendingBridgeCommand {
     branch?: string;
     title?: string;
     model?: string;
+    permissionMode?: AgentPermissionMode;
+    thinkingLevel?: AgentThinkingLevel;
+    fastMode?: boolean;
+    contextLength?: AgentContextLength;
     tmuxSessionName?: string;
     tmuxWindowName?: string;
     tmuxPaneId?: string;
@@ -137,6 +149,36 @@ interface PendingBridgeCommand {
     status: string;
     supportsInboundMessages: boolean;
   } | null;
+}
+
+interface AgentMessageStructuredPayload {
+  source?: 'cells_agent_event';
+  provider?: AgentProvider;
+  title?: string;
+  metadata?: string | null;
+  attachments?: string[];
+  replyTo?: {
+    id: string;
+    role: string;
+    label: string;
+    preview: string;
+    title?: string | null;
+  } | null;
+  authLoginUrl?: string | null;
+  parentToolUseId?: string | null;
+  toolUseId?: string | null;
+  usage?: {
+    model: string | null;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    contextWindow: number | null;
+    usedTokens: number | null;
+    totalProcessedTokens: number | null;
+    compactsAutomatically: boolean;
+    updatedAt: number;
+  };
+  status?: 'in_progress' | 'completed' | 'failed';
 }
 
 // ── Bridge Service Class ────────────────────────────────────────────────────
@@ -239,6 +281,28 @@ export class BridgeService {
       },
     );
     if (!claimed) {
+      return;
+    }
+
+    if (
+      cmd.kind === 'settings_update' ||
+      cmd.kind === 'queue_update' ||
+      cmd.kind === 'approval_response' ||
+      cmd.kind === 'plan_response' ||
+      cmd.kind === 'question_response' ||
+      cmd.kind === 'stop' ||
+      cmd.kind === 'resume'
+    ) {
+      try {
+        await this.handleAgentControlCommand(cmd);
+        await this.completeCommand(cmd._id, 'delivered');
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown bridge error';
+        console.error(`  ! ${message}`);
+        await this.postCommandError(cmd, message);
+        await this.completeCommand(cmd._id, 'failed');
+      }
       return;
     }
 
@@ -477,6 +541,11 @@ export class BridgeService {
       agentProvider?: AgentProvider;
       agentSessionKey?: string;
       agentProcessId?: Id<'agentProcesses'>;
+      model?: string;
+      permissionMode?: AgentPermissionMode;
+      thinkingLevel?: AgentThinkingLevel;
+      fastMode?: boolean;
+      contextLength?: AgentContextLength;
     },
   ): Promise<void> {
     if (!workSessionId) {
@@ -502,6 +571,11 @@ export class BridgeService {
         agentProvider: metadata.agentProvider,
         agentSessionKey: metadata.agentSessionKey,
         agentProcessId: metadata.agentProcessId,
+        model: metadata.model,
+        permissionMode: metadata.permissionMode,
+        thinkingLevel: metadata.thinkingLevel,
+        fastMode: metadata.fastMode,
+        contextLength: metadata.contextLength,
       },
     );
   }
@@ -686,6 +760,10 @@ export class BridgeService {
       branch: process.branch,
       title: process.title,
       model: process.model,
+      permissionMode: process.permissionMode,
+      thinkingLevel: process.thinkingLevel,
+      fastMode: process.fastMode,
+      contextLength: process.contextLength,
       mode: 'managed',
       status: 'waiting',
       supportsInboundMessages: true,
@@ -755,6 +833,65 @@ export class BridgeService {
     }
   }
 
+  private async handleAgentControlCommand(
+    cmd: PendingBridgeCommand,
+  ): Promise<void> {
+    if (!cmd.liveActivityId) {
+      throw new Error(`${cmd.kind} command is missing liveActivityId`);
+    }
+
+    if (cmd.kind === 'settings_update') {
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'status',
+        'Updated agent settings',
+      );
+      return;
+    }
+
+    if (cmd.kind === 'queue_update') {
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'status',
+        'Updated queued agent messages',
+      );
+      return;
+    }
+
+    if (cmd.kind === 'stop') {
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'paused',
+        latestSummary: 'Agent turn stop requested',
+      });
+      await this.postAgentMessage(
+        cmd.liveActivityId,
+        'status',
+        'Stop requested for the local agent session',
+      );
+      return;
+    }
+
+    if (cmd.kind === 'resume') {
+      await this.updateLiveActivity(cmd.liveActivityId, {
+        status: 'active',
+        latestSummary: 'Agent session resumed',
+      });
+      return;
+    }
+
+    const label =
+      cmd.kind === 'approval_response'
+        ? 'approval'
+        : cmd.kind === 'plan_response'
+          ? 'plan approval'
+          : 'question response';
+    await this.postAgentMessage(
+      cmd.liveActivityId,
+      'status',
+      `Received ${label}; the provider runtime will continue when supported`,
+    );
+  }
+
   private async handleLaunchCommand(cmd: PendingBridgeCommand): Promise<void> {
     if (!cmd.liveActivityId) {
       throw new Error('Launch command is missing liveActivityId');
@@ -782,6 +919,21 @@ export class BridgeService {
       'Untitled issue';
     const issueDescription = readPayloadString(cmd.payload, 'issueDescription');
     const issueContext = readPayloadValue(cmd.payload, 'issueContext');
+    const model = readPayloadString(cmd.payload, 'model');
+    const permissionMode = readPayloadPermissionMode(
+      cmd.payload,
+      'permissionMode',
+    );
+    const thinkingLevel = readPayloadThinkingLevel(
+      cmd.payload,
+      'thinkingLevel',
+    );
+    const fastMode = readPayloadBoolean(cmd.payload, 'fastMode');
+    const contextLength = readPayloadContextLength(
+      cmd.payload,
+      'contextLength',
+    );
+    const initialPrompt = readPayloadString(cmd.payload, 'initialPrompt');
     const delegatedRunId = readPayloadId<'delegatedRuns'>(
       cmd.payload,
       'delegatedRunId',
@@ -792,6 +944,7 @@ export class BridgeService {
       workspacePath,
       issueDescription,
       issueContext,
+      initialPrompt,
     );
     const launchLabel = provider ? providerLabel(provider) : 'shell session';
     const workSessionTitle = `${issueKey}: ${issueTitle}`;
@@ -827,6 +980,11 @@ export class BridgeService {
         agentProvider: result.provider,
         agentSessionKey: result.sessionKey,
         agentProcessId: processId,
+        model,
+        permissionMode,
+        thinkingLevel,
+        fastMode,
+        contextLength,
       });
 
       await this.updateLiveActivity(cmd.liveActivityId, {
@@ -856,6 +1014,11 @@ export class BridgeService {
       repoRoot: workspacePath,
       branch: currentGitBranch(workspacePath),
       agentProvider: provider,
+      model,
+      permissionMode,
+      thinkingLevel,
+      fastMode,
+      contextLength,
     });
 
     await this.updateLiveActivity(cmd.liveActivityId, {
@@ -925,6 +1088,10 @@ export class BridgeService {
       branch,
       title,
       model,
+      permissionMode,
+      thinkingLevel,
+      fastMode,
+      contextLength,
       tmuxSessionName,
       tmuxWindowName,
       tmuxPaneId,
@@ -947,6 +1114,10 @@ export class BridgeService {
         branch,
         title,
         model,
+        permissionMode,
+        thinkingLevel,
+        fastMode,
+        contextLength,
         tmuxSessionName,
         tmuxWindowName,
         tmuxPaneId,
@@ -989,7 +1160,7 @@ export class BridgeService {
     liveActivityId: Id<'issueLiveActivities'>,
     role: AgentSessionEventRole | 'user',
     body: string,
-    structuredPayload?: unknown,
+    structuredPayload?: AgentMessageStructuredPayload,
   ): Promise<void> {
     await this.client.mutation(api.agentBridge.bridgePublic.postAgentMessage, {
       deviceId: this.config.deviceId as Id<'agentDevices'>,
@@ -1183,8 +1354,14 @@ function buildManagedLaunchCommand(
   if (provider === 'codex') {
     return `codex --no-alt-screen -a never ${shellQuote(prompt)}`;
   }
-
-  return `claude --permission-mode bypassPermissions --dangerously-skip-permissions ${shellQuote(prompt)}`;
+  if (provider === 'claude_code') {
+    return `claude --permission-mode bypassPermissions --dangerously-skip-permissions ${shellQuote(prompt)}`;
+  }
+  if (provider === 'cursor')
+    return `cursor-agent --print ${shellQuote(prompt)}`;
+  if (provider === 'copilot') return `copilot ${shellQuote(prompt)}`;
+  if (provider === 'opencode') return `opencode run ${shellQuote(prompt)}`;
+  return `pi ${shellQuote(prompt)}`;
 }
 
 function sanitizeTmuxName(value: string): string {
@@ -1262,6 +1439,7 @@ function buildLaunchPrompt(
   workspacePath: string,
   issueDescription?: string,
   issueContext?: unknown,
+  initialPrompt?: string,
 ): string {
   const lines = [`You are working on issue ${issueKey}: ${issueTitle}`];
 
@@ -1272,6 +1450,10 @@ function buildLaunchPrompt(
   const contextLines = formatIssueContext(issueContext);
   if (contextLines.length > 0) {
     lines.push('', 'Vector context:', ...contextLines);
+  }
+
+  if (initialPrompt?.trim()) {
+    lines.push('', 'User instruction:', initialPrompt.trim());
   }
 
   lines.push(
@@ -1528,6 +1710,47 @@ function readPayloadNumber(payload: unknown, key: string): number | undefined {
     : undefined;
 }
 
+function readPayloadBoolean(
+  payload: unknown,
+  key: string,
+): boolean | undefined {
+  const value = readPayloadValue(payload, key);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function readPayloadPermissionMode(
+  payload: unknown,
+  key: string,
+): AgentPermissionMode | undefined {
+  const value = readPayloadValue(payload, key);
+  return value === 'plan' || value === 'ask' || value === 'bypass'
+    ? value
+    : undefined;
+}
+
+function readPayloadThinkingLevel(
+  payload: unknown,
+  key: string,
+): AgentThinkingLevel | undefined {
+  const value = readPayloadValue(payload, key);
+  return value === 'off' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'max' ||
+    value === 'xhigh'
+    ? value
+    : undefined;
+}
+
+function readPayloadContextLength(
+  payload: unknown,
+  key: string,
+): AgentContextLength | undefined {
+  const value = readPayloadValue(payload, key);
+  return value === 'default' || value === 'extended' ? value : undefined;
+}
+
 function readPayloadArray(payload: unknown, key: string): unknown[] {
   const value = readPayloadValue(payload, key);
   return Array.isArray(value) ? value : [];
@@ -1540,7 +1763,7 @@ function readPayloadStringArray(payload: unknown, key: string): string[] {
   );
 }
 
-function readPayloadId<TableName extends string>(
+function readPayloadId<TableName extends TableNames>(
   payload: unknown,
   key: string,
 ): Id<TableName> | undefined {
@@ -1553,13 +1776,26 @@ function readPayloadAgentProvider(
   key: string,
 ): AgentProvider | undefined {
   const value = readPayloadValue(payload, key);
-  return value === 'codex' || value === 'claude_code' || value === 'vector_cli'
+  return value === 'codex' ||
+    value === 'claude_code' ||
+    value === 'cursor' ||
+    value === 'copilot' ||
+    value === 'opencode' ||
+    value === 'pi' ||
+    value === 'vector_cli'
     ? value
     : undefined;
 }
 
 function isBridgeProvider(provider: AgentProvider): provider is BridgeProvider {
-  return provider === 'codex' || provider === 'claude_code';
+  return (
+    provider === 'codex' ||
+    provider === 'claude_code' ||
+    provider === 'cursor' ||
+    provider === 'copilot' ||
+    provider === 'opencode' ||
+    provider === 'pi'
+  );
 }
 
 function providerLabel(provider: AgentProvider): string {
@@ -1568,6 +1804,18 @@ function providerLabel(provider: AgentProvider): string {
   }
   if (provider === 'claude_code') {
     return 'Claude';
+  }
+  if (provider === 'cursor') {
+    return 'Cursor';
+  }
+  if (provider === 'copilot') {
+    return 'GitHub Copilot';
+  }
+  if (provider === 'opencode') {
+    return 'OpenCode';
+  }
+  if (provider === 'pi') {
+    return 'Pi';
   }
   return 'Vector CLI';
 }
