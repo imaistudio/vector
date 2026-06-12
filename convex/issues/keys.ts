@@ -16,6 +16,29 @@ async function issueKeyExists(
   return existingIssue !== null;
 }
 
+/**
+ * Seed for the next issue key: max(sequenceNumber) + 1 within the project (or
+ * within the org's project-less issues when projectId is undefined), read via
+ * a single indexed row instead of collecting the entire issue set. The probe
+ * loop in getNextAvailableIssueKey still guarantees uniqueness for any legacy
+ * data whose keys don't line up with sequenceNumber.
+ */
+export async function getNextSequenceSeed(
+  ctx: QueryCtx | MutationCtx,
+  organizationId: Id<'organizations'>,
+  projectId: Id<'projects'> | undefined,
+) {
+  const newest = await ctx.db
+    .query('issues')
+    .withIndex('by_org_project_sequence', q =>
+      q.eq('organizationId', organizationId).eq('projectId', projectId),
+    )
+    .order('desc')
+    .first();
+
+  return (newest?.sequenceNumber ?? 0) + 1;
+}
+
 export async function getNextAvailableIssueKey(
   ctx: QueryCtx | MutationCtx,
   args: {

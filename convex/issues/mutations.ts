@@ -27,7 +27,11 @@ import {
   resolveMentionedUsers,
 } from '../notifications/lib';
 import { buildIssueSearchText } from './search';
-import { getNextAvailableIssueKey, parseIssueKeyParts } from './keys';
+import {
+  getNextAvailableIssueKey,
+  getNextSequenceSeed,
+  parseIssueKeyParts,
+} from './keys';
 import { hasAgentMention } from '../ai/comment_agent';
 import {
   normalizeKanbanBorderColor,
@@ -176,28 +180,30 @@ export const create = mutation({
         throw new ConvexError('PROJECT_NOT_FOUND');
       }
 
-      const existingIssues = await ctx.db
-        .query('issues')
-        .withIndex('by_project', q => q.eq('projectId', projectId))
-        .collect();
-
+      // Seed from the max recorded sequence (one indexed read) instead of
+      // counting every issue in the project — the old .collect() made this
+      // hot mutation O(n) in reads and put the whole project's issue range in
+      // the transaction read set (an OCC conflict magnet).
       const nextIssueKey = await getNextAvailableIssueKey(ctx, {
         organizationId: org._id,
         prefix: project.key,
-        startingSequenceNumber: existingIssues.length + 1,
+        startingSequenceNumber: await getNextSequenceSeed(
+          ctx,
+          org._id,
+          projectId,
+        ),
       });
       nextNumber = nextIssueKey.sequenceNumber;
       issueKey = nextIssueKey.key;
     } else {
-      const existingIssues = await ctx.db
-        .query('issues')
-        .withIndex('by_organization', q => q.eq('organizationId', org._id))
-        .collect();
-
       const nextIssueKey = await getNextAvailableIssueKey(ctx, {
         organizationId: org._id,
         prefix: org.slug.toUpperCase(),
-        startingSequenceNumber: existingIssues.length + 1,
+        startingSequenceNumber: await getNextSequenceSeed(
+          ctx,
+          org._id,
+          undefined,
+        ),
       });
       nextNumber = nextIssueKey.sequenceNumber;
       issueKey = nextIssueKey.key;
@@ -306,23 +312,25 @@ export const create = mutation({
       args.data.assigneeIds &&
       args.data.assigneeIds.length > 0
     ) {
-      for (const assigneeId of args.data.assigneeIds) {
-        await createNotificationEvent(ctx, {
-          type: 'issue_assigned',
-          actorId: userId,
-          organizationId: createdIssue.organizationId,
-          issueId: createdIssue._id,
-          projectId: createdIssue.projectId,
-          teamId: createdIssue.teamId,
-          payload: {
-            organizationName: org.name,
-            issueKey: createdIssue.key,
-            issueTitle: createdIssue.title,
-            href: getIssueHref(org.slug, createdIssue.key),
-          },
-          recipients: [{ userId: assigneeId }],
-        });
-      }
+      // One event with the full recipient list — not one event (and one
+      // scheduled delivery) per assignee.
+      await createNotificationEvent(ctx, {
+        type: 'issue_assigned',
+        actorId: userId,
+        organizationId: createdIssue.organizationId,
+        issueId: createdIssue._id,
+        projectId: createdIssue.projectId,
+        teamId: createdIssue.teamId,
+        payload: {
+          organizationName: org.name,
+          issueKey: createdIssue.key,
+          issueTitle: createdIssue.title,
+          href: getIssueHref(org.slug, createdIssue.key),
+        },
+        recipients: args.data.assigneeIds.map(assigneeId => ({
+          userId: assigneeId,
+        })),
+      });
     }
 
     await ctx.scheduler.runAfter(
@@ -416,15 +424,16 @@ export const createPublicSubmission = mutation({
             .join('\n')
         : trimmedDescription;
 
-    const existingIssues = await ctx.db
-      .query('issues')
-      .withIndex('by_project', q => q.eq('projectId', project._id))
-      .collect();
-
+    // Single indexed read for the seed — this mutation is publicly callable,
+    // so it must never scan the project's whole issue set.
     const nextIssueKey = await getNextAvailableIssueKey(ctx, {
       organizationId: org._id,
       prefix: project.key,
-      startingSequenceNumber: existingIssues.length + 1,
+      startingSequenceNumber: await getNextSequenceSeed(
+        ctx,
+        org._id,
+        project._id,
+      ),
     });
 
     const workflowStateId = await resolveDefaultWorkflowStateId(ctx, org._id);
@@ -742,7 +751,11 @@ export const addComment = mutation({
       const href = getIssueHref(org.slug, issue.key);
       const commentPreview = getCommentPreview(args.body);
 
-      for (const mentionedUser of mentionedUsers) {
+      // Batch each notification type into a single event with all of its
+      // recipients — the per-recipient loop created one event row, one actor
+      // re-read, and one scheduled delivery action per user inside this hot
+      // mutation.
+      if (mentionedUsers.length > 0) {
         await createNotificationEvent(ctx, {
           type: 'issue_mentioned',
           actorId: userId,
@@ -757,15 +770,16 @@ export const addComment = mutation({
             commentPreview,
             href,
           },
-          recipients: [{ userId: mentionedUser._id }],
+          recipients: mentionedUsers.map(mentionedUser => ({
+            userId: mentionedUser._id,
+          })),
         });
       }
 
-      for (const assigneeUserId of assigneeUserIds) {
-        if (mentionedUserIds.has(assigneeUserId)) {
-          continue;
-        }
-
+      const commentRecipients = assigneeUserIds.filter(
+        assigneeUserId => !mentionedUserIds.has(assigneeUserId),
+      );
+      if (commentRecipients.length > 0) {
         await createNotificationEvent(ctx, {
           type: 'issue_comment_on_assigned_issue',
           actorId: userId,
@@ -780,7 +794,9 @@ export const addComment = mutation({
             commentPreview,
             href,
           },
-          recipients: [{ userId: assigneeUserId }],
+          recipients: commentRecipients.map(assigneeUserId => ({
+            userId: assigneeUserId,
+          })),
         });
       }
     }

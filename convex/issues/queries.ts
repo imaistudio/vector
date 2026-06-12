@@ -1611,13 +1611,22 @@ export const list = query({
       issues = issues.filter(issue => assigneeIssueIds.has(issue._id));
     }
 
-    const issuePromises = issues.map(async issue => {
-      const canView = await canViewIssue(ctx, issue);
-      return canView ? issue : null;
-    });
-    const visibleIssues = (await Promise.all(issuePromises)).filter(
-      (issue): issue is Doc<'issues'> => issue !== null,
+    // Resolve the caller's full visibility surface once (≈10 reads), then
+    // evaluate every issue in memory instead of re-checking permissions per
+    // item (which previously re-ran a Better Auth lookup + role cascade for
+    // each issue — an N+1 over the whole org).
+    const access = await buildIssueVisibilityAccess(ctx, userId, org._id);
+    let visibleIssues = issues.filter(issue =>
+      canUserViewIssueFromAccess(access, issue),
     );
+
+    // Honor the declared `limit` arg (most-recent first) so selector dropdowns
+    // and other bounded callers stop subscribing to the entire issue table.
+    if (typeof args.limit === 'number' && args.limit >= 0) {
+      visibleIssues = [...visibleIssues]
+        .sort((a, b) => b._creationTime - a._creationTime)
+        .slice(0, args.limit);
+    }
 
     const projectIds = visibleIssues.map(i => i.projectId).filter(isDefined);
     const priorityIds = visibleIssues.map(i => i.priorityId).filter(isDefined);

@@ -576,6 +576,11 @@ export default defineSchema({
     .index('by_workflow_state', ['workflowStateId'])
     .index('by_reporter', ['reporterId'])
     .index('by_team_sequence', ['teamId', 'sequenceNumber'])
+    .index('by_org_project_sequence', [
+      'organizationId',
+      'projectId',
+      'sequenceNumber',
+    ])
     .index('by_org_team', ['organizationId', 'teamId'])
     .index('by_org_workflow_state', ['organizationId', 'workflowStateId'])
     .index('by_closed', ['closedAt'])
