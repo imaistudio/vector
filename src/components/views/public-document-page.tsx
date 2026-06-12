@@ -105,9 +105,7 @@ export function PublicDocumentPage({
                 <div className='flex items-center gap-2'>
                   <UserAvatar
                     name={document.author.name}
-                    email={document.author.email ?? undefined}
                     image={document.author.image}
-                    userId={document.author.userId}
                     size='sm'
                   />
                   <span>{document.author.name}</span>
