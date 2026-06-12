@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { PermissionAwareButton } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
@@ -186,6 +188,7 @@ export function CreateIssueDialogContent({
   onSuccess,
   defaultStates,
 }: CreateIssueDialogContentProps) {
+  const router = useRouter();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTeam, setSelectedTeam] = useState<string>(
@@ -347,7 +350,22 @@ export function CreateIssueDialogContent({
       },
     })
       .then(result => {
-        toast.success(`Issue ${result.key} created`);
+        const issueHref = `/${orgSlug}/issues/${result.key}`;
+        toast.success(
+          <Link
+            href={issueHref}
+            className='block outline-none'
+            aria-label={`Open issue ${result.key}`}
+          >
+            Issue {result.key} created
+          </Link>,
+          {
+            action: {
+              label: 'Open issue',
+              onClick: () => router.push(issueHref),
+            },
+          },
+        );
         onSuccess?.(result.issueId);
         onClose();
 
