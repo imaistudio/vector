@@ -63,6 +63,117 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const PERMISSION_VALUES: Permission[] = Object.values(PERMISSIONS);
 
+/**
+ * Whether a granted permission satisfies a required permission, honoring the
+ * `*` and `<domain>:*` wildcards. Client-safe (no server imports) so the UI
+ * can evaluate a granted-permission list locally instead of issuing one
+ * server round-trip per permission check.
+ */
+export function permissionMatches(
+  userPermission: string,
+  requiredPermission: string,
+): boolean {
+  if (userPermission === requiredPermission) return true;
+  if (userPermission === PERMISSIONS.ALL) return true;
+  if (userPermission.endsWith(':*')) {
+    const prefix = userPermission.slice(0, -1);
+    return requiredPermission.startsWith(prefix);
+  }
+  return false;
+}
+
+/**
+ * Evaluate a required permission against a granted set (as returned by the
+ * `permissions.queries.effective` query).
+ */
+export function hasPermissionInSet(
+  granted: readonly string[],
+  required: Permission,
+): boolean {
+  return granted.some(permission => permissionMatches(permission, required));
+}
+
+/**
+ * Permission dependencies: granting the key permission is meaningless without
+ * the permissions it implies (you cannot edit an issue you cannot view). These
+ * are expanded automatically whenever a role's permission set is saved, so a
+ * role can never end up in an incoherent state like "edit but not view".
+ *
+ * Lives here (no server-only imports) so both the Convex mutations and the
+ * client role editor can share the exact same rules.
+ */
+export const PERMISSION_DEPENDENCIES: Partial<
+  Record<Permission, Permission[]>
+> = {
+  // Org management implies being able to see the org.
+  [PERMISSIONS.ORG_MANAGE_SETTINGS]: [PERMISSIONS.ORG_VIEW],
+  [PERMISSIONS.ORG_MANAGE_BILLING]: [PERMISSIONS.ORG_VIEW],
+  [PERMISSIONS.ORG_MANAGE_MEMBERS]: [PERMISSIONS.ORG_VIEW],
+  [PERMISSIONS.ORG_MANAGE_ROLES]: [PERMISSIONS.ORG_VIEW],
+
+  // Any project action implies viewing projects.
+  [PERMISSIONS.PROJECT_CREATE]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_EDIT]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_DELETE]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_MEMBER_ADD]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_MEMBER_REMOVE]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_MEMBER_UPDATE]: [PERMISSIONS.PROJECT_VIEW],
+  [PERMISSIONS.PROJECT_LEAD_UPDATE]: [PERMISSIONS.PROJECT_VIEW],
+
+  // Any team action implies viewing teams.
+  [PERMISSIONS.TEAM_CREATE]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_EDIT]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_DELETE]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_MEMBER_ADD]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_MEMBER_REMOVE]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_MEMBER_UPDATE]: [PERMISSIONS.TEAM_VIEW],
+  [PERMISSIONS.TEAM_LEAD_UPDATE]: [PERMISSIONS.TEAM_VIEW],
+
+  // Any issue action implies viewing issues.
+  [PERMISSIONS.ISSUE_CREATE]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_EDIT]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_DELETE]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_ASSIGN]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_ASSIGNMENT_UPDATE]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_RELATION_UPDATE]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_STATE_UPDATE]: [PERMISSIONS.ISSUE_VIEW],
+  [PERMISSIONS.ISSUE_PRIORITY_UPDATE]: [PERMISSIONS.ISSUE_VIEW],
+
+  // Documents / views.
+  [PERMISSIONS.DOCUMENT_CREATE]: [PERMISSIONS.DOCUMENT_VIEW],
+  [PERMISSIONS.DOCUMENT_EDIT]: [PERMISSIONS.DOCUMENT_VIEW],
+  [PERMISSIONS.DOCUMENT_DELETE]: [PERMISSIONS.DOCUMENT_VIEW],
+  [PERMISSIONS.VIEW_CREATE]: [PERMISSIONS.VIEW_VIEW],
+  [PERMISSIONS.VIEW_EDIT]: [PERMISSIONS.VIEW_VIEW],
+  [PERMISSIONS.VIEW_DELETE]: [PERMISSIONS.VIEW_VIEW],
+};
+
+/**
+ * Expand a permission set to include every implied permission (transitive
+ * closure over PERMISSION_DEPENDENCIES), returning a de-duplicated array.
+ * Wildcard permissions are passed through unchanged.
+ */
+export function expandPermissions(
+  permissions: readonly Permission[],
+): Permission[] {
+  const result = new Set<Permission>();
+  const queue = [...permissions];
+
+  while (queue.length > 0) {
+    const permission = queue.pop()!;
+    if (result.has(permission)) continue;
+    result.add(permission);
+    const implied = PERMISSION_DEPENDENCIES[permission];
+    if (implied) {
+      for (const dep of implied) {
+        if (!result.has(dep)) queue.push(dep);
+      }
+    }
+  }
+
+  return Array.from(result);
+}
+
 // Define wildcard permission for owner role (full access)
 const WILDCARD: Permission = PERMISSIONS.ALL;
 

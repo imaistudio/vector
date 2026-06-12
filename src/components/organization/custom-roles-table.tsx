@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
-import { Shield, Edit, Trash2, Users } from 'lucide-react';
+import { Shield, Edit, Trash2, Users, Loader2 } from 'lucide-react';
 import { formatDateHuman } from '@/lib/date';
 import type {
   OrganizationRoleId,
@@ -18,6 +18,7 @@ interface CustomRolesTableProps {
   canAssign: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  deletingRoleId?: OrganizationRoleId | null;
   onAssign: (roleId: OrganizationRoleId) => void;
   onEdit: (roleId: OrganizationRoleId) => void;
   onDelete: (roleId: OrganizationRoleId) => void;
@@ -28,6 +29,7 @@ export function CustomRolesTable({
   canAssign,
   canEdit,
   canDelete,
+  deletingRoleId,
   onAssign,
   onEdit,
   onDelete,
@@ -103,9 +105,14 @@ export function CustomRolesTable({
                   size='sm'
                   className='size-7 p-0 text-red-600 hover:bg-red-50 hover:text-red-700'
                   onClick={() => onDelete(role._id)}
+                  disabled={deletingRoleId === role._id}
                   title='Delete role'
                 >
-                  <Trash2 className='size-3' />
+                  {deletingRoleId === role._id ? (
+                    <Loader2 className='size-3 animate-spin' />
+                  ) : (
+                    <Trash2 className='size-3' />
+                  )}
                 </Button>
               )}
             </div>

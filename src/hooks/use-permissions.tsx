@@ -1,7 +1,10 @@
 'use client';
 import React from 'react';
 import { api, useCachedQuery } from '@/lib/convex';
-import type { Permission } from '@/convex/_shared/permissions';
+import {
+  hasPermissionInSet,
+  type Permission,
+} from '@/convex/_shared/permissions';
 import type { Id } from '../../convex/_generated/dataModel';
 
 // Permission scope for client-side permission checks
@@ -12,6 +15,35 @@ export interface PermissionScope {
 }
 
 /**
+ * Subscribe to the caller's full effective permission set for a scope.
+ *
+ * Every permission hook below goes through this single query, so all gated
+ * controls on a page share ONE reactive subscription per (org, team, project)
+ * scope (deduped by the Convex client cache) instead of one server round-trip
+ * per permission key. Individual checks are evaluated locally with the same
+ * wildcard matching the server uses.
+ */
+export function useEffectivePermissions(scope: PermissionScope) {
+  const isClient = typeof window !== 'undefined';
+
+  const granted = useCachedQuery(
+    api.permissions.queries.effective,
+    scope.orgSlug && isClient
+      ? {
+          orgSlug: scope.orgSlug,
+          teamId: scope.teamId,
+          projectId: scope.projectId,
+        }
+      : 'skip',
+  );
+
+  return {
+    granted: granted ?? null,
+    isLoading: !isClient || granted === undefined,
+  };
+}
+
+/**
  * React hook for checking user permissions with optional scope.
  * Returns a boolean indicating if the user has the requested permission.
  */
@@ -19,21 +51,9 @@ export function useScopedPermission(
   scope: PermissionScope,
   permission: Permission,
 ) {
-  const isClient = typeof window !== 'undefined';
+  const { granted, isLoading } = useEffectivePermissions(scope);
 
-  const hasPermission = useCachedQuery(
-    api.permissions.queries.has,
-    scope.orgSlug && permission && isClient
-      ? {
-          orgSlug: scope.orgSlug,
-          permission,
-          teamId: scope.teamId,
-          projectId: scope.projectId,
-        }
-      : 'skip',
-  );
-
-  if (!isClient || hasPermission === undefined) {
+  if (isLoading || granted === null) {
     return {
       hasPermission: false,
       isLoading: true,
@@ -41,7 +61,7 @@ export function useScopedPermission(
   }
 
   return {
-    hasPermission: hasPermission ?? false,
+    hasPermission: hasPermissionInSet(granted, permission),
     isLoading: false,
   };
 }
@@ -60,21 +80,21 @@ export function useScopedPermissions(
   scope: PermissionScope,
   permissions: Permission[],
 ) {
-  const isClient = typeof window !== 'undefined';
+  const { granted, isLoading } = useEffectivePermissions(scope);
 
-  const permissionMap = useCachedQuery(
-    api.permissions.queries.hasMultiple,
-    scope.orgSlug && permissions.length > 0 && isClient
-      ? {
-          orgSlug: scope.orgSlug,
-          permissions,
-          teamId: scope.teamId,
-          projectId: scope.projectId,
-        }
-      : 'skip',
-  );
+  // permissions is typically an inline array literal; key on its contents so
+  // the map stays referentially stable across renders.
+  const permissionsKey = permissions.join(',');
+  const permissionMap = React.useMemo(() => {
+    if (granted === null) return {};
+    const map: Record<string, boolean> = {};
+    for (const permission of permissionsKey.split(',')) {
+      map[permission] = hasPermissionInSet(granted, permission as Permission);
+    }
+    return map;
+  }, [granted, permissionsKey]);
 
-  if (!isClient || permissionMap === undefined) {
+  if (isLoading || granted === null) {
     return {
       permissions: {},
       isLoading: true,
@@ -82,7 +102,7 @@ export function useScopedPermissions(
   }
 
   return {
-    permissions: permissionMap ?? {},
+    permissions: permissionMap,
     isLoading: false,
   };
 }
@@ -152,17 +172,16 @@ export function useScopedPermissionChecker(
   scope: PermissionScope,
   permissions: Permission[],
 ) {
-  const { permissions: permissionMap, isLoading } = useScopedPermissions(
-    scope,
-    permissions,
-  );
+  const { granted, isLoading } = useEffectivePermissions(scope);
 
   const checker = React.useCallback(
     (permission: Permission) => {
-      return permissionMap[permission] ?? false;
+      if (granted === null) return false;
+      return hasPermissionInSet(granted, permission);
     },
-    [permissionMap],
+    [granted],
   );
+  void permissions;
 
   return { can: checker, isLoading };
 }

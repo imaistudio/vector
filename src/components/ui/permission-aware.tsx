@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/tooltip';
 import { Lock, Shield, AlertTriangle, Home, ArrowLeft } from 'lucide-react';
 import {
-  usePermission,
   useScopedPermission,
   type PermissionScope,
 } from '@/hooks/use-permissions';
@@ -97,12 +96,10 @@ export function PermissionAware({
   fallbackMessage = "You don't have permission for this action",
   showTooltip = true,
 }: PermissionAwareProps) {
-  // Always call both hooks to maintain consistent order
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const unscopeResult = usePermission(orgSlug, permission);
-
-  // Use the appropriate result based on whether scope is provided
-  const { hasPermission, isLoading } = scope ? scopedResult : unscopeResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   const contextValue: AccessContextValue = {
     viewOnly: !hasPermission,
@@ -209,10 +206,7 @@ export function usePermissionCheck(
   permission: Permission,
   scope?: PermissionScope,
 ) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  const result = scope ? scopedResult : orgResult;
+  const result = useScopedPermission(scope ?? { orgSlug }, permission);
 
   return {
     isAllowed: result.hasPermission,
@@ -231,10 +225,10 @@ export function PermissionGate({
   fallback = null,
   loading = null,
 }: PermissionGateProps) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   if (isLoading) {
     return <>{loading}</>;
@@ -263,9 +257,10 @@ function SinglePermissionCheck({
   scope?: PermissionScope;
   onResult: (hasPermission: boolean, isLoading: boolean) => void;
 }) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   React.useEffect(() => {
     onResult(hasPermission, isLoading);
@@ -416,10 +411,10 @@ export function PermissionAwareButton({
   className,
   ...buttonProps
 }: PermissionAwareButtonProps) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   const isDisabled = disabled || isLoading || !hasPermission;
   const tooltipMessage = !hasPermission ? fallbackMessage : undefined;
@@ -462,12 +457,10 @@ export function PermissionAwareWrapper({
   fallbackMessage = "You don't have permission to perform this action",
   showPermissionIndicator = false, // Default to false since user doesn't like the lock icon
 }: PermissionAwareWrapperProps) {
-  // Always call both hooks to maintain consistent order
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  // Use the appropriate result based on whether scope is provided
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   if (isLoading) {
     return <div className='animate-pulse'>{children}</div>;
@@ -513,10 +506,10 @@ export function PermissionAwareField({
   disabled = false,
   className,
 }: PermissionAwareFieldProps) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   const isDisabled = disabled || isLoading || !hasPermission;
 
@@ -564,10 +557,10 @@ export function PermissionStatus({
   showText = false,
   className,
 }: PermissionStatusProps) {
-  const scopedResult = useScopedPermission(scope || { orgSlug }, permission);
-  const orgResult = usePermission(orgSlug, permission);
-
-  const { hasPermission, isLoading } = scope ? scopedResult : orgResult;
+  const { hasPermission, isLoading } = useScopedPermission(
+    scope ?? { orgSlug },
+    permission,
+  );
 
   if (isLoading) {
     return (

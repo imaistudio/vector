@@ -10,28 +10,16 @@ import {
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
 } from '@/components/ui/responsive-dialog';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 import { api, useMutation } from '@/lib/convex';
 import type { Permission } from '@/convex/_shared/permissions';
-
-import { ALL_PERMISSIONS_WITH_GROUP } from '@/lib/permission-groups';
+import { PermissionSelector } from './permission-selector';
 
 interface CreateRoleDialogProps {
   orgSlug: string;
   onClose: () => void;
   onSuccess: () => void;
 }
-
-const PERMISSION_CATEGORIES = ALL_PERMISSIONS_WITH_GROUP.map(group => ({
-  name: group.group,
-  description: group.permissions.map(p => p.label).join(', '),
-  permissions: group.permissions.map(p => ({
-    id: p.id,
-    label: p.label,
-    description: ``, // You can add descriptions here if needed
-  })),
-}));
 
 export function CreateRoleDialog({
   orgSlug,
@@ -59,20 +47,14 @@ export function CreateRoleDialog({
         description: description.trim() || undefined,
         permissions: selectedPermissions,
       });
+      toast.success(`Role “${name.trim()}” created`);
       onSuccess();
     } catch (error) {
       console.error('Failed to create role:', error);
+      toast.error('Failed to create role');
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handlePermissionToggle = (permissionId: Permission) => {
-    setSelectedPermissions(prev =>
-      prev.includes(permissionId)
-        ? prev.filter(p => p !== permissionId)
-        : [...prev, permissionId],
-    );
   };
 
   return (
@@ -88,7 +70,16 @@ export function CreateRoleDialog({
           <ResponsiveDialogTitle>Create Custom Role</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
 
-        <form onSubmit={handleSubmit} className='space-y-2'>
+        <form
+          onSubmit={handleSubmit}
+          onKeyDown={e => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault();
+              void handleSubmit(e);
+            }
+          }}
+          className='space-y-2'
+        >
           {/* Role Name */}
           <div className='relative'>
             <Input
@@ -117,53 +108,11 @@ export function CreateRoleDialog({
           </div>
 
           {/* Permissions */}
-          <div className='space-y-1'>
-            <p className='text-muted-foreground px-1 text-sm'>
-              Select what this role can do in your organization
-            </p>
-            <div className='max-h-80 overflow-y-auto rounded-md border p-3'>
-              <div className='grid grid-cols-1 gap-6 md:grid-cols-2'>
-                {PERMISSION_CATEGORIES.map(category => (
-                  <div key={category.name} className='space-y-3'>
-                    <div className='space-y-1'>
-                      <h4 className='text-foreground text-sm font-medium'>
-                        {category.name}
-                      </h4>
-                      <p className='text-muted-foreground text-xs'>
-                        {category.description}
-                      </p>
-                    </div>
-                    <div className='space-y-2 pl-2'>
-                      {category.permissions.map(permission => (
-                        <div
-                          key={permission.id}
-                          className='flex items-center space-x-3 py-1'
-                        >
-                          <Checkbox
-                            id={permission.id}
-                            checked={selectedPermissions.includes(
-                              permission.id as Permission,
-                            )}
-                            onCheckedChange={() =>
-                              handlePermissionToggle(
-                                permission.id as Permission,
-                              )
-                            }
-                          />
-                          <Label
-                            htmlFor={permission.id}
-                            className='text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70'
-                          >
-                            {permission.label}
-                          </Label>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <PermissionSelector
+            value={selectedPermissions}
+            onChange={setSelectedPermissions}
+          />
+          <button type='submit' className='hidden' aria-hidden tabIndex={-1} />
         </form>
 
         <div className='flex w-full flex-row items-center justify-between gap-2'>

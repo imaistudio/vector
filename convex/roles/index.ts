@@ -27,6 +27,7 @@ import {
   PROJECT_SYSTEM_ROLE_PERMISSIONS,
   SYSTEM_ROLE_KEYS,
   TEAM_SYSTEM_ROLE_PERMISSIONS,
+  expandPermissions,
   type Permission,
   type SystemRoleKey,
 } from '../_shared/permissions';
@@ -918,7 +919,7 @@ export const create = mutation({
       system: false,
     });
 
-    for (const permission of args.permissions) {
+    for (const permission of expandPermissions(args.permissions)) {
       await ctx.db.insert('rolePermissions', {
         roleId,
         permission,
@@ -1136,7 +1137,7 @@ export const update = mutation({
         await ctx.db.delete('orgRolePermissions', permission._id);
       }
 
-      for (const permission of args.permissions) {
+      for (const permission of expandPermissions(args.permissions)) {
         await ctx.db.insert('orgRolePermissions', {
           roleId: resolvedRole.role._id,
           permission,
@@ -1159,11 +1160,81 @@ export const update = mutation({
       await ctx.db.delete('rolePermissions', permission._id);
     }
 
-    for (const permission of args.permissions) {
+    for (const permission of expandPermissions(args.permissions)) {
       await ctx.db.insert('rolePermissions', {
         roleId: resolvedRole.role._id,
         permission,
       });
     }
+  },
+});
+
+/**
+ * Permanently delete a custom organization role: removes its permission rows,
+ * all of its assignments, and the role itself. System roles cannot be deleted.
+ * Handles both the unified `roles` table and the legacy `orgRoles` table.
+ */
+export const remove = mutation({
+  args: {
+    orgSlug: v.string(),
+    roleId: organizationRoleIdValidator,
+  },
+  handler: async (ctx, args) => {
+    await requireAuthUser(ctx);
+
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    await requireOrgPermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
+
+    const resolvedRole = await resolveOrganizationRole(
+      ctx,
+      org._id,
+      args.roleId,
+    );
+    if (!resolvedRole) {
+      throw new ConvexError('ROLE_NOT_FOUND');
+    }
+
+    if (resolvedRole.role.system) {
+      throw new ConvexError('CANNOT_DELETE_SYSTEM_ROLE');
+    }
+
+    if (resolvedRole.source === 'legacy') {
+      const permissions = await ctx.db
+        .query('orgRolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', resolvedRole.role._id))
+        .collect();
+      for (const permission of permissions) {
+        await ctx.db.delete('orgRolePermissions', permission._id);
+      }
+
+      const assignments = await ctx.db
+        .query('orgRoleAssignments')
+        .withIndex('by_role', q => q.eq('roleId', resolvedRole.role._id))
+        .collect();
+      for (const assignment of assignments) {
+        await ctx.db.delete('orgRoleAssignments', assignment._id);
+      }
+
+      await ctx.db.delete('orgRoles', resolvedRole.role._id);
+      return;
+    }
+
+    const permissions = await ctx.db
+      .query('rolePermissions')
+      .withIndex('by_role', q => q.eq('roleId', resolvedRole.role._id))
+      .collect();
+    for (const permission of permissions) {
+      await ctx.db.delete('rolePermissions', permission._id);
+    }
+
+    const assignments = await ctx.db
+      .query('roleAssignments')
+      .withIndex('by_role', q => q.eq('roleId', resolvedRole.role._id))
+      .collect();
+    for (const assignment of assignments) {
+      await ctx.db.delete('roleAssignments', assignment._id);
+    }
+
+    await ctx.db.delete('roles', resolvedRole.role._id);
   },
 });

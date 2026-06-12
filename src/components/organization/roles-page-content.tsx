@@ -2,8 +2,9 @@
 
 import { useState, useMemo } from 'react';
 import { Plus, Shield, Crown, Settings, UserCheck, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { api, useCachedQuery } from '@/lib/convex';
+import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { CreateRoleDialog } from './create-role-dialog';
 import { EditRoleDialog } from './edit-role-dialog';
 import { AssignRoleDialog } from './assign-role-dialog';
@@ -78,6 +79,9 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
     orgSlug,
   });
   const roleDocsQuery = useCachedQuery(api.roles.index.list, { orgSlug });
+  const removeRole = useMutation(api.roles.index.remove);
+  const [deletingRoleId, setDeletingRoleId] =
+    useState<OrganizationRoleId | null>(null);
 
   const roleCounts = useMemo(() => {
     const counts: Record<string, number> = { owner: 0, admin: 0, member: 0 };
@@ -100,18 +104,25 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
   }, [roleDocsQuery]);
 
   const handleDeleteRole = async (roleId: OrganizationRoleId) => {
+    const role = roles.find(r => r._id === roleId);
     const ok = await confirm({
       title: 'Delete role',
-      description:
-        'This will permanently delete the role and remove it from all members.',
+      description: role
+        ? `“${role.name}” will be permanently deleted and removed from every member who has it. This cannot be undone.`
+        : 'This will permanently delete the role and remove it from all members.',
       confirmLabel: 'Delete',
       variant: 'destructive',
     });
     if (!ok) return;
+    setDeletingRoleId(roleId);
     try {
-      console.log('Delete role:', roleId);
+      await removeRole({ orgSlug, roleId });
+      toast.success('Role deleted');
     } catch (error) {
       console.error('Failed to delete role:', error);
+      toast.error('Failed to delete role');
+    } finally {
+      setDeletingRoleId(null);
     }
   };
 
@@ -193,6 +204,7 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
             canAssign={canManageRoles}
             canEdit={canManageRoles}
             canDelete={canManageRoles}
+            deletingRoleId={deletingRoleId}
             onAssign={id => setAssigningRole(id)}
             onEdit={id => setEditingRole(id)}
             onDelete={id => handleDeleteRole(id)}
