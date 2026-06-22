@@ -136,6 +136,38 @@ export const updateProfile = mutation({
   },
 });
 
+export const syncCurrentUserFromBetterAuth = mutation({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const authUser = await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: 'user',
+      where: [
+        {
+          field: 'userId',
+          operator: 'eq',
+          value: String(userId),
+        },
+      ],
+    });
+
+    if (!authUser) {
+      throw new ConvexError('AUTH_USER_NOT_FOUND');
+    }
+
+    await ctx.db.patch('users', userId, {
+      email: authUser.email,
+      emailVerificationTime: authUser.emailVerified ? Date.now() : undefined,
+    });
+
+    return { success: true };
+  },
+});
+
 export const generateProfileImageUploadUrl = mutation({
   args: {},
   handler: async ctx => {

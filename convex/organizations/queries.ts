@@ -2,7 +2,11 @@ import { query, type QueryCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getAuthUserId } from '../authUtils';
-import { canViewIssue, canViewTeam, canViewProject } from '../access';
+import { canViewTeam, canViewProject } from '../access';
+import {
+  buildIssueVisibilityAccess,
+  canUserViewIssueFromAccess,
+} from '../issues/queries';
 import { requireOrgPermission } from '../authz';
 import { PERMISSIONS } from '../_shared/permissions';
 import { normalizeKanbanBorderTags } from '../../src/lib/kanban-border-tags';
@@ -48,6 +52,35 @@ async function loadUsersById(ctx: QueryCtx, userIds: readonly Id<'users'>[]) {
       return user ? [[id, user]] : [];
     }),
   );
+}
+
+async function getInviteCustomRoleName(
+  ctx: QueryCtx,
+  organizationId: Id<'organizations'>,
+  roleId: Id<'roles'> | Id<'orgRoles'> | undefined,
+) {
+  if (!roleId) return null;
+
+  const unifiedRoleId = ctx.db.normalizeId('roles', roleId);
+  if (unifiedRoleId) {
+    const role = await ctx.db.get('roles', unifiedRoleId);
+    return role &&
+      role.organizationId === organizationId &&
+      role.scopeType === 'organization' &&
+      !role.system
+      ? role.name
+      : null;
+  }
+
+  const legacyRoleId = ctx.db.normalizeId('orgRoles', roleId);
+  if (legacyRoleId) {
+    const role = await ctx.db.get('orgRoles', legacyRoleId);
+    return role && role.organizationId === organizationId && !role.system
+      ? role.name
+      : null;
+  }
+
+  return null;
 }
 
 async function listOrganizationMembersInternal(
@@ -276,8 +309,14 @@ export const listMembersWithRoles = query({
       .withIndex('by_organization', q => q.eq('organizationId', org._id))
       .collect();
 
-    const roleDefs = await Promise.all(
-      allAssignments.map(r => ctx.db.get('roles', r.roleId)),
+    const uniqueRoleIds = Array.from(
+      new Set(allAssignments.map(assignment => assignment.roleId)),
+    );
+    const uniqueRoleDefs = await Promise.all(
+      uniqueRoleIds.map(roleId => ctx.db.get('roles', roleId)),
+    );
+    const roleDefs = uniqueRoleDefs.filter(
+      (role): role is NonNullable<typeof role> => role !== null,
     );
     const legacyRoleIds = Array.from(
       new Set(legacyAssignments.map(assignment => assignment.roleId)),
@@ -377,7 +416,24 @@ export const listInvites = query({
       .filter(q => q.eq(q.field('status'), 'pending'))
       .collect();
 
-    return invites.filter(invite => invite.expiresAt >= Date.now());
+    const activeInvites = invites.filter(
+      invite => invite.expiresAt >= Date.now(),
+    );
+    return Promise.all(
+      activeInvites.map(async invite => {
+        const customRoleName = await getInviteCustomRoleName(
+          ctx,
+          org._id,
+          invite.customRoleId,
+        );
+
+        return {
+          ...invite,
+          customRoleName,
+          roleLabel: customRoleName ?? invite.role,
+        };
+      }),
+    );
   },
 });
 
@@ -542,27 +598,35 @@ export const getRecentIssues = query({
       throw new ConvexError('FORBIDDEN');
     }
 
-    // Get recent issues
-    const issues = await ctx.db
-      .query('issues')
-      .withIndex('by_organization', q => q.eq('organizationId', org._id))
-      .collect();
+    // Resolve the caller's visibility surface once, then walk the index
+    // newest-first with a bounded fill loop — previously this collected every
+    // issue in the org and ran the full permission cascade per item just to
+    // return ~10 rows.
+    const limit = args.limit ?? 10;
+    const access = await buildIssueVisibilityAccess(ctx, userId, org._id);
 
-    // Filter issues based on visibility permissions
-    const issuePromises = issues.map(async issue => {
-      const canView = await canViewIssue(ctx, issue);
-      return canView ? issue : null;
-    });
-    const visibleIssues = (await Promise.all(issuePromises)).filter(
-      (issue): issue is Doc<'issues'> => issue !== null,
-    );
+    const visibleIssues: Doc<'issues'>[] = [];
+    for (const take of [limit * 3, limit * 10, 400]) {
+      const candidates = await ctx.db
+        .query('issues')
+        .withIndex('by_organization', q => q.eq('organizationId', org._id))
+        .order('desc')
+        .take(take);
 
-    // Sort by creation time (newest first) and limit
-    const sortedIssues = visibleIssues
-      .sort((a, b) => b._creationTime - a._creationTime)
-      .slice(0, args.limit ?? 10);
+      visibleIssues.length = 0;
+      for (const issue of candidates) {
+        if (canUserViewIssueFromAccess(access, issue)) {
+          visibleIssues.push(issue);
+          if (visibleIssues.length >= limit) break;
+        }
+      }
 
-    return sortedIssues;
+      if (visibleIssues.length >= limit || candidates.length < take) {
+        break;
+      }
+    }
+
+    return visibleIssues.slice(0, limit);
   },
 });
 

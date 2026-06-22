@@ -1,6 +1,7 @@
 'use client';
 
 import { ConvexBetterAuthProvider } from '@convex-dev/better-auth/react';
+import type { AuthClient } from '@convex-dev/better-auth/react';
 import { ConvexQueryCacheProvider } from 'convex-helpers/react/cache';
 import { ConvexReactClient } from 'convex/react';
 import { ReactNode } from 'react';
@@ -18,7 +19,7 @@ export function ConvexAuthProvider({
   return (
     <ConvexBetterAuthProvider
       client={convex}
-      authClient={authClient}
+      authClient={authClient as unknown as AuthClient}
       initialToken={initialToken}
     >
       <ConvexQueryCacheProvider expiration={300_000} maxIdleEntries={300}>

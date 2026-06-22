@@ -1,1 +1,1 @@
-export { has, hasMultiple } from './utils';
+export { effective, has, hasMultiple } from './utils';

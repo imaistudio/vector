@@ -250,7 +250,8 @@ export const getPublicIssueFull = query({
       assignees: assigneeUsers
         .filter((u): u is NonNullable<typeof u> => !!u)
         .map(u => ({
-          name: u.name ?? u.email ?? 'Unknown',
+          // Never fall back to the email address on a public endpoint.
+          name: u.name ?? 'Unknown',
           image: u.image ?? null,
         })),
       labels: labels
@@ -298,38 +299,57 @@ export const getPublicProjectFull = query({
       project.leadId ? ctx.db.get('users', project.leadId) : null,
     ]);
 
-    // Get public issues for this project
+    // Get issues for this project. Non-public issues appear only as redacted
+    // placeholder rows — this is an unauthenticated endpoint, so their title,
+    // status, and any other detail must never leave the server.
     const allIssues = await ctx.db
       .query('issues')
       .withIndex('by_project', q => q.eq('projectId', project._id))
       .collect();
 
-    // Show all issues — full detail for public, limited for others
+    const publicIssues = allIssues.filter(i => i.visibility === 'public');
     const [issueStates, issuePriorities] = await Promise.all([
       Promise.all(
-        allIssues.map(i =>
+        publicIssues.map(i =>
           i.workflowStateId
             ? ctx.db.get('issueStates', i.workflowStateId)
             : null,
         ),
       ),
       Promise.all(
-        allIssues.map(i =>
+        publicIssues.map(i =>
           i.priorityId ? ctx.db.get('issuePriorities', i.priorityId) : null,
         ),
       ),
     ]);
+    const stateByIssue = new Map(
+      publicIssues.map((issue, idx) => [issue._id, issueStates[idx]]),
+    );
+    const priorityByIssue = new Map(
+      publicIssues.map((issue, idx) => [issue._id, issuePriorities[idx]]),
+    );
 
-    const issues = allIssues.map((issue, idx) => {
+    const issues = allIssues.map(issue => {
       const isPublic = issue.visibility === 'public';
-      const s = issueStates[idx];
-      const priority = issuePriorities[idx];
+      if (!isPublic) {
+        return {
+          _id: issue._id,
+          key: issue.key,
+          title: 'Private issue',
+          isPublic,
+          description: null,
+          status: null,
+          priority: null,
+        };
+      }
+      const s = stateByIssue.get(issue._id);
+      const priority = priorityByIssue.get(issue._id);
       return {
         _id: issue._id,
         key: issue.key,
         title: issue.title,
         isPublic,
-        description: isPublic ? (issue.description ?? null) : null,
+        description: issue.description ?? null,
         status: s
           ? {
               name: s.name,
@@ -338,14 +358,13 @@ export const getPublicProjectFull = query({
               icon: s.icon ?? null,
             }
           : null,
-        priority:
-          isPublic && priority
-            ? {
-                name: priority.name,
-                color: priority.color ?? null,
-                icon: priority.icon ?? null,
-              }
-            : null,
+        priority: priority
+          ? {
+              name: priority.name,
+              color: priority.color ?? null,
+              icon: priority.icon ?? null,
+            }
+          : null,
       };
     });
 
@@ -376,7 +395,7 @@ export const getPublicProjectFull = query({
         : null,
       lead: lead
         ? {
-            name: lead.name ?? lead.email ?? 'Unknown',
+            name: lead.name ?? 'Unknown',
             image: lead.image ?? null,
           }
         : null,
@@ -427,36 +446,57 @@ export const getPublicTeamFull = query({
       ),
     );
 
-    // Get public issues for this team
+    // Get issues for this team. Same redaction rules as getPublicProjectFull:
+    // non-public issues are placeholder rows only on this unauthenticated
+    // endpoint.
     const allIssues = await ctx.db
       .query('issues')
       .withIndex('by_team', q => q.eq('teamId', team._id))
       .collect();
+
+    const publicIssues = allIssues.filter(i => i.visibility === 'public');
     const [issueStates, issuePriorities] = await Promise.all([
       Promise.all(
-        allIssues.map(i =>
+        publicIssues.map(i =>
           i.workflowStateId
             ? ctx.db.get('issueStates', i.workflowStateId)
             : null,
         ),
       ),
       Promise.all(
-        allIssues.map(i =>
+        publicIssues.map(i =>
           i.priorityId ? ctx.db.get('issuePriorities', i.priorityId) : null,
         ),
       ),
     ]);
+    const stateByIssue = new Map(
+      publicIssues.map((issue, idx) => [issue._id, issueStates[idx]]),
+    );
+    const priorityByIssue = new Map(
+      publicIssues.map((issue, idx) => [issue._id, issuePriorities[idx]]),
+    );
 
-    const issues = allIssues.map((issue, idx) => {
+    const issues = allIssues.map(issue => {
       const isPublic = issue.visibility === 'public';
-      const s = issueStates[idx];
-      const priority = issuePriorities[idx];
+      if (!isPublic) {
+        return {
+          _id: issue._id,
+          key: issue.key,
+          title: 'Private issue',
+          isPublic,
+          description: null,
+          status: null,
+          priority: null,
+        };
+      }
+      const s = stateByIssue.get(issue._id);
+      const priority = priorityByIssue.get(issue._id);
       return {
         _id: issue._id,
         key: issue.key,
         title: issue.title,
         isPublic,
-        description: isPublic ? (issue.description ?? null) : null,
+        description: issue.description ?? null,
         status: s
           ? {
               name: s.name,
@@ -465,14 +505,13 @@ export const getPublicTeamFull = query({
               icon: s.icon ?? null,
             }
           : null,
-        priority:
-          isPublic && priority
-            ? {
-                name: priority.name,
-                color: priority.color ?? null,
-                icon: priority.icon ?? null,
-              }
-            : null,
+        priority: priority
+          ? {
+              name: priority.name,
+              color: priority.color ?? null,
+              icon: priority.icon ?? null,
+            }
+          : null,
       };
     });
 
@@ -488,7 +527,7 @@ export const getPublicTeamFull = query({
       memberCount: members.length,
       lead: lead
         ? {
-            name: lead.name ?? lead.email ?? 'Unknown',
+            name: lead.name ?? 'Unknown',
             image: lead.image ?? null,
           }
         : null,
@@ -540,7 +579,7 @@ export const getPublicDocument = query({
       orgSlug: org.slug,
       icon: doc.icon ?? null,
       color: doc.color ?? null,
-      author: author ? { name: author.name ?? author.email } : null,
+      author: author ? { name: author.name ?? 'Unknown' } : null,
     };
   },
 });
@@ -585,20 +624,18 @@ export const getPublicDocumentFull = query({
       color: doc.color ?? null,
       createdAt: doc._creationTime,
       lastEditedAt: doc.lastEditedAt ?? null,
+      // Public endpoint: expose display name + avatar only — never email
+      // addresses or user ids.
       author: author
         ? {
-            name: author.name ?? author.email ?? 'Unknown',
-            email: author.email ?? null,
+            name: author.name ?? 'Unknown',
             image: author.image ?? null,
-            userId: author._id,
           }
         : null,
       lastEditor: lastEditor
         ? {
-            name: lastEditor.name ?? lastEditor.email ?? 'Unknown',
-            email: lastEditor.email ?? null,
+            name: lastEditor.name ?? 'Unknown',
             image: lastEditor.image ?? null,
-            userId: lastEditor._id,
           }
         : null,
       team: team

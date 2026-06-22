@@ -9,6 +9,7 @@ import {
   PROJECT_SYSTEM_ROLE_PERMISSIONS,
   SYSTEM_ROLE_KEYS,
   TEAM_SYSTEM_ROLE_PERMISSIONS,
+  permissionMatches,
   type Permission,
 } from './_shared/permissions';
 
@@ -26,18 +27,9 @@ const permissionValidator = v.union(
 
 export { permissionValidator };
 
-export function permissionMatches(
-  userPermission: string,
-  requiredPermission: string,
-): boolean {
-  if (userPermission === requiredPermission) return true;
-  if (userPermission === PERMISSIONS.ALL) return true;
-  if (userPermission.endsWith(':*')) {
-    const prefix = userPermission.slice(0, -1);
-    return requiredPermission.startsWith(prefix);
-  }
-  return false;
-}
+// Re-exported for existing imports; implementation lives in _shared so the
+// client can evaluate permission lists locally.
+export { permissionMatches };
 
 function addPermissions(
   target: Set<Permission>,
@@ -89,13 +81,18 @@ async function collectPermissionsForRoleIds(
 ): Promise<Set<Permission>> {
   const permissions = new Set<Permission>();
 
-  for (const roleId of roleIds) {
-    const rolePermissions = await ctx.db
-      .query('rolePermissions')
-      .withIndex('by_role', q => q.eq('roleId', roleId))
-      .collect();
+  const uniqueRoleIds = Array.from(new Set(roleIds));
+  const rolePermissionRows = await Promise.all(
+    uniqueRoleIds.map(roleId =>
+      ctx.db
+        .query('rolePermissions')
+        .withIndex('by_role', q => q.eq('roleId', roleId))
+        .collect(),
+    ),
+  );
 
-    for (const rolePermission of rolePermissions) {
+  for (const rows of rolePermissionRows) {
+    for (const rolePermission of rows) {
       permissions.add(rolePermission.permission);
     }
   }
@@ -110,13 +107,15 @@ async function collectLegacyPermissions(
 ): Promise<Set<Permission>> {
   const permissions = new Set<Permission>();
 
-  const orgAssignments = await ctx.db
-    .query('orgRoleAssignments')
-    .withIndex('by_organization', q =>
-      q.eq('organizationId', scope.organizationId),
-    )
-    .filter(q => q.eq(q.field('userId'), userId))
-    .collect();
+  // Query by user (small, bounded set) instead of by organization — the
+  // by_organization variant read every assignment row in the org on every
+  // permission check.
+  const orgAssignments = (
+    await ctx.db
+      .query('orgRoleAssignments')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .collect()
+  ).filter(assignment => assignment.organizationId === scope.organizationId);
 
   for (const assignment of orgAssignments) {
     const rolePermissions = await ctx.db
@@ -130,11 +129,12 @@ async function collectLegacyPermissions(
   }
 
   if (scope.teamId) {
-    const teamAssignments = await ctx.db
-      .query('teamRoleAssignments')
-      .withIndex('by_team', q => q.eq('teamId', scope.teamId!))
-      .filter(q => q.eq(q.field('userId'), userId))
-      .collect();
+    const teamAssignments = (
+      await ctx.db
+        .query('teamRoleAssignments')
+        .withIndex('by_user', q => q.eq('userId', userId))
+        .collect()
+    ).filter(assignment => assignment.teamId === scope.teamId);
 
     for (const assignment of teamAssignments) {
       const rolePermissions = await ctx.db
@@ -149,11 +149,12 @@ async function collectLegacyPermissions(
   }
 
   if (scope.projectId) {
-    const projectAssignments = await ctx.db
-      .query('projectRoleAssignments')
-      .withIndex('by_project', q => q.eq('projectId', scope.projectId!))
-      .filter(q => q.eq(q.field('userId'), userId))
-      .collect();
+    const projectAssignments = (
+      await ctx.db
+        .query('projectRoleAssignments')
+        .withIndex('by_user', q => q.eq('userId', userId))
+        .collect()
+    ).filter(assignment => assignment.projectId === scope.projectId);
 
     for (const assignment of projectAssignments) {
       const rolePermissions = await ctx.db

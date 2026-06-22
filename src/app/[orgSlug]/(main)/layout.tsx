@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, useCachedQuery } from '@/lib/convex';
+import { rememberLastWorkspaceNavigation } from '@/lib/workspace-navigation';
 import { useParams, usePathname } from 'next/navigation';
 import { Doc } from '@/convex/_generated/dataModel';
 
@@ -206,6 +207,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
       window.location.href = `/auth/login?redirectTo=${encodeURIComponent(pathname)}`;
     }
   }, [user, pathname]);
+
+  useEffect(() => {
+    if (!organization?.slug) return;
+
+    rememberLastWorkspaceNavigation({
+      name: organization.name,
+      slug: organization.slug,
+    });
+  }, [organization?.name, organization?.slug]);
 
   // Don't render until we have the data
   if (user === undefined || user === null || organization === undefined) {

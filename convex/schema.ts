@@ -224,6 +224,7 @@ export default defineSchema({
     organizationId: v.id('organizations'),
     email: v.string(),
     role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
+    customRoleId: v.optional(v.union(v.id('roles'), v.id('orgRoles'))),
     status: v.union(
       v.literal('pending'),
       v.literal('accepted'),
@@ -576,6 +577,11 @@ export default defineSchema({
     .index('by_workflow_state', ['workflowStateId'])
     .index('by_reporter', ['reporterId'])
     .index('by_team_sequence', ['teamId', 'sequenceNumber'])
+    .index('by_org_project_sequence', [
+      'organizationId',
+      'projectId',
+      'sequenceNumber',
+    ])
     .index('by_org_team', ['organizationId', 'teamId'])
     .index('by_org_workflow_state', ['organizationId', 'workflowStateId'])
     .index('by_closed', ['closedAt'])

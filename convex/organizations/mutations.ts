@@ -1,5 +1,6 @@
 import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
+import type { Id } from '../_generated/dataModel';
 import {
   getOrganizationBySlug,
   requireAuthUser,
@@ -36,6 +37,10 @@ const kanbanBorderTagValidator = v.union(
   ...KANBAN_BORDER_COLOR_OPTIONS.map(option => v.literal(option.value)),
 );
 
+const organizationRoleIdValidator = v.union(v.id('roles'), v.id('orgRoles'));
+
+type OrganizationRoleId = Id<'roles'> | Id<'orgRoles'>;
+
 async function requireOrgAccess(
   ctx: MutationCtx,
   orgSlug: string,
@@ -45,6 +50,93 @@ async function requireOrgAccess(
   const org = await getOrganizationBySlug(ctx, orgSlug);
   await requireOrgPermission(ctx, org._id, permission);
   return org;
+}
+
+async function getInviteCustomRole(
+  ctx: MutationCtx,
+  organizationId: Id<'organizations'>,
+  roleId: OrganizationRoleId | undefined,
+  throwIfMissing = true,
+) {
+  if (!roleId) return null;
+
+  const unifiedRoleId = ctx.db.normalizeId('roles', roleId);
+  if (unifiedRoleId) {
+    const role = await ctx.db.get('roles', unifiedRoleId);
+    if (
+      !role ||
+      role.organizationId !== organizationId ||
+      role.scopeType !== 'organization' ||
+      role.system
+    ) {
+      if (!throwIfMissing) return null;
+      throw new ConvexError('ROLE_NOT_FOUND');
+    }
+    return { source: 'unified' as const, role };
+  }
+
+  const legacyRoleId = ctx.db.normalizeId('orgRoles', roleId);
+  if (legacyRoleId) {
+    const role = await ctx.db.get('orgRoles', legacyRoleId);
+    if (!role || role.organizationId !== organizationId || role.system) {
+      if (!throwIfMissing) return null;
+      throw new ConvexError('ROLE_NOT_FOUND');
+    }
+    return { source: 'legacy' as const, role };
+  }
+
+  if (!throwIfMissing) return null;
+  throw new ConvexError('ROLE_NOT_FOUND');
+}
+
+async function assignInviteCustomRole(
+  ctx: MutationCtx,
+  organizationId: Id<'organizations'>,
+  userId: Id<'users'>,
+  roleId: OrganizationRoleId | undefined,
+) {
+  const resolvedRole = await getInviteCustomRole(
+    ctx,
+    organizationId,
+    roleId,
+    false,
+  );
+  if (!resolvedRole) return;
+
+  if (resolvedRole.source === 'legacy') {
+    const existingAssignment = await ctx.db
+      .query('orgRoleAssignments')
+      .withIndex('by_role_user', q =>
+        q.eq('roleId', resolvedRole.role._id).eq('userId', userId),
+      )
+      .first();
+
+    if (existingAssignment) return;
+
+    await ctx.db.insert('orgRoleAssignments', {
+      roleId: resolvedRole.role._id,
+      userId,
+      organizationId,
+      assignedAt: Date.now(),
+    });
+    return;
+  }
+
+  const existingAssignment = await ctx.db
+    .query('roleAssignments')
+    .withIndex('by_role_user', q =>
+      q.eq('roleId', resolvedRole.role._id).eq('userId', userId),
+    )
+    .first();
+
+  if (existingAssignment) return;
+
+  await ctx.db.insert('roleAssignments', {
+    roleId: resolvedRole.role._id,
+    userId,
+    organizationId,
+    assignedAt: Date.now(),
+  });
 }
 
 export const revokeInvite = mutation({
@@ -160,6 +252,13 @@ export const acceptInvitation = mutation({
       );
     }
 
+    await assignInviteCustomRole(
+      ctx,
+      invite.organizationId,
+      userId,
+      invite.customRoleId,
+    );
+
     return { success: true } as const;
   },
 });
@@ -197,6 +296,12 @@ export const resendInvite = mutation({
         .first(),
       ctx.db.get('users', inviterId),
     ]);
+    const customRole = await getInviteCustomRole(
+      ctx,
+      invite.organizationId,
+      invite.customRoleId,
+      false,
+    );
 
     if (org) {
       await createNotificationEvent(ctx, {
@@ -208,7 +313,7 @@ export const resendInvite = mutation({
           organizationName: org.name,
           inviterName:
             inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
-          roleLabel: invite.role,
+          roleLabel: customRole?.role.name ?? invite.role,
           href: existingUser ? '/settings/invites' : '/auth/signup',
         },
         recipients: [
@@ -1048,6 +1153,7 @@ export const invite = mutation({
     orgSlug: v.string(),
     email: v.string(),
     role: v.union(v.literal('member'), v.literal('admin')),
+    customRoleId: v.optional(organizationRoleIdValidator),
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUser(ctx);
@@ -1075,10 +1181,20 @@ export const invite = mutation({
       }
     }
 
+    if (args.customRoleId) {
+      await requireOrgPermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
+    }
+    const customRole = await getInviteCustomRole(
+      ctx,
+      org._id,
+      args.customRoleId,
+    );
+
     const inviteId = await ctx.db.insert('invitations', {
       organizationId: org._id,
       email: args.email.toLowerCase(),
       role: args.role,
+      customRoleId: args.customRoleId,
       status: 'pending',
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
       inviterId: userId,
@@ -1095,7 +1211,7 @@ export const invite = mutation({
         organizationName: org.name,
         inviterName:
           inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
-        roleLabel: args.role,
+        roleLabel: customRole?.role.name ?? args.role,
         href: existingUser ? '/settings/invites' : '/auth/signup',
       },
       recipients: [

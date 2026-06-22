@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -18,7 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useConfirm } from '@/hooks/use-confirm';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -46,17 +52,38 @@ export default function MembersSettingsPageClient({
       orgSlug,
     },
   );
+  const currentUser = useCachedQuery(api.users.getCurrentUser, {});
   const removeMember = useMutation(api.organizations.mutations.removeMember);
   const [selectedMember, setSelectedMember] = useState<Doc<'members'> | null>(
     null,
   );
+  const [removingUserId, setRemovingUserId] = useState<Id<'users'> | null>(
+    null,
+  );
+  const [confirm, ConfirmDialog] = useConfirm();
 
-  const onRemoveMember = async (userId: Id<'users'>) => {
+  const onRemoveMember = async (
+    userId: Id<'users'>,
+    memberName?: string | null,
+  ) => {
+    const ok = await confirm({
+      title: 'Remove member',
+      description: `${
+        memberName || 'This member'
+      } will lose access to the organization and all of its teams, projects, and roles. This cannot be undone.`,
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    });
+    if (!ok) return;
+
+    setRemovingUserId(userId);
     try {
       await removeMember({ orgSlug, userId });
       toast.success('Member removed from organization');
     } catch {
       toast.error('Failed to remove member');
+    } finally {
+      setRemovingUserId(null);
     }
   };
 
@@ -140,9 +167,22 @@ export default function MembersSettingsPageClient({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <div className='flex flex-wrap gap-1'>
+                  <div className='flex flex-wrap items-center gap-1'>
                     {/* Built-in role */}
-                    <Badge variant='secondary'>{member.role}</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant='secondary' className='capitalize'>
+                          {member.role}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {member.role === 'owner'
+                          ? 'Full control over the organization'
+                          : member.role === 'admin'
+                            ? 'Can manage members, roles, and settings'
+                            : 'Can view and contribute to work'}
+                      </TooltipContent>
+                    </Tooltip>
                     {/* Custom roles */}
                     {member.customRoles?.map(role => (
                       <Badge key={role.name} variant='outline'>
@@ -152,27 +192,49 @@ export default function MembersSettingsPageClient({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant='ghost' className='h-8 w-8 p-0'>
-                        <MoreHorizontal className='h-4 w-4' />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align='end'>
-                      <DropdownMenuItem
-                        onClick={() => setSelectedMember(member)}
-                      >
-                        Assign Role
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        onClick={() => onRemoveMember(member.userId)}
-                        className='text-red-600'
-                      >
-                        Remove Member
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  {(() => {
+                    const isSelf = currentUser?._id === member.userId;
+                    const isOwner = member.role === 'owner';
+                    const isRemoving = removingUserId === member.userId;
+                    return (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant='ghost'
+                            className='h-8 w-8 p-0'
+                            disabled={isRemoving}
+                          >
+                            {isRemoving ? (
+                              <Loader2 className='h-4 w-4 animate-spin' />
+                            ) : (
+                              <MoreHorizontal className='h-4 w-4' />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align='end'>
+                          <DropdownMenuItem
+                            onClick={() => setSelectedMember(member)}
+                          >
+                            Assign Role
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() =>
+                              onRemoveMember(member.userId, member.name)
+                            }
+                            disabled={isSelf || isOwner}
+                            className='text-red-600'
+                          >
+                            {isOwner
+                              ? 'Owner can’t be removed'
+                              : isSelf
+                                ? 'You can’t remove yourself'
+                                : 'Remove Member'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    );
+                  })()}
 
                   <ResponsiveDialog
                     open={selectedMember?.userId === member.userId}
@@ -198,6 +260,7 @@ export default function MembersSettingsPageClient({
           </TableBody>
         </Table>
       </div>
+      <ConfirmDialog />
     </div>
   );
 }
