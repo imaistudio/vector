@@ -792,7 +792,7 @@ export const AssistantComposer = forwardRef<
               'flex shrink-0 items-center gap-1',
               isMultiline
                 ? 'col-start-1 row-start-2 self-end'
-                : 'order-1 ml-0.5 self-center',
+                : 'order-1 self-center',
             )}
           >
             <Button
@@ -817,7 +817,7 @@ export const AssistantComposer = forwardRef<
               'flex shrink-0 items-center gap-1',
               isMultiline
                 ? 'col-start-2 row-start-2 self-end justify-self-end'
-                : 'order-3 mr-0.5 self-center',
+                : 'order-3 self-center',
             )}
           >
             <Popover open={modelOpen} onOpenChange={setModelOpen}>
