@@ -36,6 +36,7 @@ import type { KanbanBorderColor } from '@/components/issues/kanban-border-colors
 import type { IssueGroupByField } from '@/lib/group-by';
 import { GroupBySelector } from '@/components/ui/group-by-selector';
 import { PageSkeleton, KanbanSkeleton } from '@/components/ui/table-skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   ProjectSelector,
   TeamSelector,
@@ -573,164 +574,176 @@ export default function IssuesPage() {
   const mappedProjects = projects ?? [];
 
   return (
-    <div className='bg-background h-full'>
+    <div className='bg-background flex h-full flex-col'>
       {/* Header with tabs */}
       <div className='border-b'>
         <div className='flex flex-col gap-1 p-1 sm:flex-row sm:items-center sm:justify-between'>
-          <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
-            <MobileNavTrigger />
-            {[
-              { key: 'mine' as const, label: 'My issues' },
-              { key: 'related' as const, label: 'Related' },
-              { key: 'all' as const, label: 'All issues' },
-            ].map(tab => (
-              <Button
-                key={tab.key}
-                variant={scopeTab === tab.key ? 'secondary' : 'ghost'}
-                size='sm'
-                className={cn(
-                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === tab.key && ACTIVE_FILTER_TAB_CLASS,
-                )}
-                onClick={() => {
-                  setScopeTab(tab.key);
-                  setActiveFilter('all');
-                }}
-              >
-                <span>{tab.label}</span>
-                <span className='text-muted-foreground text-xs'>
-                  {scopeCounts[tab.key]}
-                </span>
-              </Button>
-            ))}
-            {isListView && (
-              <>
-                <div className='bg-border mx-1 h-4 w-px shrink-0' />
-                {visibleTabs.map(tab => (
-                  <Button
-                    key={tab.key}
-                    variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
-                    size='sm'
-                    className={cn(
-                      'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                      activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
-                    )}
-                    onClick={() => setActiveFilter(tab.key)}
-                  >
-                    <span>{tab.label}</span>
-                    <span className='text-muted-foreground text-xs'>
-                      {tab.count}
-                    </span>
-                  </Button>
-                ))}
-              </>
-            )}
-          </div>
+          <ScrollArea
+            className='min-w-0 flex-1'
+            viewportClassName='overflow-y-hidden'
+            maskHeight={0}
+          >
+            <div className='flex min-w-max items-center gap-1 pb-1'>
+              <MobileNavTrigger />
+              {[
+                { key: 'mine' as const, label: 'My issues' },
+                { key: 'related' as const, label: 'Related' },
+                { key: 'all' as const, label: 'All issues' },
+              ].map(tab => (
+                <Button
+                  key={tab.key}
+                  variant={scopeTab === tab.key ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className={cn(
+                    'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                    scopeTab === tab.key && ACTIVE_FILTER_TAB_CLASS,
+                  )}
+                  onClick={() => {
+                    setScopeTab(tab.key);
+                    setActiveFilter('all');
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  <span className='text-muted-foreground text-xs'>
+                    {scopeCounts[tab.key]}
+                  </span>
+                </Button>
+              ))}
+              {isListView && (
+                <>
+                  <div className='bg-border mx-1 h-4 w-px shrink-0' />
+                  {visibleTabs.map(tab => (
+                    <Button
+                      key={tab.key}
+                      variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
+                      size='sm'
+                      className={cn(
+                        'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                        activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
+                      )}
+                      onClick={() => setActiveFilter(tab.key)}
+                    >
+                      <span>{tab.label}</span>
+                      <span className='text-muted-foreground text-xs'>
+                        {tab.count}
+                      </span>
+                    </Button>
+                  ))}
+                </>
+              )}
+            </div>
+          </ScrollArea>
 
           {/* View switcher + filters + create */}
-          <div className='flex shrink-0 items-center gap-1 overflow-x-auto'>
-            {/* Search */}
-            <div className='relative'>
-              {deferredSearch !== searchText ? (
-                <Loader2 className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 animate-spin' />
-              ) : (
-                <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2' />
-              )}
-              <Input
-                placeholder='Search issues...'
-                value={searchText}
-                onChange={e => setSearchText(e.target.value)}
-                className='h-6 w-40 pl-7 text-xs'
-              />
-            </div>
-            {/* View mode toggle */}
-            <div className='border-border flex items-center rounded-md border'>
-              <Button
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none rounded-l-md px-2'
-                onClick={() => setViewMode('table')}
-              >
-                <LayoutList className='size-3.5' />
-              </Button>
-              <Button
-                variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none px-2'
-                onClick={() => setViewMode('timeline')}
-              >
-                <Clock className='size-3.5' />
-              </Button>
-              <Button
-                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none rounded-r-md px-2'
-                onClick={() => {
-                  setViewMode('kanban');
-                  setActiveFilter('all');
-                }}
-              >
-                <Columns3 className='size-3.5' />
-              </Button>
-            </div>
+          <ScrollArea
+            className='max-w-full shrink-0'
+            viewportClassName='overflow-y-hidden'
+            maskHeight={0}
+          >
+            <div className='flex min-w-max items-center gap-1 pb-1'>
+              {/* Search */}
+              <div className='relative'>
+                {deferredSearch !== searchText ? (
+                  <Loader2 className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 animate-spin' />
+                ) : (
+                  <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2' />
+                )}
+                <Input
+                  placeholder='Search issues...'
+                  value={searchText}
+                  onChange={e => setSearchText(e.target.value)}
+                  className='h-6 w-40 pl-7 text-xs'
+                />
+              </div>
+              {/* View mode toggle */}
+              <div className='border-border flex items-center rounded-md border'>
+                <Button
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none rounded-l-md px-2'
+                  onClick={() => setViewMode('table')}
+                >
+                  <LayoutList className='size-3.5' />
+                </Button>
+                <Button
+                  variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none px-2'
+                  onClick={() => setViewMode('timeline')}
+                >
+                  <Clock className='size-3.5' />
+                </Button>
+                <Button
+                  variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none rounded-r-md px-2'
+                  onClick={() => {
+                    setViewMode('kanban');
+                    setActiveFilter('all');
+                  }}
+                >
+                  <Columns3 className='size-3.5' />
+                </Button>
+              </div>
 
-            {/* Group by selector */}
-            <GroupBySelector<IssueGroupByField>
-              options={[
-                { value: 'none', label: 'No grouping' },
-                { value: 'priority', label: 'Priority' },
-                { value: 'status', label: 'Status' },
-                { value: 'assignee', label: 'Assignee' },
-                { value: 'team', label: 'Team' },
-                { value: 'project', label: 'Project' },
-              ]}
-              value={viewMode === 'table' ? tableGroupBy : kanbanGroupBy}
-              onChange={val => setGroupBy(val, viewMode)}
-              className='h-6 text-xs'
-            />
-
-            {/* Due date filter — compact popover with one-click presets */}
-            <DueDateFilterButton
-              dueFilter={dueFilter}
-              setDueFilter={setDueFilter}
-            />
-
-            {/* Team filter */}
-            <PermissionAware
-              orgSlug={orgSlug}
-              permission={PERMISSIONS.TEAM_VIEW}
-              fallbackMessage="You don't have permission to view teams"
-              showTooltip={true}
-            >
-              <TeamSelector
-                teams={mappedTeams}
-                selectedTeam={selectedTeam}
-                onTeamSelect={setSelectedTeam}
-                displayMode='iconWhenUnselected'
+              {/* Group by selector */}
+              <GroupBySelector<IssueGroupByField>
+                options={[
+                  { value: 'none', label: 'No grouping' },
+                  { value: 'priority', label: 'Priority' },
+                  { value: 'status', label: 'Status' },
+                  { value: 'assignee', label: 'Assignee' },
+                  { value: 'team', label: 'Team' },
+                  { value: 'project', label: 'Project' },
+                ]}
+                value={viewMode === 'table' ? tableGroupBy : kanbanGroupBy}
+                onChange={val => setGroupBy(val, viewMode)}
                 className='h-6 text-xs'
               />
-            </PermissionAware>
 
-            {/* Project filter - hidden on small screens */}
-            <div className='hidden sm:block'>
+              {/* Due date filter — compact popover with one-click presets */}
+              <DueDateFilterButton
+                dueFilter={dueFilter}
+                setDueFilter={setDueFilter}
+              />
+
+              {/* Team filter */}
               <PermissionAware
                 orgSlug={orgSlug}
-                permission={PERMISSIONS.PROJECT_VIEW}
-                fallbackMessage="You don't have permission to view projects"
+                permission={PERMISSIONS.TEAM_VIEW}
+                fallbackMessage="You don't have permission to view teams"
                 showTooltip={true}
               >
-                <ProjectSelector
-                  projects={mappedProjects}
-                  selectedProject={selectedProject}
-                  onProjectSelect={setSelectedProject}
+                <TeamSelector
+                  teams={mappedTeams}
+                  selectedTeam={selectedTeam}
+                  onTeamSelect={setSelectedTeam}
                   displayMode='iconWhenUnselected'
                   className='h-6 text-xs'
                 />
               </PermissionAware>
-            </div>
 
-            <CreateIssueDialog className='h-6' orgSlug={orgSlug} />
-          </div>
+              {/* Project filter - hidden on small screens */}
+              <div className='hidden sm:block'>
+                <PermissionAware
+                  orgSlug={orgSlug}
+                  permission={PERMISSIONS.PROJECT_VIEW}
+                  fallbackMessage="You don't have permission to view projects"
+                  showTooltip={true}
+                >
+                  <ProjectSelector
+                    projects={mappedProjects}
+                    selectedProject={selectedProject}
+                    onProjectSelect={setSelectedProject}
+                    displayMode='iconWhenUnselected'
+                    className='h-6 text-xs'
+                  />
+                </PermissionAware>
+              </div>
+
+              <CreateIssueDialog className='h-6' orgSlug={orgSlug} />
+            </div>
+          </ScrollArea>
         </div>
       </div>
 
@@ -783,7 +796,7 @@ export default function IssuesPage() {
             transition={{ duration: 0.15 }}
             className='flex flex-1 flex-col'
           >
-            <div className='flex-1 overflow-y-auto'>
+            <ScrollArea className='flex-1'>
               <IssuesTimeline
                 orgSlug={orgSlug}
                 issues={issues}
@@ -803,7 +816,7 @@ export default function IssuesPage() {
                 deletePending={isDeleting}
                 isUpdatingAssignees={isUpdatingAssignees}
               />
-            </div>
+            </ScrollArea>
             <AutoLoadMore
               status={paginatedIssues.status}
               loadMore={paginatedIssues.loadMore}

@@ -18,9 +18,11 @@ const ScrollArea = React.forwardRef<
   React.ComponentRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
     viewportClassName?: string;
+    viewportStyle?: React.CSSProperties;
     maskHeight?: number;
     maskClassName?: string;
     viewportRef?: React.ForwardedRef<HTMLDivElement>;
+    scrollTopContainer?: boolean;
   }
 >(
   (
@@ -29,9 +31,11 @@ const ScrollArea = React.forwardRef<
       children,
       scrollHideDelay = 0,
       viewportClassName,
+      viewportStyle,
       maskClassName,
       maskHeight = 30,
       viewportRef: externalViewportRef,
+      scrollTopContainer = false,
       ...props
     },
     ref,
@@ -43,6 +47,7 @@ const ScrollArea = React.forwardRef<
       right: false,
     });
     const internalViewportRef = React.useRef<HTMLDivElement>(null);
+    const scrollCheckFrameRef = React.useRef<number | null>(null);
     const isTouch = useTouchPrimary();
 
     React.useImperativeHandle(
@@ -67,19 +72,42 @@ const ScrollArea = React.forwardRef<
       const overflowX = computed.overflowX;
       const horizontalHidden = overflowX === 'hidden' || overflowX === 'clip';
 
-      setShowMask(prev => ({
-        ...prev,
-        top: scrollTop > 0,
-        bottom: scrollTop + clientHeight < scrollHeight - 1,
-        left: horizontalHidden ? false : scrollLeft > 0,
-        right: horizontalHidden
-          ? false
-          : scrollLeft + clientWidth < scrollWidth - 1,
-      }));
+      setShowMask(prev => {
+        const next = {
+          top: scrollTop > 0,
+          bottom: scrollTop + clientHeight < scrollHeight - 1,
+          left: horizontalHidden ? false : scrollLeft > 0,
+          right: horizontalHidden
+            ? false
+            : scrollLeft + clientWidth < scrollWidth - 1,
+        };
+
+        if (
+          prev.top === next.top &&
+          prev.bottom === next.bottom &&
+          prev.left === next.left &&
+          prev.right === next.right
+        ) {
+          return prev;
+        }
+
+        return next;
+      });
     }, []);
+
+    const scheduleScrollabilityCheck = React.useCallback(() => {
+      if (typeof window === 'undefined') return;
+      if (scrollCheckFrameRef.current !== null) return;
+
+      scrollCheckFrameRef.current = window.requestAnimationFrame(() => {
+        scrollCheckFrameRef.current = null;
+        checkScrollability();
+      });
+    }, [checkScrollability]);
 
     React.useEffect(() => {
       if (typeof window === 'undefined') return;
+      if (maskHeight <= 0) return;
 
       const element = internalViewportRef.current;
       if (!element) return;
@@ -87,19 +115,26 @@ const ScrollArea = React.forwardRef<
       const controller = new AbortController();
       const { signal } = controller;
 
-      const resizeObserver = new ResizeObserver(checkScrollability);
+      const resizeObserver = new ResizeObserver(scheduleScrollabilityCheck);
       resizeObserver.observe(element);
 
-      element.addEventListener('scroll', checkScrollability, { signal });
-      window.addEventListener('resize', checkScrollability, { signal });
+      element.addEventListener('scroll', scheduleScrollabilityCheck, {
+        signal,
+        passive: true,
+      });
+      window.addEventListener('resize', scheduleScrollabilityCheck, { signal });
 
       checkScrollability();
 
       return () => {
         controller.abort();
         resizeObserver.disconnect();
+        if (scrollCheckFrameRef.current !== null) {
+          window.cancelAnimationFrame(scrollCheckFrameRef.current);
+          scrollCheckFrameRef.current = null;
+        }
       };
-    }, [checkScrollability, isTouch]);
+    }, [checkScrollability, isTouch, maskHeight, scheduleScrollabilityCheck]);
 
     return (
       <ScrollAreaContext.Provider value={isTouch}>
@@ -115,10 +150,14 @@ const ScrollArea = React.forwardRef<
             <div
               ref={internalViewportRef}
               data-slot='scroll-area-viewport'
+              data-scroll-top-container={
+                scrollTopContainer ? 'true' : undefined
+              }
               className={cn(
                 'size-full overflow-auto rounded-[inherit]',
                 viewportClassName,
               )}
+              style={viewportStyle}
               tabIndex={0}
             >
               {children}
@@ -143,7 +182,11 @@ const ScrollArea = React.forwardRef<
             <ScrollAreaPrimitive.Viewport
               ref={internalViewportRef}
               data-slot='scroll-area-viewport'
+              data-scroll-top-container={
+                scrollTopContainer ? 'true' : undefined
+              }
               className={cn('size-full rounded-[inherit]', viewportClassName)}
+              style={viewportStyle}
             >
               {children}
             </ScrollAreaPrimitive.Viewport>
@@ -181,11 +224,10 @@ const ScrollBar = React.forwardRef<
       orientation={orientation}
       data-slot='scroll-area-scrollbar'
       className={cn(
-        'hover:bg-muted data-[state=visible]:fade-in-0 data-[state=hidden]:fade-out-0 data-[state=visible]:animate-in data-[state=hidden]:animate-out dark:hover:bg-muted/50 z-50 flex touch-none p-px transition-[colors] duration-150 select-none',
-        orientation === 'vertical' &&
-          'h-full w-2.5 border-l border-l-transparent',
+        'hover:bg-muted dark:hover:bg-muted/50 data-[state=visible]:fade-in-0 data-[state=hidden]:fade-out-0 data-[state=visible]:animate-in data-[state=hidden]:animate-out z-50 flex touch-none p-px transition-[width,height,background-color] duration-150 select-none',
+        orientation === 'vertical' && 'h-full w-1 border-l-0 hover:w-2',
         orientation === 'horizontal' &&
-          'h-2.5 flex-col border-t border-t-transparent px-1 pr-[5px]',
+          'h-1 flex-col border-t-0 px-1 pr-1.25 hover:h-2',
         className,
       )}
       {...props}
@@ -193,9 +235,9 @@ const ScrollBar = React.forwardRef<
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot='scroll-area-thumb'
         className={cn(
-          'bg-border relative flex-1 origin-center rounded-full transition-[scale]',
-          orientation === 'vertical' && 'my-1 active:scale-y-[0.95]',
-          orientation === 'horizontal' && 'active:scale-x-[0.98]',
+          'bg-border/60 relative flex-1 origin-center rounded-full transition-[transform,background-color]',
+          orientation === 'vertical' && 'my-1 active:scale-y-95',
+          orientation === 'horizontal' && 'active:scale-x-98',
         )}
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>

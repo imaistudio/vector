@@ -18,6 +18,7 @@ import { CreateProjectButton } from './create-project-button';
 import { cn } from '@/lib/utils';
 import { LayoutList, Columns3 } from 'lucide-react';
 import { PageSkeleton } from '@/components/ui/table-skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'nextjs-toploader/app';
@@ -371,76 +372,84 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
   }
 
   return (
-    <div className='bg-background h-full'>
+    <div className='bg-background flex h-full flex-col'>
       <ConfirmDeleteDialog />
-      <div className='flex flex-col'>
+      <div className='flex min-h-0 flex-1 flex-col'>
         {/* Header — scope tabs, status filters + actions */}
         <div className='border-b'>
           <div className='flex flex-col gap-1 p-1 sm:flex-row sm:items-center sm:justify-between'>
-            <div className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'>
-              <MobileNavTrigger />
-              {/* Scope tabs */}
-              <Button
-                variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
-                size='sm'
-                className={cn(
-                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === 'mine' && ACTIVE_FILTER_TAB_CLASS,
-                )}
-                onClick={() => {
-                  setScopeTab('mine');
-                  setActiveFilter('all');
-                }}
-              >
-                <span>My projects</span>
-                <span className='text-muted-foreground text-xs'>
-                  {summary?.mineCount ?? 0}
-                </span>
-              </Button>
-              <Button
-                variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
-                size='sm'
-                className={cn(
-                  'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                  scopeTab === 'all' && ACTIVE_FILTER_TAB_CLASS,
-                )}
-                onClick={() => {
-                  setScopeTab('all');
-                  setActiveFilter('all');
-                }}
-              >
-                <span>All projects</span>
-                <span className='text-muted-foreground text-xs'>
-                  {summary?.allCount ?? 0}
-                </span>
-              </Button>
+            <ScrollArea
+              className='min-w-0 flex-1'
+              viewportClassName='overflow-y-hidden'
+              maskHeight={0}
+            >
+              <div className='flex min-w-max items-center gap-1 pb-1'>
+                <MobileNavTrigger />
+                {/* Scope tabs */}
+                <Button
+                  variant={scopeTab === 'mine' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className={cn(
+                    'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                    scopeTab === 'mine' && ACTIVE_FILTER_TAB_CLASS,
+                  )}
+                  onClick={() => {
+                    setScopeTab('mine');
+                    setActiveFilter('all');
+                  }}
+                >
+                  <span>My projects</span>
+                  <span className='text-muted-foreground text-xs'>
+                    {summary?.mineCount ?? 0}
+                  </span>
+                </Button>
+                <Button
+                  variant={scopeTab === 'all' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className={cn(
+                    'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                    scopeTab === 'all' && ACTIVE_FILTER_TAB_CLASS,
+                  )}
+                  onClick={() => {
+                    setScopeTab('all');
+                    setActiveFilter('all');
+                  }}
+                >
+                  <span>All projects</span>
+                  <span className='text-muted-foreground text-xs'>
+                    {summary?.allCount ?? 0}
+                  </span>
+                </Button>
 
-              {viewMode !== 'kanban' && (
-                <>
-                  {/* Separator */}
-                  <div className='bg-border mx-1 h-4 w-px shrink-0' />
+                {viewMode !== 'kanban' && (
+                  <>
+                    {/* Separator */}
+                    <div className='bg-border mx-1 h-4 w-px shrink-0' />
 
-                  {/* Status filter tabs */}
-                  {visibleTabs.map(tab => (
-                    <Button
-                      key={tab.key}
-                      variant={activeFilter === tab.key ? 'secondary' : 'ghost'}
-                      size='sm'
-                      className={cn(
-                        'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
-                        activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
-                      )}
-                      onClick={() => setActiveFilter(tab.key)}
-                    >
-                      <span>{tab.label}</span>
-                      <span className='text-muted-foreground text-xs'>
-                        {tab.count}
-                      </span>
-                    </Button>
-                  ))}
-                </>
-              )}
-            </div>
+                    {/* Status filter tabs */}
+                    {visibleTabs.map(tab => (
+                      <Button
+                        key={tab.key}
+                        variant={
+                          activeFilter === tab.key ? 'secondary' : 'ghost'
+                        }
+                        size='sm'
+                        className={cn(
+                          'h-6 shrink-0 gap-2 rounded-xs px-3 text-xs font-normal',
+                          activeFilter === tab.key && ACTIVE_FILTER_TAB_CLASS,
+                        )}
+                        onClick={() => setActiveFilter(tab.key)}
+                      >
+                        <span>{tab.label}</span>
+                        <span className='text-muted-foreground text-xs'>
+                          {tab.count}
+                        </span>
+                      </Button>
+                    ))}
+                  </>
+                )}
+              </div>
+            </ScrollArea>
 
             <div className='flex shrink-0 items-center gap-1'>
               {/* View mode toggle */}
@@ -493,7 +502,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
         {/* Projects content */}
         {viewMode === 'table' ? (
           <>
-            <div className='flex-1 overflow-y-auto'>
+            <ScrollArea className='flex-1'>
               <ProjectsTable
                 orgSlug={orgSlug}
                 projects={filteredProjects}
@@ -506,7 +515,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
                 deletePending={false}
                 groupBy={groupBy}
               />
-            </div>
+            </ScrollArea>
 
             <AutoLoadMore
               status={paginatedProjects.status}

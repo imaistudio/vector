@@ -17,6 +17,7 @@ import type {
   AgentSessionMessage,
   LocalAgentProvider,
 } from '@/lib/local-agents/types';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 export function AgentTurnCard({
   activities,
@@ -155,7 +156,10 @@ function ResponseCard({
         className='shadow-minimal pointer-events-none absolute inset-0 rounded-[12px]'
         style={{ backgroundColor: 'var(--elevated-surface)' }}
       />
-      <div className='scrollbar-hover text-foreground/90 relative max-h-[520px] overflow-y-auto px-4 pt-1 text-sm select-text'>
+      <ScrollArea
+        className='relative max-h-[520px]'
+        viewportClassName='max-h-[520px] px-4 pt-1 text-sm select-text text-foreground/90'
+      >
         {message.title ? (
           <div className='text-muted-foreground mb-2 flex items-center gap-2 text-[12px]'>
             <FileText className='size-3.5' />
@@ -175,7 +179,7 @@ function ResponseCard({
             )}
           </div>
         ))}
-      </div>
+      </ScrollArea>
       <div className='relative flex items-center gap-3 px-4 py-2 text-[13px]'>
         {isStreaming ? (
           <div className='text-muted-foreground flex items-center gap-1.5'>
