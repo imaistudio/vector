@@ -787,18 +787,22 @@ export const stopThread = mutation({
       throw new ConvexError('THREAD_NOT_FOUND');
     }
 
+    // A stale component stream should not rewrite an idle/completed app thread;
+    // only queued or actively generating app threads move to stopped.
+    if (row.threadStatus !== 'pending') {
+      return { stopped: false };
+    }
+
     const streams = await listStreams(ctx, components.agent, {
       threadId: row.threadId,
       includeStatuses: ['streaming'],
     });
 
-    let stopped = false;
     for (const stream of streams) {
-      stopped =
-        (await abortStream(ctx, components.agent, {
-          streamId: stream.streamId,
-          reason: 'user_stop',
-        })) || stopped;
+      await abortStream(ctx, components.agent, {
+        streamId: stream.streamId,
+        reason: 'user_stop',
+      });
     }
 
     await ctx.db.patch('assistantThreads', row._id, {
@@ -807,7 +811,7 @@ export const stopThread = mutation({
       updatedAt: Date.now(),
     });
 
-    return { stopped };
+    return { stopped: true };
   },
 });
 

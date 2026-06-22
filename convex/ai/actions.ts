@@ -13,6 +13,81 @@ import {
   openrouterChatWithAnnotations,
 } from './provider';
 
+const INITIAL_STOP_POLL_INTERVAL_MS = 250;
+const MAX_STOP_POLL_INTERVAL_MS = 1000;
+
+function watchForThreadStop(
+  ctx: ActionCtx,
+  assistantThreadId: Id<'assistantThreads'>,
+  abortController: AbortController,
+) {
+  // The agent component creates stream rows lazily, so a stop request can land
+  // before there is a component stream to abort. Watch our thread row and bridge
+  // that stop request into the AI SDK abort signal while generation is active.
+  let canceled = false;
+  let wake: (() => void) | null = null;
+  const waitForNextPoll = (ms: number) =>
+    new Promise<void>(resolve => {
+      const timeout = setTimeout(() => {
+        wake = null;
+        resolve();
+      }, ms);
+      wake = () => {
+        clearTimeout(timeout);
+        wake = null;
+        resolve();
+      };
+    });
+
+  const done = (async () => {
+    let nextPollMs = INITIAL_STOP_POLL_INTERVAL_MS;
+    while (!canceled && !abortController.signal.aborted) {
+      await waitForNextPoll(nextPollMs);
+      if (canceled || abortController.signal.aborted) {
+        return;
+      }
+
+      try {
+        const row = await ctx.runQuery(
+          internal.ai.internal.getAssistantThreadRowById,
+          { assistantThreadId },
+        );
+        if (row?.threadStatus === 'stopped') {
+          abortController.abort();
+          return;
+        }
+      } catch (error) {
+        console.error('[ai.generateResponse] stop watcher poll failed', error);
+      }
+      nextPollMs = Math.min(nextPollMs * 2, MAX_STOP_POLL_INTERVAL_MS);
+    }
+  })();
+
+  return {
+    signal: abortController.signal,
+    async stop() {
+      canceled = true;
+      wake?.();
+      await done;
+    },
+  };
+}
+
+async function throwIfThreadStopped(
+  ctx: ActionCtx,
+  assistantThreadId: Id<'assistantThreads'>,
+) {
+  const row = await ctx.runQuery(
+    internal.ai.internal.getAssistantThreadRowById,
+    {
+      assistantThreadId,
+    },
+  );
+  if (row?.threadStatus === 'stopped') {
+    throw new Error('ASSISTANT_THREAD_STOPPED');
+  }
+}
+
 function buildSystemPrompt(
   pageContextSummary: string,
   currentUserContextSummary: string,
@@ -203,6 +278,14 @@ export const generateResponse = internalAction({
         return null;
       }
 
+      const initialThreadRow = await ctx.runQuery(
+        internal.ai.internal.getAssistantThreadRowById,
+        { assistantThreadId: args.assistantThreadId },
+      );
+      if (initialThreadRow?.threadStatus === 'stopped') {
+        return null;
+      }
+
       const pageContextSummary = await ctx.runQuery(
         internal.ai.internal.getPageContextSummary,
         {
@@ -246,36 +329,60 @@ export const generateResponse = internalAction({
           }
         : undefined;
 
-      const stream = await assistantAgent.streamText(
-        assistantCtx,
-        {
-          threadId: args.threadId,
-          userId: args.userId,
-        },
-        {
-          model: openrouterChatWithAnnotations(selectedModel, {
-            parallelToolCalls: false,
-          }),
-          promptMessageId: args.promptMessageId,
-          system: buildSystemPrompt(
-            pageContextSummary,
-            currentUserContextSummary,
-            currentUserDeviceContextSummary,
-          ),
-          providerOptions,
-          onError(error: unknown) {
-            console.error('[ai.generateResponse] stream error', error);
-          },
-        },
-        {
-          saveStreamDeltas: {
-            chunking: 'word',
-            throttleMs: 750,
-          },
-        },
+      const stopController = new AbortController();
+      const stopWatcher = watchForThreadStop(
+        ctx,
+        args.assistantThreadId,
+        stopController,
       );
+      try {
+        const latestThreadRow = await ctx.runQuery(
+          internal.ai.internal.getAssistantThreadRowById,
+          { assistantThreadId: args.assistantThreadId },
+        );
+        if (latestThreadRow?.threadStatus === 'stopped') {
+          stopController.abort();
+          return null;
+        }
 
-      await stream.consumeStream();
+        const stream = await assistantAgent.streamText(
+          assistantCtx,
+          {
+            threadId: args.threadId,
+            userId: args.userId,
+          },
+          {
+            model: openrouterChatWithAnnotations(selectedModel, {
+              parallelToolCalls: false,
+            }),
+            promptMessageId: args.promptMessageId,
+            abortSignal: stopWatcher.signal,
+            system: buildSystemPrompt(
+              pageContextSummary,
+              currentUserContextSummary,
+              currentUserDeviceContextSummary,
+            ),
+            async prepareStep() {
+              await throwIfThreadStopped(ctx, args.assistantThreadId);
+              return undefined;
+            },
+            providerOptions,
+            onError(error: unknown) {
+              console.error('[ai.generateResponse] stream error', error);
+            },
+          },
+          {
+            saveStreamDeltas: {
+              chunking: 'word',
+              throttleMs: 750,
+            },
+          },
+        );
+
+        await stream.consumeStream();
+      } finally {
+        await stopWatcher.stop();
+      }
 
       await ctx.runMutation(internal.ai.mutations.setThreadCompleted, {
         assistantThreadId: args.assistantThreadId,
