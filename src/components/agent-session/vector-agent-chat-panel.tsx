@@ -1,6 +1,13 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useCachedQuery, useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { Id } from '@/convex/_generated/dataModel';
@@ -8,10 +15,11 @@ import { Button } from '@/components/ui/button';
 import { UserAvatar } from '@/components/user-avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { AgentIcon } from '@/components/agent-icon';
-import { ArrowUp, Clock, Loader2, Square } from 'lucide-react';
+import { ArrowUp, Clock, Square } from 'lucide-react';
 import { toast } from 'sonner';
 import { formatDateHuman } from '@/lib/date';
 import { cn } from '@/lib/utils';
+import { BarsSpinner } from '@/components/bars-spinner';
 import {
   AgentLoadingIndicator,
   LoadingIndicator,
@@ -88,12 +96,60 @@ export function VectorAgentChatPanel({
   const [messageInput, setMessageInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pausing, setPausing] = useState(false);
+  const [isComposerMultiline, setIsComposerMultiline] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerMultilineRef = useRef(false);
+  const composerExpandedLockedRef = useRef(false);
 
   const groups = useMemo(
     () => groupMessages(snapshot?.messages ?? []),
     [snapshot?.messages],
   );
+
+  useEffect(() => {
+    composerMultilineRef.current = isComposerMultiline;
+  }, [isComposerMultiline]);
+
+  const updateComposerLayout = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const value = textarea.value;
+    const hasText = value.trim().length > 0;
+    if (!hasText) {
+      composerExpandedLockedRef.current = false;
+      setIsComposerMultiline(false);
+      textarea.style.height = '36px';
+      textarea.style.overflowY = 'hidden';
+      return;
+    }
+
+    textarea.style.height = 'auto';
+    const nextHeight = Math.min(textarea.scrollHeight, 168);
+    const hasExplicitLineBreak = value.includes('\n');
+    const hasWrappedLine = textarea.scrollHeight > 44;
+
+    if (hasExplicitLineBreak || hasWrappedLine) {
+      composerExpandedLockedRef.current = true;
+      setIsComposerMultiline(true);
+    } else if (!composerExpandedLockedRef.current) {
+      setIsComposerMultiline(false);
+    }
+
+    const expanded =
+      composerExpandedLockedRef.current || composerMultilineRef.current;
+    textarea.style.height = expanded ? `${Math.max(36, nextHeight)}px` : '36px';
+    textarea.style.overflowY = nextHeight >= 168 ? 'auto' : 'hidden';
+  }, []);
+
+  useLayoutEffect(() => {
+    updateComposerLayout();
+  }, [messageInput, isComposerMultiline, updateComposerLayout]);
+
+  useEffect(() => {
+    window.addEventListener('resize', updateComposerLayout);
+    return () => window.removeEventListener('resize', updateComposerLayout);
+  }, [updateComposerLayout]);
 
   if (snapshot === undefined) {
     return (
@@ -276,54 +332,115 @@ export function VectorAgentChatPanel({
             />
           ) : null}
           <div
-            className='group/composer shadow-minimal border-border/45 bg-popover/95 overflow-hidden rounded-[12px] border backdrop-blur-xl'
+            data-agent-chat-input-multiline={
+              isComposerMultiline ? 'true' : 'false'
+            }
+            className={cn(
+              'group/composer bg-card relative overflow-visible shadow-[0_5px_16px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.035),inset_0_0_0_1px_color-mix(in_oklch,var(--border)_58%,transparent)] backdrop-blur-xl transition-[border-radius,box-shadow,background-color,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none dark:shadow-[0_8px_22px_rgba(0,0,0,0.24),0_1px_2px_rgba(0,0,0,0.18),inset_0_0_0_1px_color-mix(in_oklch,var(--border)_62%,transparent)]',
+              isComposerMultiline
+                ? 'rounded-[12px] py-[9px] pr-2 pl-[7px]'
+                : 'rounded-[10px] px-[7px] py-[9px]',
+            )}
             style={{
               backgroundColor: 'var(--elevated-surface, var(--popover))',
             }}
           >
             {canSend ? (
-              <>
-                <textarea
-                  ref={textareaRef}
-                  value={messageInput}
-                  onChange={event => setMessageInput(event.target.value)}
-                  onKeyDown={event => {
-                    if (
-                      event.key === 'Enter' &&
-                      !event.shiftKey &&
-                      (event.metaKey || event.ctrlKey)
-                    ) {
-                      event.preventDefault();
-                      if (running) void queue('after-turn');
-                      else void sendNow();
+              <div
+                className={cn(
+                  'relative z-20 flex min-h-9 items-stretch gap-2 overflow-visible transition-[min-height] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+                  isComposerMultiline &&
+                    'grid min-h-[116px] min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 pb-0.5',
+                )}
+              >
+                <div
+                  className={cn(
+                    'relative z-20 flex min-w-0 flex-1 flex-col overflow-visible',
+                    isComposerMultiline && 'contents',
+                  )}
+                >
+                  <div
+                    className={
+                      isComposerMultiline
+                        ? 'contents'
+                        : 'flex h-full items-stretch gap-1'
                     }
-                  }}
-                  placeholder={getComposerPlaceholder(snapshot.agent)}
-                  rows={messageInput.includes('\n') ? 4 : 2}
-                  className='placeholder:text-muted-foreground/60 text-foreground/95 min-h-16 w-full resize-none bg-transparent px-4 py-4 text-[15px] leading-relaxed outline-none'
-                  disabled={sending}
-                />
-                <div className='flex min-w-0 items-center gap-1.5 px-3 pt-0.5 pb-3'>
-                  <AgentComposerToolbar
-                    provider={snapshot.agent}
-                    model={snapshot.model}
-                    permissionMode={snapshot.permissionMode}
-                    thinkingLevel={snapshot.thinkingLevel}
-                    fastMode={snapshot.fastMode}
-                    contextLength={snapshot.contextLength}
-                    onSettingsChange={patch => {
-                      if (!snapshot.workSessionId) return;
-                      void updateSettings({
-                        workSessionId: snapshot.workSessionId,
-                        model: patch.model,
-                        permissionMode: patch.permissionMode,
-                        thinkingLevel: patch.thinkingLevel,
-                        fastMode: patch.fastMode,
-                        contextLength: patch.contextLength,
-                      });
-                    }}
-                  />
-                  <div className='min-w-2 flex-1' />
+                  >
+                    <div
+                      className={cn(
+                        'relative z-20 flex min-w-0 gap-1 overflow-visible',
+                        isComposerMultiline
+                          ? 'col-span-2 row-start-1 items-start'
+                          : 'order-2 flex-1 items-center',
+                      )}
+                    >
+                      <textarea
+                        ref={textareaRef}
+                        value={messageInput}
+                        onChange={event => setMessageInput(event.target.value)}
+                        onKeyDown={event => {
+                          if (
+                            event.nativeEvent.isComposing ||
+                            event.nativeEvent.keyCode === 229 ||
+                            event.shiftKey ||
+                            event.key !== 'Enter'
+                          ) {
+                            return;
+                          }
+
+                          event.preventDefault();
+                          if (running) void queue('after-turn');
+                          else void sendNow();
+                        }}
+                        placeholder={getComposerPlaceholder(snapshot.agent)}
+                        rows={1}
+                        className={cn(
+                          'placeholder:text-muted-foreground/60 text-foreground/95 max-h-[168px] min-h-9 w-full min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-6 transition-[height] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] outline-none motion-reduce:transition-none',
+                          isComposerMultiline
+                            ? 'py-0 pr-2.5 pl-2.5'
+                            : 'flex h-9 items-center pt-1.5 pr-2.5 pl-2.5',
+                        )}
+                        disabled={sending}
+                      />
+                    </div>
+                    <div
+                      className={cn(
+                        'flex items-center',
+                        isComposerMultiline
+                          ? 'col-start-1 row-start-2 ml-0.5 items-end self-end'
+                          : 'order-1 ml-0.5 self-center',
+                      )}
+                    >
+                      <AgentComposerToolbar
+                        provider={snapshot.agent}
+                        model={snapshot.model}
+                        permissionMode={snapshot.permissionMode}
+                        thinkingLevel={snapshot.thinkingLevel}
+                        fastMode={snapshot.fastMode}
+                        contextLength={snapshot.contextLength}
+                        onSettingsChange={patch => {
+                          if (!snapshot.workSessionId) return;
+                          void updateSettings({
+                            workSessionId: snapshot.workSessionId,
+                            model: patch.model,
+                            permissionMode: patch.permissionMode,
+                            thinkingLevel: patch.thinkingLevel,
+                            fastMode: patch.fastMode,
+                            contextLength: patch.contextLength,
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    'flex shrink-0 items-center gap-1',
+                    isComposerMultiline
+                      ? 'col-start-2 row-start-2 mr-0.5 self-end justify-self-end'
+                      : 'mr-0.5 self-center',
+                  )}
+                >
                   {running && messageInput.trim() ? (
                     <div className='hidden items-center gap-1 sm:flex'>
                       <QueueButton
@@ -345,7 +462,7 @@ export function VectorAgentChatPanel({
                     variant={running ? 'secondary' : 'default'}
                     size='icon'
                     className={cn(
-                      'ml-1 size-7 shrink-0 rounded-full transition-colors',
+                      'size-9 shrink-0 rounded-md px-0 text-xs transition-colors',
                       running &&
                         'bg-foreground text-background hover:bg-foreground/90',
                     )}
@@ -361,17 +478,17 @@ export function VectorAgentChatPanel({
                     aria-label={running ? 'Pause agent' : 'Send message'}
                   >
                     {pausing ? (
-                      <Loader2 className='size-3.5 animate-spin' />
+                      <BarsSpinner size={14} />
                     ) : running ? (
                       <Square className='size-3.5 fill-current' />
                     ) : sending ? (
-                      <Loader2 className='size-3.5 animate-spin' />
+                      <BarsSpinner size={14} />
                     ) : (
                       <ArrowUp className='size-4' />
                     )}
                   </Button>
                 </div>
-              </>
+              </div>
             ) : (
               <div className='flex items-center justify-between gap-3 px-3 py-2'>
                 <span className='text-muted-foreground text-sm'>
