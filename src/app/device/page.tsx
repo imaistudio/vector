@@ -32,6 +32,7 @@ function DeviceAuthForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefilled = searchParams.get('user_code') ?? '';
+  const normalizedPrefilled = prefilled.trim().replace(/-/g, '').toUpperCase();
   const currentUserQuery = useQuery(api.users.currentUser);
   const currentUser = currentUserQuery.data;
   const branding = useBranding();
@@ -42,9 +43,9 @@ function DeviceAuthForm() {
   const accentTextColor = getContrastingTextColor(accentColor);
 
   const [stage, setStage] = useState<Stage>(
-    prefilled ? 'approve' : 'enter-code',
+    normalizedPrefilled ? 'approve' : 'enter-code',
   );
-  const [userCode, setUserCode] = useState(prefilled);
+  const [userCode, setUserCode] = useState(normalizedPrefilled);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -62,6 +63,52 @@ function DeviceAuthForm() {
     router,
     searchParams,
   ]);
+
+  useEffect(() => {
+    if (!currentUser || !normalizedPrefilled) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const verifyPrefilledCode = async () => {
+      if (normalizedPrefilled.length < 8) {
+        setStage('enter-code');
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const response = await authClient.device({
+          query: { user_code: normalizedPrefilled },
+        });
+
+        if (response.error) {
+          throw response.error;
+        }
+
+        if (!isCancelled) {
+          setUserCode(normalizedPrefilled);
+          setStage('approve');
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          toast.error(extractAuthErrorMessage(error));
+          setStage('enter-code');
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void verifyPrefilledCode();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentUser, normalizedPrefilled]);
 
   if (
     currentUserQuery.isPending ||
@@ -114,7 +161,10 @@ function DeviceAuthForm() {
   const handleApprove = async () => {
     setIsLoading(true);
     try {
-      await authClient.device.approve({ userCode });
+      const response = await authClient.device.approve({ userCode });
+      if (response.error) {
+        throw response.error;
+      }
       setStage('approved');
     } catch (error) {
       toast.error(extractAuthErrorMessage(error));
@@ -126,7 +176,10 @@ function DeviceAuthForm() {
   const handleDeny = async () => {
     setIsLoading(true);
     try {
-      await authClient.device.deny({ userCode });
+      const response = await authClient.device.deny({ userCode });
+      if (response.error) {
+        throw response.error;
+      }
       setStage('denied');
     } catch (error) {
       toast.error(extractAuthErrorMessage(error));
@@ -139,14 +192,6 @@ function DeviceAuthForm() {
     <div className='flex min-h-dvh items-center justify-center px-4'>
       <div className='w-full max-w-sm'>
         <div className='mb-6 text-center'>
-          {branding.logoUrl && (
-            <img
-              src={branding.logoUrl}
-              alt={branding.name}
-              className='mx-auto mb-4 size-12 rounded-xl object-contain'
-            />
-          )}
-
           {(stage === 'enter-code' || stage === 'approve') && (
             <div className='bg-muted mx-auto mb-4 flex size-12 items-center justify-center rounded-xl'>
               <Monitor className='text-muted-foreground size-6' />
