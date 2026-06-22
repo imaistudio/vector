@@ -526,6 +526,7 @@ export const searchAutoLinkIssueCandidates = internalQuery({
     searchQuery: v.string(),
     limit: v.optional(v.number()),
     repoFullName: v.optional(v.string()),
+    includeSameRepoLinkedIssues: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const trimmed = args.searchQuery.trim();
@@ -556,6 +557,52 @@ export const searchAutoLinkIssueCandidates = internalQuery({
       .order('desc')
       .take(limit * 4);
 
+    const sameRepoLinkedIssues: typeof searchMatches = [];
+    if (args.repoFullName && args.includeSameRepoLinkedIssues !== false) {
+      const repository = await ctx.db
+        .query('githubRepositories')
+        .withIndex('by_full_name', q => q.eq('fullName', args.repoFullName!))
+        .filter(q => q.eq(q.field('organizationId'), args.organizationId))
+        .first();
+
+      if (repository) {
+        const pullRequests = await ctx.db
+          .query('githubPullRequests')
+          .withIndex('by_repository', q => q.eq('repositoryId', repository._id))
+          .order('desc')
+          .take(Math.max(limit * 6, 32));
+        const seenIssueIds = new Set<string>();
+
+        for (const pullRequest of pullRequests) {
+          if (sameRepoLinkedIssues.length >= limit * 2) break;
+
+          const links = await ctx.db
+            .query('githubArtifactLinks')
+            .withIndex('by_pr', q => q.eq('pullRequestId', pullRequest._id))
+            .collect();
+
+          for (const link of links) {
+            if (!link.active || seenIssueIds.has(String(link.issueId))) {
+              continue;
+            }
+            seenIssueIds.add(String(link.issueId));
+
+            const issue = await ctx.db.get('issues', link.issueId);
+            if (
+              !issue ||
+              issue.organizationId !== args.organizationId ||
+              issue.closedAt
+            ) {
+              continue;
+            }
+
+            sameRepoLinkedIssues.push(issue);
+            if (sameRepoLinkedIssues.length >= limit * 2) break;
+          }
+        }
+      }
+    }
+
     const searchRankByIssueId = new Map<string, number>();
     searchMatches.forEach((issue, index) => {
       searchRankByIssueId.set(String(issue._id), index);
@@ -566,8 +613,17 @@ export const searchAutoLinkIssueCandidates = internalQuery({
       recentRankByIssueId.set(String(issue._id), index);
     });
 
+    const sameRepoRankByIssueId = new Map<string, number>();
+    sameRepoLinkedIssues.forEach((issue, index) => {
+      sameRepoRankByIssueId.set(String(issue._id), index);
+    });
+
     const issueMap = new Map<string, (typeof searchMatches)[number]>();
-    for (const issue of [...searchMatches, ...recentOpenIssues]) {
+    for (const issue of [
+      ...searchMatches,
+      ...sameRepoLinkedIssues,
+      ...recentOpenIssues,
+    ]) {
       if (issue.closedAt) continue;
       issueMap.set(String(issue._id), issue);
     }
@@ -659,37 +715,61 @@ export const searchAutoLinkIssueCandidates = internalQuery({
         searchRank:
           searchRankByIssueId.get(String(issue._id)) ??
           Number.POSITIVE_INFINITY,
+        // IMAI dev audit: long-running product issues are often tracked by
+        // several PRs in the same repo. Keep those older linked issues in the
+        // model candidate pool so a follow-up PR links back instead of
+        // falling through to createIssueFromPullRequestIfNeeded.
+        sameRepoRank:
+          sameRepoRankByIssueId.get(String(issue._id)) ??
+          Number.POSITIVE_INFINITY,
       });
     }
 
-    return results
-      .sort((a, b) => {
-        if (a.searchRank !== b.searchRank) {
-          return a.searchRank - b.searchRank;
-        }
+    const sortedResults = results.sort((a, b) => {
+      if (a.searchRank !== b.searchRank) {
+        return a.searchRank - b.searchRank;
+      }
 
-        const aMatchesRepo = a.linkedPullRequests.some(
-          pullRequest => pullRequest.repoFullName === args.repoFullName,
-        );
-        const bMatchesRepo = b.linkedPullRequests.some(
-          pullRequest => pullRequest.repoFullName === args.repoFullName,
-        );
-        if (aMatchesRepo !== bMatchesRepo) {
-          return aMatchesRepo ? -1 : 1;
-        }
+      if (a.sameRepoRank !== b.sameRepoRank) {
+        return a.sameRepoRank - b.sameRepoRank;
+      }
 
-        if (a.linkedPullRequests.length !== b.linkedPullRequests.length) {
-          return b.linkedPullRequests.length - a.linkedPullRequests.length;
-        }
+      const aMatchesRepo = a.linkedPullRequests.some(
+        pullRequest => pullRequest.repoFullName === args.repoFullName,
+      );
+      const bMatchesRepo = b.linkedPullRequests.some(
+        pullRequest => pullRequest.repoFullName === args.repoFullName,
+      );
+      if (aMatchesRepo !== bMatchesRepo) {
+        return aMatchesRepo ? -1 : 1;
+      }
 
-        if (a.recentRank !== b.recentRank) {
-          return a.recentRank - b.recentRank;
-        }
+      if (a.linkedPullRequests.length !== b.linkedPullRequests.length) {
+        return b.linkedPullRequests.length - a.linkedPullRequests.length;
+      }
 
-        return b.key.localeCompare(a.key);
-      })
-      .map(({ searchRank, recentRank, ...issue }) => issue)
-      .slice(0, limit);
+      if (a.recentRank !== b.recentRank) {
+        return a.recentRank - b.recentRank;
+      }
+
+      return b.key.localeCompare(a.key);
+    });
+
+    const reservedSameRepoLimit = Math.min(3, Math.ceil(limit / 3));
+    const reservedSameRepoKeys = new Set(
+      sortedResults
+        .filter(result => result.sameRepoRank !== Number.POSITIVE_INFINITY)
+        .slice(0, reservedSameRepoLimit)
+        .map(result => result.key),
+    );
+    const selectedResults = [
+      ...sortedResults.filter(result => reservedSameRepoKeys.has(result.key)),
+      ...sortedResults.filter(result => !reservedSameRepoKeys.has(result.key)),
+    ].slice(0, limit);
+
+    return selectedResults.map(
+      ({ searchRank, recentRank, sameRepoRank, ...issue }) => issue,
+    );
   },
 });
 
