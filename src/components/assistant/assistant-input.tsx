@@ -338,9 +338,9 @@ export const AssistantInput = forwardRef<
     editorProps: {
       attributes: {
         class: cn(
-          'assistant-input-editor outline-none text-sm max-h-40 overflow-y-auto',
+          'assistant-input-editor max-h-40 overflow-y-auto text-[15px] leading-6 outline-none',
           '[&_p.is-empty::before]:text-muted-foreground [&_p.is-empty::before]:content-[attr(data-placeholder)] [&_p.is-empty::before]:pointer-events-none [&_p.is-empty::before]:float-left [&_p.is-empty::before]:h-0',
-          '[&_p]:my-0',
+          '[&_p]:my-0 [&_p]:leading-6',
         ),
       },
     },
@@ -392,7 +392,7 @@ export const AssistantInput = forwardRef<
 
   return (
     <div
-      className={cn('px-3 py-2', className)}
+      className={cn('flex min-h-8 items-center px-3 py-2', className)}
       onClick={() => editor.commands.focus()}
       onFocus={onFocus}
     >

@@ -495,7 +495,7 @@ export const AssistantComposer = forwardRef<
       ? 'min-h-8 flex-1 px-2 py-1.5 text-xs'
       : 'min-h-10 flex-1 px-3 py-2 text-sm';
   const threadIconButtonClass =
-    'size-8 shrink-0 rounded-md p-0 text-muted-foreground hover:text-foreground';
+    'size-10 shrink-0 rounded-md p-0 text-muted-foreground hover:text-foreground';
   const triggerLabelCompact = model ? triggerLabel : 'Auto';
 
   const handleStop = async () => {
@@ -742,7 +742,7 @@ export const AssistantComposer = forwardRef<
       {variant === 'thread' ? (
         <div
           className={cn(
-            'relative z-20 flex min-h-12 min-w-0 items-center gap-1.5 overflow-visible transition-[min-height,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            'relative z-20 flex min-h-14 min-w-0 items-center gap-1.5 overflow-visible transition-[min-height,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
             isMultiline
               ? 'grid min-h-[128px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[1fr_auto] items-start gap-x-2 gap-y-3 px-3 py-3'
               : 'px-2 py-2',
@@ -774,7 +774,7 @@ export const AssistantComposer = forwardRef<
               onMultilineChange={setIsMultiline}
               className={cn(
                 'min-w-0 flex-1 px-0 py-0 text-[15px]',
-                isMultiline ? 'min-h-[72px]' : 'min-h-8',
+                isMultiline ? 'min-h-[72px]' : 'min-h-10',
               )}
               placeholder={
                 busy && !queuedSubmission
@@ -822,7 +822,7 @@ export const AssistantComposer = forwardRef<
                   type='button'
                   size='sm'
                   variant='ghost'
-                  className='text-muted-foreground hover:text-foreground h-8 max-w-36 min-w-0 justify-between gap-1.5 rounded-md px-2 text-sm'
+                  className='text-muted-foreground hover:text-foreground h-10 max-w-36 min-w-0 justify-between gap-1.5 rounded-md px-2 text-sm'
                   disabled={!canInteract}
                 >
                   <span className='truncate'>{triggerLabelCompact}</span>
@@ -946,7 +946,7 @@ export const AssistantComposer = forwardRef<
               size='sm'
               variant={busy && onStop ? 'secondary' : 'default'}
               className={cn(
-                'size-8 shrink-0 rounded-md p-0',
+                'size-10 shrink-0 rounded-md p-0',
                 busy &&
                   onStop &&
                   'bg-foreground text-background hover:bg-foreground/90',
