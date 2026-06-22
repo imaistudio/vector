@@ -158,6 +158,7 @@ export const AssistantComposer = forwardRef<
     useState<QueuedSubmission | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [hasSendableContent, setHasSendableContent] = useState(false);
   const prevBusyRef = useRef(busy);
   const onSubmitRef = useRef(onSubmit);
   useEffect(() => {
@@ -464,6 +465,7 @@ export const AssistantComposer = forwardRef<
   // avoids accidentally mutating the in-flight request's attachments.
   const canConfigure = !disabled && !busy && !isUploadingAttachment;
   const canInteract = canConfigure;
+  const canSubmit = canType && hasSendableContent && !queuedSubmission;
   const triggerLabel = useMemo(() => modelLabel(model), [model, modelOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useImperativeHandle(
@@ -776,6 +778,7 @@ export const AssistantComposer = forwardRef<
               disabled={!canType}
               hasExternalContent={attachments.length > 0}
               onMultilineChange={setIsMultiline}
+              onSendableContentChange={setHasSendableContent}
               className={cn(
                 'min-w-0 flex-1 px-0 py-0 text-[15px]',
                 isMultiline ? 'min-h-[72px]' : 'min-h-10',
@@ -970,9 +973,7 @@ export const AssistantComposer = forwardRef<
                   onStop &&
                   'bg-foreground text-background hover:bg-foreground/90',
               )}
-              disabled={
-                busy && onStop ? isStopping : !canType || !!queuedSubmission
-              }
+              disabled={busy && onStop ? isStopping : !canSubmit}
               onClick={() => {
                 if (busy && onStop) void handleStop();
                 else void inputRef.current?.submit();
@@ -1004,6 +1005,7 @@ export const AssistantComposer = forwardRef<
               onFocus={onFocus}
               disabled={!canType}
               hasExternalContent={attachments.length > 0}
+              onSendableContentChange={setHasSendableContent}
               className={inputClass}
               placeholder={
                 busy && !queuedSubmission
@@ -1023,9 +1025,7 @@ export const AssistantComposer = forwardRef<
                     onStop &&
                     'bg-foreground text-background hover:bg-foreground/90',
                 )}
-                disabled={
-                  busy && onStop ? isStopping : !canType || !!queuedSubmission
-                }
+                disabled={busy && onStop ? isStopping : !canSubmit}
                 onClick={() => {
                   if (busy && onStop) void handleStop();
                   else void inputRef.current?.submit();

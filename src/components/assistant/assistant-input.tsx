@@ -53,6 +53,7 @@ export type AssistantInputProps = {
   ) => Promise<boolean> | boolean;
   onFocus?: () => void;
   onMultilineChange?: (isMultiline: boolean) => void;
+  onSendableContentChange?: (hasSendableContent: boolean) => void;
   className?: string;
 };
 
@@ -154,6 +155,7 @@ export const AssistantInput = forwardRef<
     onSubmit,
     onFocus,
     onMultilineChange,
+    onSendableContentChange,
     className,
   },
   ref,
@@ -162,10 +164,23 @@ export const AssistantInput = forwardRef<
   const multilineRef = useRef(false);
   const expandedLockedRef = useRef(false);
   const measurementFrameRef = useRef<number | null>(null);
+  const sendableContentRef = useRef(false);
   const onSubmitRef = useRef(onSubmit);
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
+
+  const emitSendableContent = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const { bodyText } = extractPromptAndMentions(editor);
+    const hasSendableContent = bodyText.trim().length > 0 || hasExternalContent;
+
+    if (sendableContentRef.current === hasSendableContent) return;
+    sendableContentRef.current = hasSendableContent;
+    onSendableContentChange?.(hasSendableContent);
+  }, [hasExternalContent, onSendableContentChange]);
 
   const handleSubmit = useCallback(async () => {
     const editor = editorRef.current;
@@ -174,12 +189,14 @@ export const AssistantInput = forwardRef<
     if (!bodyText.trim() && !hasExternalContent) return;
     const previousContent = editor.getJSON();
     editor.commands.clearContent();
+    emitSendableContent();
     const shouldClear = await onSubmitRef.current(text, mentions);
     if (shouldClear === false) {
       editor.commands.setContent(previousContent);
       editor.commands.focus('end');
+      emitSendableContent();
     }
-  }, [hasExternalContent]);
+  }, [emitSendableContent, hasExternalContent]);
 
   const measureMultiline = useCallback(() => {
     const editor = editorRef.current;
@@ -348,9 +365,11 @@ export const AssistantInput = forwardRef<
     immediatelyRender: false,
     onCreate: ({ editor: e }) => {
       editorRef.current = e;
+      emitSendableContent();
       scheduleMultilineMeasure();
     },
     onUpdate: () => {
+      emitSendableContent();
       scheduleMultilineMeasure();
     },
   });
@@ -375,8 +394,9 @@ export const AssistantInput = forwardRef<
   }, [editor, disabled]);
 
   useEffect(() => {
+    emitSendableContent();
     scheduleMultilineMeasure();
-  }, [hasExternalContent, scheduleMultilineMeasure]);
+  }, [emitSendableContent, hasExternalContent, scheduleMultilineMeasure]);
 
   useEffect(() => {
     window.addEventListener('resize', scheduleMultilineMeasure);
