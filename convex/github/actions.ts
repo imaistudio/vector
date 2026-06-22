@@ -254,9 +254,12 @@ async function resolveAutoLinkIssueKeys(
     .slice(0, 400);
 
   const candidateMap = new Map<string, any>();
+  let includedSameRepoLinkedIssues = false;
 
   for (const searchQuery of [titleQuery, branchQuery, broadQuery]) {
     if (!searchQuery.trim()) continue;
+    const includeSameRepoLinkedIssues = !includedSameRepoLinkedIssues;
+    includedSameRepoLinkedIssues = true;
 
     const batch = await ctx.runQuery(
       internal.github.queries.searchAutoLinkIssueCandidates,
@@ -265,6 +268,7 @@ async function resolveAutoLinkIssueKeys(
         searchQuery,
         limit: 8,
         repoFullName: args.repoFullName,
+        includeSameRepoLinkedIssues,
       },
     );
 
