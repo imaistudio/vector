@@ -208,6 +208,7 @@ export function ThreadViewClient() {
   const executeConfirmedAction = useMutation(
     api.ai.mutations.executeConfirmedAction,
   );
+  const stopThread = useMutation(api.ai.mutations.stopThread);
 
   // Messages
   const agentThreadId = threadRow?.threadId;
@@ -462,6 +463,21 @@ export function ThreadViewClient() {
       return false;
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleStop = async () => {
+    try {
+      const result = await stopThread({
+        orgSlug,
+        assistantThreadId,
+      });
+      return result.stopped;
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to stop response',
+      );
+      return false;
     }
   };
 
@@ -754,6 +770,7 @@ export function ThreadViewClient() {
             ref={inputRef}
             orgSlug={orgSlug}
             onSubmit={handleSend}
+            onStop={handleStop}
             busy={isSending || isAssistantActive}
             variant='thread'
             placeholder='Ask anything...'

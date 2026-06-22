@@ -20,6 +20,7 @@ import {
   Loader2,
   Paperclip,
   ArrowUp,
+  Square,
   X,
   Settings2,
   ShieldCheck,
@@ -108,6 +109,7 @@ type AssistantComposerProps = {
     mentions: MentionRef[],
     options: AssistantComposerSubmitOptions,
   ) => Promise<boolean> | boolean;
+  onStop?: () => Promise<boolean> | boolean;
   onFocus?: () => void;
   variant?: AssistantComposerVariant;
   auxiliaryActions?: ReactNode;
@@ -131,6 +133,7 @@ export const AssistantComposer = forwardRef<
     disabled = false,
     busy = false,
     onSubmit,
+    onStop,
     onFocus,
     variant = 'thread',
     auxiliaryActions,
@@ -155,6 +158,7 @@ export const AssistantComposer = forwardRef<
   const [queuedSubmission, setQueuedSubmission] =
     useState<QueuedSubmission | null>(null);
   const [isMultiline, setIsMultiline] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
   const prevBusyRef = useRef(busy);
   const onSubmitRef = useRef(onSubmit);
   useEffect(() => {
@@ -491,7 +495,18 @@ export const AssistantComposer = forwardRef<
       ? 'min-h-8 flex-1 px-2 py-1.5 text-xs'
       : 'min-h-10 flex-1 px-3 py-2 text-sm';
   const threadIconButtonClass =
-    'size-9 shrink-0 rounded-md p-0 text-muted-foreground hover:text-foreground';
+    'size-8 shrink-0 rounded-md p-0 text-muted-foreground hover:text-foreground';
+  const triggerLabelCompact = model ? triggerLabel : 'Auto';
+
+  const handleStop = async () => {
+    if (!onStop || isStopping) return;
+    setIsStopping(true);
+    try {
+      await onStop();
+    } finally {
+      setIsStopping(false);
+    }
+  };
 
   // ── Toolbar content (shared between inline and popover) ────────────
 
@@ -727,10 +742,10 @@ export const AssistantComposer = forwardRef<
       {variant === 'thread' ? (
         <div
           className={cn(
-            'relative z-20 flex min-h-14 min-w-0 items-center gap-2 overflow-visible transition-[min-height,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            'relative z-20 flex min-h-12 min-w-0 items-center gap-1.5 overflow-visible transition-[min-height,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
             isMultiline
-              ? 'grid min-h-[150px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[1fr_auto] items-start gap-x-3 gap-y-3 px-4 py-4'
-              : 'px-[7px] py-[9px]',
+              ? 'grid min-h-[128px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[1fr_auto] items-start gap-x-2 gap-y-3 px-3 py-3'
+              : 'px-2 py-2',
           )}
         >
           <input
@@ -759,7 +774,7 @@ export const AssistantComposer = forwardRef<
               onMultilineChange={setIsMultiline}
               className={cn(
                 'min-w-0 flex-1 px-0 py-0 text-[15px]',
-                isMultiline ? 'min-h-[76px]' : 'min-h-9',
+                isMultiline ? 'min-h-[72px]' : 'min-h-8',
               )}
               placeholder={
                 busy && !queuedSubmission
@@ -807,11 +822,11 @@ export const AssistantComposer = forwardRef<
                   type='button'
                   size='sm'
                   variant='ghost'
-                  className='text-muted-foreground hover:text-foreground h-9 max-w-44 min-w-0 justify-between gap-1.5 rounded-md px-2.5 text-sm'
+                  className='text-muted-foreground hover:text-foreground h-8 max-w-36 min-w-0 justify-between gap-1.5 rounded-md px-2 text-sm'
                   disabled={!canInteract}
                 >
-                  <span className='truncate'>{triggerLabel}</span>
-                  <ChevronDown className='size-4 shrink-0' />
+                  <span className='truncate'>{triggerLabelCompact}</span>
+                  <ChevronDown className='size-3.5 shrink-0' />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align='start' className='w-[320px] p-0'>
@@ -929,11 +944,28 @@ export const AssistantComposer = forwardRef<
             <Button
               type='button'
               size='sm'
-              className='size-9 shrink-0 rounded-md p-0'
-              disabled={!canType || !!queuedSubmission}
-              onClick={() => inputRef.current?.submit()}
+              variant={busy && onStop ? 'secondary' : 'default'}
+              className={cn(
+                'size-8 shrink-0 rounded-md p-0',
+                busy &&
+                  onStop &&
+                  'bg-foreground text-background hover:bg-foreground/90',
+              )}
+              disabled={
+                busy && onStop ? isStopping : !canType || !!queuedSubmission
+              }
+              onClick={() => {
+                if (busy && onStop) void handleStop();
+                else void inputRef.current?.submit();
+              }}
+              title={busy && onStop ? 'Stop response' : 'Send message'}
+              aria-label={busy && onStop ? 'Stop response' : 'Send message'}
             >
-              {isUploadingAttachment ? (
+              {isStopping ? (
+                <BarsSpinner size={12} />
+              ) : busy && onStop ? (
+                <Square className='size-3.5 fill-current' />
+              ) : isUploadingAttachment ? (
                 <Loader2 className='size-3.5 animate-spin' />
               ) : busy && !queuedSubmission ? (
                 <BarsSpinner size={12} />
@@ -965,11 +997,28 @@ export const AssistantComposer = forwardRef<
               <Button
                 type='button'
                 size='sm'
-                className={sendButtonClass}
-                disabled={!canType || !!queuedSubmission}
-                onClick={() => inputRef.current?.submit()}
+                variant={busy && onStop ? 'secondary' : 'default'}
+                className={cn(
+                  sendButtonClass,
+                  busy &&
+                    onStop &&
+                    'bg-foreground text-background hover:bg-foreground/90',
+                )}
+                disabled={
+                  busy && onStop ? isStopping : !canType || !!queuedSubmission
+                }
+                onClick={() => {
+                  if (busy && onStop) void handleStop();
+                  else void inputRef.current?.submit();
+                }}
+                title={busy && onStop ? 'Stop response' : 'Send message'}
+                aria-label={busy && onStop ? 'Stop response' : 'Send message'}
               >
-                {isUploadingAttachment ? (
+                {isStopping ? (
+                  <BarsSpinner size={10} />
+                ) : busy && onStop ? (
+                  <Square className='size-3 fill-current' />
+                ) : isUploadingAttachment ? (
                   <Loader2 className='size-3 animate-spin' />
                 ) : busy && !queuedSubmission ? (
                   <BarsSpinner size={10} />

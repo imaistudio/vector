@@ -1,4 +1,4 @@
-import { saveMessage } from '@convex-dev/agent';
+import { abortStream, listStreams, saveMessage } from '@convex-dev/agent';
 import type { RegisteredMutation } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { components, internal } from '../_generated/api';
@@ -763,6 +763,54 @@ export const sendMessage = mutation({
   },
 });
 
+export const stopThread = mutation({
+  args: {
+    orgSlug: v.string(),
+    assistantThreadId: v.optional(v.id('assistantThreads')),
+  },
+  returns: v.object({
+    stopped: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUserId(ctx);
+    const organization = await requireOrgForAssistant(
+      ctx,
+      args.orgSlug,
+      userId,
+    );
+
+    const row = args.assistantThreadId
+      ? await ctx.db.get('assistantThreads', args.assistantThreadId)
+      : await resolveActiveThread(ctx, organization._id, userId);
+
+    if (!row || !(await canEditThread(ctx, row, userId))) {
+      throw new ConvexError('THREAD_NOT_FOUND');
+    }
+
+    const streams = await listStreams(ctx, components.agent, {
+      threadId: row.threadId,
+      includeStatuses: ['streaming'],
+    });
+
+    let stopped = false;
+    for (const stream of streams) {
+      stopped =
+        (await abortStream(ctx, components.agent, {
+          streamId: stream.streamId,
+          reason: 'user_stop',
+        })) || stopped;
+    }
+
+    await ctx.db.patch('assistantThreads', row._id, {
+      threadStatus: 'stopped',
+      errorMessage: undefined,
+      updatedAt: Date.now(),
+    });
+
+    return { stopped };
+  },
+});
+
 export const executeConfirmedAction: RegisteredMutation<
   'public',
   {
@@ -946,6 +994,7 @@ export const setThreadCompleted = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get('assistantThreads', args.assistantThreadId);
     if (!row) return null; // Thread was cleared while generating
+    if (row.threadStatus === 'stopped') return null;
     await ctx.db.patch('assistantThreads', args.assistantThreadId, {
       threadStatus: 'completed',
       errorMessage: undefined,
@@ -964,6 +1013,7 @@ export const setThreadError = internalMutation({
   handler: async (ctx, args) => {
     const row = await ctx.db.get('assistantThreads', args.assistantThreadId);
     if (!row) return null; // Thread was cleared while generating
+    if (row.threadStatus === 'stopped') return null;
     await ctx.db.patch('assistantThreads', args.assistantThreadId, {
       threadStatus: 'error',
       errorMessage: args.errorMessage,
