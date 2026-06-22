@@ -12,6 +12,7 @@ import { Doc } from '@/convex/_generated/dataModel';
 import { ArrowLeft, PanelLeft, Menu } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { rememberLastWorkspaceNavigation } from '@/lib/workspace-navigation';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { buttonVariants } from '@/components/ui/button';
 
@@ -84,6 +85,15 @@ export default function OrgSettingsLayout({
       window.location.href = `/auth/login?redirectTo=${encodeURIComponent(pathname)}`;
     }
   }, [user, pathname]);
+
+  useEffect(() => {
+    if (!organization?.slug) return;
+
+    rememberLastWorkspaceNavigation({
+      name: organization.name,
+      slug: organization.slug,
+    });
+  }, [organization?.name, organization?.slug]);
 
   // Don't render children until we have auth
   if (user === undefined || user === null) {
