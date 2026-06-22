@@ -8,6 +8,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
   getOrganizationBySlug,
+  hasScopedPermission,
   permissionValidator,
   requireAuthUser,
   requireOrgPermission,
@@ -870,6 +871,59 @@ export const list = query({
   handler: async (ctx, args) => {
     const org = await getOrganizationBySlug(ctx, args.orgSlug);
     await requireOrgPermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_ROLES);
+
+    const roles = await ctx.db
+      .query('roles')
+      .withIndex('by_org_scope', q =>
+        q.eq('organizationId', org._id).eq('scopeType', 'organization'),
+      )
+      .collect();
+    const legacyRoles = await ctx.db
+      .query('orgRoles')
+      .withIndex('by_organization', q => q.eq('organizationId', org._id))
+      .collect();
+    const migratedLegacyKeys = new Set(
+      roles
+        .filter(role => role.key.startsWith('legacy:org:'))
+        .map(role => role.key),
+    );
+
+    return [
+      ...roles.filter(role => !role.system),
+      ...legacyRoles
+        .filter(role => !role.system)
+        .filter(role => !migratedLegacyKeys.has(`legacy:org:${role._id}`))
+        .map(mapLegacyOrganizationRole),
+    ].sort((a, b) => b._creationTime - a._creationTime);
+  },
+});
+
+export const listInviteAssignable = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const canManageMembers = await hasScopedPermission(
+      ctx,
+      { organizationId: org._id },
+      userId,
+      PERMISSIONS.ORG_MANAGE_MEMBERS,
+    );
+    if (!canManageMembers) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    const canManageRoles = await hasScopedPermission(
+      ctx,
+      { organizationId: org._id },
+      userId,
+      PERMISSIONS.ORG_MANAGE_ROLES,
+    );
+    if (!canManageRoles) {
+      return [];
+    }
 
     const roles = await ctx.db
       .query('roles')

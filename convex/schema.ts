@@ -224,6 +224,7 @@ export default defineSchema({
     organizationId: v.id('organizations'),
     email: v.string(),
     role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member')),
+    customRoleId: v.optional(v.union(v.id('roles'), v.id('orgRoles'))),
     status: v.union(
       v.literal('pending'),
       v.literal('accepted'),

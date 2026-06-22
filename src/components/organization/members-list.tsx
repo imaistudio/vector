@@ -270,10 +270,12 @@ function useInviteColumns(
       },
       {
         id: 'role',
-        accessorFn: row => row.role,
+        accessorFn: row => row.roleLabel ?? row.role,
         header: 'Role',
         cell: ({ row }) => (
-          <OrgRoleBadge role={row.original.role || 'member'} />
+          <OrgRoleBadge
+            role={row.original.roleLabel || row.original.role || 'member'}
+          />
         ),
       },
       ...(!isMobile

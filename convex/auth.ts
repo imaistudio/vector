@@ -237,6 +237,9 @@ export const createAuthOptions = (
       otpLength: 4,
       expiresIn: 900,
       allowedAttempts: 5,
+      changeEmail: {
+        enabled: true,
+      },
     }),
     deviceAuthorization({
       schema: {

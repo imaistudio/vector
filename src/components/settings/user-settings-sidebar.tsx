@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  ArrowLeft,
   User,
   Mail,
   Bell,
@@ -64,9 +65,13 @@ export function UserSettingsSidebar() {
       {firstOrg && (
         <Link
           href={`/${firstOrg.slug}/issues`}
-          className='text-muted-foreground hover:text-foreground hover:bg-foreground/5 mb-2 flex h-8 items-center gap-2 rounded-md px-2 text-sm font-medium transition-colors'
+          aria-label={`Back to ${firstOrg.name} workspace`}
+          className='text-muted-foreground hover:text-foreground hover:bg-foreground/5 focus-visible:ring-ring mb-2 flex h-8 items-center gap-2 rounded-md border border-transparent px-2 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none'
         >
-          <span className='truncate'>{firstOrg.name}</span>
+          <ArrowLeft className='size-4 shrink-0' />
+          <span className='min-w-0 flex-1 truncate'>
+            Back to {firstOrg.name}
+          </span>
         </Link>
       )}
 

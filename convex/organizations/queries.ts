@@ -54,6 +54,35 @@ async function loadUsersById(ctx: QueryCtx, userIds: readonly Id<'users'>[]) {
   );
 }
 
+async function getInviteCustomRoleName(
+  ctx: QueryCtx,
+  organizationId: Id<'organizations'>,
+  roleId: Id<'roles'> | Id<'orgRoles'> | undefined,
+) {
+  if (!roleId) return null;
+
+  const unifiedRoleId = ctx.db.normalizeId('roles', roleId);
+  if (unifiedRoleId) {
+    const role = await ctx.db.get('roles', unifiedRoleId);
+    return role &&
+      role.organizationId === organizationId &&
+      role.scopeType === 'organization' &&
+      !role.system
+      ? role.name
+      : null;
+  }
+
+  const legacyRoleId = ctx.db.normalizeId('orgRoles', roleId);
+  if (legacyRoleId) {
+    const role = await ctx.db.get('orgRoles', legacyRoleId);
+    return role && role.organizationId === organizationId && !role.system
+      ? role.name
+      : null;
+  }
+
+  return null;
+}
+
 async function listOrganizationMembersInternal(
   ctx: QueryCtx,
   organizationId: Id<'organizations'>,
@@ -387,7 +416,24 @@ export const listInvites = query({
       .filter(q => q.eq(q.field('status'), 'pending'))
       .collect();
 
-    return invites.filter(invite => invite.expiresAt >= Date.now());
+    const activeInvites = invites.filter(
+      invite => invite.expiresAt >= Date.now(),
+    );
+    return Promise.all(
+      activeInvites.map(async invite => {
+        const customRoleName = await getInviteCustomRoleName(
+          ctx,
+          org._id,
+          invite.customRoleId,
+        );
+
+        return {
+          ...invite,
+          customRoleName,
+          roleLabel: customRoleName ?? invite.role,
+        };
+      }),
+    );
   },
 });
 

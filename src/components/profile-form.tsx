@@ -18,10 +18,11 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { useFormSubmission } from '@/hooks/use-error-handling';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
-import { Github } from 'lucide-react';
+import { Github, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 
 const profileFormSchema = z.object({
@@ -33,6 +34,9 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export function ProfileForm() {
   const user = useCachedQuery(api.users.currentUser);
   const updateProfile = useMutation(api.users.updateProfile);
+  const syncCurrentUserFromBetterAuth = useMutation(
+    api.users.syncCurrentUserFromBetterAuth,
+  );
   const generateProfileImageUploadUrl = useMutation(
     api.users.generateProfileImageUploadUrl,
   );
@@ -41,6 +45,11 @@ export function ProfileForm() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isRemovingImage, setIsRemovingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null | undefined>();
+  const [newEmail, setNewEmail] = useState('');
+  const [emailOtp, setEmailOtp] = useState('');
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [isRequestingEmailChange, setIsRequestingEmailChange] = useState(false);
+  const [isConfirmingEmailChange, setIsConfirmingEmailChange] = useState(false);
   const previewUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -68,6 +77,12 @@ export function ProfileForm() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    setNewEmail(user?.email ?? '');
+    setEmailOtp('');
+    setPendingEmail(null);
+  }, [user?.email]);
 
   async function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -146,6 +161,61 @@ export function ProfileForm() {
       toast.error((err as Error)?.message || 'Failed to remove profile image');
     } finally {
       setIsRemovingImage(false);
+    }
+  }
+
+  async function handleRequestEmailChange(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!user) return;
+
+    const trimmedEmail = newEmail.trim().toLowerCase();
+    if (!trimmedEmail || trimmedEmail === user.email?.toLowerCase()) return;
+
+    setIsRequestingEmailChange(true);
+    try {
+      const result = await authClient.emailOtp.requestEmailChange({
+        newEmail: trimmedEmail,
+      });
+      if (result.error) {
+        throw result.error;
+      }
+
+      setPendingEmail(trimmedEmail);
+      setEmailOtp('');
+      toast.success('Verification code sent');
+    } catch (err) {
+      toast.error(
+        (err as Error)?.message || 'Failed to send verification code',
+      );
+    } finally {
+      setIsRequestingEmailChange(false);
+    }
+  }
+
+  async function handleConfirmEmailChange(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!pendingEmail || !emailOtp.trim()) return;
+
+    setIsConfirmingEmailChange(true);
+    try {
+      const result = await authClient.emailOtp.changeEmail({
+        newEmail: pendingEmail,
+        otp: emailOtp.trim(),
+      });
+      if (result.error) {
+        throw result.error;
+      }
+
+      await syncCurrentUserFromBetterAuth({});
+      setEmailOtp('');
+      setPendingEmail(null);
+      toast.success('Email updated');
+    } catch (err) {
+      toast.error((err as Error)?.message || 'Failed to update email');
+    } finally {
+      setIsConfirmingEmailChange(false);
     }
   }
 
@@ -260,10 +330,116 @@ export function ProfileForm() {
                 </div>
               )}
               <Button type='submit' disabled={isSubmitting}>
-                {isSubmitting ? 'Updating...' : 'Update Profile'}
+                {isSubmitting ? (
+                  <>
+                    <BarsSpinner size={12} />
+                    Updating
+                  </>
+                ) : (
+                  'Update Profile'
+                )}
               </Button>
             </form>
           </Form>
+        </div>
+
+        <div className='space-y-2'>
+          <form onSubmit={handleRequestEmailChange} className='space-y-3'>
+            <div className='space-y-2'>
+              <label htmlFor='profile-email' className='text-sm font-medium'>
+                Email
+              </label>
+              <div className='relative'>
+                <Input
+                  id='profile-email'
+                  type='email'
+                  value={newEmail}
+                  onChange={e => setNewEmail(e.target.value)}
+                  disabled={isRequestingEmailChange || isConfirmingEmailChange}
+                  className='pl-9'
+                  placeholder='you@example.com'
+                  autoComplete='email'
+                />
+                <Mail className='text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2' />
+              </div>
+              <p className='text-muted-foreground text-xs'>
+                Email changes are confirmed with a verification code.
+              </p>
+            </div>
+
+            <Button
+              type='submit'
+              variant='outline'
+              disabled={
+                isRequestingEmailChange ||
+                isConfirmingEmailChange ||
+                !newEmail.trim() ||
+                newEmail.trim().toLowerCase() === user.email?.toLowerCase()
+              }
+            >
+              {isRequestingEmailChange ? (
+                <>
+                  <BarsSpinner size={12} />
+                  Sending code
+                </>
+              ) : (
+                'Change Email'
+              )}
+            </Button>
+          </form>
+
+          {pendingEmail && (
+            <form
+              onSubmit={handleConfirmEmailChange}
+              className='rounded-lg border p-3'
+            >
+              <div className='space-y-2'>
+                <div>
+                  <div className='text-sm font-medium'>Verify new email</div>
+                  <p className='text-muted-foreground mt-0.5 text-xs'>
+                    Enter the code sent to {pendingEmail}.
+                  </p>
+                </div>
+                <Input
+                  value={emailOtp}
+                  onChange={e => setEmailOtp(e.target.value)}
+                  disabled={isConfirmingEmailChange}
+                  inputMode='numeric'
+                  autoComplete='one-time-code'
+                  placeholder='0000'
+                  maxLength={8}
+                />
+                <div className='flex items-center justify-between gap-2'>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    disabled={isConfirmingEmailChange}
+                    onClick={() => {
+                      setPendingEmail(null);
+                      setEmailOtp('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type='submit'
+                    size='sm'
+                    disabled={!emailOtp.trim() || isConfirmingEmailChange}
+                  >
+                    {isConfirmingEmailChange ? (
+                      <>
+                        <BarsSpinner size={12} />
+                        Verifying
+                      </>
+                    ) : (
+                      'Verify Email'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
