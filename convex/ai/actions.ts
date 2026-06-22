@@ -300,6 +300,14 @@ export const generateResponse = internalAction({
         }
       }
     } catch (error) {
+      const threadRow = await ctx.runQuery(
+        internal.ai.internal.getAssistantThreadRowById,
+        { assistantThreadId: args.assistantThreadId },
+      );
+      if (threadRow?.threadStatus === 'stopped') {
+        return null;
+      }
+
       const errorMessage = sanitizeAssistantError(error);
       await ctx.runMutation(internal.ai.mutations.setThreadError, {
         assistantThreadId: args.assistantThreadId,

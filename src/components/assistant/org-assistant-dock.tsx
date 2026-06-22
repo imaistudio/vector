@@ -104,6 +104,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
   const executeConfirmedAction = useMutation(
     api.ai.mutations.executeConfirmedAction,
   );
+  const stopThread = useMutation(api.ai.mutations.stopThread);
   const clearThreadHistory = useAction(api.ai.actions.clearThreadHistory);
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -485,6 +486,22 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
     [executeConfirmedAction, orgSlug, threadRow?._id],
   );
 
+  const handleStop = async () => {
+    if (!threadRow?._id) return false;
+    try {
+      const result = await stopThread({
+        orgSlug,
+        assistantThreadId: threadRow._id,
+      });
+      return result.stopped;
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to stop response',
+      );
+      return false;
+    }
+  };
+
   const handleClearHistory = async () => {
     const ok = await confirmAction({
       title: 'Clear conversation',
@@ -734,6 +751,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
               ref={inputRef}
               orgSlug={orgSlug}
               onSubmit={handleSend}
+              onStop={handleStop}
               onFocus={() => setIsExpanded(true)}
               busy={isSending || isAssistantActive}
               variant='dock'
