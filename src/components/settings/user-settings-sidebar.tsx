@@ -94,48 +94,57 @@ export function UserSettingsSidebar() {
   }, [firstOrg, lastWorkspace, userOrgsQuery.data]);
 
   return (
-    <nav className='space-y-1 p-2 pt-1'>
-      <div className='space-y-2 pb-2'>
-        {workspace && (
+    <>
+      {workspace && (
+        <div className='p-2'>
           <Link
             href={`/${workspace.slug}/issues`}
             aria-label={`Back to ${workspace.name} workspace`}
-            className='bg-background text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring group inline-flex h-8 max-w-full items-center gap-1.5 rounded-full border px-2.5 text-sm font-medium shadow-sm transition-colors focus-visible:ring-2 focus-visible:outline-none'
+            className='bg-background hover:bg-accent/50 focus-visible:ring-ring group flex w-full items-center justify-between rounded-md border p-1 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none'
           >
-            <ChevronLeft className='size-4 shrink-0' />
-            <span className='shrink-0'>Back</span>
-            <span className='text-muted-foreground group-hover:text-accent-foreground/70 min-w-0 truncate text-xs'>
+            <div className='flex min-w-0 flex-1 items-center gap-2'>
+              <ChevronLeft className='text-muted-foreground group-hover:text-foreground size-4 shrink-0 transition-colors' />
+              <span className='truncate text-sm font-medium'>
+                Back to workspace
+              </span>
+            </div>
+            <span className='text-muted-foreground max-w-20 truncate text-xs'>
               {workspace.name}
             </span>
           </Link>
-        )}
-        <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-          User Settings
-        </h2>
-      </div>
+        </div>
+      )}
 
-      {settingsItems.map(item => {
-        const isActive =
-          pathname === item.href ||
-          (item.href !== '/settings' && pathname.startsWith(item.href));
+      <nav className='space-y-1 p-2 pt-0'>
+        <div className='pb-2'>
+          <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
+            User Settings
+          </h2>
+        </div>
 
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              'group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              'hover:bg-foreground/5 hover:text-foreground',
-              isActive
-                ? 'bg-foreground/5 text-foreground'
-                : 'text-muted-foreground',
-            )}
-          >
-            <item.icon className='size-4 shrink-0' />
-            <span className='truncate'>{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
+        {settingsItems.map(item => {
+          const isActive =
+            pathname === item.href ||
+            (item.href !== '/settings' && pathname.startsWith(item.href));
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                'group flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                'hover:bg-foreground/5 hover:text-foreground',
+                isActive
+                  ? 'bg-foreground/5 text-foreground'
+                  : 'text-muted-foreground',
+              )}
+            >
+              <item.icon className='size-4 shrink-0' />
+              <span className='truncate'>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }
