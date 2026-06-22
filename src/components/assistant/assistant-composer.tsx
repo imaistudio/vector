@@ -154,6 +154,7 @@ export const AssistantComposer = forwardRef<
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [queuedSubmission, setQueuedSubmission] =
     useState<QueuedSubmission | null>(null);
+  const [isMultiline, setIsMultiline] = useState(false);
   const prevBusyRef = useRef(busy);
   const onSubmitRef = useRef(onSubmit);
   useEffect(() => {
@@ -489,6 +490,8 @@ export const AssistantComposer = forwardRef<
     variant === 'dock'
       ? 'min-h-8 flex-1 px-2 py-1.5 text-xs'
       : 'min-h-10 flex-1 px-3 py-2 text-sm';
+  const threadIconButtonClass =
+    'size-9 shrink-0 rounded-md p-0 text-muted-foreground hover:text-foreground';
 
   // ── Toolbar content (shared between inline and popover) ────────────
 
@@ -648,10 +651,12 @@ export const AssistantComposer = forwardRef<
   return (
     <div
       className={cn(
-        'border-border/60 bg-background/80 overflow-hidden rounded-lg border',
-        variant === 'thread' && 'backdrop-blur-sm',
+        variant === 'thread'
+          ? 'bg-card overflow-visible rounded-[12px] shadow-[0_5px_16px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.035),inset_0_0_0_1px_color-mix(in_oklch,var(--border)_58%,transparent)] backdrop-blur-sm transition-[border-radius,box-shadow,background-color,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] dark:shadow-[0_8px_22px_rgba(0,0,0,0.24),0_1px_2px_rgba(0,0,0,0.18),inset_0_0_0_1px_color-mix(in_oklch,var(--border)_62%,transparent)]'
+          : 'border-border/60 bg-background/80 overflow-hidden rounded-lg border',
         className,
       )}
+      data-assistant-composer-multiline={isMultiline ? 'true' : 'false'}
     >
       {/* Attachments bar */}
       {attachments.length > 0 ? (
@@ -719,45 +724,264 @@ export const AssistantComposer = forwardRef<
         </div>
       ) : null}
 
-      {/* Input row */}
-      <div className='flex items-center gap-1'>
-        <AssistantInput
-          ref={inputRef}
-          orgSlug={orgSlug}
-          onSubmit={handleSubmit}
-          onFocus={onFocus}
-          disabled={!canType}
-          hasExternalContent={attachments.length > 0}
-          className={inputClass}
-          placeholder={
-            busy && !queuedSubmission
-              ? 'Ask anything (will queue until the current turn finishes)'
-              : placeholder
-          }
-        />
-        <div className='flex shrink-0 items-center gap-0.5 pr-1'>
-          {auxiliaryActions}
-          <Button
-            type='button'
-            size='sm'
-            className={sendButtonClass}
-            disabled={!canType || !!queuedSubmission}
-            onClick={() => inputRef.current?.submit()}
-          >
-            {isUploadingAttachment ? (
-              <Loader2 className='size-3 animate-spin' />
-            ) : busy && !queuedSubmission ? (
-              <BarsSpinner size={variant === 'dock' ? 10 : 12} />
-            ) : (
-              <ArrowUp
-                className={cn(variant === 'dock' ? 'size-2.5' : 'size-3.5')}
-              />
+      {variant === 'thread' ? (
+        <div
+          className={cn(
+            'relative z-20 flex min-h-14 min-w-0 items-center gap-2 overflow-visible transition-[min-height,padding] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            isMultiline
+              ? 'grid min-h-[150px] grid-cols-[minmax(0,1fr)_auto] grid-rows-[1fr_auto] items-start gap-x-3 gap-y-3 px-4 py-4'
+              : 'px-[7px] py-[9px]',
+          )}
+        >
+          <input
+            ref={fileInputRef}
+            type='file'
+            className='hidden'
+            multiple
+            onChange={event => void handleFileSelect(event)}
+            accept='image/*,.txt,.md,.json,.csv,.pdf,.js,.ts,.tsx,.jsx,.py,.go,.rs,.sh'
+          />
+          <div
+            className={cn(
+              'flex min-w-0',
+              isMultiline
+                ? 'col-span-2 row-start-1'
+                : 'order-2 flex-1 items-center',
             )}
-          </Button>
+          >
+            <AssistantInput
+              ref={inputRef}
+              orgSlug={orgSlug}
+              onSubmit={handleSubmit}
+              onFocus={onFocus}
+              disabled={!canType}
+              hasExternalContent={attachments.length > 0}
+              onMultilineChange={setIsMultiline}
+              className={cn(
+                'min-w-0 flex-1 px-0 py-0 text-[15px]',
+                isMultiline ? 'min-h-[76px]' : 'min-h-9',
+              )}
+              placeholder={
+                busy && !queuedSubmission
+                  ? 'Ask anything (will queue until the current turn finishes)'
+                  : placeholder
+              }
+            />
+          </div>
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-1',
+              isMultiline
+                ? 'col-start-1 row-start-2 self-end'
+                : 'order-1 ml-0.5 self-center',
+            )}
+          >
+            <Button
+              type='button'
+              size='sm'
+              variant='ghost'
+              className={threadIconButtonClass}
+              disabled={!canInteract}
+              onClick={() => fileInputRef.current?.click()}
+              title='Attach'
+              aria-label='Attach'
+            >
+              {isUploadingAttachment ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : (
+                <Paperclip className='size-4' />
+              )}
+            </Button>
+          </div>
+          <div
+            className={cn(
+              'flex shrink-0 items-center gap-1',
+              isMultiline
+                ? 'col-start-2 row-start-2 self-end justify-self-end'
+                : 'order-3 mr-0.5 self-center',
+            )}
+          >
+            <Popover open={modelOpen} onOpenChange={setModelOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='ghost'
+                  className='text-muted-foreground hover:text-foreground h-9 max-w-44 min-w-0 justify-between gap-1.5 rounded-md px-2.5 text-sm'
+                  disabled={!canInteract}
+                >
+                  <span className='truncate'>{triggerLabel}</span>
+                  <ChevronDown className='size-4 shrink-0' />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align='start' className='w-[320px] p-0'>
+                <Command>
+                  <CommandInput placeholder='Search model...' className='h-9' />
+                  <CommandList>
+                    <CommandEmpty>No models found.</CommandEmpty>
+                    <CommandGroup>
+                      {modelOptions.map(option => (
+                        <CommandItem
+                          key={option.label}
+                          value={`${option.label} ${option.value} ${option.hint}`}
+                          onSelect={() => {
+                            persistModel(option.value);
+                            setCustomModelDraft(option.value);
+                            setModelOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              'mr-2 size-3.5',
+                              model === option.value
+                                ? 'opacity-100'
+                                : 'opacity-0',
+                            )}
+                          />
+                          <div className='min-w-0 flex-1'>
+                            <div className='truncate text-xs'>
+                              {option.label}
+                            </div>
+                            <div className='text-muted-foreground truncate text-[10px]'>
+                              {option.hint}
+                            </div>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+                <div className='border-border/60 space-y-2 border-t p-2'>
+                  <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
+                    Custom model ID
+                  </div>
+                  <div className='flex items-center gap-1.5'>
+                    <Input
+                      value={customModelDraft}
+                      onChange={event =>
+                        setCustomModelDraft(event.target.value)
+                      }
+                      placeholder='openrouter/model-id'
+                      className='h-8 text-xs'
+                    />
+                    <Button
+                      type='button'
+                      size='sm'
+                      className='h-8 px-2 text-xs'
+                      onClick={() => {
+                        persistModel(customModelDraft.trim());
+                        setModelOpen(false);
+                      }}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='ghost'
+                  className={cn(
+                    threadIconButtonClass,
+                    thinkingLevel !== 'off' &&
+                      'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400',
+                  )}
+                  onClick={handleCycleThinking}
+                >
+                  <Lightbulb className='size-4' />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side='top'>
+                Thinking:{' '}
+                {thinkingLevel === 'off'
+                  ? 'Off'
+                  : thinkingLevel.charAt(0).toUpperCase() +
+                    thinkingLevel.slice(1)}
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='ghost'
+                  className={cn(
+                    threadIconButtonClass,
+                    skipConfirmations &&
+                      'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-400',
+                  )}
+                  onClick={handleToggleSkipConfirmations}
+                >
+                  <ShieldCheck className='size-4' />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side='top'>
+                {skipConfirmations
+                  ? 'Skip confirmations: On'
+                  : 'Skip confirmations: Off'}
+              </TooltipContent>
+            </Tooltip>
+            {auxiliaryActions}
+            <Button
+              type='button'
+              size='sm'
+              className='size-9 shrink-0 rounded-md p-0'
+              disabled={!canType || !!queuedSubmission}
+              onClick={() => inputRef.current?.submit()}
+            >
+              {isUploadingAttachment ? (
+                <Loader2 className='size-3.5 animate-spin' />
+              ) : busy && !queuedSubmission ? (
+                <BarsSpinner size={12} />
+              ) : (
+                <ArrowUp className='size-4' />
+              )}
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className='flex items-center gap-1'>
+            <AssistantInput
+              ref={inputRef}
+              orgSlug={orgSlug}
+              onSubmit={handleSubmit}
+              onFocus={onFocus}
+              disabled={!canType}
+              hasExternalContent={attachments.length > 0}
+              className={inputClass}
+              placeholder={
+                busy && !queuedSubmission
+                  ? 'Ask anything (will queue until the current turn finishes)'
+                  : placeholder
+              }
+            />
+            <div className='flex shrink-0 items-center gap-0.5 pr-1'>
+              {auxiliaryActions}
+              <Button
+                type='button'
+                size='sm'
+                className={sendButtonClass}
+                disabled={!canType || !!queuedSubmission}
+                onClick={() => inputRef.current?.submit()}
+              >
+                {isUploadingAttachment ? (
+                  <Loader2 className='size-3 animate-spin' />
+                ) : busy && !queuedSubmission ? (
+                  <BarsSpinner size={10} />
+                ) : (
+                  <ArrowUp className='size-2.5' />
+                )}
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
 
-      {/* Toolbar — below input for thread, behind a settings icon for dock */}
       {variant === 'dock' ? (
         <div className='border-border/50 flex items-center border-t px-1 py-0.5'>
           <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
@@ -786,11 +1010,7 @@ export const AssistantComposer = forwardRef<
             </PopoverContent>
           </Popover>
         </div>
-      ) : (
-        <div className='border-border/50 flex flex-wrap items-center gap-1 border-t px-1.5 py-1'>
-          {toolbarContent}
-        </div>
-      )}
+      ) : null}
     </div>
   );
 });

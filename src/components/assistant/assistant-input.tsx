@@ -52,6 +52,7 @@ export type AssistantInputProps = {
     mentions: MentionRef[],
   ) => Promise<boolean> | boolean;
   onFocus?: () => void;
+  onMultilineChange?: (isMultiline: boolean) => void;
   className?: string;
 };
 
@@ -152,11 +153,15 @@ export const AssistantInput = forwardRef<
     hasExternalContent = false,
     onSubmit,
     onFocus,
+    onMultilineChange,
     className,
   },
   ref,
 ) {
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  const multilineRef = useRef(false);
+  const expandedLockedRef = useRef(false);
+  const measurementFrameRef = useRef<number | null>(null);
   const onSubmitRef = useRef(onSubmit);
   useEffect(() => {
     onSubmitRef.current = onSubmit;
@@ -175,6 +180,55 @@ export const AssistantInput = forwardRef<
       editor.commands.focus('end');
     }
   }, [hasExternalContent]);
+
+  const measureMultiline = useCallback(() => {
+    const editor = editorRef.current;
+    const editorElement = editor?.view.dom;
+    if (!editor || !editorElement) return;
+
+    const text = editor.getText();
+    const hasText = text.trim().length > 0;
+    if (!hasText && !hasExternalContent) {
+      expandedLockedRef.current = false;
+      if (multilineRef.current) {
+        multilineRef.current = false;
+        onMultilineChange?.(false);
+      }
+      return;
+    }
+
+    const hasMultipleBlocks =
+      editorElement.querySelectorAll(':scope > p, :scope > div').length > 1;
+    const hasLineBreak =
+      text.includes('\n') ||
+      editorElement.querySelector('br:not(.ProseMirror-trailingBreak)') !==
+        null;
+    const hasWrappedLine = editorElement.scrollHeight > 34;
+
+    if (hasMultipleBlocks || hasLineBreak || hasWrappedLine) {
+      expandedLockedRef.current = true;
+      if (!multilineRef.current) {
+        multilineRef.current = true;
+        onMultilineChange?.(true);
+      }
+      return;
+    }
+
+    if (!expandedLockedRef.current && multilineRef.current) {
+      multilineRef.current = false;
+      onMultilineChange?.(false);
+    }
+  }, [hasExternalContent, onMultilineChange]);
+
+  const scheduleMultilineMeasure = useCallback(() => {
+    if (measurementFrameRef.current !== null) {
+      window.cancelAnimationFrame(measurementFrameRef.current);
+    }
+    measurementFrameRef.current = window.requestAnimationFrame(() => {
+      measurementFrameRef.current = null;
+      measureMultiline();
+    });
+  }, [measureMultiline]);
 
   // Stable getter for the submit function
   const getSubmitFn = useCallback(
@@ -294,6 +348,10 @@ export const AssistantInput = forwardRef<
     immediatelyRender: false,
     onCreate: ({ editor: e }) => {
       editorRef.current = e;
+      scheduleMultilineMeasure();
+    },
+    onUpdate: () => {
+      scheduleMultilineMeasure();
     },
   });
 
@@ -315,6 +373,20 @@ export const AssistantInput = forwardRef<
     if (!editor) return;
     editor.setEditable(!disabled);
   }, [editor, disabled]);
+
+  useEffect(() => {
+    scheduleMultilineMeasure();
+  }, [hasExternalContent, scheduleMultilineMeasure]);
+
+  useEffect(() => {
+    window.addEventListener('resize', scheduleMultilineMeasure);
+    return () => {
+      window.removeEventListener('resize', scheduleMultilineMeasure);
+      if (measurementFrameRef.current !== null) {
+        window.cancelAnimationFrame(measurementFrameRef.current);
+      }
+    };
+  }, [scheduleMultilineMeasure]);
 
   if (!editor) return null;
 
