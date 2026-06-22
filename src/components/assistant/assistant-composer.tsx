@@ -24,7 +24,6 @@ import {
   X,
   Settings2,
   ShieldCheck,
-  Lightbulb,
 } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api } from '@/convex/_generated/api';
@@ -308,20 +307,15 @@ export const AssistantComposer = forwardRef<
     });
   }, []);
 
-  const handleCycleThinking = useCallback(() => {
-    setThinkingLevel(current => {
-      const order: ComposerThinkingLevel[] = ['off', ...enabledThinkingLevels];
-      const nextIndex = (order.indexOf(current) + 1) % order.length;
-      const next = order[nextIndex];
-      if (next === 'off') {
-        window.localStorage.removeItem(THINKING_STORAGE_KEY);
-      } else {
-        window.localStorage.setItem(THINKING_STORAGE_KEY, next);
-      }
-      setHasStoredThinkingPreference(true);
-      return next;
-    });
-  }, [enabledThinkingLevels]);
+  const persistThinkingLevel = useCallback((next: ComposerThinkingLevel) => {
+    setThinkingLevel(next);
+    if (next === 'off') {
+      window.localStorage.removeItem(THINKING_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(THINKING_STORAGE_KEY, next);
+    }
+    setHasStoredThinkingPreference(true);
+  }, []);
 
   const handleRemoveAttachment = useCallback((attachmentId: string) => {
     setAttachments(current => {
@@ -584,6 +578,32 @@ export const AssistantComposer = forwardRef<
           </Command>
           <div className='border-border/60 space-y-2 border-t p-2'>
             <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
+              Thinking
+            </div>
+            <div className='flex flex-wrap items-center gap-1'>
+              {(
+                ['off', ...enabledThinkingLevels] as ComposerThinkingLevel[]
+              ).map(level => (
+                <button
+                  key={level}
+                  type='button'
+                  className={cn(
+                    'h-7 rounded-md px-2 text-[11px] font-medium transition-colors',
+                    thinkingLevel === level
+                      ? 'bg-amber-500/12 text-amber-600 dark:text-amber-300'
+                      : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+                  )}
+                  onClick={() => persistThinkingLevel(level)}
+                >
+                  {level === 'off'
+                    ? 'Off'
+                    : level.charAt(0).toUpperCase() + level.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className='border-border/60 space-y-2 border-t p-2'>
+            <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
               Custom model ID
             </div>
             <div className='flex items-center gap-1.5'>
@@ -617,37 +637,21 @@ export const AssistantComposer = forwardRef<
             variant='ghost'
             className={cn(
               iconButtonClass,
-              thinkingLevel !== 'off' &&
-                'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400',
-            )}
-            onClick={handleCycleThinking}
-          >
-            <Lightbulb
-              className={cn(variant === 'dock' ? 'size-3' : 'size-3.5')}
-            />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side='top'>
-          Thinking:{' '}
-          {thinkingLevel === 'off'
-            ? 'Off'
-            : thinkingLevel.charAt(0).toUpperCase() + thinkingLevel.slice(1)}
-        </TooltipContent>
-      </Tooltip>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type='button'
-            size='sm'
-            variant='ghost'
-            className={cn(
-              iconButtonClass,
               'ml-auto',
               skipConfirmations &&
                 'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-400',
             )}
             onClick={handleToggleSkipConfirmations}
+            title={
+              skipConfirmations
+                ? 'Permissions: skip confirmations'
+                : 'Permissions: ask before actions'
+            }
+            aria-label={
+              skipConfirmations
+                ? 'Permissions: skip confirmations'
+                : 'Permissions: ask before actions'
+            }
           >
             <ShieldCheck
               className={cn(variant === 'dock' ? 'size-3' : 'size-3.5')}
@@ -656,8 +660,8 @@ export const AssistantComposer = forwardRef<
         </TooltipTrigger>
         <TooltipContent side='top'>
           {skipConfirmations
-            ? 'Skip confirmations: On'
-            : 'Skip confirmations: Off'}
+            ? 'Permissions: skip confirmations'
+            : 'Permissions: ask before actions'}
         </TooltipContent>
       </Tooltip>
     </>
@@ -868,6 +872,35 @@ export const AssistantComposer = forwardRef<
                 </Command>
                 <div className='border-border/60 space-y-2 border-t p-2'>
                   <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
+                    Thinking
+                  </div>
+                  <div className='flex flex-wrap items-center gap-1'>
+                    {(
+                      [
+                        'off',
+                        ...enabledThinkingLevels,
+                      ] as ComposerThinkingLevel[]
+                    ).map(level => (
+                      <button
+                        key={level}
+                        type='button'
+                        className={cn(
+                          'h-7 rounded-md px-2 text-[11px] font-medium transition-colors',
+                          thinkingLevel === level
+                            ? 'bg-amber-500/12 text-amber-600 dark:text-amber-300'
+                            : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+                        )}
+                        onClick={() => persistThinkingLevel(level)}
+                      >
+                        {level === 'off'
+                          ? 'Off'
+                          : level.charAt(0).toUpperCase() + level.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className='border-border/60 space-y-2 border-t p-2'>
+                  <div className='text-muted-foreground text-[10px] tracking-[0.12em] uppercase'>
                     Custom model ID
                   </div>
                   <div className='flex items-center gap-1.5'>
@@ -902,42 +935,28 @@ export const AssistantComposer = forwardRef<
                   variant='ghost'
                   className={cn(
                     threadIconButtonClass,
-                    thinkingLevel !== 'off' &&
-                      'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 dark:text-amber-400',
-                  )}
-                  onClick={handleCycleThinking}
-                >
-                  <Lightbulb className='size-4' />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side='top'>
-                Thinking:{' '}
-                {thinkingLevel === 'off'
-                  ? 'Off'
-                  : thinkingLevel.charAt(0).toUpperCase() +
-                    thinkingLevel.slice(1)}
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type='button'
-                  size='sm'
-                  variant='ghost'
-                  className={cn(
-                    threadIconButtonClass,
                     skipConfirmations &&
                       'bg-red-500/10 text-red-600 hover:bg-red-500/20 dark:text-red-400',
                   )}
                   onClick={handleToggleSkipConfirmations}
+                  title={
+                    skipConfirmations
+                      ? 'Permissions: skip confirmations'
+                      : 'Permissions: ask before actions'
+                  }
+                  aria-label={
+                    skipConfirmations
+                      ? 'Permissions: skip confirmations'
+                      : 'Permissions: ask before actions'
+                  }
                 >
                   <ShieldCheck className='size-4' />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side='top'>
                 {skipConfirmations
-                  ? 'Skip confirmations: On'
-                  : 'Skip confirmations: Off'}
+                  ? 'Permissions: skip confirmations'
+                  : 'Permissions: ask before actions'}
               </TooltipContent>
             </Tooltip>
             {auxiliaryActions}
