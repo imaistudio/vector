@@ -4,11 +4,13 @@ import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { format } from 'date-fns';
-import { Loader2, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Id } from '@/convex/_generated/dataModel';
+import { useRouter } from 'nextjs-toploader/app';
 
 const header = (
   <div className='border-b'>
@@ -22,6 +24,7 @@ const header = (
 );
 
 export default function InvitesPage() {
+  const router = useRouter();
   const invites = useCachedQuery(api.users.getPendingInvitations);
   const acceptInvite = useMutation(
     api.organizations.mutations.acceptInvitation,
@@ -33,6 +36,13 @@ export default function InvitesPage() {
     inviteId: Id<'invitations'>;
     type: 'accept' | 'decline';
   } | null>(null);
+  const autoAcceptStartedRef = useRef(false);
+  const [inviteUrlParams, setInviteUrlParams] = useState<{
+    inviteId: string | null;
+    redirectTo: string | null;
+  }>({ inviteId: null, redirectTo: null });
+  const inviteIdFromUrl = inviteUrlParams.inviteId;
+  const redirectTo = inviteUrlParams.redirectTo;
 
   const isPendingAction = (
     inviteId: Id<'invitations'>,
@@ -42,8 +52,11 @@ export default function InvitesPage() {
   const handleAccept = async (inviteId: Id<'invitations'>) => {
     setPendingAction({ inviteId, type: 'accept' });
     try {
-      await acceptInvite({ inviteId });
+      const result = await acceptInvite({ inviteId });
       toast.success('Invitation accepted');
+      if (result.organizationSlug) {
+        router.replace(`/${result.organizationSlug}`);
+      }
     } catch (err) {
       toast.error((err as Error).message);
     } finally {
@@ -62,6 +75,49 @@ export default function InvitesPage() {
       setPendingAction(null);
     }
   };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setInviteUrlParams({
+      inviteId: params.get('inviteId'),
+      redirectTo: params.get('redirectTo'),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (
+      !inviteIdFromUrl ||
+      invites === undefined ||
+      autoAcceptStartedRef.current
+    ) {
+      return;
+    }
+
+    const invite = invites.find(inv => inv._id === inviteIdFromUrl);
+    if (!invite) {
+      return;
+    }
+
+    autoAcceptStartedRef.current = true;
+    setPendingAction({ inviteId: invite._id, type: 'accept' });
+
+    void (async () => {
+      try {
+        const result = await acceptInvite({ inviteId: invite._id });
+        toast.success('Invitation accepted');
+        const target = result.organizationSlug
+          ? `/${result.organizationSlug}`
+          : redirectTo;
+        if (target) {
+          router.replace(target);
+        }
+      } catch (err) {
+        toast.error((err as Error).message);
+      } finally {
+        setPendingAction(null);
+      }
+    })();
+  }, [acceptInvite, inviteIdFromUrl, invites, redirectTo, router]);
 
   if (invites === undefined) {
     return (
@@ -127,7 +183,7 @@ export default function InvitesPage() {
                   disabled={pendingAction !== null}
                 >
                   {isPendingAction(inv._id, 'accept') ? (
-                    <Loader2 className='size-3 animate-spin' />
+                    <BarsSpinner size={12} />
                   ) : (
                     'Accept'
                   )}
@@ -140,7 +196,7 @@ export default function InvitesPage() {
                   disabled={pendingAction !== null}
                 >
                   {isPendingAction(inv._id, 'decline') ? (
-                    <Loader2 className='size-3 animate-spin' />
+                    <BarsSpinner size={12} />
                   ) : (
                     'Decline'
                   )}

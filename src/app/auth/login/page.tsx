@@ -21,13 +21,14 @@ import {
   CardFooter,
   CardHeader,
 } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BarsSpinner } from '@/components/bars-spinner';
 import Link from 'next/link';
 import { extractAuthErrorMessage } from '@/lib/auth-error-handler';
 import { authClient } from '@/lib/auth-client';
 import { toast } from 'sonner';
 import { AuthLogo, AuthShell } from '../_components/auth-brand-panel';
+import { buildAuthHandoffHref } from '@/lib/invitation-links';
 
 const signInSchema = z.object({
   identifier: z.string().min(1, 'Email or username is required'),
@@ -39,6 +40,12 @@ type SignInFormType = z.infer<typeof signInSchema>;
 function LoginForm() {
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/';
+  const inviteId = searchParams.get('inviteId');
+  const signUpHref = buildAuthHandoffHref({
+    path: '/auth/signup',
+    redirectTo,
+    inviteId,
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<SignInFormType>({
@@ -65,7 +72,11 @@ function LoginForm() {
         throw result.error;
       }
 
-      window.location.href = `/auth/signing-in?redirectTo=${encodeURIComponent(redirectTo)}`;
+      window.location.href = buildAuthHandoffHref({
+        path: '/auth/signing-in',
+        redirectTo,
+        inviteId,
+      });
     } catch (error) {
       const message = extractAuthErrorMessage(error);
       toast.error(message);
@@ -150,7 +161,7 @@ function LoginForm() {
               >
                 {isLoading ? (
                   <span className='flex items-center gap-2'>
-                    <Loader2 className='size-3.5 animate-spin' />
+                    <BarsSpinner size={14} />
                     Signing in…
                   </span>
                 ) : (
@@ -165,7 +176,7 @@ function LoginForm() {
           <p className='text-muted-foreground text-sm'>
             No account?{' '}
             <Link
-              href='/auth/signup'
+              href={signUpHref}
               className='text-foreground font-medium hover:underline'
             >
               Create one

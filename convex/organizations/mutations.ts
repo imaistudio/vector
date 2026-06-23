@@ -23,6 +23,10 @@ import {
   normalizeSocialLinkUrl,
   SOCIAL_LINK_PLATFORMS,
 } from '../../src/lib/social-links';
+import {
+  buildInviteSignupHref,
+  buildPendingInviteHref,
+} from '../../src/lib/invitation-links';
 
 const socialLinkPlatformValidator = v.union(
   ...SOCIAL_LINK_PLATFORMS.map(platform => v.literal(platform)),
@@ -259,7 +263,9 @@ export const acceptInvitation = mutation({
       invite.customRoleId,
     );
 
-    return { success: true } as const;
+    const org = await ctx.db.get('organizations', invite.organizationId);
+
+    return { success: true, organizationSlug: org?.slug ?? null } as const;
   },
 });
 
@@ -314,7 +320,17 @@ export const resendInvite = mutation({
           inviterName:
             inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
           roleLabel: customRole?.role.name ?? invite.role,
-          href: existingUser ? '/settings/invites' : '/auth/signup',
+          href: existingUser
+            ? buildPendingInviteHref({
+                inviteId: invite._id,
+                orgSlug: org.slug,
+              })
+            : buildInviteSignupHref({
+                inviteId: invite._id,
+                orgSlug: org.slug,
+                email: invite.email,
+                organizationName: org.name,
+              }),
         },
         recipients: [
           {
@@ -1157,6 +1173,7 @@ export const invite = mutation({
   },
   handler: async (ctx, args) => {
     const userId = await requireAuthUser(ctx);
+    const normalizedEmail = args.email.trim().toLowerCase();
     const org = await requireOrgAccess(
       ctx,
       args.orgSlug,
@@ -1165,7 +1182,7 @@ export const invite = mutation({
 
     const existingUser = await ctx.db
       .query('users')
-      .withIndex('email', q => q.eq('email', args.email))
+      .withIndex('email', q => q.eq('email', normalizedEmail))
       .first();
 
     if (existingUser) {
@@ -1192,7 +1209,7 @@ export const invite = mutation({
 
     const inviteId = await ctx.db.insert('invitations', {
       organizationId: org._id,
-      email: args.email.toLowerCase(),
+      email: normalizedEmail,
       role: args.role,
       customRoleId: args.customRoleId,
       status: 'pending',
@@ -1212,12 +1229,22 @@ export const invite = mutation({
         inviterName:
           inviter?.name ?? inviter?.username ?? inviter?.email ?? 'Someone',
         roleLabel: customRole?.role.name ?? args.role,
-        href: existingUser ? '/settings/invites' : '/auth/signup',
+        href: existingUser
+          ? buildPendingInviteHref({
+              inviteId,
+              orgSlug: org.slug,
+            })
+          : buildInviteSignupHref({
+              inviteId,
+              orgSlug: org.slug,
+              email: normalizedEmail,
+              organizationName: org.name,
+            }),
       },
       recipients: [
         {
           userId: existingUser?._id,
-          email: args.email,
+          email: normalizedEmail,
         },
       ],
     });

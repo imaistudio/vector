@@ -22,13 +22,14 @@ import {
   CardFooter,
   CardHeader,
 } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { BarsSpinner } from '@/components/bars-spinner';
 import Link from 'next/link';
 import { extractAuthErrorMessage } from '@/lib/auth-error-handler';
 import { authClient } from '@/lib/auth-client';
 import { toast } from 'sonner';
 import { AuthLogo, AuthShell } from '../_components/auth-brand-panel';
+import { buildAuthHandoffHref } from '@/lib/invitation-links';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,11 +55,20 @@ function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get('redirectTo') || '/';
+  const inviteId = searchParams.get('inviteId');
+  const inviteWorkspace = searchParams.get('workspace')?.trim();
+  const invitedEmail = searchParams.get('email')?.trim().toLowerCase() ?? '';
+  const isInviteSignup = Boolean(inviteId);
+  const signInHref = buildAuthHandoffHref({
+    path: '/auth/login',
+    redirectTo,
+    inviteId,
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<SignUpFormType>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: { email: '', username: '', password: '' },
+    defaultValues: { email: invitedEmail, username: '', password: '' },
   });
 
   const handleSubmit = async (values: SignUpFormType) => {
@@ -80,7 +90,11 @@ function SignupForm() {
 
       toast.success('Account created!');
       router.push(
-        `/auth/signing-in?redirectTo=${encodeURIComponent(redirectTo)}`,
+        buildAuthHandoffHref({
+          path: '/auth/signing-in',
+          redirectTo,
+          inviteId,
+        }),
       );
     } catch (error) {
       const message = extractAuthErrorMessage(error);
@@ -97,10 +111,16 @@ function SignupForm() {
       <Card>
         <CardHeader>
           <h1 className='font-title text-lg font-semibold tracking-tight'>
-            Create account
+            {isInviteSignup && inviteWorkspace
+              ? `Create account to join ${inviteWorkspace}`
+              : isInviteSignup
+                ? 'Create account to join workspace'
+                : 'Create account'}
           </h1>
           <p className='text-muted-foreground text-sm'>
-            Set up your Vector account
+            {isInviteSignup
+              ? 'Set up your Vector account and your invitation will be accepted automatically.'
+              : 'Set up your Vector account'}
           </p>
         </CardHeader>
 
@@ -179,9 +199,13 @@ function SignupForm() {
               >
                 {isLoading ? (
                   <span className='flex items-center gap-2'>
-                    <Loader2 className='size-3.5 animate-spin' />
-                    Creating account…
+                    <BarsSpinner size={14} />
+                    {isInviteSignup
+                      ? 'Creating account and joining'
+                      : 'Creating account'}
                   </span>
+                ) : isInviteSignup ? (
+                  'Create account and join'
                 ) : (
                   'Create account'
                 )}
@@ -194,7 +218,7 @@ function SignupForm() {
           <p className='text-muted-foreground text-sm'>
             Already have an account?{' '}
             <Link
-              href='/auth/login'
+              href={signInHref}
               className='text-foreground font-medium hover:underline'
             >
               Sign in
