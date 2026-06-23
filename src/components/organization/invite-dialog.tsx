@@ -5,6 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { BarsSpinner } from '@/components/bars-spinner';
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   ResponsiveDialog,
   ResponsiveDialogContent,
   ResponsiveDialogHeader,
@@ -16,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   AlertCircle,
-  CheckCircle2,
+  ChevronsUpDown,
   Sparkles,
   ShieldCheck,
   UserRoundPlus,
@@ -69,6 +82,7 @@ export function InviteDialog({
   const [customRoleId, setCustomRoleId] = useState<OrganizationRoleId | null>(
     null,
   );
+  const [roleOpen, setRoleOpen] = useState(false);
   const customRoles =
     useCachedQuery(api.roles.index.listInviteAssignable, { orgSlug }) ?? [];
 
@@ -95,12 +109,24 @@ export function InviteDialog({
       Icon: Sparkles,
     })),
   ];
-  const selectedRoleLabel =
+  const selectedRole =
     roleOptions.find(option =>
       option.kind === 'custom'
         ? customRoleId === option.value
         : customRoleId === null && role === option.value,
-    )?.label ?? 'Member';
+    ) ?? BUILT_IN_ROLE_OPTIONS[0];
+  const SelectedRoleIcon = selectedRole.Icon;
+
+  const handleRoleSelect = (option: InviteRoleOption) => {
+    if (option.kind === 'custom') {
+      setRole('member');
+      setCustomRoleId(option.value);
+    } else {
+      setRole(option.value);
+      setCustomRoleId(null);
+    }
+    setRoleOpen(false);
+  };
 
   const handleInvite = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -135,9 +161,6 @@ export function InviteDialog({
                 Send an email invitation and choose their starting access.
               </p>
             </div>
-            <div className='bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs'>
-              {selectedRoleLabel}
-            </div>
           </div>
 
           {error && (
@@ -162,63 +185,68 @@ export function InviteDialog({
             </span>
           </div>
 
-          <div
-            role='radiogroup'
-            aria-label='Invite role'
-            className='bg-muted/20 grid gap-1 rounded-lg border p-1 sm:grid-cols-2'
-          >
-            {roleOptions.map(option => {
-              const isSelected =
-                option.kind === 'custom'
-                  ? customRoleId === option.value
-                  : customRoleId === null && role === option.value;
-              const Icon = option.Icon;
+          <Popover open={roleOpen} onOpenChange={setRoleOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type='button'
+                variant='outline'
+                className='bg-muted/30 hover:bg-muted/50 h-10 w-full justify-between gap-2 px-3'
+                role='combobox'
+                aria-expanded={roleOpen}
+                aria-label='Invite role'
+                disabled={isSubmitting}
+              >
+                <span className='flex min-w-0 items-center gap-2'>
+                  <SelectedRoleIcon className='text-muted-foreground size-4 flex-shrink-0' />
+                  <span className='truncate'>{selectedRole.label}</span>
+                </span>
+                <ChevronsUpDown className='text-muted-foreground size-3.5 flex-shrink-0' />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align='start' className='w-(--anchor-width) p-0'>
+              <Command>
+                <CommandInput placeholder='Search roles...' className='h-9' />
+                <CommandList>
+                  <CommandEmpty>No roles found.</CommandEmpty>
+                  <CommandGroup>
+                    {roleOptions.map(option => {
+                      const isSelected =
+                        option.kind === 'custom'
+                          ? customRoleId === option.value
+                          : customRoleId === null && role === option.value;
+                      const Icon = option.Icon;
 
-              return (
-                <button
-                  key={`${option.kind}-${option.value}`}
-                  type='button'
-                  role='radio'
-                  aria-checked={isSelected}
-                  disabled={isSubmitting}
-                  onClick={() => {
-                    if (option.kind === 'custom') {
-                      setRole('member');
-                      setCustomRoleId(option.value);
-                      return;
-                    }
-                    setRole(option.value);
-                    setCustomRoleId(null);
-                  }}
-                  className={cn(
-                    'flex min-h-20 items-start gap-2 rounded-md border px-3 py-2 text-left transition-colors',
-                    'focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
-                    isSelected
-                      ? 'border-primary/70 bg-primary/10 text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-background/70 hover:text-foreground border-transparent bg-transparent',
-                  )}
-                >
-                  <Icon
-                    className={cn(
-                      'mt-0.5 size-4 flex-shrink-0',
-                      isSelected ? 'text-primary' : 'text-muted-foreground',
-                    )}
-                  />
-                  <span className='min-w-0 flex-1'>
-                    <span className='flex items-center gap-1.5 text-sm font-medium'>
-                      {option.label}
-                      {isSelected && (
-                        <CheckCircle2 className='text-primary size-3.5' />
-                      )}
-                    </span>
-                    <span className='mt-0.5 block text-xs leading-4'>
-                      {option.description}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                      return (
+                        <CommandItem
+                          key={`${option.kind}-${option.value}`}
+                          value={`${option.label} ${option.description}`}
+                          data-checked={isSelected}
+                          onSelect={() => handleRoleSelect(option)}
+                        >
+                          <Icon
+                            className={cn(
+                              'size-4',
+                              isSelected
+                                ? 'text-primary'
+                                : 'text-muted-foreground',
+                            )}
+                          />
+                          <span className='min-w-0 flex-1'>
+                            <span className='block truncate font-medium'>
+                              {option.label}
+                            </span>
+                            <span className='text-muted-foreground block truncate text-xs'>
+                              {option.description}
+                            </span>
+                          </span>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
 
           <div className='flex w-full flex-row items-center justify-between gap-2'>
             <Button
@@ -230,7 +258,11 @@ export function InviteDialog({
             >
               Cancel
             </Button>
-            <Button size='sm' disabled={!email.trim() || isSubmitting}>
+            <Button
+              type='submit'
+              size='sm'
+              disabled={!email.trim() || isSubmitting}
+            >
               {isSubmitting ? (
                 <>
                   <BarsSpinner size={12} />
