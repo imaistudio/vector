@@ -159,6 +159,7 @@ function ResponseCard({
       <ScrollArea
         className='relative max-h-[520px]'
         viewportClassName='max-h-[520px] px-4 pt-1 text-sm select-text text-foreground/90'
+        scrollbars='vertical'
       >
         {message.title ? (
           <div className='text-muted-foreground mb-2 flex items-center gap-2 text-[12px]'>

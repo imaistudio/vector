@@ -25,6 +25,7 @@ import { UserAvatar } from '@/components/user-avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { AutoLoadMore } from '@/components/ui/auto-load-more';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CreateViewDialog } from './create-view-dialog';
 import { EditViewDialog } from './edit-view-dialog';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
@@ -105,7 +106,7 @@ export function ViewsListPage() {
 
   if (!summary || status === 'LoadingFirstPage') {
     return (
-      <div className='bg-background h-full overflow-y-auto'>
+      <div className='bg-background flex h-full flex-col'>
         <div className='border-b'>
           <div className='flex items-center justify-between p-1'>
             <div className='flex items-center gap-1'>
@@ -115,18 +116,24 @@ export function ViewsListPage() {
             <Skeleton className='h-6 w-20' />
           </div>
         </div>
-        <div className='divide-y'>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-3 px-3 py-2.5'>
-              <Skeleton className='size-4 rounded' />
-              <div className='min-w-0 flex-1 space-y-1'>
-                <Skeleton className='h-4 w-1/3' />
-                <Skeleton className='h-3 w-1/5' />
+        <ScrollArea
+          className='min-h-0 flex-1'
+          viewportClassName='h-full'
+          scrollbars='vertical'
+        >
+          <div className='divide-y'>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className='flex items-center gap-3 px-3 py-2.5'>
+                <Skeleton className='size-4 rounded' />
+                <div className='min-w-0 flex-1 space-y-1'>
+                  <Skeleton className='h-4 w-1/3' />
+                  <Skeleton className='h-3 w-1/5' />
+                </div>
+                <Skeleton className='size-6 rounded-full' />
               </div>
-              <Skeleton className='size-6 rounded-full' />
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </ScrollArea>
       </div>
     );
   }
@@ -142,7 +149,7 @@ export function ViewsListPage() {
           onOpenChange={open => !open && setEditingViewId(null)}
         />
       )}
-      <div className='bg-background h-full overflow-y-auto'>
+      <div className='bg-background flex h-full flex-col'>
         {/* Header */}
         <div className='border-b'>
           <div className='flex items-center justify-between p-1'>
@@ -179,43 +186,53 @@ export function ViewsListPage() {
           </div>
         </div>
 
-        {/* Empty state */}
-        {results.length === 0 ? (
-          <div className='text-muted-foreground flex flex-col items-center gap-3 py-20 text-center'>
-            <LayoutGrid className='size-10 opacity-20' />
-            <p className='text-sm font-medium'>
-              {scope === 'mine' ? 'No views created by you' : 'No views found'}
-            </p>
-            <p className='max-w-xs text-xs'>
-              {scope === 'mine'
-                ? 'Views you create show up here, regardless of whether they are private, org-wide, or public.'
-                : 'This tab shows every view you can access, including your own views and shared ones.'}
-            </p>
-            {scope === 'mine' && canCreateViews && (
-              <CreateViewDialog
-                orgSlug={orgSlug}
-                className='mt-1 h-7 text-xs'
-              />
-            )}
-          </div>
-        ) : (
-          <div className='divide-border divide-y'>
-            {results.map(view => (
-              <ViewRow
-                key={view._id}
-                view={view}
-                orgSlug={orgSlug}
-                onNavigate={() => router.push(`/${orgSlug}/views/${view._id}`)}
-                onEdit={() => setEditingViewId(view._id as Id<'views'>)}
-                onDelete={() =>
-                  void handleDelete(view._id as Id<'views'>, view.name)
-                }
-              />
-            ))}
-          </div>
-        )}
+        <ScrollArea
+          className='min-h-0 flex-1'
+          viewportClassName='h-full'
+          scrollbars='vertical'
+        >
+          {/* Empty state */}
+          {results.length === 0 ? (
+            <div className='text-muted-foreground flex flex-col items-center gap-3 py-20 text-center'>
+              <LayoutGrid className='size-10 opacity-20' />
+              <p className='text-sm font-medium'>
+                {scope === 'mine'
+                  ? 'No views created by you'
+                  : 'No views found'}
+              </p>
+              <p className='max-w-xs text-xs'>
+                {scope === 'mine'
+                  ? 'Views you create show up here, regardless of whether they are private, org-wide, or public.'
+                  : 'This tab shows every view you can access, including your own views and shared ones.'}
+              </p>
+              {scope === 'mine' && canCreateViews && (
+                <CreateViewDialog
+                  orgSlug={orgSlug}
+                  className='mt-1 h-7 text-xs'
+                />
+              )}
+            </div>
+          ) : (
+            <div className='divide-border divide-y'>
+              {results.map(view => (
+                <ViewRow
+                  key={view._id}
+                  view={view}
+                  orgSlug={orgSlug}
+                  onNavigate={() =>
+                    router.push(`/${orgSlug}/views/${view._id}`)
+                  }
+                  onEdit={() => setEditingViewId(view._id as Id<'views'>)}
+                  onDelete={() =>
+                    void handleDelete(view._id as Id<'views'>, view.name)
+                  }
+                />
+              ))}
+            </div>
+          )}
 
-        <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+          <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+        </ScrollArea>
       </div>
     </>
   );

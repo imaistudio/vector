@@ -1510,7 +1510,7 @@ export default function IssueViewClient({
 
         {/* RIGHT SIDEBAR - Assignments */}
         <div className='bg-background w-full border-t lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:border-t-0 lg:border-l'>
-          <ScrollArea className='h-full'>
+          <ScrollArea className='h-full' scrollbars='vertical'>
             <div className='flex h-full flex-col'>
               {/* Assignments Section */}
               <div>

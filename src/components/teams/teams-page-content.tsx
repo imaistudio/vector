@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { CreateTeamButton, TeamsTable } from '@/components/teams';
 import { Button } from '@/components/ui/button';
 import { AutoLoadMore } from '@/components/ui/auto-load-more';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 import { PageSkeleton } from '@/components/ui/table-skeleton';
 import { MobileNavTrigger } from '@/app/[orgSlug]/(main)/layout';
@@ -78,7 +79,7 @@ export function TeamsPageContent({
   }
 
   return (
-    <div className='bg-background h-full'>
+    <div className='bg-background flex h-full flex-col'>
       {/* Header with tabs */}
       <div className='border-b'>
         <div className='flex items-center justify-between p-1'>
@@ -124,14 +125,20 @@ export function TeamsPageContent({
       </div>
 
       {/* Teams table */}
-      <TeamsTable
-        orgSlug={orgSlug}
-        teams={teams}
-        onDelete={handleDelete}
-        deletePending={false}
-      />
+      <ScrollArea
+        className='min-h-0 flex-1'
+        viewportClassName='h-full'
+        scrollbars='vertical'
+      >
+        <TeamsTable
+          orgSlug={orgSlug}
+          teams={teams}
+          onDelete={handleDelete}
+          deletePending={false}
+        />
 
-      <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+        <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+      </ScrollArea>
     </div>
   );
 }

@@ -360,6 +360,7 @@ function FolderContent({
       className='bg-background h-full'
       viewportClassName='overscroll-contain'
       maskHeight={0}
+      scrollbars='vertical'
     >
       <ConfirmDeleteDialog />
       {editing && (

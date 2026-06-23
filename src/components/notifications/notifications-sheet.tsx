@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { UserAvatar } from '@/components/user-avatar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -110,7 +111,11 @@ export function NotificationsSheet({
           </Tabs>
         </div>
 
-        <div className='flex-1 overflow-y-auto'>
+        <ScrollArea
+          className='min-h-0 flex-1'
+          viewportClassName='h-full'
+          scrollbars='vertical'
+        >
           {status === 'LoadingFirstPage' ? (
             <div className='divide-y'>
               {Array.from({ length: 6 }).map((_, index) => (
@@ -196,7 +201,7 @@ export function NotificationsSheet({
               ) : null}
             </div>
           )}
-        </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

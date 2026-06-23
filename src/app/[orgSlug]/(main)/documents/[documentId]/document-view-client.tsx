@@ -163,6 +163,7 @@ function DocumentLoadingSkeleton() {
       className='bg-background h-full'
       viewportClassName='overscroll-contain'
       maskHeight={0}
+      scrollbars='vertical'
     >
       <div className='h-full'>
         {/* Slim header bar – matches actual sticky header */}
@@ -446,6 +447,7 @@ export default function DocumentViewClient({
       className='h-full'
       viewportClassName='overscroll-contain'
       maskHeight={0}
+      scrollbars='vertical'
     >
       <ConfirmDeleteDialog />
       <div className='h-full'>

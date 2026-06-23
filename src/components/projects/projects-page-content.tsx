@@ -382,6 +382,7 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               className='min-w-0 flex-1'
               viewportClassName='overflow-y-hidden'
               maskHeight={0}
+              scrollbars='horizontal'
             >
               <div className='flex min-w-max items-center gap-1 pb-1'>
                 <MobileNavTrigger />
@@ -501,28 +502,30 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
 
         {/* Projects content */}
         {viewMode === 'table' ? (
-          <>
-            <ScrollArea className='flex-1'>
-              <ProjectsTable
-                orgSlug={orgSlug}
-                projects={filteredProjects}
-                statuses={statuses}
-                teams={teams}
-                onStatusChange={handleStatusChange}
-                onTeamChange={handleTeamChange}
-                onLeadChange={handleLeadChange}
-                onDelete={handleDelete}
-                deletePending={false}
-                groupBy={groupBy}
-              />
-            </ScrollArea>
+          <ScrollArea
+            className='min-h-0 flex-1'
+            viewportClassName='h-full'
+            scrollbars='vertical'
+          >
+            <ProjectsTable
+              orgSlug={orgSlug}
+              projects={filteredProjects}
+              statuses={statuses}
+              teams={teams}
+              onStatusChange={handleStatusChange}
+              onTeamChange={handleTeamChange}
+              onLeadChange={handleLeadChange}
+              onDelete={handleDelete}
+              deletePending={false}
+              groupBy={groupBy}
+            />
 
             <AutoLoadMore
               status={paginatedProjects.status}
               loadMore={paginatedProjects.loadMore}
               pageSize={20}
             />
-          </>
+          </ScrollArea>
         ) : (
           <div className='flex-1 overflow-hidden'>
             <ProjectsKanban
