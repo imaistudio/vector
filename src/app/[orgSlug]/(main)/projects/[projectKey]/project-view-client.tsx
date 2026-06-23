@@ -52,6 +52,7 @@ import { IssuesTable } from '@/components/issues/issues-table';
 import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
 import { TableSkeleton, KanbanSkeleton } from '@/components/ui/table-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useConfirm } from '@/hooks/use-confirm';
 import {
@@ -718,8 +719,12 @@ export default function ProjectViewClient({
 
   if (!project) {
     return (
-      <div className='bg-background h-full overflow-y-auto'>
-        <div className='h-full'>
+      <ScrollArea
+        className='bg-background h-full w-full min-w-0'
+        viewportClassName='h-full min-w-0 max-w-full'
+        scrollbars='vertical'
+      >
+        <div className='min-h-full'>
           {/* Header Skeleton – matches sticky header bar */}
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
@@ -783,13 +788,17 @@ export default function ProjectViewClient({
             </div>
           </div>
         </div>
-      </div>
+      </ScrollArea>
     );
   }
 
   return (
-    <div className='bg-background h-full overflow-y-auto'>
-      <div className='h-full'>
+    <ScrollArea
+      className='bg-background h-full w-full min-w-0'
+      viewportClassName='h-full min-w-0 max-w-full'
+      scrollbars='vertical'
+    >
+      <div className='min-h-full'>
         {/* Header */}
         <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
           <div className='flex h-8 items-center gap-2'>
@@ -1558,6 +1567,6 @@ export default function ProjectViewClient({
         </div>
       </div>
       <ConfirmDeleteDialog />
-    </div>
+    </ScrollArea>
   );
 }
