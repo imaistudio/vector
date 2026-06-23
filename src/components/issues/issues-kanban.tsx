@@ -662,7 +662,10 @@ function KanbanColumn({
       </div>
 
       {/* Column body */}
-      <ScrollArea className='min-h-[80px] flex-1 rounded-lg'>
+      <ScrollArea
+        className='min-h-[80px] flex-1 rounded-lg'
+        scrollbars='vertical'
+      >
         <div className='space-y-2'>
           {issues.length === 0 ? (
             <div

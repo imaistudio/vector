@@ -241,7 +241,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
 
   return (
     <>
-      <nav className='space-y-4 p-2 pt-0'>
+      <nav className='min-w-0 space-y-4 overflow-x-hidden p-2 pt-0'>
         {/* Main navigation items */}
         <div className='space-y-1'>
           {navItems.map(item => {

@@ -285,7 +285,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </div>
             </div>
-            <ScrollArea className='min-h-0 flex-1' viewportClassName='h-full'>
+            <ScrollArea
+              className='min-h-0 flex-1'
+              viewportClassName='h-full overflow-x-hidden'
+              scrollbars='vertical'
+            >
               <div className='space-y-4 p-2 pt-0'>
                 <div className='space-y-1'>
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -314,11 +318,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </div>
         </aside>
-        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-hidden rounded-md border lg:mb-2 lg:ml-0'>
-          <ScrollArea className='h-full' viewportClassName='h-full'>
-            <div />
-          </ScrollArea>
-        </main>
+        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-x-hidden overflow-y-auto rounded-md border lg:mb-2 lg:ml-0' />
       </div>
     );
   }
@@ -349,7 +349,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
                 <ScrollArea
                   className='min-h-0 flex-1'
-                  viewportClassName='h-full'
+                  viewportClassName='h-full overflow-x-hidden'
+                  scrollbars='vertical'
                 >
                   <OrgSidebar orgSlug={orgSlug} />
                 </ScrollArea>
@@ -397,7 +398,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   </div>
                   <ScrollArea
                     className='min-h-0 flex-1'
-                    viewportClassName='h-full'
+                    viewportClassName='h-full overflow-x-hidden'
+                    scrollbars='vertical'
                   >
                     <OrgSidebar
                       orgSlug={orgSlug}
@@ -417,10 +419,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </Sheet>
 
             {/* Main content */}
-            <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-hidden rounded-md border lg:mb-2 lg:ml-0'>
-              <ScrollArea className='h-full' viewportClassName='h-full'>
-                {children}
-              </ScrollArea>
+            <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-x-hidden overflow-y-auto rounded-md border lg:mb-2 lg:ml-0'>
+              {children}
             </main>
 
             {/* Command menu (⌘K) */}

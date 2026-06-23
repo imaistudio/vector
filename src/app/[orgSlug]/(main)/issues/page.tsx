@@ -582,6 +582,7 @@ export default function IssuesPage() {
             className='min-w-0 flex-1'
             viewportClassName='overflow-y-hidden'
             maskHeight={0}
+            scrollbars='horizontal'
           >
             <div className='flex min-w-max items-center gap-1'>
               <MobileNavTrigger />
@@ -639,6 +640,7 @@ export default function IssuesPage() {
             className='max-w-full shrink-0'
             viewportClassName='overflow-y-hidden'
             maskHeight={0}
+            scrollbars='horizontal'
           >
             <div className='flex min-w-max items-center gap-1'>
               {/* Search */}
@@ -756,9 +758,13 @@ export default function IssuesPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className='flex flex-1 flex-col'
+            className='flex min-h-0 flex-1 flex-col'
           >
-            <div className='flex-1'>
+            <ScrollArea
+              className='min-h-0 flex-1'
+              viewportClassName='h-full'
+              scrollbars='vertical'
+            >
               <IssuesTable
                 orgSlug={orgSlug}
                 issues={issues}
@@ -780,12 +786,12 @@ export default function IssuesPage() {
                 activeFilter={activeFilter}
                 groupBy={tableGroupBy}
               />
-            </div>
-            <AutoLoadMore
-              status={paginatedIssues.status}
-              loadMore={paginatedIssues.loadMore}
-              pageSize={20}
-            />
+              <AutoLoadMore
+                status={paginatedIssues.status}
+                loadMore={paginatedIssues.loadMore}
+                pageSize={20}
+              />
+            </ScrollArea>
           </motion.div>
         ) : viewMode === 'timeline' ? (
           <motion.div
@@ -794,9 +800,13 @@ export default function IssuesPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className='flex flex-1 flex-col'
+            className='flex min-h-0 flex-1 flex-col'
           >
-            <ScrollArea className='flex-1'>
+            <ScrollArea
+              className='min-h-0 flex-1'
+              viewportClassName='h-full'
+              scrollbars='vertical'
+            >
               <IssuesTimeline
                 orgSlug={orgSlug}
                 issues={issues}
@@ -816,12 +826,12 @@ export default function IssuesPage() {
                 deletePending={isDeleting}
                 isUpdatingAssignees={isUpdatingAssignees}
               />
+              <AutoLoadMore
+                status={paginatedIssues.status}
+                loadMore={paginatedIssues.loadMore}
+                pageSize={20}
+              />
             </ScrollArea>
-            <AutoLoadMore
-              status={paginatedIssues.status}
-              loadMore={paginatedIssues.loadMore}
-              pageSize={20}
-            />
           </motion.div>
         ) : (
           <motion.div

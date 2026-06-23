@@ -260,7 +260,11 @@ export function VectorAgentChatPanel({
             'linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 12px), transparent 100%)',
         }}
       >
-        <ScrollArea className='h-full min-w-0' viewportClassName='rounded-none'>
+        <ScrollArea
+          className='h-full min-w-0'
+          viewportClassName='rounded-none'
+          scrollbars='vertical'
+        >
           <div
             className={cn(
               'mx-auto min-h-full w-[calc(100%-2rem)] px-0 pt-10 pb-36',

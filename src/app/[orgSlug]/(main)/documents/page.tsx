@@ -10,6 +10,7 @@ import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { api } from '@/convex/_generated/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { MobileNavTrigger } from '../layout';
 import { CreateDocumentDialog } from '@/components/documents/create-document-dialog';
 import { ScopedPermissionGate } from '@/hooks/use-permissions';
@@ -599,7 +600,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
     status === 'LoadingFirstPage'
   ) {
     return (
-      <div className='bg-background h-full overflow-y-auto'>
+      <div className='bg-background flex h-full flex-col'>
         {/* Header */}
         <div className='border-b'>
           <div className='flex items-center justify-between p-1'>
@@ -612,26 +613,32 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
             </div>
           </div>
         </div>
-        {/* Folder books */}
-        <div className='border-b px-3 py-4 sm:px-4'>
-          <div className='flex flex-wrap gap-4'>
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className='h-24 w-28 rounded-lg' />
+        <ScrollArea
+          className='min-h-0 flex-1'
+          viewportClassName='h-full'
+          scrollbars='vertical'
+        >
+          {/* Folder books */}
+          <div className='border-b px-3 py-4 sm:px-4'>
+            <div className='flex flex-wrap gap-4'>
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className='h-24 w-28 rounded-lg' />
+              ))}
+            </div>
+          </div>
+          {/* Document list */}
+          <div className='divide-y'>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className='flex items-center gap-2 px-3 py-2'>
+                <Skeleton className='size-4 rounded' />
+                <div className='min-w-0 flex-1 space-y-1'>
+                  <Skeleton className='h-4 w-1/3' />
+                  <Skeleton className='h-3 w-1/2' />
+                </div>
+              </div>
             ))}
           </div>
-        </div>
-        {/* Document list */}
-        <div className='divide-y'>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-2 px-3 py-2'>
-              <Skeleton className='size-4 rounded' />
-              <div className='min-w-0 flex-1 space-y-1'>
-                <Skeleton className='h-4 w-1/3' />
-                <Skeleton className='h-3 w-1/2' />
-              </div>
-            </div>
-          ))}
-        </div>
+        </ScrollArea>
       </div>
     );
   }
@@ -705,7 +712,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className='bg-background h-full overflow-y-auto'>
+      <div className='bg-background flex h-full flex-col'>
         <ConfirmDeleteDialog />
         {showCreateFolder && (
           <CreateFolderDialog
@@ -783,74 +790,80 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
           </div>
         </div>
 
-        {/* Folders grid */}
-        {folders.length > 0 && (
-          <div className='border-b px-3 py-4 sm:px-4'>
-            <div className='flex flex-wrap gap-4'>
-              {folders.map(folder => (
-                <DroppableFolderBook
-                  key={folder._id}
-                  folder={folder}
-                  onOpen={() =>
-                    router.push(`/${orgSlug}/documents/folders/${folder._id}`)
-                  }
-                  onEdit={() =>
-                    setEditingFolder({
-                      _id: folder._id,
-                      name: folder.name,
-                      description: folder.description,
-                      color: folder.color,
-                      icon: folder.icon,
-                    })
-                  }
-                  onDelete={() => handleDeleteFolder(folder._id)}
+        <ScrollArea
+          className='min-h-0 flex-1'
+          viewportClassName='h-full'
+          scrollbars='vertical'
+        >
+          {/* Folders grid */}
+          {folders.length > 0 && (
+            <div className='border-b px-3 py-4 sm:px-4'>
+              <div className='flex flex-wrap gap-4'>
+                {folders.map(folder => (
+                  <DroppableFolderBook
+                    key={folder._id}
+                    folder={folder}
+                    onOpen={() =>
+                      router.push(`/${orgSlug}/documents/folders/${folder._id}`)
+                    }
+                    onEdit={() =>
+                      setEditingFolder({
+                        _id: folder._id,
+                        name: folder.name,
+                        description: folder.description,
+                        color: folder.color,
+                        icon: folder.icon,
+                      })
+                    }
+                    onDelete={() => handleDeleteFolder(folder._id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Documents list */}
+          {documents.length === 0 && folders.length === 0 ? (
+            <div className='flex flex-col items-center justify-center py-16 text-center'>
+              <FileText className='text-muted-foreground mb-4 size-12' />
+              <h3 className='text-lg font-medium'>No documents yet</h3>
+              <p className='text-muted-foreground mt-1 text-sm'>
+                Create your first document to get started.
+              </p>
+            </div>
+          ) : documents.length === 0 ? (
+            <div className='text-muted-foreground px-3 py-8 text-center text-sm'>
+              No unfiled documents.
+            </div>
+          ) : (
+            <div className='divide-y'>
+              {documents.map(doc => (
+                <DraggableDocRow
+                  key={doc._id}
+                  doc={doc}
+                  orgSlug={orgSlug}
+                  folders={folders}
+                  onDelete={handleDeleteDoc}
+                  onMoveToFolder={(docId, folderId) => {
+                    void updateDocMutation({
+                      documentId: docId as Id<'documents'>,
+                      data: {
+                        folderId: folderId
+                          ? (folderId as Id<'documentFolders'>)
+                          : null,
+                      },
+                    });
+                    toast.success(
+                      folderId ? 'Moved to folder' : 'Removed from folder',
+                    );
+                  }}
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Documents list */}
-        {documents.length === 0 && folders.length === 0 ? (
-          <div className='flex flex-col items-center justify-center py-16 text-center'>
-            <FileText className='text-muted-foreground mb-4 size-12' />
-            <h3 className='text-lg font-medium'>No documents yet</h3>
-            <p className='text-muted-foreground mt-1 text-sm'>
-              Create your first document to get started.
-            </p>
-          </div>
-        ) : documents.length === 0 ? (
-          <div className='text-muted-foreground px-3 py-8 text-center text-sm'>
-            No unfiled documents.
-          </div>
-        ) : (
-          <div className='divide-y'>
-            {documents.map(doc => (
-              <DraggableDocRow
-                key={doc._id}
-                doc={doc}
-                orgSlug={orgSlug}
-                folders={folders}
-                onDelete={handleDeleteDoc}
-                onMoveToFolder={(docId, folderId) => {
-                  void updateDocMutation({
-                    documentId: docId as Id<'documents'>,
-                    data: {
-                      folderId: folderId
-                        ? (folderId as Id<'documentFolders'>)
-                        : null,
-                    },
-                  });
-                  toast.success(
-                    folderId ? 'Moved to folder' : 'Removed from folder',
-                  );
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+          <AutoLoadMore status={status} loadMore={loadMore} pageSize={20} />
+        </ScrollArea>
       </div>
 
       {/* Drag overlay */}

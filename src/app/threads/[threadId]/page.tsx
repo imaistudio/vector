@@ -9,7 +9,6 @@ import { type UIMessage, useUIMessages } from '@convex-dev/agent/react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ProgressiveBlur } from '@/components/ui/progressive-blur';
-import { Skeleton } from '@/components/ui/skeleton';
 import { AssistantDockMessage } from '@/components/assistant/assistant-message-renderer';
 import { Loader2, Lock } from 'lucide-react';
 import Avvvatars from 'avvvatars-react';
@@ -84,7 +83,7 @@ export default function PublicThreadPage() {
       </div>
 
       {/* Messages */}
-      <ScrollArea className='h-full w-full flex-1'>
+      <ScrollArea className='h-full w-full flex-1' scrollbars='vertical'>
         <div className='mx-auto max-w-[700px] space-y-3 px-4 pt-16 pb-8'>
           {uiMessages.status === 'CanLoadMore' && (
             <div className='flex justify-center py-2'>

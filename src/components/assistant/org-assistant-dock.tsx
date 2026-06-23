@@ -673,6 +673,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
                 viewportClassName='overscroll-contain'
                 maskHeight={12}
                 viewportRef={viewportRef}
+                scrollbars='vertical'
               >
                 <div
                   ref={contentRef}

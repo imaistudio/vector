@@ -14,6 +14,8 @@ type Mask = {
   right: boolean;
 };
 
+type ScrollbarVisibility = 'both' | 'vertical' | 'horizontal' | 'none';
+
 const ScrollArea = React.forwardRef<
   React.ComponentRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> & {
@@ -23,6 +25,7 @@ const ScrollArea = React.forwardRef<
     maskClassName?: string;
     viewportRef?: React.ForwardedRef<HTMLDivElement>;
     scrollTopContainer?: boolean;
+    scrollbars?: ScrollbarVisibility;
   }
 >(
   (
@@ -36,6 +39,7 @@ const ScrollArea = React.forwardRef<
       maskHeight = 30,
       viewportRef: externalViewportRef,
       scrollTopContainer = false,
+      scrollbars = 'both',
       ...props
     },
     ref,
@@ -49,11 +53,22 @@ const ScrollArea = React.forwardRef<
     const internalViewportRef = React.useRef<HTMLDivElement>(null);
     const scrollCheckFrameRef = React.useRef<number | null>(null);
     const isTouch = useTouchPrimary();
+    const showVerticalScrollbar =
+      scrollbars === 'both' || scrollbars === 'vertical';
+    const showHorizontalScrollbar =
+      scrollbars === 'both' || scrollbars === 'horizontal';
 
     React.useImperativeHandle(
       externalViewportRef,
       () => internalViewportRef.current as HTMLDivElement,
     );
+
+    React.useEffect(() => {
+      if (showHorizontalScrollbar) return;
+      const element = internalViewportRef.current;
+      if (!element || element.scrollLeft === 0) return;
+      element.scrollLeft = 0;
+    }, [showHorizontalScrollbar]);
 
     const checkScrollability = React.useCallback(() => {
       const element = internalViewportRef.current;
@@ -154,7 +169,13 @@ const ScrollArea = React.forwardRef<
                 scrollTopContainer ? 'true' : undefined
               }
               className={cn(
-                'size-full overflow-auto rounded-[inherit]',
+                'size-full rounded-[inherit]',
+                scrollbars === 'both' && 'overflow-auto',
+                scrollbars === 'vertical' &&
+                  'overflow-x-hidden overflow-y-auto',
+                scrollbars === 'horizontal' &&
+                  'overflow-x-auto overflow-y-hidden',
+                scrollbars === 'none' && 'overflow-hidden',
                 viewportClassName,
               )}
               style={viewportStyle}
@@ -198,9 +219,15 @@ const ScrollArea = React.forwardRef<
                 maskHeight={maskHeight}
               />
             ) : null}
-            <ScrollBar orientation='vertical' />
-            <ScrollBar orientation='horizontal' />
-            <ScrollAreaPrimitive.Corner />
+            {showVerticalScrollbar ? (
+              <ScrollBar orientation='vertical' />
+            ) : null}
+            {showHorizontalScrollbar ? (
+              <ScrollBar orientation='horizontal' />
+            ) : null}
+            {showVerticalScrollbar && showHorizontalScrollbar ? (
+              <ScrollAreaPrimitive.Corner />
+            ) : null}
           </ScrollAreaPrimitive.Root>
         )}
       </ScrollAreaContext.Provider>

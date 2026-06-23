@@ -690,7 +690,11 @@ export function ThreadViewClient() {
       </div>
 
       {/* Messages area — full height scroll, scrollbar flush right */}
-      <ScrollArea className='h-full w-full flex-1' viewportRef={viewportRef}>
+      <ScrollArea
+        className='h-full w-full flex-1'
+        viewportRef={viewportRef}
+        scrollbars='vertical'
+      >
         <div ref={contentRef}>
           <div className='mx-auto max-w-[700px] space-y-3 px-4 pt-16 pb-36'>
             {/* Auto-load older messages: an invisible sentinel scrolls into

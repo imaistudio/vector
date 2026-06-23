@@ -12,6 +12,7 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
       className='relative w-full'
       viewportClassName='overflow-y-hidden'
       maskHeight={0}
+      scrollbars='horizontal'
     >
       <table
         data-slot='table'
