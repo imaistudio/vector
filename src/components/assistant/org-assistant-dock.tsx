@@ -572,7 +572,7 @@ export function OrgAssistantDock({ orgSlug }: { orgSlug: string }) {
 
   return (
     <>
-      <div className='border-border bg-background flex flex-col border-t'>
+      <div className='border-border bg-background flex shrink-0 flex-col border-t'>
         {/* Header toggle */}
         <div className='flex items-center justify-between px-3 py-1.5'>
           <button
