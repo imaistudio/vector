@@ -241,11 +241,7 @@ function vectorEmailLayout({
                 Section,
                 {
                   style: {
-                    margin: '14px 16px 0',
-                    backgroundColor: colors.surface,
-                    border: `1px solid ${colors.border}`,
-                    borderRadius: '7px',
-                    overflow: 'hidden',
+                    padding: '14px 16px 0',
                   },
                 },
                 h(
@@ -254,6 +250,10 @@ function vectorEmailLayout({
                     style: {
                       width: '100%',
                       borderCollapse: 'collapse' as const,
+                      backgroundColor: colors.surface,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: '7px',
+                      overflow: 'hidden',
                     },
                   },
                   h(
