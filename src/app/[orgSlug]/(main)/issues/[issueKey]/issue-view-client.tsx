@@ -698,6 +698,11 @@ export default function IssueViewClient({
     }
   };
 
+  const handleDescriptionCancel = () => {
+    setDescriptionValue(displayDescription);
+    setEditingDescription(false);
+  };
+
   const handleEstimatesSave = async () => {
     if (!issue || !user) return;
     setIsUpdatingEstimates(true);
@@ -1393,7 +1398,15 @@ export default function IssueViewClient({
               {/* Description */}
               <div className='mb-8'>
                 {editingDescription ? (
-                  <div className='space-y-4'>
+                  <div
+                    className='space-y-4'
+                    onKeyDownCapture={event => {
+                      if (event.key !== 'Escape') return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleDescriptionCancel();
+                    }}
+                  >
                     <RichEditor
                       value={descriptionValue}
                       onChange={setDescriptionValue}
@@ -1411,10 +1424,7 @@ export default function IssueViewClient({
                       </Button>
                       <Button
                         variant='outline'
-                        onClick={() => {
-                          setDescriptionValue(displayDescription);
-                          setEditingDescription(false);
-                        }}
+                        onClick={handleDescriptionCancel}
                       >
                         Cancel
                       </Button>
