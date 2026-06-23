@@ -19,6 +19,7 @@ import { NotificationBell } from '@/components/notifications/notification-bell';
 import { BarsSpinner } from '@/components/bars-spinner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { CommandMenu } from '@/components/command-menu';
 import { CommandMenuActions } from '@/components/command-menu-actions';
 import {
@@ -284,7 +285,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </div>
             </div>
-            <div className='flex-1 overflow-y-auto'>
+            <ScrollArea className='min-h-0 flex-1' viewportClassName='h-full'>
               <div className='space-y-4 p-2 pt-0'>
                 <div className='space-y-1'>
                   {Array.from({ length: 5 }).map((_, i) => (
@@ -301,7 +302,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   ))}
                 </div>
               </div>
-            </div>
+            </ScrollArea>
             <div className='border-border border-t p-2'>
               <div className='flex w-full justify-start gap-2 p-2'>
                 <Skeleton className='size-8 rounded-full' />
@@ -313,7 +314,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
           </div>
         </aside>
-        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-y-auto rounded-md border lg:mb-2 lg:ml-0' />
+        <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-hidden rounded-md border lg:mb-2 lg:ml-0'>
+          <ScrollArea className='h-full' viewportClassName='h-full'>
+            <div />
+          </ScrollArea>
+        </main>
       </div>
     );
   }
@@ -342,9 +347,12 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     organizations={organizations}
                   />
                 </div>
-                <div className='min-h-0 flex-1 overflow-y-auto'>
+                <ScrollArea
+                  className='min-h-0 flex-1'
+                  viewportClassName='h-full'
+                >
                   <OrgSidebar orgSlug={orgSlug} />
-                </div>
+                </ScrollArea>
                 {/* Assistant dock */}
                 <OrgAssistantDock orgSlug={orgSlug} />
                 {/* User footer */}
@@ -387,12 +395,15 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       organizations={organizations}
                     />
                   </div>
-                  <div className='flex-1 overflow-y-auto'>
+                  <ScrollArea
+                    className='min-h-0 flex-1'
+                    viewportClassName='h-full'
+                  >
                     <OrgSidebar
                       orgSlug={orgSlug}
                       onNavigate={() => setMobileOpen(false)}
                     />
-                  </div>
+                  </ScrollArea>
                   {/* Assistant dock in mobile sheet */}
                   <OrgAssistantDock orgSlug={orgSlug} />
                   <div className='border-border flex items-center gap-1 border-t p-2'>
@@ -406,8 +417,10 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </Sheet>
 
             {/* Main content */}
-            <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-y-auto rounded-md border lg:mb-2 lg:ml-0'>
-              {children}
+            <main className='bg-background mx-2 mt-2 mb-16 flex-1 overflow-hidden rounded-md border lg:mb-2 lg:ml-0'>
+              <ScrollArea className='h-full' viewportClassName='h-full'>
+                {children}
+              </ScrollArea>
             </main>
 
             {/* Command menu (⌘K) */}
