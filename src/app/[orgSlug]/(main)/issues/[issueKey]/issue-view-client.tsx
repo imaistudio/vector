@@ -1322,9 +1322,7 @@ export default function IssueViewClient({
               </div>
 
               {/* Schedule (start + due date) — inline editable when the user
-                has issue-edit permission, view-only otherwise. The first
-                selector overrides the Button's `px-2.5` left padding so
-                the row lines up with the title/description left edge. */}
+                has issue-edit permission, view-only otherwise. */}
               <div className='flex flex-wrap items-center gap-1'>
                 {canEditIssue ? (
                   <PermissionAwareSelector
@@ -1338,8 +1336,6 @@ export default function IssueViewClient({
                       icon={Play}
                       placeholder='Start date'
                       title='Start date'
-                      tooltipText='Set start date'
-                      displayMode='iconWhenUnselected'
                       className='hover:bg-muted/40 border-none bg-transparent pl-0 shadow-none dark:bg-transparent'
                     />
                   </PermissionAwareSelector>
@@ -1361,8 +1357,6 @@ export default function IssueViewClient({
                       icon={CalendarClock}
                       placeholder='Due date'
                       title='Due date'
-                      tooltipText='Set due date'
-                      displayMode='iconWhenUnselected'
                       className={cn(
                         'hover:bg-muted/40 border-none bg-transparent shadow-none dark:bg-transparent',
                         issue.dueDate &&
