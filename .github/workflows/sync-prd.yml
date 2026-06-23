@@ -155,9 +155,17 @@ jobs:
               core.warning('No branch name provided for cleanup.');
               return;
             }
-            await github.rest.git.deleteRef({
-              owner,
-              repo,
-              ref: `heads/${branch}`
-            });
-            core.info(`Deleted remote branch ${branch}.`);
+            try {
+              await github.rest.git.deleteRef({
+                owner,
+                repo,
+                ref: `heads/${branch}`
+              });
+              core.info(`Deleted remote branch ${branch}.`);
+            } catch (error) {
+              if (error.status === 404) {
+                core.warning(`Remote branch ${branch} was already deleted.`);
+                return;
+              }
+              core.warning(`Failed to delete remote branch ${branch}: ${error.message || error}`);
+            }
