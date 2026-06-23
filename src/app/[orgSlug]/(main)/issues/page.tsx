@@ -583,7 +583,7 @@ export default function IssuesPage() {
             viewportClassName='overflow-y-hidden'
             maskHeight={0}
           >
-            <div className='flex min-w-max items-center gap-1 pb-1'>
+            <div className='flex min-w-max items-center gap-1'>
               <MobileNavTrigger />
               {[
                 { key: 'mine' as const, label: 'My issues' },
@@ -640,7 +640,7 @@ export default function IssuesPage() {
             viewportClassName='overflow-y-hidden'
             maskHeight={0}
           >
-            <div className='flex min-w-max items-center gap-1 pb-1'>
+            <div className='flex min-w-max items-center gap-1'>
               {/* Search */}
               <div className='relative'>
                 {deferredSearch !== searchText ? (
