@@ -1,6 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'nextjs-toploader/app';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +26,7 @@ import {
   WandSparkles,
   Bell,
   CalendarClock,
+  ChevronDown,
 } from 'lucide-react';
 import { MobileNavTrigger } from '../../layout';
 import { useCachedQuery, useMutation, useAction } from '@/lib/convex';
@@ -90,6 +97,8 @@ interface IssueViewPageProps {
     typeof api.organizations.queries.getWorkspaceOptions
   > | null;
 }
+
+const DESCRIPTION_COLLAPSED_HEIGHT = 220;
 
 // Loading skeleton component that matches the actual layout
 function IssueLoadingSkeleton() {
@@ -193,6 +202,101 @@ function IssueLoadingSkeleton() {
         </div>
       </div>
     </ScrollArea>
+  );
+}
+
+interface IssueDescriptionRendererProps {
+  canEdit: boolean;
+  description: string;
+  onEdit: () => void;
+}
+
+function IssueDescriptionRenderer({
+  canEdit,
+  description,
+  onEdit,
+}: IssueDescriptionRendererProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  const checkOverflow = useCallback(() => {
+    const element = contentRef.current;
+    if (!element) return;
+
+    setIsOverflowing(element.scrollHeight > DESCRIPTION_COLLAPSED_HEIGHT + 4);
+  }, []);
+
+  useLayoutEffect(() => {
+    setIsExpanded(false);
+  }, [description]);
+
+  useLayoutEffect(() => {
+    checkOverflow();
+  }, [checkOverflow, description]);
+
+  useEffect(() => {
+    const element = contentRef.current;
+    if (!element || typeof window === 'undefined') return;
+
+    const resizeObserver = new ResizeObserver(checkOverflow);
+    resizeObserver.observe(element);
+    window.addEventListener('resize', checkOverflow);
+    const frameId = window.requestAnimationFrame(checkOverflow);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', checkOverflow);
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [checkOverflow, description]);
+
+  const isCollapsed = isOverflowing && !isExpanded;
+
+  return (
+    <div className='space-y-2'>
+      <div className='relative'>
+        <div
+          ref={contentRef}
+          className={cn(
+            'overflow-hidden transition-[color,max-height] duration-200',
+            canEdit && 'hover:text-foreground cursor-pointer',
+          )}
+          style={
+            isCollapsed
+              ? { maxHeight: DESCRIPTION_COLLAPSED_HEIGHT }
+              : undefined
+          }
+          onClick={canEdit ? onEdit : undefined}
+        >
+          <RichEditor
+            value={description}
+            onChange={() => {}}
+            mode='full'
+            disabled={true}
+          />
+        </div>
+        {isCollapsed ? (
+          <div
+            aria-hidden='true'
+            className='from-background via-background/95 pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t to-transparent'
+          />
+        ) : null}
+      </div>
+      {isCollapsed ? (
+        <Button
+          type='button'
+          variant='ghost'
+          size='sm'
+          className='text-muted-foreground hover:text-foreground h-7 gap-1 px-1.5 text-xs'
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded(true)}
+        >
+          <ChevronDown className='size-3.5' />
+          Show more
+        </Button>
+      ) : null}
+    </div>
   );
 }
 
@@ -764,15 +868,10 @@ export default function IssueViewClient({
   };
 
   return (
-    <ScrollArea
-      className='bg-background h-full w-full min-w-0'
-      viewportClassName='h-full min-w-0 max-w-full'
-      scrollbars='vertical'
-    >
-      {/* Page Grid: main area + sidebar */}
-      <div className='flex min-h-full flex-col lg:flex-row'>
+    <>
+      <div className='bg-background flex min-h-full w-full min-w-0 flex-col lg:h-full lg:min-h-0 lg:flex-row lg:overflow-hidden'>
         {/* LEFT COLUMN - Main Content */}
-        <div className='min-w-0 flex-1'>
+        <div className='min-w-0 flex-1 lg:flex lg:min-h-0 lg:flex-col'>
           {/* Header */}
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
@@ -1119,407 +1218,398 @@ export default function IssueViewClient({
           </div>
 
           {/* Main Content */}
-          <div className='mx-auto max-w-5xl px-3 py-3 pb-[20vh] sm:px-4 sm:py-4 sm:pb-[20vh]'>
-            {/* Issue Header */}
-            <div className='mb-2 max-w-4xl space-y-2'>
-              <div className='text-muted-foreground flex items-center gap-2 text-xs'>
-                <span className='font-mono'>{issue.key}</span>
-                <span>•</span>
-                <span>
-                  Updated {formatDateHuman(new Date(issue._creationTime))}
-                </span>
-              </div>
+          <div className='min-w-0 lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto'>
+            <div className='mx-auto max-w-5xl px-3 py-3 pb-[20vh] sm:px-4 sm:py-4 sm:pb-[20vh]'>
+              {/* Issue Header */}
+              <div className='mb-2 max-w-4xl space-y-2'>
+                <div className='text-muted-foreground flex items-center gap-2 text-xs'>
+                  <span className='font-mono'>{issue.key}</span>
+                  <span>•</span>
+                  <span>
+                    Updated {formatDateHuman(new Date(issue._creationTime))}
+                  </span>
+                </div>
 
-              {keyConflict ? (
-                <Alert variant='destructive' className='py-2'>
-                  <AlertTriangle className='size-4' />
-                  <AlertDescription className='flex min-w-0 items-center justify-between gap-3'>
-                    <span className='min-w-0 text-xs'>
-                      This key is shared by {keyConflict.duplicateCount} issues.
-                      Auto-fix will move one duplicate to a new key.
-                    </span>
-                    {canEditIssue ? (
+                {keyConflict ? (
+                  <Alert variant='destructive' className='py-2'>
+                    <AlertTriangle className='size-4' />
+                    <AlertDescription className='flex min-w-0 items-center justify-between gap-3'>
+                      <span className='min-w-0 text-xs'>
+                        This key is shared by {keyConflict.duplicateCount}{' '}
+                        issues. Auto-fix will move one duplicate to a new key.
+                      </span>
+                      {canEditIssue ? (
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          className='h-7 shrink-0 gap-1.5 px-2 text-xs'
+                          disabled={isResolvingKeyConflict}
+                          onClick={() => void handleResolveKeyConflict()}
+                        >
+                          <WandSparkles className='size-3' />
+                          {isResolvingKeyConflict ? 'Fixing...' : 'Auto-fix'}
+                        </Button>
+                      ) : null}
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                {/* Title */}
+                {editingTitle ? (
+                  <div className='flex items-center gap-2'>
+                    <Input
+                      value={titleValue}
+                      onChange={e => setTitleValue(e.target.value)}
+                      className='h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0'
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') void handleTitleSave();
+                        if (e.key === 'Escape') {
+                          setTitleValue(displayTitle);
+                          setEditingTitle(false);
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <div className='flex items-center gap-1'>
                       <Button
                         size='sm'
-                        variant='outline'
-                        className='h-7 shrink-0 gap-1.5 px-2 text-xs'
-                        disabled={isResolvingKeyConflict}
-                        onClick={() => void handleResolveKeyConflict()}
+                        onClick={handleTitleSave}
+                        disabled={isUpdatingTitle || !titleValue.trim()}
                       >
-                        <WandSparkles className='size-3' />
-                        {isResolvingKeyConflict ? 'Fixing...' : 'Auto-fix'}
+                        <Save className='size-4' />
                       </Button>
-                    ) : null}
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-
-              {/* Title */}
-              {editingTitle ? (
-                <div className='flex items-center gap-2'>
-                  <Input
-                    value={titleValue}
-                    onChange={e => setTitleValue(e.target.value)}
-                    className='h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0'
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') void handleTitleSave();
-                      if (e.key === 'Escape') {
-                        setTitleValue(displayTitle);
-                        setEditingTitle(false);
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <div className='flex items-center gap-1'>
-                    <Button
-                      size='sm'
-                      onClick={handleTitleSave}
-                      disabled={isUpdatingTitle || !titleValue.trim()}
-                    >
-                      <Save className='size-4' />
-                    </Button>
-                    <Button
-                      size='sm'
-                      variant='ghost'
-                      onClick={() => {
-                        setTitleValue(displayTitle);
-                        setEditingTitle(false);
-                      }}
-                    >
-                      <X className='size-4' />
-                    </Button>
+                      <Button
+                        size='sm'
+                        variant='ghost'
+                        onClick={() => {
+                          setTitleValue(displayTitle);
+                          setEditingTitle(false);
+                        }}
+                      >
+                        <X className='size-4' />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <PermissionAwareWrapper
-                  orgSlug={params.orgSlug}
-                  permission={PERMISSIONS.ISSUE_EDIT}
-                  fallbackMessage="You don't have permission to edit issue title"
-                >
-                  <h1
-                    className={cn(
-                      canEditIssue
-                        ? 'hover:text-muted-foreground cursor-pointer text-2xl leading-tight font-semibold transition-colors sm:text-3xl'
-                        : 'text-2xl leading-tight font-semibold sm:text-3xl',
-                    )}
-                    onClick={
-                      canEditIssue
-                        ? () => {
-                            setTitleValue(displayTitle);
-                            setEditingTitle(true);
-                          }
-                        : undefined
-                    }
+                ) : (
+                  <PermissionAwareWrapper
+                    orgSlug={params.orgSlug}
+                    permission={PERMISSIONS.ISSUE_EDIT}
+                    fallbackMessage="You don't have permission to edit issue title"
                   >
-                    {displayTitle}
-                  </h1>
-                </PermissionAwareWrapper>
-              )}
-            </div>
+                    <h1
+                      className={cn(
+                        canEditIssue
+                          ? 'hover:text-muted-foreground cursor-pointer text-2xl leading-tight font-semibold transition-colors sm:text-3xl'
+                          : 'text-2xl leading-tight font-semibold sm:text-3xl',
+                      )}
+                      onClick={
+                        canEditIssue
+                          ? () => {
+                              setTitleValue(displayTitle);
+                              setEditingTitle(true);
+                            }
+                          : undefined
+                      }
+                    >
+                      {displayTitle}
+                    </h1>
+                  </PermissionAwareWrapper>
+                )}
+              </div>
 
-            {/* Schedule (start + due date) — inline editable when the user
+              {/* Schedule (start + due date) — inline editable when the user
                 has issue-edit permission, view-only otherwise. The first
                 selector overrides the Button's `px-2.5` left padding so
                 the row lines up with the title/description left edge. */}
-            <div className='flex flex-wrap items-center gap-1'>
-              {canEditIssue ? (
-                <PermissionAwareSelector
-                  orgSlug={params.orgSlug}
-                  permission={PERMISSIONS.ISSUE_EDIT}
-                  fallbackMessage="You don't have permission to change the start date"
-                >
-                  <DateSelector
-                    selectedDate={issue.startDate ?? ''}
-                    onDateSelect={handleStartDateChange}
-                    icon={Play}
-                    placeholder='Start date'
-                    title='Start date'
-                    tooltipText='Set start date'
-                    displayMode='iconWhenUnselected'
-                    className='hover:bg-muted/40 border-none bg-transparent pl-0 shadow-none dark:bg-transparent'
-                  />
-                </PermissionAwareSelector>
-              ) : issue.startDate ? (
-                <span className='text-muted-foreground inline-flex items-center gap-1.5 text-sm'>
-                  <Play className='size-3' />
-                  {formatDateHuman(issue.startDate)}
-                </span>
-              ) : null}
-              {canEditIssue ? (
-                <PermissionAwareSelector
-                  orgSlug={params.orgSlug}
-                  permission={PERMISSIONS.ISSUE_EDIT}
-                  fallbackMessage="You don't have permission to change the due date"
-                >
-                  <DateSelector
-                    selectedDate={issue.dueDate ?? ''}
-                    onDateSelect={handleDueDateChange}
-                    icon={CalendarClock}
-                    placeholder='Due date'
-                    title='Due date'
-                    tooltipText='Set due date'
-                    displayMode='iconWhenUnselected'
+              <div className='flex flex-wrap items-center gap-1'>
+                {canEditIssue ? (
+                  <PermissionAwareSelector
+                    orgSlug={params.orgSlug}
+                    permission={PERMISSIONS.ISSUE_EDIT}
+                    fallbackMessage="You don't have permission to change the start date"
+                  >
+                    <DateSelector
+                      selectedDate={issue.startDate ?? ''}
+                      onDateSelect={handleStartDateChange}
+                      icon={Play}
+                      placeholder='Start date'
+                      title='Start date'
+                      tooltipText='Set start date'
+                      displayMode='iconWhenUnselected'
+                      className='hover:bg-muted/40 border-none bg-transparent pl-0 shadow-none dark:bg-transparent'
+                    />
+                  </PermissionAwareSelector>
+                ) : issue.startDate ? (
+                  <span className='text-muted-foreground inline-flex items-center gap-1.5 text-sm'>
+                    <Play className='size-3' />
+                    {formatDateHuman(issue.startDate)}
+                  </span>
+                ) : null}
+                {canEditIssue ? (
+                  <PermissionAwareSelector
+                    orgSlug={params.orgSlug}
+                    permission={PERMISSIONS.ISSUE_EDIT}
+                    fallbackMessage="You don't have permission to change the due date"
+                  >
+                    <DateSelector
+                      selectedDate={issue.dueDate ?? ''}
+                      onDateSelect={handleDueDateChange}
+                      icon={CalendarClock}
+                      placeholder='Due date'
+                      title='Due date'
+                      tooltipText='Set due date'
+                      displayMode='iconWhenUnselected'
+                      className={cn(
+                        'hover:bg-muted/40 border-none bg-transparent shadow-none dark:bg-transparent',
+                        issue.dueDate &&
+                          new Date(issue.dueDate) < new Date() &&
+                          states &&
+                          !['done'].includes(
+                            states.find(s => s._id === displayedStateId)
+                              ?.type || '',
+                          ) &&
+                          'text-red-500 dark:text-red-400',
+                      )}
+                    />
+                  </PermissionAwareSelector>
+                ) : issue.dueDate ? (
+                  <span
                     className={cn(
-                      'hover:bg-muted/40 border-none bg-transparent shadow-none dark:bg-transparent',
-                      issue.dueDate &&
-                        new Date(issue.dueDate) < new Date() &&
+                      'inline-flex items-center gap-1.5 px-2.5 text-sm font-medium',
+                      new Date(issue.dueDate) < new Date() &&
                         states &&
                         !['done'].includes(
                           states.find(s => s._id === displayedStateId)?.type ||
                             '',
-                        ) &&
-                        'text-red-500 dark:text-red-400',
+                        )
+                        ? 'text-red-500 dark:text-red-400'
+                        : 'text-muted-foreground',
                     )}
-                  />
-                </PermissionAwareSelector>
-              ) : issue.dueDate ? (
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-2.5 text-sm font-medium',
-                    new Date(issue.dueDate) < new Date() &&
-                      states &&
-                      !['done'].includes(
-                        states.find(s => s._id === displayedStateId)?.type ||
-                          '',
-                      )
-                      ? 'text-red-500 dark:text-red-400'
-                      : 'text-muted-foreground',
-                  )}
-                >
-                  <CalendarClock className='size-3' />
-                  {formatDateHuman(issue.dueDate)}
-                </span>
-              ) : null}
-            </div>
+                  >
+                    <CalendarClock className='size-3' />
+                    {formatDateHuman(issue.dueDate)}
+                  </span>
+                ) : null}
+              </div>
 
-            {/* Description */}
-            <div className='mb-8'>
-              {editingDescription ? (
-                <div className='space-y-4'>
-                  <RichEditor
-                    value={descriptionValue}
-                    onChange={setDescriptionValue}
-                    placeholder='Add a description...'
-                    mode='full'
-                    orgSlug={params.orgSlug}
-                  />
-                  <div className='flex items-center gap-3'>
-                    <Button
-                      onClick={handleDescriptionSave}
-                      disabled={isUpdatingDescription}
-                    >
-                      <Save className='mr-2 size-4' />
-                      Save
-                    </Button>
-                    <Button
-                      variant='outline'
-                      onClick={() => {
-                        setDescriptionValue(displayDescription);
-                        setEditingDescription(false);
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <PermissionAwareWrapper
-                  orgSlug={params.orgSlug}
-                  permission={PERMISSIONS.ISSUE_EDIT}
-                  fallbackMessage="You don't have permission to edit issue description"
-                >
-                  <div>
-                    {displayDescription ? (
-                      <div
-                        className={cn(
-                          canEditIssue
-                            ? 'cursor-pointer transition-colors'
-                            : '',
-                        )}
-                        onClick={
-                          canEditIssue
-                            ? () => {
-                                setDescriptionValue(displayDescription);
-                                setEditingDescription(true);
-                              }
-                            : undefined
-                        }
+              {/* Description */}
+              <div className='mb-8'>
+                {editingDescription ? (
+                  <div className='space-y-4'>
+                    <RichEditor
+                      value={descriptionValue}
+                      onChange={setDescriptionValue}
+                      placeholder='Add a description...'
+                      mode='full'
+                      orgSlug={params.orgSlug}
+                    />
+                    <div className='flex items-center gap-3'>
+                      <Button
+                        onClick={handleDescriptionSave}
+                        disabled={isUpdatingDescription}
                       >
-                        <RichEditor
-                          value={displayDescription}
-                          onChange={() => {}}
-                          mode='full'
-                          disabled={true}
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        className={cn(
-                          'w-full rounded-lg border-2 border-dashed bg-transparent p-4 text-left text-base',
-                          canEditIssue
-                            ? 'text-muted-foreground hover:text-foreground border-muted-foreground/20 hover:border-muted-foreground/40 cursor-pointer'
-                            : 'text-muted-foreground border-muted-foreground/20 cursor-not-allowed opacity-50',
-                        )}
-                        onClick={
-                          canEditIssue
-                            ? () => {
-                                setDescriptionValue(displayDescription);
-                                setEditingDescription(true);
-                              }
-                            : undefined
-                        }
-                        disabled={!canEditIssue}
+                        <Save className='mr-2 size-4' />
+                        Save
+                      </Button>
+                      <Button
+                        variant='outline'
+                        onClick={() => {
+                          setDescriptionValue(displayDescription);
+                          setEditingDescription(false);
+                        }}
                       >
-                        Add a description...
-                      </button>
-                    )}
-                  </div>
-                </PermissionAwareWrapper>
-              )}
-            </div>
-
-            {/*
-             * ── Issue detail sections ──────────────────────────────
-             * All sections below (Sub-Issues, Development, Linked Docs,
-             * Work Sessions, Activity) must follow the same layout rhythm:
-             *
-             *   Wrapper:  `space-y-6` on this container handles inter-section gaps.
-             *   Header:   `mb-3 flex items-center justify-between`
-             *             Title: `<h2 className='text-sm font-semibold'>`.
-             *
-             * When adding a new section, copy this structure so spacing
-             * and header weight stay visually even.
-             * ───────────────────────────────────────────────────────
-             */}
-            <div className='space-y-6'>
-              {/* Sub-Issues */}
-              <div>
-                <div className='mb-3 flex items-center justify-between'>
-                  <h2 className='text-sm font-semibold'>Sub-Issues</h2>
-                  <CreateIssueDialog
-                    orgSlug={params.orgSlug}
-                    defaultStates={{
-                      parentIssueId: issue._id,
-                      teamId: issue.teamId || undefined,
-                      projectId: issue.projectId || undefined,
-                    }}
-                    className='h-6 text-xs'
-                  />
-                </div>
-                {issue.children && issue.children.length > 0 ? (
-                  <div className='space-y-1'>
-                    {issue.children.map(child => {
-                      const childPriorityIcon = child.priority?.icon
-                        ? getDynamicIcon(child.priority.icon)
-                        : Circle;
-                      const childPriorityColor =
-                        child.priority?.color || '#94a3b8';
-
-                      return (
-                        <Link
-                          key={child._id}
-                          href={`/${params.orgSlug}/issues/${child.key}`}
-                          className='hover:bg-muted/50 group flex items-center gap-3 rounded-md border p-2 transition-colors'
-                        >
-                          {/* Priority indicator */}
-                          <div className='flex-shrink-0'>
-                            {childPriorityIcon ? (
-                              React.createElement(childPriorityIcon, {
-                                className: 'h-3 w-3',
-                                style: { color: childPriorityColor },
-                              })
-                            ) : (
-                              <Circle
-                                className='h-3 w-3'
-                                style={{ color: childPriorityColor }}
-                              />
-                            )}
-                          </div>
-
-                          {/* Issue key */}
-                          <span className='text-muted-foreground flex-shrink-0 font-mono text-xs'>
-                            {child.key}
-                          </span>
-
-                          {/* Title */}
-                          <span className='group-hover:text-foreground truncate text-sm'>
-                            {child.title}
-                          </span>
-
-                          {/* Status indicator if available */}
-                          {child.state && (
-                            <div className='ml-auto flex-shrink-0'>
-                              <div
-                                className='h-2 w-2 rounded-full'
-                                style={{ backgroundColor: child.state.color }}
-                                title={child.state.name}
-                              />
-                            </div>
-                          )}
-                        </Link>
-                      );
-                    })}
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <div className='text-muted-foreground py-2 text-sm'>
-                    No sub-issues yet. Create one to break down this issue into
-                    smaller tasks.
-                  </div>
+                  <PermissionAwareWrapper
+                    orgSlug={params.orgSlug}
+                    permission={PERMISSIONS.ISSUE_EDIT}
+                    fallbackMessage="You don't have permission to edit issue description"
+                  >
+                    <div>
+                      {displayDescription ? (
+                        <IssueDescriptionRenderer
+                          canEdit={canEditIssue}
+                          description={displayDescription}
+                          onEdit={() => {
+                            setDescriptionValue(displayDescription);
+                            setEditingDescription(true);
+                          }}
+                        />
+                      ) : (
+                        <button
+                          className={cn(
+                            'w-full rounded-lg border-2 border-dashed bg-transparent p-4 text-left text-base',
+                            canEditIssue
+                              ? 'text-muted-foreground hover:text-foreground border-muted-foreground/20 hover:border-muted-foreground/40 cursor-pointer'
+                              : 'text-muted-foreground border-muted-foreground/20 cursor-not-allowed opacity-50',
+                          )}
+                          onClick={
+                            canEditIssue
+                              ? () => {
+                                  setDescriptionValue(displayDescription);
+                                  setEditingDescription(true);
+                                }
+                              : undefined
+                          }
+                          disabled={!canEditIssue}
+                        >
+                          Add a description...
+                        </button>
+                      )}
+                    </div>
+                  </PermissionAwareWrapper>
                 )}
               </div>
 
-              {/* Linked Documents */}
-              <IssueDevelopmentSection
-                orgSlug={params.orgSlug}
-                issueId={issue._id}
-                issueKey={issue.key}
-              />
+              {/*
+               * ── Issue detail sections ──────────────────────────────
+               * All sections below (Sub-Issues, Development, Linked Docs,
+               * Work Sessions, Activity) must follow the same layout rhythm:
+               *
+               *   Wrapper:  `space-y-6` on this container handles inter-section gaps.
+               *   Header:   `mb-3 flex items-center justify-between`
+               *             Title: `<h2 className='text-sm font-semibold'>`.
+               *
+               * When adding a new section, copy this structure so spacing
+               * and header weight stay visually even.
+               * ───────────────────────────────────────────────────────
+               */}
+              <div className='space-y-6'>
+                {/* Sub-Issues */}
+                <div>
+                  <div className='mb-3 flex items-center justify-between'>
+                    <h2 className='text-sm font-semibold'>Sub-Issues</h2>
+                    <CreateIssueDialog
+                      orgSlug={params.orgSlug}
+                      defaultStates={{
+                        parentIssueId: issue._id,
+                        teamId: issue.teamId || undefined,
+                        projectId: issue.projectId || undefined,
+                      }}
+                      className='h-6 text-xs'
+                    />
+                  </div>
+                  {issue.children && issue.children.length > 0 ? (
+                    <div className='space-y-1'>
+                      {issue.children.map(child => {
+                        const childPriorityIcon = child.priority?.icon
+                          ? getDynamicIcon(child.priority.icon)
+                          : Circle;
+                        const childPriorityColor =
+                          child.priority?.color || '#94a3b8';
 
-              <LinkedDocuments
-                orgSlug={params.orgSlug}
-                mentionType='issue'
-                entityId={issue._id}
-              />
+                        return (
+                          <Link
+                            key={child._id}
+                            href={`/${params.orgSlug}/issues/${child.key}`}
+                            className='hover:bg-muted/50 group flex items-center gap-3 rounded-md border p-2 transition-colors'
+                          >
+                            {/* Priority indicator */}
+                            <div className='flex-shrink-0'>
+                              {childPriorityIcon ? (
+                                React.createElement(childPriorityIcon, {
+                                  className: 'h-3 w-3',
+                                  style: { color: childPriorityColor },
+                                })
+                              ) : (
+                                <Circle
+                                  className='h-3 w-3'
+                                  style={{ color: childPriorityColor }}
+                                />
+                              )}
+                            </div>
 
-              {/* Live Activity */}
-              <IssueLiveActivitySection
-                orgSlug={params.orgSlug}
-                issueId={issue._id}
-                currentUser={
-                  user
-                    ? {
-                        _id: user._id,
-                        name: user.name ?? '',
-                        email: user.email ?? null,
-                        image: user.image ?? null,
-                      }
-                    : null
-                }
-              />
+                            {/* Issue key */}
+                            <span className='text-muted-foreground flex-shrink-0 font-mono text-xs'>
+                              {child.key}
+                            </span>
 
-              {/* Comments & Activity */}
-              <IssueCommentsSection
-                orgSlug={params.orgSlug}
-                issueId={issue._id}
-                currentUser={
-                  user
-                    ? {
-                        _id: user._id,
-                        name: user.name ?? '',
-                        email: user.email ?? null,
-                        image: user.image ?? null,
-                      }
-                    : null
-                }
-              />
+                            {/* Title */}
+                            <span className='group-hover:text-foreground truncate text-sm'>
+                              {child.title}
+                            </span>
+
+                            {/* Status indicator if available */}
+                            {child.state && (
+                              <div className='ml-auto flex-shrink-0'>
+                                <div
+                                  className='h-2 w-2 rounded-full'
+                                  style={{ backgroundColor: child.state.color }}
+                                  title={child.state.name}
+                                />
+                              </div>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className='text-muted-foreground py-2 text-sm'>
+                      No sub-issues yet. Create one to break down this issue
+                      into smaller tasks.
+                    </div>
+                  )}
+                </div>
+
+                {/* Linked Documents */}
+                <IssueDevelopmentSection
+                  orgSlug={params.orgSlug}
+                  issueId={issue._id}
+                  issueKey={issue.key}
+                />
+
+                <LinkedDocuments
+                  orgSlug={params.orgSlug}
+                  mentionType='issue'
+                  entityId={issue._id}
+                />
+
+                {/* Live Activity */}
+                <IssueLiveActivitySection
+                  orgSlug={params.orgSlug}
+                  issueId={issue._id}
+                  currentUser={
+                    user
+                      ? {
+                          _id: user._id,
+                          name: user.name ?? '',
+                          email: user.email ?? null,
+                          image: user.image ?? null,
+                        }
+                      : null
+                  }
+                />
+
+                {/* Comments & Activity */}
+                <IssueCommentsSection
+                  orgSlug={params.orgSlug}
+                  issueId={issue._id}
+                  currentUser={
+                    user
+                      ? {
+                          _id: user._id,
+                          name: user.name ?? '',
+                          email: user.email ?? null,
+                          image: user.image ?? null,
+                        }
+                      : null
+                  }
+                />
+              </div>
             </div>
           </div>
         </div>
 
         {/* RIGHT SIDEBAR - Assignments */}
-        <div className='bg-background w-full border-t lg:sticky lg:top-0 lg:h-screen lg:w-80 lg:border-t-0 lg:border-l'>
-          <ScrollArea className='h-full' scrollbars='vertical'>
-            <div className='flex h-full flex-col'>
+        <div className='bg-background w-full border-t lg:h-full lg:w-80 lg:shrink-0 lg:border-t-0 lg:border-l'>
+          <ScrollArea
+            className='max-h-[45vh] lg:h-full lg:max-h-none'
+            scrollbars='vertical'
+          >
+            <div className='flex min-h-full flex-col'>
               {/* Assignments Section */}
               <div>
                 {states && members && (
@@ -1706,6 +1796,6 @@ export default function IssueViewClient({
         </div>
       </div>
       <ConfirmDeleteDialog />
-    </ScrollArea>
+    </>
   );
 }
