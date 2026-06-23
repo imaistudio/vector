@@ -152,21 +152,25 @@ export default function Home() {
   const hasOrganizations = userOrgs && userOrgs.length > 0;
 
   useEffect(() => {
-    if (brandingQuery.isPending) return;
-
-    if (branding?.defaultOrgSlug) {
-      router.replace(`/${branding.defaultOrgSlug}`);
+    if (
+      brandingQuery.isPending ||
+      userQuery.isPending ||
+      userOrgsQuery.isPending
+    ) {
       return;
     }
 
-    if (userQuery.isPending || userOrgsQuery.isPending) return;
-
     if (user === null) {
+      if (branding?.defaultOrgSlug) {
+        router.replace(`/${branding.defaultOrgSlug}`);
+        return;
+      }
+
       router.replace('/auth/login');
       return;
     }
 
-    // User already has orgs — go to first one
+    // Authenticated users only go to workspaces they are members of.
     if (hasOrganizations && userOrgs?.[0]?.slug) {
       router.replace(`/${userOrgs[0].slug}/issues`);
       return;
