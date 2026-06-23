@@ -11,14 +11,13 @@ export type OtpEmailType =
   | 'change-email';
 
 const colors = {
-  bg: '#eefcfb',
+  bg: '#ffffff',
   panel: '#ffffff',
-  surface: '#f8fafc',
+  surface: '#fafafa',
   text: '#18181b',
   muted: '#71717a',
   border: '#e4e4e7',
-  accent: '#2f93b0',
-  accentDark: '#287f98',
+  borderSubtle: '#f4f4f5',
 };
 
 const fontStack =
@@ -53,43 +52,38 @@ function otpEmailHtml({
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"><title>${safeTitle}</title></head>
-<body style="margin:0; background-color:${colors.bg}; font-family:${fontStack}; color:${colors.text}; padding:36px 12px;">
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%" style="max-width:560px;">
-    <tr><td style="padding:0 0 12px;">
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-        <tr>
-          <td style="width:24px; height:24px; border-radius:8px; background-color:${colors.text}; color:#ffffff; font-family:${titleFontStack}; font-size:13px; line-height:24px; font-weight:700; text-align:center;">V</td>
-          <td style="padding-left:8px; font-family:${titleFontStack}; font-size:14px; line-height:20px; font-weight:700; color:${colors.text};">Vector</td>
-        </tr>
-      </table>
-    </td></tr>
-    <tr><td style="background-color:${colors.panel}; border:1px solid ${colors.border}; border-radius:12px; overflow:hidden; box-shadow:0 18px 50px rgba(15, 23, 42, 0.08);">
+<body style="margin:0; background-color:${colors.bg}; font-family:${fontStack}; color:${colors.text}; padding:24px 12px;">
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" width="100%" style="max-width:480px;">
+    <tr><td style="background-color:${colors.panel}; border:1px solid ${colors.border}; border-radius:8px; overflow:hidden;">
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-        <tr><td style="height:4px; background-color:${colors.accent}; font-size:0; line-height:0;">&nbsp;</td></tr>
-        <tr><td style="padding:22px 24px 0;">
-          <div style="margin:0; font-size:10px; line-height:14px; letter-spacing:0.08em; text-transform:uppercase; color:${colors.accentDark}; font-weight:700;">Secure code</div>
-          <h1 style="margin:8px 0 0; font-family:${titleFontStack}; font-size:24px; line-height:30px; font-weight:700; color:${colors.text};">${safeTitle}</h1>
-          <p style="margin:8px 0 0; font-size:13px; line-height:21px; color:${colors.muted};">${safeDescription}</p>
+        <tr><td style="padding:14px 16px 0;">
+          <div style="margin:0; font-family:${titleFontStack}; font-size:12px; line-height:17px; font-weight:600; color:${colors.text};">Vector</div>
+          <hr style="border:none; border-top:1px solid ${colors.borderSubtle}; margin:12px 0 0;" />
         </td></tr>
-        <tr><td style="padding:18px 24px 0;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:${colors.surface}; border:1px solid ${colors.border}; border-radius:10px;">
-            <tr><td style="padding:22px 16px 18px; text-align:center;">
-              <div style="font-family:${monoFontStack}; font-weight:700; font-size:34px; line-height:40px; letter-spacing:10px; color:${colors.text};">${safeOtp}</div>
+        <tr><td style="padding:14px 16px 0;">
+          <div style="margin:0; font-size:11px; line-height:16px; color:${colors.muted};">Secure code</div>
+          <h1 style="margin:4px 0 0; font-family:${titleFontStack}; font-size:18px; line-height:24px; font-weight:650; color:${colors.text};">${safeTitle}</h1>
+          <p style="margin:8px 0 0; font-size:13px; line-height:20px; color:${colors.muted};">${safeDescription}</p>
+        </td></tr>
+        <tr><td style="padding:14px 16px 0;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:${colors.surface}; border:1px solid ${colors.border}; border-radius:7px;">
+            <tr><td style="padding:18px 12px 15px; text-align:center;">
+              <div style="font-family:${monoFontStack}; font-weight:700; font-size:30px; line-height:36px; letter-spacing:8px; color:${colors.text};">${safeOtp}</div>
               <div style="margin-top:8px; color:${colors.muted}; font-size:12px; line-height:18px;">Enter this code in Vector to continue.</div>
             </td></tr>
           </table>
         </td></tr>
-        <tr><td style="padding:16px 24px 0;">
+        <tr><td style="padding:14px 16px 0;">
           <p style="margin:0; color:${colors.muted}; font-size:12px; line-height:18px;">This code expires in 15 minutes. If you did not request it, you can ignore this email.</p>
         </td></tr>
-        <tr><td><hr style="border:none; border-top:1px solid ${colors.border}; margin:24px 0 0;" /></td></tr>
-        <tr><td style="padding:12px 24px 18px;">
-          <p style="margin:0; font-size:11px; line-height:17px; color:${colors.muted};">Vector will never ask for this code outside the sign-in or verification flow.</p>
+        <tr><td><hr style="border:none; border-top:1px solid ${colors.border}; margin:16px 0 0;" /></td></tr>
+        <tr><td style="padding:10px 16px 12px;">
+          <p style="margin:0; font-size:11px; line-height:16px; color:${colors.muted};">Vector will never ask for this code outside the sign-in or verification flow.</p>
         </td></tr>
       </table>
     </td></tr>
-    <tr><td style="padding:12px 2px 0;">
-      <p style="margin:0; font-size:11px; line-height:16px; color:${colors.muted};">Sent by Vector</p>
+    <tr><td style="padding:8px 1px 0;">
+      <p style="margin:0; font-size:10px; line-height:16px; color:${colors.muted};">Sent by Vector</p>
     </td></tr>
   </table>
 </body>

@@ -16,15 +16,15 @@ import type { NotificationEventType } from './shared';
 const h = React.createElement;
 
 const colors = {
-  bg: '#eefcfb',
+  bg: '#ffffff',
   panel: '#ffffff',
-  surface: '#f8fafc',
+  surface: '#fafafa',
   text: '#18181b',
   muted: '#71717a',
   border: '#e4e4e7',
-  accent: '#2f93b0',
-  accentDark: '#287f98',
-  accentSoft: '#e6f7f7',
+  borderSubtle: '#f4f4f5',
+  button: '#18181b',
+  buttonText: '#ffffff',
 };
 
 const fontStack =
@@ -53,57 +53,6 @@ function capitalizeInviteRole(role?: string) {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-function brandMark() {
-  return h(
-    'table',
-    {
-      style: {
-        borderCollapse: 'collapse' as const,
-      },
-    },
-    h(
-      'tbody',
-      null,
-      h(
-        'tr',
-        null,
-        h(
-          'td',
-          {
-            style: {
-              width: '24px',
-              height: '24px',
-              borderRadius: '8px',
-              backgroundColor: colors.text,
-              color: '#ffffff',
-              fontSize: '13px',
-              fontWeight: 700,
-              lineHeight: '24px',
-              textAlign: 'center' as const,
-              fontFamily: fontStack,
-            },
-          },
-          'V',
-        ),
-        h(
-          'td',
-          {
-            style: {
-              paddingLeft: '8px',
-              fontSize: '14px',
-              lineHeight: '20px',
-              fontWeight: 700,
-              fontFamily: fontStack,
-              color: colors.text,
-            },
-          },
-          'Vector',
-        ),
-      ),
-    ),
-  );
-}
-
 function metaRow(
   label: string,
   value: React.ReactNode,
@@ -117,9 +66,9 @@ function metaRow(
       'td',
       {
         style: {
-          padding: '4px 0',
+          padding: '0',
           fontSize: '11px',
-          lineHeight: '16px',
+          lineHeight: '17px',
           color: colors.muted,
           fontFamily: bodyFontStack,
           whiteSpace: 'nowrap' as const,
@@ -134,9 +83,9 @@ function metaRow(
       'td',
       {
         style: {
-          padding: '4px 0',
+          padding: '0',
           fontSize: '12px',
-          lineHeight: '18px',
+          lineHeight: '17px',
           color: colors.text,
           fontFamily: tone === 'mono' ? monoFontStack : bodyFontStack,
           fontWeight: tone === 'mono' ? 600 : 500,
@@ -189,14 +138,14 @@ function vectorEmailLayout({
           fontFamily: bodyFontStack,
           color: colors.text,
           margin: 0,
-          padding: '36px 12px',
+          padding: '24px 12px',
         },
       },
       h(
         Container,
         {
           style: {
-            maxWidth: '560px',
+            maxWidth: '480px',
             margin: '0 auto',
           },
         },
@@ -204,33 +153,17 @@ function vectorEmailLayout({
           Section,
           {
             style: {
-              padding: '0 0 12px',
-            },
-          },
-          brandMark(),
-        ),
-        h(
-          Section,
-          {
-            style: {
               backgroundColor: colors.panel,
               border: `1px solid ${colors.border}`,
-              borderRadius: '12px',
+              borderRadius: '8px',
               overflow: 'hidden',
-              boxShadow: '0 18px 50px rgba(15, 23, 42, 0.08)',
             },
           },
-          h(Section, {
-            style: {
-              height: '4px',
-              backgroundColor: colors.accent,
-            },
-          }),
           h(
             Section,
             {
               style: {
-                padding: '22px 24px 0',
+                padding: '14px 16px 0',
               },
             },
             h(
@@ -238,11 +171,37 @@ function vectorEmailLayout({
               {
                 style: {
                   margin: 0,
-                  fontSize: '10px',
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  color: colors.accentDark,
-                  fontWeight: 700,
+                  fontSize: '12px',
+                  lineHeight: '17px',
+                  fontWeight: 600,
+                  fontFamily: fontStack,
+                  color: colors.text,
+                },
+              },
+              'Vector',
+            ),
+            h(Hr, {
+              style: {
+                borderColor: colors.borderSubtle,
+                margin: '12px 0 0',
+              },
+            }),
+          ),
+          h(
+            Section,
+            {
+              style: {
+                padding: '14px 16px 0',
+              },
+            },
+            h(
+              Text,
+              {
+                style: {
+                  margin: 0,
+                  fontSize: '11px',
+                  lineHeight: '16px',
+                  color: colors.muted,
                   fontFamily: bodyFontStack,
                 },
               },
@@ -253,10 +212,10 @@ function vectorEmailLayout({
               {
                 as: 'h1',
                 style: {
-                  margin: '8px 0 0',
-                  fontSize: '24px',
-                  lineHeight: '30px',
-                  fontWeight: 700,
+                  margin: '4px 0 0',
+                  fontSize: '18px',
+                  lineHeight: '24px',
+                  fontWeight: 650,
                   fontFamily: fontStack,
                   color: colors.text,
                 },
@@ -269,7 +228,7 @@ function vectorEmailLayout({
                 style: {
                   margin: '8px 0 0',
                   fontSize: '13px',
-                  lineHeight: '21px',
+                  lineHeight: '20px',
                   color: colors.muted,
                   fontFamily: bodyFontStack,
                 },
@@ -282,10 +241,10 @@ function vectorEmailLayout({
                 Section,
                 {
                   style: {
-                    margin: '18px 24px 0',
+                    margin: '14px 16px 0',
                     backgroundColor: colors.surface,
                     border: `1px solid ${colors.border}`,
-                    borderRadius: '10px',
+                    borderRadius: '7px',
                     overflow: 'hidden',
                   },
                 },
@@ -309,7 +268,7 @@ function vectorEmailLayout({
                           {
                             style: {
                               padding:
-                                index === 0 ? '12px 16px 6px' : '2px 16px 6px',
+                                index === 0 ? '9px 12px' : '8px 12px 9px',
                               borderTop:
                                 index === 0
                                   ? undefined
@@ -345,20 +304,21 @@ function vectorEmailLayout({
           ctaHref && ctaLabel
             ? h(
                 Section,
-                { style: { padding: '20px 24px 0' } },
+                { style: { padding: '14px 16px 0' } },
                 h(
                   Button,
                   {
                     href: ctaHref,
                     style: {
-                      backgroundColor: colors.accent,
-                      color: '#ffffff',
-                      fontSize: '13px',
-                      fontWeight: 700,
+                      backgroundColor: colors.button,
+                      color: colors.buttonText,
+                      fontSize: '12px',
+                      lineHeight: '16px',
+                      fontWeight: 600,
                       fontFamily: bodyFontStack,
                       textDecoration: 'none',
-                      borderRadius: '8px',
-                      padding: '10px 18px',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
                       display: 'inline-block',
                     },
                   },
@@ -369,19 +329,19 @@ function vectorEmailLayout({
           h(Hr, {
             style: {
               borderColor: colors.border,
-              margin: '24px 0 0',
+              margin: '16px 0 0',
             },
           }),
           h(
             Section,
-            { style: { padding: '12px 24px 18px' } },
+            { style: { padding: '10px 16px 12px' } },
             h(
               Text,
               {
                 style: {
                   margin: 0,
                   fontSize: '11px',
-                  lineHeight: '17px',
+                  lineHeight: '16px',
                   color: colors.muted,
                   fontFamily: bodyFontStack,
                 },
@@ -393,13 +353,13 @@ function vectorEmailLayout({
         ),
         h(
           Section,
-          { style: { padding: '12px 2px 0' } },
+          { style: { padding: '8px 1px 0' } },
           h(
             Text,
             {
               style: {
                 margin: 0,
-                fontSize: '11px',
+                fontSize: '10px',
                 lineHeight: '16px',
                 color: colors.muted,
                 fontFamily: bodyFontStack,
@@ -453,22 +413,7 @@ export function renderNotificationEmailTemplate({
           },
           {
             label: 'Role',
-            value: h(
-              'span',
-              {
-                style: {
-                  display: 'inline-block',
-                  borderRadius: '5px',
-                  backgroundColor: colors.accentSoft,
-                  color: colors.accentDark,
-                  padding: '2px 8px',
-                  fontSize: '10px',
-                  lineHeight: '16px',
-                  fontWeight: 700,
-                },
-              },
-              capitalizeInviteRole(payload.roleLabel),
-            ),
+            value: capitalizeInviteRole(payload.roleLabel),
           },
         ],
         footer:
