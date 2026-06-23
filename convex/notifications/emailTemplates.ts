@@ -16,21 +16,23 @@ import type { NotificationEventType } from './shared';
 const h = React.createElement;
 
 const colors = {
-  bg: '#0a0a0a',
-  panel: '#111111',
-  text: '#f0f0f0',
-  muted: '#888888',
-  border: '#222222',
-  accent: '#ffffff',
-  accentBg: '#ffffff',
-  metaBg: '#161616',
-  metaBorder: '#1e1e1e',
+  bg: '#eefcfb',
+  panel: '#ffffff',
+  surface: '#f8fafc',
+  text: '#18181b',
+  muted: '#71717a',
+  border: '#e4e4e7',
+  accent: '#2f93b0',
+  accentDark: '#287f98',
+  accentSoft: '#e6f7f7',
 };
 
 const fontStack =
   'Urbanist, Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
 const bodyFontStack =
   'Poppins, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+const monoFontStack =
+  '"SFMono-Regular", "JetBrains Mono", Menlo, Monaco, Consolas, monospace';
 
 function formatInviteRoleLabel(role?: string) {
   switch (role) {
@@ -51,7 +53,63 @@ function capitalizeInviteRole(role?: string) {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-function metaRow(label: string, value: string, key: string) {
+function brandMark() {
+  return h(
+    'table',
+    {
+      style: {
+        borderCollapse: 'collapse' as const,
+      },
+    },
+    h(
+      'tbody',
+      null,
+      h(
+        'tr',
+        null,
+        h(
+          'td',
+          {
+            style: {
+              width: '24px',
+              height: '24px',
+              borderRadius: '8px',
+              backgroundColor: colors.text,
+              color: '#ffffff',
+              fontSize: '13px',
+              fontWeight: 700,
+              lineHeight: '24px',
+              textAlign: 'center' as const,
+              fontFamily: fontStack,
+            },
+          },
+          'V',
+        ),
+        h(
+          'td',
+          {
+            style: {
+              paddingLeft: '8px',
+              fontSize: '14px',
+              lineHeight: '20px',
+              fontWeight: 700,
+              fontFamily: fontStack,
+              color: colors.text,
+            },
+          },
+          'Vector',
+        ),
+      ),
+    ),
+  );
+}
+
+function metaRow(
+  label: string,
+  value: React.ReactNode,
+  key: string,
+  tone: 'default' | 'mono' = 'default',
+) {
   return h(
     'tr',
     { key },
@@ -60,7 +118,7 @@ function metaRow(label: string, value: string, key: string) {
       {
         style: {
           padding: '4px 0',
-          fontSize: '12px',
+          fontSize: '11px',
           lineHeight: '16px',
           color: colors.muted,
           fontFamily: bodyFontStack,
@@ -78,9 +136,11 @@ function metaRow(label: string, value: string, key: string) {
         style: {
           padding: '4px 0',
           fontSize: '12px',
-          lineHeight: '16px',
+          lineHeight: '18px',
           color: colors.text,
-          fontFamily: bodyFontStack,
+          fontFamily: tone === 'mono' ? monoFontStack : bodyFontStack,
+          fontWeight: tone === 'mono' ? 600 : 500,
+          wordBreak: 'break-word' as const,
         },
       },
       value,
@@ -96,6 +156,7 @@ function vectorEmailLayout({
   ctaHref,
   ctaLabel,
   meta,
+  footer,
 }: {
   preview: string;
   eyebrow: string;
@@ -103,12 +164,22 @@ function vectorEmailLayout({
   body: string;
   ctaHref?: string;
   ctaLabel?: string;
-  meta?: { label: string; value: string }[];
+  meta?: {
+    label: string;
+    value: React.ReactNode;
+    tone?: 'default' | 'mono';
+  }[];
+  footer?: string;
 }) {
   return h(
     Html,
     null,
-    h(Head),
+    h(
+      Head,
+      null,
+      h('meta', { name: 'color-scheme', content: 'light' }),
+      h('meta', { name: 'supported-color-schemes', content: 'light' }),
+    ),
     h(Preview, null, preview),
     h(
       Body,
@@ -118,155 +189,211 @@ function vectorEmailLayout({
           fontFamily: bodyFontStack,
           color: colors.text,
           margin: 0,
-          padding: '32px 0',
+          padding: '36px 12px',
         },
       },
       h(
         Container,
         {
           style: {
-            maxWidth: '520px',
-            backgroundColor: colors.panel,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '12px',
-            overflow: 'hidden',
+            maxWidth: '560px',
+            margin: '0 auto',
           },
         },
-        // Header with Vector wordmark
         h(
           Section,
           {
             style: {
-              padding: '20px 24px 0',
+              padding: '0 0 12px',
             },
           },
-          h(
-            Text,
-            {
-              style: {
-                margin: 0,
-                fontSize: '14px',
-                fontWeight: 700,
-                fontFamily: fontStack,
-                color: colors.text,
-                letterSpacing: '-0.02em',
-              },
-            },
-            'Vector',
-          ),
+          brandMark(),
         ),
-        // Eyebrow + Title + Body
         h(
           Section,
-          { style: { padding: '16px 24px 0' } },
+          {
+            style: {
+              backgroundColor: colors.panel,
+              border: `1px solid ${colors.border}`,
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 18px 50px rgba(15, 23, 42, 0.08)',
+            },
+          },
+          h(Section, {
+            style: {
+              height: '4px',
+              backgroundColor: colors.accent,
+            },
+          }),
           h(
-            Text,
+            Section,
             {
               style: {
-                margin: 0,
-                fontSize: '10px',
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                color: colors.muted,
-                fontWeight: 600,
-                fontFamily: bodyFontStack,
+                padding: '22px 24px 0',
               },
             },
-            eyebrow,
-          ),
-          h(
-            Heading,
-            {
-              as: 'h1',
-              style: {
-                margin: '8px 0 0',
-                fontSize: '20px',
-                lineHeight: '26px',
-                fontWeight: 700,
-                fontFamily: fontStack,
-                color: colors.text,
-                letterSpacing: '-0.01em',
-              },
-            },
-            title,
-          ),
-          h(
-            Text,
-            {
-              style: {
-                margin: '8px 0 0',
-                fontSize: '13px',
-                lineHeight: '20px',
-                color: colors.muted,
-                fontFamily: bodyFontStack,
-              },
-            },
-            body,
-          ),
-        ),
-        // Meta table
-        meta && meta.length > 0
-          ? h(
-              Section,
+            h(
+              Text,
               {
                 style: {
-                  margin: '16px 24px 0',
-                  padding: '12px 14px',
-                  backgroundColor: colors.metaBg,
-                  border: `1px solid ${colors.metaBorder}`,
-                  borderRadius: '8px',
+                  margin: 0,
+                  fontSize: '10px',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: colors.accentDark,
+                  fontWeight: 700,
+                  fontFamily: bodyFontStack,
                 },
               },
-              h(
-                'table',
+              eyebrow,
+            ),
+            h(
+              Heading,
+              {
+                as: 'h1',
+                style: {
+                  margin: '8px 0 0',
+                  fontSize: '24px',
+                  lineHeight: '30px',
+                  fontWeight: 700,
+                  fontFamily: fontStack,
+                  color: colors.text,
+                },
+              },
+              title,
+            ),
+            h(
+              Text,
+              {
+                style: {
+                  margin: '8px 0 0',
+                  fontSize: '13px',
+                  lineHeight: '21px',
+                  color: colors.muted,
+                  fontFamily: bodyFontStack,
+                },
+              },
+              body,
+            ),
+          ),
+          meta && meta.length > 0
+            ? h(
+                Section,
                 {
                   style: {
-                    width: '100%',
-                    borderCollapse: 'collapse' as const,
+                    margin: '18px 24px 0',
+                    backgroundColor: colors.surface,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: '10px',
+                    overflow: 'hidden',
                   },
                 },
                 h(
-                  'tbody',
-                  null,
-                  meta.map((item, index) =>
-                    metaRow(item.label, item.value, `meta-${index}`),
+                  'table',
+                  {
+                    style: {
+                      width: '100%',
+                      borderCollapse: 'collapse' as const,
+                    },
+                  },
+                  h(
+                    'tbody',
+                    null,
+                    meta.map((item, index) =>
+                      h(
+                        'tr',
+                        { key: `meta-wrap-${index}` },
+                        h(
+                          'td',
+                          {
+                            style: {
+                              padding:
+                                index === 0 ? '12px 16px 6px' : '2px 16px 6px',
+                              borderTop:
+                                index === 0
+                                  ? undefined
+                                  : `1px solid ${colors.border}`,
+                            },
+                          },
+                          h(
+                            'table',
+                            {
+                              style: {
+                                width: '100%',
+                                borderCollapse: 'collapse' as const,
+                              },
+                            },
+                            h(
+                              'tbody',
+                              null,
+                              metaRow(
+                                item.label,
+                                item.value,
+                                `meta-${index}`,
+                                item.tone,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            )
-          : null,
-        // CTA button
-        ctaHref && ctaLabel
-          ? h(
-              Section,
-              { style: { padding: '20px 24px 0' } },
-              h(
-                Button,
-                {
-                  href: ctaHref,
-                  style: {
-                    backgroundColor: colors.accentBg,
-                    color: '#000000',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                    fontFamily: bodyFontStack,
-                    textDecoration: 'none',
-                    borderRadius: '8px',
-                    padding: '10px 20px',
-                    display: 'inline-block',
+              )
+            : null,
+          ctaHref && ctaLabel
+            ? h(
+                Section,
+                { style: { padding: '20px 24px 0' } },
+                h(
+                  Button,
+                  {
+                    href: ctaHref,
+                    style: {
+                      backgroundColor: colors.accent,
+                      color: '#ffffff',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      fontFamily: bodyFontStack,
+                      textDecoration: 'none',
+                      borderRadius: '8px',
+                      padding: '10px 18px',
+                      display: 'inline-block',
+                    },
                   },
+                  ctaLabel,
+                ),
+              )
+            : null,
+          h(Hr, {
+            style: {
+              borderColor: colors.border,
+              margin: '24px 0 0',
+            },
+          }),
+          h(
+            Section,
+            { style: { padding: '12px 24px 18px' } },
+            h(
+              Text,
+              {
+                style: {
+                  margin: 0,
+                  fontSize: '11px',
+                  lineHeight: '17px',
+                  color: colors.muted,
+                  fontFamily: bodyFontStack,
                 },
-                ctaLabel,
-              ),
-            )
-          : null,
-        // Footer
-        h(Hr, {
-          style: { borderColor: colors.border, margin: '24px 0 0' },
-        }),
+              },
+              footer ??
+                'Open Vector to continue in context with the rest of your workspace.',
+            ),
+          ),
+        ),
         h(
           Section,
-          { style: { padding: '12px 24px 16px' } },
+          { style: { padding: '12px 2px 0' } },
           h(
             Text,
             {
@@ -278,7 +405,7 @@ function vectorEmailLayout({
                 fontFamily: bodyFontStack,
               },
             },
-            'Sent by Vector — open the linked item to continue where the work is happening.',
+            'Sent by Vector',
           ),
         ),
       ),
@@ -326,9 +453,26 @@ export function renderNotificationEmailTemplate({
           },
           {
             label: 'Role',
-            value: capitalizeInviteRole(payload.roleLabel),
+            value: h(
+              'span',
+              {
+                style: {
+                  display: 'inline-block',
+                  borderRadius: '5px',
+                  backgroundColor: colors.accentSoft,
+                  color: colors.accentDark,
+                  padding: '2px 8px',
+                  fontSize: '10px',
+                  lineHeight: '16px',
+                  fontWeight: 700,
+                },
+              },
+              capitalizeInviteRole(payload.roleLabel),
+            ),
           },
         ],
+        footer:
+          'This invite is tied to the email address it was sent to. Sign in or create an account with this email to accept it.',
       });
     case 'issue_assigned':
     case 'issue_reassigned':
@@ -340,7 +484,11 @@ export function renderNotificationEmailTemplate({
         ctaHref: href,
         ctaLabel: 'Open issue',
         meta: [
-          { label: 'Issue', value: payload.issueKey ?? 'Unknown' },
+          {
+            label: 'Issue',
+            value: payload.issueKey ?? 'Unknown',
+            tone: 'mono',
+          },
           ...(payload.issueTitle
             ? [{ label: 'Title', value: payload.issueTitle }]
             : []),
@@ -355,7 +503,11 @@ export function renderNotificationEmailTemplate({
         ctaHref: href,
         ctaLabel: 'View comment',
         meta: [
-          { label: 'Issue', value: payload.issueKey ?? 'Unknown' },
+          {
+            label: 'Issue',
+            value: payload.issueKey ?? 'Unknown',
+            tone: 'mono',
+          },
           ...(payload.commentPreview
             ? [{ label: 'Comment', value: payload.commentPreview }]
             : []),
@@ -370,7 +522,11 @@ export function renderNotificationEmailTemplate({
         ctaHref: href,
         ctaLabel: 'Open issue',
         meta: [
-          { label: 'Issue', value: payload.issueKey ?? 'Unknown' },
+          {
+            label: 'Issue',
+            value: payload.issueKey ?? 'Unknown',
+            tone: 'mono',
+          },
           ...(payload.commentPreview
             ? [{ label: 'Comment', value: payload.commentPreview }]
             : []),
