@@ -889,6 +889,73 @@ export const getOrgMember = query({
   },
 });
 
+export const getPendingInvitationForOrg = query({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) {
+      return null;
+    }
+
+    const user = await ctx.db.get('users', userId);
+    const userEmail = user?.email?.toLowerCase();
+    if (!userEmail) {
+      return null;
+    }
+
+    const org = await ctx.db
+      .query('organizations')
+      .withIndex('by_slug', q => q.eq('slug', args.orgSlug))
+      .first();
+
+    if (!org) {
+      return null;
+    }
+
+    const membership = await ctx.db
+      .query('members')
+      .withIndex('by_org_user', q =>
+        q.eq('organizationId', org._id).eq('userId', userId),
+      )
+      .first();
+
+    if (membership) {
+      return null;
+    }
+
+    const invites = await ctx.db
+      .query('invitations')
+      .withIndex('by_email', q => q.eq('email', userEmail))
+      .order('desc')
+      .take(50);
+    const invite = invites.find(
+      candidate =>
+        candidate.organizationId === org._id &&
+        candidate.status === 'pending' &&
+        candidate.expiresAt >= Date.now(),
+    );
+
+    if (!invite) {
+      return null;
+    }
+
+    const customRoleName = await getInviteCustomRoleName(
+      ctx,
+      org._id,
+      invite.customRoleId,
+    );
+
+    return {
+      _id: invite._id,
+      organizationName: org.name,
+      role: invite.role,
+      customRoleName,
+    };
+  },
+});
+
 /**
  * Get organization logo URL
  */
