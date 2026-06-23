@@ -285,29 +285,31 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
               </div>
             </div>
-            <ScrollArea
-              className='min-h-0 flex-1'
-              viewportClassName='h-full overflow-x-hidden'
-              scrollbars='vertical'
-            >
-              <div className='space-y-4 p-2 pt-0'>
-                <div className='space-y-1'>
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className='flex h-8 items-center gap-2 rounded-md px-2 py-1'
-                    >
-                      <Skeleton className='size-4 rounded' />
-                      <Skeleton
-                        className='h-4'
-                        style={{ width: `${60 + (i % 3) * 20}px` }}
-                      />
-                    </div>
-                  ))}
+            <div className='min-h-0 flex-1 overflow-hidden'>
+              <ScrollArea
+                className='h-full'
+                viewportClassName='h-full overflow-x-hidden'
+                scrollbars='vertical'
+              >
+                <div className='space-y-4 p-2 pt-0'>
+                  <div className='space-y-1'>
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className='flex h-8 items-center gap-2 rounded-md px-2 py-1'
+                      >
+                        <Skeleton className='size-4 rounded' />
+                        <Skeleton
+                          className='h-4'
+                          style={{ width: `${60 + (i % 3) * 20}px` }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </ScrollArea>
-            <div className='border-border border-t p-2'>
+              </ScrollArea>
+            </div>
+            <div className='border-border shrink-0 border-t p-2'>
               <div className='flex w-full justify-start gap-2 p-2'>
                 <Skeleton className='size-8 rounded-full' />
                 <div className='flex flex-col items-start gap-1'>
@@ -347,17 +349,19 @@ export default function AppLayout({ children }: AppLayoutProps) {
                     organizations={organizations}
                   />
                 </div>
-                <ScrollArea
-                  className='min-h-0 flex-1'
-                  viewportClassName='h-full overflow-x-hidden'
-                  scrollbars='vertical'
-                >
-                  <OrgSidebar orgSlug={orgSlug} />
-                </ScrollArea>
+                <div className='min-h-0 flex-1 overflow-hidden'>
+                  <ScrollArea
+                    className='h-full'
+                    viewportClassName='h-full overflow-x-hidden'
+                    scrollbars='vertical'
+                  >
+                    <OrgSidebar orgSlug={orgSlug} />
+                  </ScrollArea>
+                </div>
                 {/* Assistant dock */}
                 <OrgAssistantDock orgSlug={orgSlug} />
                 {/* User footer */}
-                <div className='border-border flex items-center gap-1 border-t p-2'>
+                <div className='border-border flex shrink-0 items-center gap-1 border-t p-2'>
                   <div className='min-w-0 flex-1'>
                     <UserMenu />
                   </div>
@@ -396,19 +400,21 @@ export default function AppLayout({ children }: AppLayoutProps) {
                       organizations={organizations}
                     />
                   </div>
-                  <ScrollArea
-                    className='min-h-0 flex-1'
-                    viewportClassName='h-full overflow-x-hidden'
-                    scrollbars='vertical'
-                  >
-                    <OrgSidebar
-                      orgSlug={orgSlug}
-                      onNavigate={() => setMobileOpen(false)}
-                    />
-                  </ScrollArea>
+                  <div className='min-h-0 flex-1 overflow-hidden'>
+                    <ScrollArea
+                      className='h-full'
+                      viewportClassName='h-full overflow-x-hidden'
+                      scrollbars='vertical'
+                    >
+                      <OrgSidebar
+                        orgSlug={orgSlug}
+                        onNavigate={() => setMobileOpen(false)}
+                      />
+                    </ScrollArea>
+                  </div>
                   {/* Assistant dock in mobile sheet */}
                   <OrgAssistantDock orgSlug={orgSlug} />
-                  <div className='border-border flex items-center gap-1 border-t p-2'>
+                  <div className='border-border flex shrink-0 items-center gap-1 border-t p-2'>
                     <div className='min-w-0 flex-1'>
                       <UserMenu />
                     </div>
