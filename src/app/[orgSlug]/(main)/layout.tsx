@@ -287,11 +287,11 @@ export default function AppLayout({ children }: AppLayoutProps) {
             </div>
             <div className='min-h-0 flex-1 overflow-hidden'>
               <ScrollArea
-                className='h-full'
-                viewportClassName='h-full overflow-x-hidden'
+                className='h-full w-full max-w-full min-w-0'
+                viewportClassName='h-full min-w-0 max-w-full overflow-x-hidden'
                 scrollbars='vertical'
               >
-                <div className='space-y-4 p-2 pt-0'>
+                <div className='w-full max-w-full min-w-0 space-y-4 p-2 pt-0'>
                   <div className='space-y-1'>
                     {Array.from({ length: 5 }).map((_, i) => (
                       <div
@@ -351,8 +351,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                 </div>
                 <div className='min-h-0 flex-1 overflow-hidden'>
                   <ScrollArea
-                    className='h-full'
-                    viewportClassName='h-full overflow-x-hidden'
+                    className='h-full w-full max-w-full min-w-0'
+                    viewportClassName='h-full min-w-0 max-w-full overflow-x-hidden'
                     scrollbars='vertical'
                   >
                     <OrgSidebar orgSlug={orgSlug} />
@@ -402,8 +402,8 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   </div>
                   <div className='min-h-0 flex-1 overflow-hidden'>
                     <ScrollArea
-                      className='h-full'
-                      viewportClassName='h-full overflow-x-hidden'
+                      className='h-full w-full max-w-full min-w-0'
+                      viewportClassName='h-full min-w-0 max-w-full overflow-x-hidden'
                       scrollbars='vertical'
                     >
                       <OrgSidebar

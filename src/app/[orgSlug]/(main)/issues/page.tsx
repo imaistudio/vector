@@ -761,8 +761,8 @@ export default function IssuesPage() {
             className='flex min-h-0 flex-1 flex-col'
           >
             <ScrollArea
-              className='min-h-0 flex-1'
-              viewportClassName='h-full'
+              className='min-h-0 w-full min-w-0 flex-1'
+              viewportClassName='h-full min-w-0 max-w-full'
               scrollbars='vertical'
             >
               <IssuesTable
@@ -803,8 +803,8 @@ export default function IssuesPage() {
             className='flex min-h-0 flex-1 flex-col'
           >
             <ScrollArea
-              className='min-h-0 flex-1'
-              viewportClassName='h-full'
+              className='min-h-0 w-full min-w-0 flex-1'
+              viewportClassName='h-full min-w-0 max-w-full'
               scrollbars='vertical'
             >
               <IssuesTimeline

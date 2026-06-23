@@ -117,11 +117,11 @@ export function ViewsListPage() {
           </div>
         </div>
         <ScrollArea
-          className='min-h-0 flex-1'
-          viewportClassName='h-full'
+          className='min-h-0 w-full min-w-0 flex-1'
+          viewportClassName='h-full min-w-0 max-w-full'
           scrollbars='vertical'
         >
-          <div className='divide-y'>
+          <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className='flex items-center gap-3 px-3 py-2.5'>
                 <Skeleton className='size-4 rounded' />
@@ -187,8 +187,8 @@ export function ViewsListPage() {
         </div>
 
         <ScrollArea
-          className='min-h-0 flex-1'
-          viewportClassName='h-full'
+          className='min-h-0 w-full min-w-0 flex-1'
+          viewportClassName='h-full min-w-0 max-w-full'
           scrollbars='vertical'
         >
           {/* Empty state */}
@@ -213,7 +213,7 @@ export function ViewsListPage() {
               )}
             </div>
           ) : (
-            <div className='divide-border divide-y'>
+            <div className='divide-border w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               {results.map(view => (
                 <ViewRow
                   key={view._id}
@@ -280,7 +280,7 @@ function ViewRow({
 
   return (
     <div
-      className='hover:bg-muted/40 group flex cursor-pointer items-center gap-2 px-3 py-2 transition-colors'
+      className='hover:bg-muted/40 group flex w-full max-w-full min-w-0 cursor-pointer items-center gap-2 px-3 py-2 transition-colors'
       onClick={onNavigate}
       role='link'
       tabIndex={0}
@@ -291,8 +291,10 @@ function ViewRow({
 
       {/* Main content */}
       <div className='min-w-0 flex-1'>
-        <div className='flex items-center gap-2'>
-          <span className='truncate text-sm font-medium'>{view.name}</span>
+        <div className='flex min-w-0 items-center gap-2'>
+          <span className='min-w-0 flex-1 truncate text-sm font-medium'>
+            {view.name}
+          </span>
           {filterLabels.length > 0 && (
             <div className='hidden items-center gap-1 sm:flex'>
               {filterLabels.map(label => (

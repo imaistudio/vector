@@ -314,7 +314,7 @@ export function IssuesTimeline({
         exit={{ opacity: 0, y: 4 }}
         transition={{ duration: 0.15 }}
         key={issue.id}
-        className='flex items-center gap-0'
+        className='flex w-full max-w-full min-w-0 items-center gap-0'
       >
         {/* Timeline dot column — fixed width, dot centered on the line */}
         <div className='relative flex w-6 shrink-0 items-center justify-center self-stretch'>
@@ -434,7 +434,7 @@ export function IssuesTimeline({
           <div className='flex min-w-0 flex-1 items-center gap-1.5'>
             <Link
               href={`/${orgSlug}/issues/${issue.key}`}
-              className='hover:text-primary truncate text-sm font-medium transition-colors'
+              className='hover:text-primary min-w-0 flex-1 truncate text-sm font-medium transition-colors'
             >
               {issue.title}
             </Link>

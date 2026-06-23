@@ -83,7 +83,7 @@ export function TeamsTable({
   }
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {teams.map(team => {
           // Team icon / color
@@ -100,7 +100,7 @@ export function TeamsTable({
               exit={{ opacity: 0, y: 8 }}
               transition={{ duration: 0.2 }}
               key={team.id}
-              className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+              className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
             >
               {/* Team Icon Picker */}
               <PermissionAware
@@ -136,13 +136,13 @@ export function TeamsTable({
                 href={`/${orgSlug}/teams/${team.key}`}
                 className='hover:text-primary flex min-w-0 flex-1 items-center gap-2 transition-colors'
               >
-                <span className='block truncate text-sm font-medium'>
+                <span className='block min-w-0 truncate text-sm font-medium'>
                   {team.name}
                 </span>
                 {team.description && (
                   <>
-                    <div className='bg-muted hidden h-4 w-px sm:block' />
-                    <p className='text-muted-foreground hidden max-w-xs truncate text-xs sm:block'>
+                    <div className='bg-muted hidden h-4 w-px shrink-0 sm:block' />
+                    <p className='text-muted-foreground hidden max-w-xs min-w-0 truncate text-xs sm:block'>
                       {team.description}
                     </p>
                   </>

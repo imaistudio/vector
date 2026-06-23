@@ -118,7 +118,7 @@ export function ProjectsTable({
         exit={{ opacity: 0, y: 8 }}
         transition={{ duration: 0.2 }}
         key={project.id}
-        className='hover:bg-muted/50 flex items-center gap-2 px-3 py-1.5 transition-colors'
+        className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-2 px-3 py-1.5 transition-colors'
       >
         <div className='flex-shrink-0'>
           <ProjectIcon className='size-4' style={{ color: projectColor }} />
@@ -128,13 +128,13 @@ export function ProjectsTable({
           href={`/${orgSlug}/projects/${project.key}`}
           className='hover:text-primary flex min-w-0 flex-1 items-center gap-2 transition-colors'
         >
-          <span className='block truncate text-sm font-medium'>
+          <span className='block min-w-0 truncate text-sm font-medium'>
             {project.name}
           </span>
           {project.description && (
             <>
-              <div className='bg-muted hidden h-4 w-px sm:block' />
-              <p className='text-muted-foreground hidden max-w-xs truncate text-xs sm:block'>
+              <div className='bg-muted hidden h-4 w-px shrink-0 sm:block' />
+              <p className='text-muted-foreground hidden max-w-xs min-w-0 truncate text-xs sm:block'>
                 {project.description}
               </p>
             </>
@@ -234,7 +234,7 @@ export function ProjectsTable({
 
   if (groups) {
     return (
-      <div>
+      <div className='w-full max-w-full min-w-0 overflow-x-hidden'>
         {groups.map(group => (
           <GroupSection
             key={group.key}
@@ -244,7 +244,7 @@ export function ProjectsTable({
             color={group.color}
             avatar={group.avatar}
           >
-            <div className='divide-y'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               <AnimatePresence initial={false}>
                 {group.items.map(renderProjectRow)}
               </AnimatePresence>
@@ -256,7 +256,7 @@ export function ProjectsTable({
   }
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {projects.map(renderProjectRow)}
       </AnimatePresence>
