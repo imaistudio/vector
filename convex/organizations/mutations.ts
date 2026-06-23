@@ -1,6 +1,6 @@
 import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
   getOrganizationBySlug,
   requireAuthUser,
@@ -143,6 +143,62 @@ async function assignInviteCustomRole(
   });
 }
 
+async function acceptInviteForUser(
+  ctx: MutationCtx,
+  invite: Doc<'invitations'>,
+  user: Doc<'users'>,
+) {
+  if (invite.status !== 'pending') {
+    throw new ConvexError('INVITATION_NOT_PENDING');
+  }
+  if (!user.email || invite.email.toLowerCase() !== user.email.toLowerCase()) {
+    throw new ConvexError(
+      `This invitation is for ${invite.email}, but you are logged in as ${user.email}.`,
+    );
+  }
+  if (invite.expiresAt < Date.now()) {
+    await ctx.db.patch('invitations', invite._id, { status: 'expired' });
+    throw new ConvexError('INVITATION_EXPIRED');
+  }
+
+  await ctx.db.patch('invitations', invite._id, {
+    status: 'accepted',
+    acceptedAt: Date.now(),
+  });
+
+  const existingMembership = await ctx.db
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', invite.organizationId).eq('userId', user._id),
+    )
+    .first();
+
+  if (!existingMembership) {
+    await ctx.db.insert('members', {
+      organizationId: invite.organizationId,
+      userId: user._id,
+      role: invite.role,
+    });
+    await syncOrganizationRoleAssignment(
+      ctx,
+      invite.organizationId,
+      user._id,
+      invite.role,
+    );
+  }
+
+  await assignInviteCustomRole(
+    ctx,
+    invite.organizationId,
+    user._id,
+    invite.customRoleId,
+  );
+
+  const org = await ctx.db.get('organizations', invite.organizationId);
+
+  return { success: true, organizationSlug: org?.slug ?? null } as const;
+}
+
 export const revokeInvite = mutation({
   args: {
     inviteId: v.id('invitations'),
@@ -217,55 +273,44 @@ export const acceptInvitation = mutation({
     if (!invite) {
       throw new ConvexError('INVITATION_NOT_FOUND');
     }
-    if (invite.status !== 'pending') {
-      throw new ConvexError('INVITATION_NOT_PENDING');
-    }
-    if (invite.email.toLowerCase() !== user.email?.toLowerCase()) {
-      throw new ConvexError(
-        `This invitation is for ${invite.email}, but you are logged in as ${user.email}.`,
-      );
-    }
-    if (invite.expiresAt < Date.now()) {
-      await ctx.db.patch('invitations', invite._id, { status: 'expired' });
-      throw new ConvexError('INVITATION_EXPIRED');
-    }
 
-    await ctx.db.patch('invitations', invite._id, {
-      status: 'accepted',
-      acceptedAt: Date.now(),
-    });
+    return await acceptInviteForUser(ctx, invite, user);
+  },
+});
 
-    const existingMembership = await ctx.db
-      .query('members')
-      .withIndex('by_org_user', q =>
-        q.eq('organizationId', invite.organizationId).eq('userId', userId),
-      )
-      .first();
-
-    if (!existingMembership) {
-      await ctx.db.insert('members', {
-        organizationId: invite.organizationId,
-        userId,
-        role: invite.role,
-      });
-      await syncOrganizationRoleAssignment(
-        ctx,
-        invite.organizationId,
-        userId,
-        invite.role,
-      );
+export const acceptPendingInvitationForOrg = mutation({
+  args: {
+    orgSlug: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireAuthUser(ctx);
+    const user = await ctx.db.get('users', userId);
+    if (!user) {
+      throw new ConvexError('USER_NOT_FOUND');
+    }
+    if (!user.email) {
+      throw new ConvexError('USER_EMAIL_REQUIRED');
     }
 
-    await assignInviteCustomRole(
-      ctx,
-      invite.organizationId,
-      userId,
-      invite.customRoleId,
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const userEmail = user.email.toLowerCase();
+    const invites = await ctx.db
+      .query('invitations')
+      .withIndex('by_email', q => q.eq('email', userEmail))
+      .order('desc')
+      .take(50);
+    const invite = invites.find(
+      candidate =>
+        candidate.organizationId === org._id &&
+        candidate.status === 'pending' &&
+        candidate.expiresAt >= Date.now(),
     );
 
-    const org = await ctx.db.get('organizations', invite.organizationId);
+    if (!invite) {
+      throw new ConvexError('INVITATION_NOT_FOUND');
+    }
 
-    return { success: true, organizationSlug: org?.slug ?? null } as const;
+    return await acceptInviteForUser(ctx, invite, user);
   },
 });
 

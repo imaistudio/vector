@@ -16,6 +16,7 @@ import { OrgAssistantDock } from '@/components/assistant/org-assistant-dock';
 import { AssistantIssueDndProvider } from '@/components/assistant/assistant-issue-dnd';
 import { UserMenu } from '@/components/user-menu';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { CommandMenu } from '@/components/command-menu';
@@ -28,9 +29,10 @@ import {
   Menu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api, useCachedQuery } from '@/lib/convex';
+import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { rememberLastWorkspaceNavigation } from '@/lib/workspace-navigation';
 import { useParams, usePathname } from 'next/navigation';
+import { useRouter } from 'nextjs-toploader/app';
 import { Doc } from '@/convex/_generated/dataModel';
 
 // ---------------------------------------------------------------------------
@@ -177,9 +179,12 @@ interface AppLayoutProps {
 export default function AppLayout({ children }: AppLayoutProps) {
   const params = useParams();
   const pathname = usePathname();
+  const router = useRouter();
   const orgSlug = params.orgSlug as string;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [portalTarget, setPortalTarget] = useState<HTMLDivElement | null>(null);
+  const [isRecoveringInvite, setIsRecoveringInvite] = useState(false);
+  const inviteRecoveryAttemptedRef = useRef(false);
   const {
     width: sidebarWidth,
     isDragging,
@@ -188,9 +193,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
 
   // Fetch current user and organization data
   const user = useCachedQuery(api.users.currentUser);
+  const pendingInvitation = useCachedQuery(
+    api.organizations.queries.getPendingInvitationForOrg,
+    user?._id ? { orgSlug } : 'skip',
+  );
+  const acceptPendingInvitation = useMutation(
+    api.organizations.mutations.acceptPendingInvitationForOrg,
+  );
   const organization = useCachedQuery(
     api.organizations.queries.getBySlug,
-    user?._id ? { orgSlug } : 'skip',
+    user?._id && pendingInvitation === null ? { orgSlug } : 'skip',
   );
   const userOrganizations = useCachedQuery(
     api.users.getOrganizations,
@@ -209,6 +221,27 @@ export default function AppLayout({ children }: AppLayoutProps) {
   }, [user, pathname]);
 
   useEffect(() => {
+    if (!pendingInvitation || inviteRecoveryAttemptedRef.current) return;
+
+    inviteRecoveryAttemptedRef.current = true;
+    setIsRecoveringInvite(true);
+
+    void (async () => {
+      try {
+        const result = await acceptPendingInvitation({ orgSlug });
+        if (result.organizationSlug && result.organizationSlug !== orgSlug) {
+          router.replace(`/${result.organizationSlug}/issues`);
+        }
+      } catch (error) {
+        console.error('Failed to accept pending invitation', error);
+        router.replace('/settings/invites');
+      } finally {
+        setIsRecoveringInvite(false);
+      }
+    })();
+  }, [acceptPendingInvitation, orgSlug, pendingInvitation, router]);
+
+  useEffect(() => {
     if (!organization?.slug) return;
 
     rememberLastWorkspaceNavigation({
@@ -216,6 +249,23 @@ export default function AppLayout({ children }: AppLayoutProps) {
       slug: organization.slug,
     });
   }, [organization?.name, organization?.slug]);
+
+  if (isRecoveringInvite || pendingInvitation) {
+    return (
+      <div className='bg-secondary flex h-screen items-center justify-center p-4'>
+        <div className='bg-background flex max-w-sm min-w-72 flex-col items-center gap-2 rounded-md border px-4 py-5 text-center'>
+          <BarsSpinner className='text-muted-foreground' size={18} />
+          <div className='space-y-1'>
+            <p className='text-sm font-medium'>Joining workspace</p>
+            <p className='text-muted-foreground text-xs'>
+              Accepting your invitation to{' '}
+              {pendingInvitation?.organizationName ?? 'this workspace'}.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Don't render until we have the data
   if (user === undefined || user === null || organization === undefined) {
