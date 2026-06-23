@@ -94,7 +94,11 @@ interface IssueViewPageProps {
 // Loading skeleton component that matches the actual layout
 function IssueLoadingSkeleton() {
   return (
-    <div className='bg-background h-full overflow-y-auto'>
+    <ScrollArea
+      className='bg-background h-full w-full min-w-0'
+      viewportClassName='h-full min-w-0 max-w-full'
+      scrollbars='vertical'
+    >
       <div className='flex min-h-full flex-col lg:flex-row'>
         {/* LEFT COLUMN */}
         <div className='min-w-0 flex-1'>
@@ -188,7 +192,7 @@ function IssueLoadingSkeleton() {
           </div>
         </div>
       </div>
-    </div>
+    </ScrollArea>
   );
 }
 
@@ -760,7 +764,11 @@ export default function IssueViewClient({
   };
 
   return (
-    <div className='bg-background h-full overflow-y-auto'>
+    <ScrollArea
+      className='bg-background h-full w-full min-w-0'
+      viewportClassName='h-full min-w-0 max-w-full'
+      scrollbars='vertical'
+    >
       {/* Page Grid: main area + sidebar */}
       <div className='flex min-h-full flex-col lg:flex-row'>
         {/* LEFT COLUMN - Main Content */}
@@ -1698,6 +1706,6 @@ export default function IssueViewClient({
         </div>
       </div>
       <ConfirmDeleteDialog />
-    </div>
+    </ScrollArea>
   );
 }

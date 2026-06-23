@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { RichEditor } from '@/components/ui/rich-editor';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { IssuesTable } from '@/components/issues/issues-table';
 import { IssuesKanban } from '@/components/issues/issues-kanban';
 import type { KanbanBorderColor } from '@/components/issues/kanban-border-colors';
@@ -319,328 +320,334 @@ export function ViewDetailPage() {
         open={editDialogOpen}
         onOpenChange={setEditDialogOpen}
       />
-      <div className='bg-background flex h-full flex-col overflow-y-auto'>
-        {/* ── Title bar ──────────────────────────────────────────────── */}
-        <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex items-center justify-between gap-2 border-b px-2 py-1 backdrop-blur'>
-          <div className='flex items-center gap-1'>
-            <MobileNavTrigger />
-            <span className='text-muted-foreground text-xs'>Views</span>
-            <span className='text-muted-foreground text-xs'>/</span>
-            <span className='text-xs font-medium'>{view.name}</span>
+      <ScrollArea
+        className='bg-background h-full w-full min-w-0'
+        viewportClassName='h-full min-w-0 max-w-full'
+        scrollbars='vertical'
+      >
+        <div className='flex min-h-full flex-col'>
+          {/* ── Title bar ──────────────────────────────────────────────── */}
+          <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-10 flex items-center justify-between gap-2 border-b px-2 py-1 backdrop-blur'>
+            <div className='flex items-center gap-1'>
+              <MobileNavTrigger />
+              <span className='text-muted-foreground text-xs'>Views</span>
+              <span className='text-muted-foreground text-xs'>/</span>
+              <span className='text-xs font-medium'>{view.name}</span>
+            </div>
+            <div className='flex shrink-0 items-center gap-1'>
+              {/* View mode toggle */}
+              <div className='border-border flex items-center rounded-md border'>
+                <Button
+                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none rounded-l-md px-2'
+                  disabled={!canEditView}
+                  onClick={() => setViewMode('table')}
+                >
+                  <LayoutList className='size-3.5' />
+                </Button>
+                <Button
+                  variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none px-2'
+                  disabled={!canEditView}
+                  onClick={() => setViewMode('kanban')}
+                >
+                  <Columns3 className='size-3.5' />
+                </Button>
+                <Button
+                  variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
+                  size='sm'
+                  className='h-6 rounded-none rounded-r-md px-2'
+                  disabled={!canEditView}
+                  onClick={() => setViewMode('timeline')}
+                >
+                  <Clock className='size-3.5' />
+                </Button>
+              </div>
+
+              {/* Group by */}
+              <GroupBySelector<IssueGroupByField>
+                options={[
+                  { value: 'none', label: 'No grouping' },
+                  { value: 'priority', label: 'Priority' },
+                  { value: 'status', label: 'Status' },
+                  { value: 'assignee', label: 'Assignee' },
+                  { value: 'team', label: 'Team' },
+                  { value: 'project', label: 'Project' },
+                ]}
+                value={groupBy}
+                onChange={setGroupBy}
+                className='h-6 text-xs'
+                disabled={!canEditView}
+              />
+
+              <div className='bg-border mx-0.5 h-4 w-px' />
+
+              <VisibilitySelector
+                value={view.visibility as VisibilityOption}
+                onValueChange={handleVisibilityChange}
+                disabled={!canEditView}
+                publicLinkUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/${orgSlug}/views/${viewId}/public`}
+                trigger={
+                  <Button
+                    variant='ghost'
+                    size='sm'
+                    className='h-6 w-6 p-0'
+                    disabled={!canEditView}
+                  >
+                    <VisibilityIcon
+                      className={`size-3.5 ${visibilityColorClass}`}
+                    />
+                  </Button>
+                }
+              />
+              {canEditView && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant='ghost' size='sm' className='h-6 w-6 p-0'>
+                      <MoreHorizontal className='size-3.5' />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align='end' className='w-48 p-0'>
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          <CommandItem onSelect={() => setEditDialogOpen(true)}>
+                            Edit view
+                          </CommandItem>
+                          <CommandItem
+                            onSelect={() => void handleDeleteView()}
+                            className='text-destructive'
+                          >
+                            <Trash2 className='mr-2 size-3.5' />
+                            Delete view
+                          </CommandItem>
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
           </div>
-          <div className='flex shrink-0 items-center gap-1'>
-            {/* View mode toggle */}
-            <div className='border-border flex items-center rounded-md border'>
-              <Button
-                variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none rounded-l-md px-2'
-                disabled={!canEditView}
-                onClick={() => setViewMode('table')}
+
+          {/* ── Title + description + filters ──────────────────────────── */}
+          <div className='mx-auto w-full max-w-5xl px-4 pt-6 pb-2 sm:px-6'>
+            {/* Title */}
+            {isEditingName ? (
+              <Input
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') void handleNameSave();
+                  if (e.key === 'Escape') setIsEditingName(false);
+                }}
+                onBlur={() => void handleNameSave()}
+                className='h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0'
+                autoFocus
+              />
+            ) : (
+              <h1
+                className={`text-2xl leading-tight font-semibold transition-colors sm:text-3xl ${canEditView ? 'hover:text-foreground/80 cursor-pointer' : ''}`}
+                onClick={() => {
+                  if (!canEditView) return;
+                  setEditName(view.name);
+                  setIsEditingName(true);
+                }}
               >
-                <LayoutList className='size-3.5' />
-              </Button>
-              <Button
-                variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none px-2'
+                {view.name}
+              </h1>
+            )}
+
+            {/* Description — compact, prose-sm */}
+            <div className='mt-1.5 [&_.tiptap]:min-h-0 [&_.tiptap]:text-sm [&_.tiptap]:leading-relaxed'>
+              <RichEditor
+                value={view.description ?? ''}
+                onChange={handleDescriptionChange}
+                placeholder='Add a description...'
                 disabled={!canEditView}
-                onClick={() => setViewMode('kanban')}
-              >
-                <Columns3 className='size-3.5' />
-              </Button>
-              <Button
-                variant={viewMode === 'timeline' ? 'secondary' : 'ghost'}
-                size='sm'
-                className='h-6 rounded-none rounded-r-md px-2'
-                disabled={!canEditView}
-                onClick={() => setViewMode('timeline')}
-              >
-                <Clock className='size-3.5' />
-              </Button>
+                mode='compact'
+                borderless
+                className='text-muted-foreground'
+              />
             </div>
 
-            {/* Group by */}
-            <GroupBySelector<IssueGroupByField>
-              options={[
-                { value: 'none', label: 'No grouping' },
-                { value: 'priority', label: 'Priority' },
-                { value: 'status', label: 'Status' },
-                { value: 'assignee', label: 'Assignee' },
-                { value: 'team', label: 'Team' },
-                { value: 'project', label: 'Project' },
-              ]}
-              value={groupBy}
-              onChange={setGroupBy}
-              className='h-6 text-xs'
-              disabled={!canEditView}
-            />
+            {/* Filters row — interactive selectors */}
+            <div
+              className={`mt-3 flex flex-wrap items-center gap-1.5 ${canEditView ? '' : 'pointer-events-none opacity-60'}`}
+            >
+              <TeamSelector
+                teams={teams ?? []}
+                selectedTeam={selectedTeam}
+                onTeamSelect={v => {
+                  const next = v === selectedTeam ? '' : v;
+                  handleFilterChange({
+                    teamId: next ? (next as Id<'teams'>) : undefined,
+                  });
+                }}
+                displayMode='iconWhenUnselected'
+              />
+              <ProjectSelector
+                projects={projects ?? []}
+                selectedProject={selectedProject}
+                onProjectSelect={v => {
+                  const next = v === selectedProject ? '' : v;
+                  handleFilterChange({
+                    projectId: next ? (next as Id<'projects'>) : undefined,
+                  });
+                }}
+                displayMode='iconWhenUnselected'
+              />
+              <PrioritySelector
+                priorities={priorities ?? []}
+                selectedPriority={selectedPriorities[0] ?? ''}
+                selectedPriorities={selectedPriorities}
+                onPrioritySelect={v => {
+                  const next = selectedPriorities.includes(v)
+                    ? selectedPriorities.filter(id => id !== v)
+                    : [...selectedPriorities, v];
+                  handleFilterChange({
+                    priorityIds: next.length
+                      ? (next as Id<'issuePriorities'>[])
+                      : undefined,
+                  });
+                }}
+                displayMode='iconWhenUnselected'
+              />
+              <StateSelector
+                states={states ?? []}
+                selectedState={selectedStates[0] ?? ''}
+                selectedStates={selectedStates}
+                onStateSelect={v => {
+                  const next = selectedStates.includes(v)
+                    ? selectedStates.filter(id => id !== v)
+                    : [...selectedStates, v];
+                  handleFilterChange({
+                    workflowStateIds: next.length
+                      ? (next as Id<'issueStates'>[])
+                      : undefined,
+                  });
+                }}
+                displayMode='iconWhenUnselected'
+              />
+            </div>
+          </div>
 
-            <div className='bg-border mx-0.5 h-4 w-px' />
-
-            <VisibilitySelector
-              value={view.visibility as VisibilityOption}
-              onValueChange={handleVisibilityChange}
-              disabled={!canEditView}
-              publicLinkUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/${orgSlug}/views/${viewId}/public`}
-              trigger={
-                <Button
-                  variant='ghost'
-                  size='sm'
-                  className='h-6 w-6 p-0'
-                  disabled={!canEditView}
-                >
-                  <VisibilityIcon
-                    className={`size-3.5 ${visibilityColorClass}`}
+          {/* ── Issue list ─────────────────────────────────────────────── */}
+          <div className='flex-1'>
+            <AnimatePresence mode='wait'>
+              <motion.div
+                key={viewMode}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                {!issuesData ? (
+                  viewMode === 'kanban' ? (
+                    <KanbanSkeleton />
+                  ) : (
+                    <PageSkeleton />
+                  )
+                ) : viewMode === 'kanban' ? (
+                  <IssuesKanban
+                    orgSlug={orgSlug}
+                    issues={issues}
+                    states={states ?? []}
+                    priorities={priorities ?? []}
+                    teams={teams ?? []}
+                    projects={projects ?? []}
+                    onPriorityChange={handlePriorityChange}
+                    onAssigneesChange={handleAssigneesChange}
+                    onTeamChange={handleTeamChange}
+                    onProjectChange={handleProjectChange}
+                    onKanbanBorderColorChange={handleKanbanBorderColorChange}
+                    onDelete={handleDelete}
+                    deletePending={deletePending}
+                    currentUserId={currentUserId}
+                    canManageAssignees={canAssignIssues}
+                    groupBy={groupBy}
                   />
-                </Button>
-              }
-            />
-            {canEditView && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant='ghost' size='sm' className='h-6 w-6 p-0'>
-                    <MoreHorizontal className='size-3.5' />
+                ) : viewMode === 'timeline' ? (
+                  <IssuesTimeline
+                    orgSlug={orgSlug}
+                    issues={issues}
+                    states={states ?? []}
+                    priorities={priorities ?? []}
+                    teams={teams ?? []}
+                    projects={projects ?? []}
+                    onPriorityChange={handlePriorityChange}
+                    onAssigneesChange={handleAssigneesChange}
+                    onTeamChange={handleTeamChange}
+                    onProjectChange={handleProjectChange}
+                    onAssignmentStateChange={handleAssignmentStateChange}
+                    onDelete={handleDelete}
+                    deletePending={deletePending}
+                    isUpdatingAssignees={isUpdatingAssignees}
+                    currentUserId={currentUserId}
+                    canManageAssignees={canAssignIssues}
+                    activeFilter='all'
+                  />
+                ) : (
+                  <IssuesTable
+                    orgSlug={orgSlug}
+                    issues={issues}
+                    states={states ?? []}
+                    priorities={priorities ?? []}
+                    teams={teams ?? []}
+                    projects={projects ?? []}
+                    onPriorityChange={handlePriorityChange}
+                    onAssigneesChange={handleAssigneesChange}
+                    onTeamChange={handleTeamChange}
+                    onProjectChange={handleProjectChange}
+                    onDelete={handleDelete}
+                    onExclude={canEditView ? handleExclude : undefined}
+                    deletePending={deletePending}
+                    isUpdatingAssignees={isUpdatingAssignees}
+                    onAssignmentStateChange={handleAssignmentStateChange}
+                    currentUserId={currentUserId}
+                    canManageAssignees={canAssignIssues}
+                    activeFilter='all'
+                    groupBy={groupBy}
+                  />
+                )}
+              </motion.div>
+            </AnimatePresence>
+
+            {isListView && totalPages > 1 && (
+              <div className='mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6'>
+                <span className='text-muted-foreground text-xs'>
+                  {total} issue{total !== 1 ? 's' : ''}
+                </span>
+                <div className='flex items-center gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='h-6 text-xs'
+                    disabled={page <= 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >
+                    Prev
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent align='end' className='w-48 p-0'>
-                  <Command>
-                    <CommandList>
-                      <CommandGroup>
-                        <CommandItem onSelect={() => setEditDialogOpen(true)}>
-                          Edit view
-                        </CommandItem>
-                        <CommandItem
-                          onSelect={() => void handleDeleteView()}
-                          className='text-destructive'
-                        >
-                          <Trash2 className='mr-2 size-3.5' />
-                          Delete view
-                        </CommandItem>
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                  <span className='text-muted-foreground text-xs'>
+                    {page} / {totalPages}
+                  </span>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    className='h-6 text-xs'
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </div>
-
-        {/* ── Title + description + filters ──────────────────────────── */}
-        <div className='mx-auto w-full max-w-5xl px-4 pt-6 pb-2 sm:px-6'>
-          {/* Title */}
-          {isEditingName ? (
-            <Input
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') void handleNameSave();
-                if (e.key === 'Escape') setIsEditingName(false);
-              }}
-              onBlur={() => void handleNameSave()}
-              className='h-auto border-none p-0 !text-3xl !leading-tight font-semibold shadow-none focus-visible:ring-0'
-              autoFocus
-            />
-          ) : (
-            <h1
-              className={`text-2xl leading-tight font-semibold transition-colors sm:text-3xl ${canEditView ? 'hover:text-foreground/80 cursor-pointer' : ''}`}
-              onClick={() => {
-                if (!canEditView) return;
-                setEditName(view.name);
-                setIsEditingName(true);
-              }}
-            >
-              {view.name}
-            </h1>
-          )}
-
-          {/* Description — compact, prose-sm */}
-          <div className='mt-1.5 [&_.tiptap]:min-h-0 [&_.tiptap]:text-sm [&_.tiptap]:leading-relaxed'>
-            <RichEditor
-              value={view.description ?? ''}
-              onChange={handleDescriptionChange}
-              placeholder='Add a description...'
-              disabled={!canEditView}
-              mode='compact'
-              borderless
-              className='text-muted-foreground'
-            />
-          </div>
-
-          {/* Filters row — interactive selectors */}
-          <div
-            className={`mt-3 flex flex-wrap items-center gap-1.5 ${canEditView ? '' : 'pointer-events-none opacity-60'}`}
-          >
-            <TeamSelector
-              teams={teams ?? []}
-              selectedTeam={selectedTeam}
-              onTeamSelect={v => {
-                const next = v === selectedTeam ? '' : v;
-                handleFilterChange({
-                  teamId: next ? (next as Id<'teams'>) : undefined,
-                });
-              }}
-              displayMode='iconWhenUnselected'
-            />
-            <ProjectSelector
-              projects={projects ?? []}
-              selectedProject={selectedProject}
-              onProjectSelect={v => {
-                const next = v === selectedProject ? '' : v;
-                handleFilterChange({
-                  projectId: next ? (next as Id<'projects'>) : undefined,
-                });
-              }}
-              displayMode='iconWhenUnselected'
-            />
-            <PrioritySelector
-              priorities={priorities ?? []}
-              selectedPriority={selectedPriorities[0] ?? ''}
-              selectedPriorities={selectedPriorities}
-              onPrioritySelect={v => {
-                const next = selectedPriorities.includes(v)
-                  ? selectedPriorities.filter(id => id !== v)
-                  : [...selectedPriorities, v];
-                handleFilterChange({
-                  priorityIds: next.length
-                    ? (next as Id<'issuePriorities'>[])
-                    : undefined,
-                });
-              }}
-              displayMode='iconWhenUnselected'
-            />
-            <StateSelector
-              states={states ?? []}
-              selectedState={selectedStates[0] ?? ''}
-              selectedStates={selectedStates}
-              onStateSelect={v => {
-                const next = selectedStates.includes(v)
-                  ? selectedStates.filter(id => id !== v)
-                  : [...selectedStates, v];
-                handleFilterChange({
-                  workflowStateIds: next.length
-                    ? (next as Id<'issueStates'>[])
-                    : undefined,
-                });
-              }}
-              displayMode='iconWhenUnselected'
-            />
-          </div>
-        </div>
-
-        {/* ── Issue list ─────────────────────────────────────────────── */}
-        <div className='flex-1'>
-          <AnimatePresence mode='wait'>
-            <motion.div
-              key={viewMode}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              {!issuesData ? (
-                viewMode === 'kanban' ? (
-                  <KanbanSkeleton />
-                ) : (
-                  <PageSkeleton />
-                )
-              ) : viewMode === 'kanban' ? (
-                <IssuesKanban
-                  orgSlug={orgSlug}
-                  issues={issues}
-                  states={states ?? []}
-                  priorities={priorities ?? []}
-                  teams={teams ?? []}
-                  projects={projects ?? []}
-                  onPriorityChange={handlePriorityChange}
-                  onAssigneesChange={handleAssigneesChange}
-                  onTeamChange={handleTeamChange}
-                  onProjectChange={handleProjectChange}
-                  onKanbanBorderColorChange={handleKanbanBorderColorChange}
-                  onDelete={handleDelete}
-                  deletePending={deletePending}
-                  currentUserId={currentUserId}
-                  canManageAssignees={canAssignIssues}
-                  groupBy={groupBy}
-                />
-              ) : viewMode === 'timeline' ? (
-                <IssuesTimeline
-                  orgSlug={orgSlug}
-                  issues={issues}
-                  states={states ?? []}
-                  priorities={priorities ?? []}
-                  teams={teams ?? []}
-                  projects={projects ?? []}
-                  onPriorityChange={handlePriorityChange}
-                  onAssigneesChange={handleAssigneesChange}
-                  onTeamChange={handleTeamChange}
-                  onProjectChange={handleProjectChange}
-                  onAssignmentStateChange={handleAssignmentStateChange}
-                  onDelete={handleDelete}
-                  deletePending={deletePending}
-                  isUpdatingAssignees={isUpdatingAssignees}
-                  currentUserId={currentUserId}
-                  canManageAssignees={canAssignIssues}
-                  activeFilter='all'
-                />
-              ) : (
-                <IssuesTable
-                  orgSlug={orgSlug}
-                  issues={issues}
-                  states={states ?? []}
-                  priorities={priorities ?? []}
-                  teams={teams ?? []}
-                  projects={projects ?? []}
-                  onPriorityChange={handlePriorityChange}
-                  onAssigneesChange={handleAssigneesChange}
-                  onTeamChange={handleTeamChange}
-                  onProjectChange={handleProjectChange}
-                  onDelete={handleDelete}
-                  onExclude={canEditView ? handleExclude : undefined}
-                  deletePending={deletePending}
-                  isUpdatingAssignees={isUpdatingAssignees}
-                  onAssignmentStateChange={handleAssignmentStateChange}
-                  currentUserId={currentUserId}
-                  canManageAssignees={canAssignIssues}
-                  activeFilter='all'
-                  groupBy={groupBy}
-                />
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-          {isListView && totalPages > 1 && (
-            <div className='mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6'>
-              <span className='text-muted-foreground text-xs'>
-                {total} issue{total !== 1 ? 's' : ''}
-              </span>
-              <div className='flex items-center gap-2'>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-6 text-xs'
-                  disabled={page <= 1}
-                  onClick={() => setPage(p => p - 1)}
-                >
-                  Prev
-                </Button>
-                <span className='text-muted-foreground text-xs'>
-                  {page} / {totalPages}
-                </span>
-                <Button
-                  variant='outline'
-                  size='sm'
-                  className='h-6 text-xs'
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(p => p + 1)}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      </ScrollArea>
     </>
   );
 }

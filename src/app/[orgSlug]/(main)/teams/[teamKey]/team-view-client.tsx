@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { IconPicker } from '@/components/ui/icon-picker';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { notFound } from 'next/navigation';
 import { useRouter } from 'nextjs-toploader/app';
 import { formatDateHuman } from '@/lib/date';
@@ -799,8 +800,12 @@ export default function TeamViewClient({
   // Show loading state
   if (isLoading) {
     return (
-      <div className='bg-background h-full overflow-y-auto'>
-        <div className='h-full'>
+      <ScrollArea
+        className='bg-background h-full w-full min-w-0'
+        viewportClassName='h-full min-w-0 max-w-full'
+        scrollbars='vertical'
+      >
+        <div className='min-h-full'>
           {/* Header Skeleton – matches sticky header bar */}
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
             <div className='flex h-8 items-center gap-2'>
@@ -864,7 +869,7 @@ export default function TeamViewClient({
             </div>
           </div>
         </div>
-      </div>
+      </ScrollArea>
     );
   }
 
@@ -1126,8 +1131,12 @@ export default function TeamViewClient({
   };
 
   return (
-    <div className='bg-background h-full overflow-y-auto'>
-      <div className='h-full'>
+    <ScrollArea
+      className='bg-background h-full w-full min-w-0'
+      viewportClassName='h-full min-w-0 max-w-full'
+      scrollbars='vertical'
+    >
+      <div className='min-h-full'>
         <div>
           {/* Header */}
           <div className='bg-background/95 supports-[backdrop-filter]:bg-background/60 flex flex-wrap items-center justify-between gap-y-0 border-b px-2 backdrop-blur'>
@@ -1930,6 +1939,6 @@ export default function TeamViewClient({
         />
       )}
       <ConfirmDialog />
-    </div>
+    </ScrollArea>
   );
 }
