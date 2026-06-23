@@ -27,7 +27,8 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
     }
 
     if (!userQuery.isPending && user === null) {
-      redirect(`/auth/login?redirectTo=${encodeURIComponent(pathname)}`);
+      const redirectTo = `${pathname}${window.location.search}`;
+      redirect(`/auth/login?redirectTo=${encodeURIComponent(redirectTo)}`);
     }
   }, [user, userQuery.isPending, userQuery.isError, userQuery.error, pathname]);
 
