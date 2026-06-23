@@ -126,8 +126,8 @@ export function TeamsPageContent({
 
       {/* Teams table */}
       <ScrollArea
-        className='min-h-0 flex-1'
-        viewportClassName='h-full'
+        className='min-h-0 w-full min-w-0 flex-1'
+        viewportClassName='h-full min-w-0 max-w-full'
         scrollbars='vertical'
       >
         <TeamsTable

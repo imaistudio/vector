@@ -361,7 +361,7 @@ function DraggableDocRow({
       {...listeners}
       {...attributes}
       className={cn(
-        'hover:bg-muted/50 flex cursor-grab touch-none items-center gap-2 px-3 py-2 transition-colors active:cursor-grabbing',
+        'hover:bg-muted/50 flex w-full max-w-full min-w-0 cursor-grab touch-none items-center gap-2 px-3 py-2 transition-colors active:cursor-grabbing',
         isDragging && 'opacity-30',
       )}
     >
@@ -394,6 +394,7 @@ function DraggableDocRow({
       <div
         onClick={e => e.stopPropagation()}
         onPointerDown={e => e.stopPropagation()}
+        className='shrink-0'
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -614,8 +615,8 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
           </div>
         </div>
         <ScrollArea
-          className='min-h-0 flex-1'
-          viewportClassName='h-full'
+          className='min-h-0 w-full min-w-0 flex-1'
+          viewportClassName='h-full min-w-0 max-w-full'
           scrollbars='vertical'
         >
           {/* Folder books */}
@@ -627,7 +628,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
             </div>
           </div>
           {/* Document list */}
-          <div className='divide-y'>
+          <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className='flex items-center gap-2 px-3 py-2'>
                 <Skeleton className='size-4 rounded' />
@@ -791,8 +792,8 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
         </div>
 
         <ScrollArea
-          className='min-h-0 flex-1'
-          viewportClassName='h-full'
+          className='min-h-0 w-full min-w-0 flex-1'
+          viewportClassName='h-full min-w-0 max-w-full'
           scrollbars='vertical'
         >
           {/* Folders grid */}
@@ -836,7 +837,7 @@ function DocumentsPageContent({ orgSlug }: { orgSlug: string }) {
               No unfiled documents.
             </div>
           ) : (
-            <div className='divide-y'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               {documents.map(doc => (
                 <DraggableDocRow
                   key={doc._id}
@@ -912,7 +913,7 @@ export default function DocumentsPage({ params }: DocumentsPageProps) {
             </div>
           </div>
         </div>
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className='flex items-center gap-2 px-3 py-2'>
               <Skeleton className='size-4 rounded' />

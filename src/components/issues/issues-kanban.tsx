@@ -501,8 +501,12 @@ export function IssuesKanban({
 
   return (
     <>
-      <ScrollArea className='h-full' viewportClassName='h-full'>
-        <div className='flex min-h-dvh gap-3 p-3 pb-16'>
+      <ScrollArea
+        className='h-full w-full min-w-0'
+        viewportClassName='h-full min-w-0'
+        scrollbars='both'
+      >
+        <div className='flex min-h-dvh w-max min-w-full gap-3 p-3 pb-16'>
           {columns.map(({ def, issues: columnIssues }) => (
             <KanbanColumn
               key={def.id}
@@ -635,12 +639,12 @@ function KanbanColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        'flex w-72 flex-shrink-0 flex-col rounded-lg transition-colors',
+        'flex w-72 shrink-0 flex-col rounded-lg transition-colors',
         isOver && 'bg-muted/50',
       )}
     >
       {/* Column header */}
-      <div className='mb-2 flex items-center gap-2 px-1'>
+      <div className='mb-2 flex min-w-0 items-center gap-2 px-1'>
         {columnAvatar ? (
           <UserAvatar
             name={columnAvatar.name}
@@ -657,16 +661,19 @@ function KanbanColumn({
             fallback={Circle}
           />
         )}
-        <span className='text-sm font-medium'>{columnDef.name}</span>
+        <span className='min-w-0 truncate text-sm font-medium'>
+          {columnDef.name}
+        </span>
         <span className='text-muted-foreground text-xs'>{count}</span>
       </div>
 
       {/* Column body */}
       <ScrollArea
-        className='min-h-[80px] flex-1 rounded-lg'
+        className='min-h-[80px] w-full max-w-full min-w-0 flex-1 rounded-lg'
+        viewportClassName='min-w-0 max-w-full'
         scrollbars='vertical'
       >
-        <div className='space-y-2'>
+        <div className='w-full max-w-full min-w-0 space-y-2 overflow-x-hidden'>
           {issues.length === 0 ? (
             <div
               className={cn(
@@ -851,7 +858,10 @@ function KanbanCard({
         ref={setRefs}
         {...listeners}
         {...attributes}
-        className={cn('block', isHidden && 'scale-95 opacity-30')}
+        className={cn(
+          'block w-full max-w-full min-w-0',
+          isHidden && 'scale-95 opacity-30',
+        )}
         onDoubleClick={handleDoubleClick}
       >
         <KanbanCardContent
@@ -1368,7 +1378,7 @@ function KanbanCardContent({
   return (
     <div
       className={cn(
-        'bg-card border-border/70 relative block overflow-hidden rounded-lg border p-3 shadow-xs transition-[border-color,box-shadow,transform]',
+        'bg-card border-border/70 relative block w-full max-w-full min-w-0 overflow-hidden rounded-lg border p-3 shadow-xs transition-[border-color,box-shadow,transform]',
         isDragging
           ? 'ring-primary/30 shadow-lg ring-2'
           : 'hover:border-border/80 hover:shadow-sm',
@@ -1451,7 +1461,7 @@ function KanbanCardContent({
       ) : null}
 
       {/* Issue key + priority + PR link */}
-      <div className='mb-1.5 flex items-center gap-2'>
+      <div className='mb-1.5 flex min-w-0 items-center gap-2'>
         {onPriorityChange && priorities ? (
           <div onClick={e => e.stopPropagation()} data-kanban-border-ignore>
             <PrioritySelector
@@ -1486,7 +1496,7 @@ function KanbanCardContent({
           onClick={e => {
             if (isDragging) e.preventDefault();
           }}
-          className='text-muted-foreground hover:text-foreground font-mono text-[11px] transition-colors'
+          className='text-muted-foreground hover:text-foreground min-w-0 truncate font-mono text-[11px] transition-colors'
         >
           {issue.key}
         </Link>
@@ -1499,7 +1509,7 @@ function KanbanCardContent({
               if (isDragging) e.preventDefault();
               e.stopPropagation();
             }}
-            className='text-muted-foreground hover:text-foreground ml-auto flex items-center gap-0.5 text-[11px] transition-colors'
+            className='text-muted-foreground hover:text-foreground ml-auto flex shrink-0 items-center gap-0.5 text-[11px] transition-colors'
           >
             <GitPullRequest className='size-3' />
             <span className='font-mono'>#{issue.linkedPrs[0].number}</span>
@@ -1513,9 +1523,9 @@ function KanbanCardContent({
         onClick={e => {
           if (isDragging) e.preventDefault();
         }}
-        className='hover:text-primary transition-colors'
+        className='hover:text-primary block min-w-0 transition-colors'
       >
-        <p className='line-clamp-2 text-sm leading-snug font-medium'>
+        <p className='line-clamp-2 text-sm leading-snug font-medium break-words'>
           {issue.title}
         </p>
       </Link>

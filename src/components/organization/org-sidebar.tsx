@@ -68,20 +68,20 @@ function SidebarSection({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className='space-y-1'>
-      <div className='flex items-center justify-between pr-1 pl-2'>
-        <div className='flex items-center gap-1'>
+    <div className='w-full max-w-full min-w-0 space-y-1'>
+      <div className='flex min-w-0 items-center justify-between pr-1 pl-2'>
+        <div className='flex min-w-0 flex-1 items-center gap-1'>
           <Link
             href={href}
             onClick={onNavigate}
-            className='text-muted-foreground hover:text-foreground text-xs font-normal tracking-wider uppercase transition-colors'
+            className='text-muted-foreground hover:text-foreground min-w-0 truncate text-xs font-normal tracking-wider uppercase transition-colors'
           >
             {label}
           </Link>
           <button
             type='button'
             onClick={() => setOpen(o => !o)}
-            className='text-muted-foreground hover:text-foreground transition-colors'
+            className='text-muted-foreground hover:text-foreground shrink-0 transition-colors'
           >
             <ChevronRight
               className={cn(
@@ -91,21 +91,23 @@ function SidebarSection({
             />
           </button>
         </div>
-        <div className='flex items-center gap-1'>{action}</div>
+        <div className='flex shrink-0 items-center gap-1'>{action}</div>
       </div>
 
-      {open && <div className='space-y-1'>{children}</div>}
+      {open && (
+        <div className='w-full max-w-full min-w-0 space-y-1'>{children}</div>
+      )}
     </div>
   );
 }
 
 function SidebarItemsSkeleton({ rows = 3 }: { rows?: number }) {
   return (
-    <div className='space-y-1' aria-hidden='true'>
+    <div className='w-full min-w-0 space-y-1' aria-hidden='true'>
       {Array.from({ length: rows }).map((_, index) => (
         <div
           key={index}
-          className='flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2'
+          className='flex w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2'
         >
           <Skeleton className='size-3 shrink-0 rounded-sm' />
           <Skeleton
@@ -241,7 +243,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
 
   return (
     <>
-      <nav className='min-w-0 space-y-4 overflow-x-hidden p-2 pt-0'>
+      <nav className='w-full max-w-full min-w-0 space-y-4 overflow-x-hidden p-2 pt-0'>
         {/* Main navigation items */}
         <div className='space-y-1'>
           {navItems.map(item => {
@@ -252,7 +254,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
               <div
                 key={item.href}
                 className={cn(
-                  'group flex h-8 items-center justify-between gap-2 rounded-md py-1 pr-1 pl-2 text-sm font-medium transition-colors',
+                  'group flex h-8 w-full max-w-full min-w-0 items-center justify-between gap-2 rounded-md py-1 pr-1 pl-2 text-sm font-medium transition-colors',
                   'hover:bg-foreground/5 text-foreground',
                   {
                     'bg-foreground/5': isActive,
@@ -262,11 +264,11 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                 {/* Clickable area */}
                 <Link
                   href={item.href}
-                  className='flex flex-1 items-center gap-2 outline-none'
+                  className='flex min-w-0 flex-1 items-center gap-2 outline-none'
                   onClick={onNavigate}
                 >
-                  <item.icon className='size-4' />
-                  <span>{item.label}</span>
+                  <item.icon className='size-4 shrink-0' />
+                  <span className='min-w-0 flex-1 truncate'>{item.label}</span>
                 </Link>
 
                 {/* Create button (if any) */}
@@ -313,7 +315,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   href={teamHref}
                   onClick={onNavigate}
                   className={cn(
-                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'flex w-full max-w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
                     'hover:bg-foreground/5 text-foreground',
                     {
                       'bg-foreground/5': isActive,
@@ -326,7 +328,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                     className='size-3 flex-shrink-0'
                     style={{ color: team.color || '#6b7280' }}
                   />
-                  <span className='truncate'>{team.name}</span>
+                  <span className='min-w-0 flex-1 truncate'>{team.name}</span>
                 </Link>
               );
             })
@@ -375,7 +377,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   href={projectHref}
                   onClick={onNavigate}
                   className={cn(
-                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'flex w-full max-w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
                     'hover:bg-foreground/5 text-foreground',
                     {
                       'bg-foreground/5': isActive,
@@ -391,7 +393,9 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                         project.color || project.status?.color || '#6b7280',
                     }}
                   />
-                  <span className='flex-1 truncate'>{project.name}</span>
+                  <span className='min-w-0 flex-1 truncate'>
+                    {project.name}
+                  </span>
                   {project.status?.icon && (
                     <div className='flex w-6 shrink-0 items-center justify-center'>
                       <DynamicIcon
@@ -473,7 +477,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   href={viewHref}
                   onClick={onNavigate}
                   className={cn(
-                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'flex w-full max-w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
                     'hover:bg-foreground/5 text-foreground',
                     {
                       'bg-foreground/5': isActive,
@@ -481,7 +485,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   )}
                 >
                   <ViewModeIcon className='text-muted-foreground size-3 flex-shrink-0' />
-                  <span className='flex-1 truncate'>{view.name}</span>
+                  <span className='min-w-0 flex-1 truncate'>{view.name}</span>
                   <div className='flex w-6 shrink-0 items-center justify-center'>
                     <VisibilityIcon
                       className={cn('size-3', {
@@ -535,21 +539,23 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   href={threadHref}
                   onClick={onNavigate}
                   className={cn(
-                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'flex w-full max-w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
                     'hover:bg-foreground/5 text-foreground',
                     {
                       'bg-foreground/5': isActive,
                     },
                   )}
                 >
-                  <Avvvatars
-                    value={`thread-${thread._id}`.toLowerCase()}
-                    style='shape'
-                    size={16}
-                    shadow={false}
-                    radius={999}
-                  />
-                  <span className='truncate'>
+                  <span className='flex size-4 shrink-0 items-center justify-center'>
+                    <Avvvatars
+                      value={`thread-${thread._id}`.toLowerCase()}
+                      style='shape'
+                      size={16}
+                      shadow={false}
+                      radius={999}
+                    />
+                  </span>
+                  <span className='min-w-0 flex-1 truncate'>
                     {thread.title || 'Untitled Thread'}
                   </span>
                 </Link>
@@ -598,7 +604,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                   href={docHref}
                   onClick={onNavigate}
                   className={cn(
-                    'flex items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
+                    'flex w-full max-w-full min-w-0 items-center gap-2 rounded-md py-1.5 pr-1 pl-2 text-sm font-medium transition-colors',
                     'hover:bg-foreground/5 text-foreground',
                     {
                       'bg-foreground/5': isActive,
@@ -618,7 +624,7 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                       style={{ color: doc.color || '#6b7280' }}
                     />
                   )}
-                  <span className='truncate'>{doc.title}</span>
+                  <span className='min-w-0 flex-1 truncate'>{doc.title}</span>
                 </Link>
               );
             })

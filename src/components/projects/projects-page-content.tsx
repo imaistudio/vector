@@ -503,8 +503,8 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
         {/* Projects content */}
         {viewMode === 'table' ? (
           <ScrollArea
-            className='min-h-0 flex-1'
-            viewportClassName='h-full'
+            className='min-h-0 w-full min-w-0 flex-1'
+            viewportClassName='h-full min-w-0 max-w-full'
             scrollbars='vertical'
           >
             <ProjectsTable

@@ -112,12 +112,12 @@ export function NotificationsSheet({
         </div>
 
         <ScrollArea
-          className='min-h-0 flex-1'
-          viewportClassName='h-full'
+          className='min-h-0 w-full min-w-0 flex-1'
+          viewportClassName='h-full min-w-0 max-w-full'
           scrollbars='vertical'
         >
           {status === 'LoadingFirstPage' ? (
-            <div className='divide-y'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               {Array.from({ length: 6 }).map((_, index) => (
                 <div key={index} className='flex items-start gap-3 px-3 py-2.5'>
                   <Skeleton className='size-8 rounded-full' />
@@ -144,7 +144,7 @@ export function NotificationsSheet({
                     key={recipient._id}
                     type='button'
                     className={cn(
-                      'hover:bg-muted/40 flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors',
+                      'hover:bg-muted/40 flex w-full max-w-full min-w-0 items-start gap-3 px-3 py-2.5 text-left transition-colors',
                       !recipient.isRead && 'bg-primary/3',
                     )}
                     onClick={() => void handleOpen(recipient)}
@@ -160,7 +160,7 @@ export function NotificationsSheet({
                       </div>
                     </div>
                     <div className='min-w-0 flex-1'>
-                      <div className='flex items-start gap-2'>
+                      <div className='flex min-w-0 items-start gap-2'>
                         <p
                           className={cn(
                             'line-clamp-1 min-w-0 flex-1 text-sm',
@@ -170,7 +170,7 @@ export function NotificationsSheet({
                           {recipient.title}
                         </p>
                         {!recipient.isRead ? (
-                          <span className='bg-primary mt-1 size-1.5 rounded-full' />
+                          <span className='bg-primary mt-1 size-1.5 shrink-0 rounded-full' />
                         ) : null}
                       </div>
                       <p className='text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-5'>

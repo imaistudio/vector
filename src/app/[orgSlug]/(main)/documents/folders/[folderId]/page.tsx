@@ -216,9 +216,12 @@ export default function FolderDetailPage({ params }: FolderDetailPageProps) {
             </div>
           </div>
         </div>
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-2 px-3 py-2'>
+            <div
+              key={i}
+              className='flex w-full min-w-0 items-center gap-2 px-3 py-2'
+            >
               <Skeleton className='size-4 rounded' />
               <div className='min-w-0 flex-1 space-y-1'>
                 <Skeleton className='h-4 w-1/3' />
@@ -282,9 +285,12 @@ function FolderContent({
             </div>
           </div>
         </div>
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-2 px-3 py-2'>
+            <div
+              key={i}
+              className='flex w-full min-w-0 items-center gap-2 px-3 py-2'
+            >
               <Skeleton className='size-4 rounded' />
               <div className='min-w-0 flex-1 space-y-1'>
                 <Skeleton className='h-4 w-1/3' />
@@ -357,8 +363,8 @@ function FolderContent({
 
   return (
     <ScrollArea
-      className='bg-background h-full'
-      viewportClassName='overscroll-contain'
+      className='bg-background h-full w-full min-w-0'
+      viewportClassName='min-w-0 max-w-full overscroll-contain'
       maskHeight={0}
       scrollbars='vertical'
     >
@@ -481,11 +487,11 @@ function FolderContent({
           No documents in this folder yet.
         </div>
       ) : (
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {documents.map(doc => (
             <div
               key={doc._id}
-              className='hover:bg-muted/50 flex items-center gap-2 px-3 py-2 transition-colors'
+              className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-2 px-3 py-2 transition-colors'
             >
               {doc.icon ? (
                 <DynamicIcon
@@ -515,7 +521,7 @@ function FolderContent({
                     .join(' · ')}
                 </div>
               </Link>
-              <div>
+              <div className='shrink-0'>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button

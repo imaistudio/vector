@@ -220,7 +220,7 @@ export function IssuesTable({
 
   if (groups) {
     return (
-      <div>
+      <div className='w-full max-w-full min-w-0 overflow-x-hidden'>
         {groups.map(group => (
           <GroupSection
             key={group.key}
@@ -230,7 +230,7 @@ export function IssuesTable({
             color={group.color}
             avatar={group.avatar}
           >
-            <div className='divide-y'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               <AnimatePresence initial={false}>
                 {group.items.map(renderIssueRow)}
               </AnimatePresence>
@@ -242,7 +242,7 @@ export function IssuesTable({
   }
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {sortedGrouped.map(renderIssueRow)}
       </AnimatePresence>
@@ -347,7 +347,7 @@ function IssueTableRow({
         router.push(`/${orgSlug}/issues/${issue.key}`);
       }}
       className={cn(
-        'hover:bg-muted/50 flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors',
+        'hover:bg-muted/50 flex w-full max-w-full min-w-0 cursor-pointer items-center gap-3 px-3 py-2 transition-colors',
         isDragging &&
           'bg-background z-10 opacity-85 shadow-sm ring-1 ring-black/5',
       )}
@@ -426,7 +426,7 @@ function IssueTableRow({
       <div className='flex min-w-0 flex-1 items-center gap-1.5'>
         <Link
           href={`/${orgSlug}/issues/${issue.key}`}
-          className='hover:text-primary truncate text-sm font-medium transition-colors'
+          className='hover:text-primary min-w-0 flex-1 truncate text-sm font-medium transition-colors'
         >
           {issue.title}
         </Link>

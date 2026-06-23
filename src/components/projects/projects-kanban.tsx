@@ -101,8 +101,12 @@ export function ProjectsKanban({
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <ScrollArea className='h-full' viewportClassName='h-full'>
-        <div className='flex min-h-dvh gap-3 p-3 pb-16'>
+      <ScrollArea
+        className='h-full w-full min-w-0'
+        viewportClassName='h-full min-w-0'
+        scrollbars='both'
+      >
+        <div className='flex min-h-dvh w-max min-w-full gap-3 p-3 pb-16'>
           {columns.map(({ status, projects: columnProjects }) => (
             <KanbanColumn
               key={status._id}
@@ -162,28 +166,31 @@ function KanbanColumn({
     <div
       ref={setNodeRef}
       className={cn(
-        'flex w-72 flex-shrink-0 flex-col rounded-lg transition-colors',
+        'flex w-72 shrink-0 flex-col rounded-lg transition-colors',
         isOver && 'bg-muted/50',
       )}
     >
       {/* Column header */}
-      <div className='mb-2 flex items-center gap-2 px-1'>
+      <div className='mb-2 flex min-w-0 items-center gap-2 px-1'>
         <DynamicIcon
           name={status.icon}
           className='size-3.5'
           style={{ color: status.color || '#6b7280' }}
           fallback={Circle}
         />
-        <span className='text-sm font-medium'>{status.name}</span>
+        <span className='min-w-0 truncate text-sm font-medium'>
+          {status.name}
+        </span>
         <span className='text-muted-foreground text-xs'>{count}</span>
       </div>
 
       {/* Column body */}
       <ScrollArea
-        className='min-h-[80px] flex-1 rounded-lg'
+        className='min-h-[80px] w-full max-w-full min-w-0 flex-1 rounded-lg'
+        viewportClassName='min-w-0 max-w-full'
         scrollbars='vertical'
       >
-        <div className='space-y-2'>
+        <div className='w-full max-w-full min-w-0 space-y-2 overflow-x-hidden'>
           {projects.length === 0 ? (
             <div
               className={cn(
@@ -237,7 +244,7 @@ function ProjectCard({
       {...listeners}
       {...attributes}
       className={cn(
-        'transition-all duration-200',
+        'w-full max-w-full min-w-0 transition-all duration-200',
         isHidden && 'scale-95 opacity-30',
       )}
     >
@@ -271,14 +278,14 @@ function ProjectCardContent({
   return (
     <div
       className={cn(
-        'bg-card block rounded-lg border p-3 shadow-xs transition-colors',
+        'bg-card block w-full max-w-full min-w-0 rounded-lg border p-3 shadow-xs transition-colors',
         isDragging
           ? 'ring-primary/30 shadow-lg ring-2'
           : 'hover:border-border/80 hover:shadow-sm',
       )}
     >
       {/* Project key + icon */}
-      <div className='mb-1.5 flex items-center gap-2'>
+      <div className='mb-1.5 flex min-w-0 items-center gap-2'>
         {onStatusChange && statuses ? (
           <div onClick={e => e.stopPropagation()}>
             <StatusSelector
@@ -320,7 +327,7 @@ function ProjectCardContent({
           onClick={e => {
             if (isDragging) e.preventDefault();
           }}
-          className='text-muted-foreground hover:text-foreground font-mono text-[11px] transition-colors'
+          className='text-muted-foreground hover:text-foreground min-w-0 truncate font-mono text-[11px] transition-colors'
         >
           {project.key}
         </Link>
@@ -332,9 +339,9 @@ function ProjectCardContent({
         onClick={e => {
           if (isDragging) e.preventDefault();
         }}
-        className='hover:text-primary transition-colors'
+        className='hover:text-primary block min-w-0 transition-colors'
       >
-        <p className='line-clamp-2 text-sm leading-snug font-medium'>
+        <p className='line-clamp-2 text-sm leading-snug font-medium break-words'>
           {project.name}
         </p>
       </Link>
@@ -346,7 +353,7 @@ function ProjectCardContent({
       )}
 
       {/* Bottom row: lead + date */}
-      <div className='mt-2 flex items-center justify-between'>
+      <div className='mt-2 flex min-w-0 items-center justify-between gap-2'>
         {onLeadChange ? (
           <div onClick={e => e.stopPropagation()}>
             <ProjectLeadSelector
@@ -370,7 +377,7 @@ function ProjectCardContent({
           <div />
         )}
 
-        <span className='text-muted-foreground text-[11px]'>
+        <span className='text-muted-foreground shrink-0 text-[11px]'>
           {formatDateHuman(project.updatedAt)}
         </span>
       </div>

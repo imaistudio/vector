@@ -9,14 +9,14 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
   return (
     <ScrollArea
       data-slot='table-container'
-      className='relative w-full'
-      viewportClassName='overflow-y-hidden'
+      className='relative w-full max-w-full min-w-0'
+      viewportClassName='min-w-0 max-w-full overflow-y-hidden'
       maskHeight={0}
       scrollbars='horizontal'
     >
       <table
         data-slot='table'
-        className={cn('w-full caption-bottom text-sm', className)}
+        className={cn('w-max min-w-full caption-bottom text-sm', className)}
         {...props}
       />
     </ScrollArea>

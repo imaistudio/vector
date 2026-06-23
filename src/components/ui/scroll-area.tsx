@@ -159,7 +159,10 @@ const ScrollArea = React.forwardRef<
             role='group'
             data-slot='scroll-area'
             aria-roledescription='scroll area'
-            className={cn('relative overflow-hidden', className)}
+            className={cn(
+              'relative max-w-full min-w-0 overflow-hidden',
+              className,
+            )}
             {...props}
           >
             <div
@@ -169,7 +172,7 @@ const ScrollArea = React.forwardRef<
                 scrollTopContainer ? 'true' : undefined
               }
               className={cn(
-                'size-full rounded-[inherit]',
+                'size-full max-w-full min-w-0 rounded-[inherit]',
                 scrollbars === 'both' && 'overflow-auto',
                 scrollbars === 'vertical' &&
                   'overflow-x-hidden overflow-y-auto',
@@ -197,7 +200,10 @@ const ScrollArea = React.forwardRef<
             ref={ref}
             data-slot='scroll-area'
             scrollHideDelay={scrollHideDelay}
-            className={cn('relative overflow-hidden', className)}
+            className={cn(
+              'relative max-w-full min-w-0 overflow-hidden',
+              className,
+            )}
             {...props}
           >
             <ScrollAreaPrimitive.Viewport
@@ -206,7 +212,12 @@ const ScrollArea = React.forwardRef<
               data-scroll-top-container={
                 scrollTopContainer ? 'true' : undefined
               }
-              className={cn('size-full rounded-[inherit]', viewportClassName)}
+              className={cn(
+                'size-full max-w-full min-w-0 rounded-[inherit]',
+                !showHorizontalScrollbar &&
+                  '[&>div]:!block [&>div]:!w-full [&>div]:!max-w-full [&>div]:!min-w-0 [&>div]:!overflow-x-hidden',
+                viewportClassName,
+              )}
               style={viewportStyle}
             >
               {children}
