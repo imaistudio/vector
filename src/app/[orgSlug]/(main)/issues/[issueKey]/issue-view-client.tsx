@@ -1218,7 +1218,11 @@ export default function IssueViewClient({
           </div>
 
           {/* Main Content */}
-          <div className='min-w-0 lg:min-h-0 lg:flex-1 lg:overflow-x-hidden lg:overflow-y-auto'>
+          <ScrollArea
+            className='min-w-0 lg:min-h-0 lg:flex-1'
+            viewportClassName='h-full min-w-0 max-w-full'
+            scrollbars='vertical'
+          >
             <div className='mx-auto max-w-5xl px-3 py-3 pb-[20vh] sm:px-4 sm:py-4 sm:pb-[20vh]'>
               {/* Issue Header */}
               <div className='mb-2 max-w-4xl space-y-2'>
@@ -1600,7 +1604,7 @@ export default function IssueViewClient({
                 />
               </div>
             </div>
-          </div>
+          </ScrollArea>
         </div>
 
         {/* RIGHT SIDEBAR - Assignments */}
