@@ -376,15 +376,15 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
       <ConfirmDeleteDialog />
       <div className='flex min-h-0 flex-1 flex-col'>
         {/* Header — scope tabs, status filters + actions */}
-        <div className='border-b'>
-          <div className='flex flex-col gap-1 p-1 sm:flex-row sm:items-center sm:justify-between'>
+        <div className='min-w-0 border-b'>
+          <div className='grid w-full max-w-full min-w-0 grid-cols-1 gap-1 p-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center'>
             <ScrollArea
-              className='min-w-0 flex-1'
-              viewportClassName='overflow-y-hidden'
+              className='w-full max-w-full min-w-0'
+              viewportClassName='w-full min-w-0 max-w-full overflow-y-hidden'
               maskHeight={0}
               scrollbars='horizontal'
             >
-              <div className='flex min-w-max items-center gap-1 pb-1'>
+              <div className='flex w-max min-w-full items-center gap-1 pb-1'>
                 <MobileNavTrigger />
                 {/* Scope tabs */}
                 <Button
@@ -452,51 +452,58 @@ export function ProjectsPageContent({ orgSlug }: ProjectsPageContentProps) {
               </div>
             </ScrollArea>
 
-            <div className='flex shrink-0 items-center gap-1'>
-              {/* View mode toggle */}
-              <div className='border-border flex items-center rounded-md border'>
-                <Button
-                  variant={viewMode === 'table' ? 'secondary' : 'ghost'}
-                  size='sm'
-                  className='h-6 rounded-r-none px-2'
-                  onClick={() => setViewMode('table')}
-                >
-                  <LayoutList className='size-3.5' />
-                </Button>
-                <Button
-                  variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
-                  size='sm'
-                  className='h-6 rounded-l-none px-2'
-                  onClick={() => {
-                    setViewMode('kanban');
-                    setActiveFilter('all');
-                  }}
-                >
-                  <Columns3 className='size-3.5' />
-                </Button>
-              </div>
+            <ScrollArea
+              className='w-full max-w-full min-w-0 sm:w-auto'
+              viewportClassName='w-full min-w-0 max-w-full overflow-y-hidden'
+              maskHeight={0}
+              scrollbars='horizontal'
+            >
+              <div className='flex w-max min-w-full items-center gap-1 sm:min-w-0'>
+                {/* View mode toggle */}
+                <div className='border-border flex shrink-0 items-center rounded-md border'>
+                  <Button
+                    variant={viewMode === 'table' ? 'secondary' : 'ghost'}
+                    size='sm'
+                    className='h-6 rounded-r-none px-2'
+                    onClick={() => setViewMode('table')}
+                  >
+                    <LayoutList className='size-3.5' />
+                  </Button>
+                  <Button
+                    variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+                    size='sm'
+                    className='h-6 rounded-l-none px-2'
+                    onClick={() => {
+                      setViewMode('kanban');
+                      setActiveFilter('all');
+                    }}
+                  >
+                    <Columns3 className='size-3.5' />
+                  </Button>
+                </div>
 
-              {/* Group by selector */}
-              {viewMode === 'table' && (
-                <GroupBySelector<ProjectGroupByField>
-                  options={[
-                    { value: 'none', label: 'No grouping' },
-                    { value: 'status', label: 'Status' },
-                    { value: 'team', label: 'Team' },
-                    { value: 'lead', label: 'Lead' },
-                  ]}
-                  value={groupBy}
-                  onChange={setGroupBy}
-                  className='h-6 text-xs'
+                {/* Group by selector */}
+                {viewMode === 'table' && (
+                  <GroupBySelector<ProjectGroupByField>
+                    options={[
+                      { value: 'none', label: 'No grouping' },
+                      { value: 'status', label: 'Status' },
+                      { value: 'team', label: 'Team' },
+                      { value: 'lead', label: 'Lead' },
+                    ]}
+                    value={groupBy}
+                    onChange={setGroupBy}
+                    className='h-6 shrink-0 text-xs'
+                  />
+                )}
+
+                <CreateProjectButton
+                  className='h-6 shrink-0'
+                  orgSlug={orgSlug}
+                  size='sm'
                 />
-              )}
-
-              <CreateProjectButton
-                className='h-6 shrink-0'
-                orgSlug={orgSlug}
-                size='sm'
-              />
-            </div>
+              </div>
+            </ScrollArea>
           </div>
         </div>
 
