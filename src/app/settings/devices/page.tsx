@@ -158,16 +158,16 @@ function DeviceRow({
   };
 
   return (
-    <div>
-      <div className='flex items-center gap-3 px-4 py-3'>
+    <div className='w-full max-w-full min-w-0'>
+      <div className='flex w-full max-w-full min-w-0 items-center gap-3 px-4 py-3'>
         <div className='text-muted-foreground shrink-0'>
           {deviceIcon(device.platform)}
         </div>
         <div className='min-w-0 flex-1'>
-          <div className='flex items-center gap-2'>
+          <div className='flex min-w-0 items-center gap-2'>
             {editing ? (
               <form
-                className='flex items-center gap-1'
+                className='flex min-w-0 items-center gap-1'
                 onSubmit={e => {
                   e.preventDefault();
                   void handleRename();
@@ -216,13 +216,13 @@ function DeviceRow({
             ) : (
               <button
                 type='button'
-                className='group flex items-center gap-1.5 text-sm font-medium'
+                className='group flex min-w-0 items-center gap-1.5 text-sm font-medium'
                 onClick={() => {
                   setEditName(device.displayName);
                   setEditing(true);
                 }}
               >
-                {device.displayName}
+                <span className='min-w-0 truncate'>{device.displayName}</span>
                 <Pencil className='text-muted-foreground size-3 opacity-0 group-hover:opacity-100' />
               </button>
             )}
@@ -235,22 +235,24 @@ function DeviceRow({
               {device.status}
             </span>
           </div>
-          <div className='text-muted-foreground flex flex-wrap items-center gap-x-2 text-xs'>
-            {device.hostname && <span>{device.hostname}</span>}
+          <div className='text-muted-foreground flex min-w-0 flex-wrap items-center gap-x-2 text-xs'>
+            {device.hostname && (
+              <span className='max-w-full truncate'>{device.hostname}</span>
+            )}
             {device.platform && (
               <>
-                <span>&middot;</span>
-                <span>{device.platform}</span>
+                <span className='shrink-0'>&middot;</span>
+                <span className='truncate'>{device.platform}</span>
               </>
             )}
-            <span>&middot;</span>
-            <span>
+            <span className='shrink-0'>&middot;</span>
+            <span className='shrink-0'>
               Last seen{' '}
               {formatDistanceToNow(device.lastSeenAt, { addSuffix: true })}
             </span>
           </div>
           {device.capabilities && device.capabilities.length > 0 && (
-            <div className='mt-1 flex items-center gap-1'>
+            <div className='mt-1 flex min-w-0 flex-wrap items-center gap-1'>
               {device.capabilities.map(cap => (
                 <span
                   key={cap}
@@ -305,30 +307,32 @@ function DeviceRow({
 
       {/* Expanded workspaces */}
       {expanded && (
-        <div className='bg-muted/30 border-t px-4 py-2'>
+        <div className='bg-muted/30 min-w-0 border-t px-4 py-2'>
           {workspaces === undefined ? (
             <Skeleton className='h-8 w-full rounded' />
           ) : (
-            <div className='space-y-1'>
+            <div className='w-full max-w-full min-w-0 space-y-1 overflow-x-hidden'>
               {workspaces.map(ws => (
                 <div
                   key={ws._id}
-                  className='flex items-center gap-2 rounded px-2 py-1'
+                  className='flex w-full max-w-full min-w-0 items-center gap-2 rounded px-2 py-1'
                 >
                   <FolderOpen className='text-muted-foreground size-3.5 shrink-0 self-center' />
-                  <span className='text-xs font-medium'>{ws.label}</span>
+                  <span className='max-w-40 min-w-0 truncate text-xs font-medium'>
+                    {ws.label}
+                  </span>
                   <span className='text-muted-foreground min-w-0 flex-1 truncate font-mono text-[10px]'>
                     {ws.path}
                   </span>
                   {ws.isDefault && (
-                    <span className='text-muted-foreground text-[10px]'>
+                    <span className='text-muted-foreground shrink-0 text-[10px]'>
                       default
                     </span>
                   )}
                   <Button
                     variant='ghost'
                     size='sm'
-                    className='text-muted-foreground hover:text-destructive h-5 px-1'
+                    className='text-muted-foreground hover:text-destructive h-5 shrink-0 px-1'
                     onClick={() =>
                       void removeWorkspace({ workspaceId: ws._id })
                     }
@@ -531,7 +535,7 @@ export default function DevicesPage() {
               <DeviceSetupGuide />
             </div>
           ) : (
-            <div className='divide-y rounded-lg border'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
               {devices.map(device => (
                 <DeviceRow
                   key={device._id}
@@ -561,7 +565,7 @@ export default function DevicesPage() {
               No active sessions found.
             </div>
           ) : (
-            <div className='divide-y rounded-lg border'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
               {sessions.map(session => {
                 const { browser, os } = parseUserAgent(session.userAgent);
                 const isCurrent = session.token === currentSessionToken;
@@ -569,14 +573,14 @@ export default function DevicesPage() {
                 return (
                   <div
                     key={session.id}
-                    className='flex items-center gap-3 px-4 py-3'
+                    className='flex w-full max-w-full min-w-0 items-center gap-3 px-4 py-3'
                   >
                     <div className='text-muted-foreground shrink-0'>
                       {deviceIcon(undefined, session.userAgent)}
                     </div>
                     <div className='min-w-0 flex-1'>
-                      <div className='flex items-center gap-2'>
-                        <span className='text-sm font-medium'>
+                      <div className='flex min-w-0 items-center gap-2'>
+                        <span className='min-w-0 truncate text-sm font-medium'>
                           {browser} on {os}
                         </span>
                         {isCurrent && (
@@ -585,7 +589,7 @@ export default function DevicesPage() {
                           </span>
                         )}
                       </div>
-                      <div className='text-muted-foreground text-xs'>
+                      <div className='text-muted-foreground truncate text-xs'>
                         {session.ipAddress && (
                           <span>{session.ipAddress} &middot; </span>
                         )}
@@ -599,7 +603,7 @@ export default function DevicesPage() {
                       <Button
                         variant='ghost'
                         size='sm'
-                        className='text-muted-foreground hover:text-destructive h-7 gap-1 px-2 text-xs'
+                        className='text-muted-foreground hover:text-destructive h-7 shrink-0 gap-1 px-2 text-xs'
                         onClick={() => void handleRevokeSession(session.token)}
                       >
                         <ShieldOff className='size-3' />

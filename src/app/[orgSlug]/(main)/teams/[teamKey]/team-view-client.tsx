@@ -238,7 +238,7 @@ function MembersList({
   }
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {members.map(member => (
           <motion.div
@@ -248,7 +248,7 @@ function MembersList({
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2 }}
             key={member._id}
-            className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+            className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
           >
             {/* Avatar */}
             <UserAvatar
@@ -260,8 +260,10 @@ function MembersList({
 
             {/* Member info */}
             <div className='min-w-0 flex-1'>
-              <div className='text-sm font-medium'>{member.user?.name}</div>
-              <div className='text-muted-foreground text-xs'>
+              <div className='truncate text-sm font-medium'>
+                {member.user?.name}
+              </div>
+              <div className='text-muted-foreground truncate text-xs'>
                 {member.user?.email}
               </div>
             </div>
@@ -854,9 +856,12 @@ export default function TeamViewClient({
                 </div>
               </div>
               {/* Content area — full width like kanban/table */}
-              <div className='mt-4 divide-y px-3 sm:px-4'>
+              <div className='mt-4 w-full max-w-full min-w-0 divide-y overflow-x-hidden px-3 sm:px-4'>
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className='flex items-center gap-3 px-3 py-2'>
+                  <div
+                    key={i}
+                    className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2'
+                  >
                     <Skeleton className='size-8 rounded-full' />
                     <div className='flex-1 space-y-1'>
                       <Skeleton className='h-4 w-28' />
@@ -1663,11 +1668,11 @@ export default function TeamViewClient({
                 <div className='px-3 sm:px-4'>
                   <div className='rounded-lg border'>
                     {teamMembersQuery.data === undefined ? (
-                      <div className='divide-y'>
+                      <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
                         {Array.from({ length: 4 }).map((_, i) => (
                           <div
                             key={i}
-                            className='flex items-center gap-3 px-3 py-2'
+                            className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2'
                           >
                             <Skeleton className='size-8 rounded-full' />
                             <div className='flex-1 space-y-1'>
@@ -1872,19 +1877,19 @@ export default function TeamViewClient({
                         ))}
                       </div>
                     ) : teamDocuments.length > 0 ? (
-                      <div className='divide-y'>
+                      <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
                         {teamDocuments.map(doc => (
                           <Link
                             key={doc._id}
                             href={`/${orgSlug}/documents/${doc._id}`}
-                            className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+                            className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
                           >
                             <FileText className='text-muted-foreground size-4 flex-shrink-0' />
                             <div className='min-w-0 flex-1'>
                               <div className='truncate text-sm font-medium'>
                                 {doc.title}
                               </div>
-                              <div className='text-muted-foreground text-xs'>
+                              <div className='text-muted-foreground truncate text-xs'>
                                 {doc.author?.name || doc.author?.email}
                               </div>
                             </div>

@@ -53,9 +53,12 @@ export interface IssueAssignmentsProps {
 
 function IssueAssignmentsSkeleton() {
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className='flex items-center gap-3 p-2'>
+        <div
+          key={index}
+          className='flex w-full max-w-full min-w-0 items-center gap-3 p-2'
+        >
           <div className='flex min-w-0 flex-1 items-center gap-2'>
             <Skeleton className='h-6 w-6 rounded-full' />
             <Skeleton className='h-4 w-28' />
@@ -114,7 +117,7 @@ function IssueAssignmentRow({
     assignment.assignee;
 
   return (
-    <div className='hover:bg-muted/50 flex items-center gap-3 p-2 transition-colors'>
+    <div className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 p-2 transition-colors'>
       <div className='flex min-w-0 flex-1 items-center gap-2'>
         <AssigneeSelector
           members={availableMembers}
@@ -126,7 +129,7 @@ function IssueAssignmentRow({
           }
           displayMode='labelOnly'
           trigger={
-            <div className='hover:bg-muted/30 -m-1 flex cursor-pointer items-center gap-2 rounded-md p-1 transition-colors'>
+            <div className='hover:bg-muted/30 -m-1 flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-1 transition-colors'>
               {displayAssigneeId && displayMember ? (
                 <>
                   <UserAvatar
@@ -139,7 +142,7 @@ function IssueAssignmentRow({
                     size='sm'
                     className='flex-shrink-0'
                   />
-                  <span className='truncate text-sm'>
+                  <span className='min-w-0 truncate text-sm'>
                     {displayMember.name || displayMember.email}
                   </span>
                 </>
@@ -432,7 +435,7 @@ export function IssueAssignments({
       {isAssignmentsLoading ? (
         <IssueAssignmentsSkeleton />
       ) : (
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {assignmentList.map(assignment => {
             return (
               <IssueAssignmentRow

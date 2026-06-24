@@ -95,17 +95,19 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
           <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
             Projects
           </h2>
-          <div className='divide-border divide-y rounded-md border'>
+          <div className='divide-border w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-md border'>
             {team.projects.map(project => (
               <a
                 key={project.key}
                 href={`/${orgSlug}/projects/${project.key}/public`}
-                className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2.5 transition-colors'
+                className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2.5 transition-colors'
               >
-                <span className='text-sm font-medium'>{project.name}</span>
+                <span className='min-w-0 flex-1 truncate text-sm font-medium'>
+                  {project.name}
+                </span>
                 {project.status && (
                   <span
-                    className='rounded px-1.5 py-0.5 text-xs'
+                    className='shrink-0 rounded px-1.5 py-0.5 text-xs'
                     style={{
                       color: project.status.color ?? undefined,
                       backgroundColor: project.status.color

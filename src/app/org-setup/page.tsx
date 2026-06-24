@@ -38,9 +38,12 @@ function PendingInvitesList() {
           <Skeleton className='h-4 w-32' />
           <Skeleton className='h-3 w-52' />
         </div>
-        <div className='divide-y rounded-lg border'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
           {Array.from({ length: 2 }).map((_, index) => (
-            <div key={index} className='flex items-center gap-3 px-3 py-2.5'>
+            <div
+              key={index}
+              className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2.5'
+            >
               <div className='min-w-0 flex-1 space-y-1'>
                 <Skeleton className='h-4 w-36' />
                 <Skeleton className='h-3 w-28' />
@@ -97,11 +100,11 @@ function PendingInvitesList() {
         </p>
       </div>
 
-      <div className='divide-y rounded-lg border'>
+      <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
         {invites.map(inv => (
           <div
             key={inv._id}
-            className='flex flex-wrap items-center gap-2 px-3 py-2.5 sm:flex-nowrap sm:gap-3'
+            className='flex w-full max-w-full min-w-0 flex-wrap items-center gap-2 px-3 py-2.5 sm:flex-nowrap sm:gap-3'
           >
             <div className='min-w-0 flex-1'>
               <p className='truncate text-sm font-medium'>

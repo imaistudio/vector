@@ -1642,7 +1642,7 @@ export default function IssueViewClient({
                     <h4 className='text-sm'>Time Estimates</h4>
                   </div>
 
-                  <div className='divide-y'>
+                  <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
                     {estimateStates.map(state => {
                       const StateIcon = getDynamicIcon(state.icon) || Circle;
                       const hours = (
@@ -1651,17 +1651,19 @@ export default function IssueViewClient({
                       const isEditing = editingEstimates[state._id];
 
                       return (
-                        <div key={state._id}>
-                          <div className='flex h-10 items-center justify-between px-2 py-2'>
+                        <div key={state._id} className='w-full min-w-0'>
+                          <div className='flex h-10 w-full min-w-0 items-center justify-between px-2 py-2'>
                             {/* State icon and name - consistent across both states */}
-                            <div className='flex items-center gap-2'>
+                            <div className='flex min-w-0 items-center gap-2'>
                               <StateIcon
-                                className='size-4'
+                                className='size-4 shrink-0'
                                 style={{
                                   color: state.color || 'currentColor',
                                 }}
                               />
-                              <span className='text-sm'>{state.name}</span>
+                              <span className='min-w-0 truncate text-sm'>
+                                {state.name}
+                              </span>
                             </div>
 
                             {/* Right side - changes based on edit state */}

@@ -45,7 +45,7 @@ function SidebarContent({
           organizations={organizations}
         />
       </div>
-      <div className='flex-1 overflow-y-auto'>
+      <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
         <OrgSettingsSidebar
           orgSlug={orgSlug}
           userRole={userRole}
@@ -185,7 +185,7 @@ export default function OrgSettingsLayout({
       </Sheet>
 
       {/* Main Content */}
-      <main className='bg-background relative m-2 ml-0 flex flex-1 flex-col overflow-y-auto rounded-md border'>
+      <main className='bg-background relative m-2 ml-0 flex min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto rounded-md border'>
         <div className='bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-20 flex items-center gap-1 border-b px-2 py-1.5 backdrop-blur'>
           <button
             onClick={() => setMobileOpen(true)}

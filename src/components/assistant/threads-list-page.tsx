@@ -83,7 +83,7 @@ export function ThreadsListPage() {
   };
 
   return (
-    <div className='flex h-full flex-col'>
+    <div className='flex h-full w-full min-w-0 flex-col'>
       {/* Header */}
       <div className='border-border flex items-center justify-between border-b px-6 py-4'>
         <div>
@@ -103,7 +103,7 @@ export function ThreadsListPage() {
       </div>
 
       {/* Thread list */}
-      <div className='flex-1 overflow-y-auto'>
+      <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
         {!threads ? (
           <div className='flex items-center justify-center py-12'>
             <Loader2 className='text-muted-foreground size-5 animate-spin' />
@@ -114,26 +114,28 @@ export function ThreadsListPage() {
             <span>No threads yet. Start a new conversation.</span>
           </div>
         ) : (
-          <div className='divide-border divide-y'>
+          <div className='divide-border w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
             {displayThreads.map(thread => (
               <div
                 key={thread._id}
-                className='hover:bg-muted/50 group flex items-center gap-3 px-6 py-3 transition-colors'
+                className='hover:bg-muted/50 group flex w-full max-w-full min-w-0 items-center gap-3 px-6 py-3 transition-colors'
               >
                 <Link
                   href={`/${orgSlug}/threads/${thread._id}`}
                   className='flex min-w-0 flex-1 items-center gap-3'
                 >
-                  <Avvvatars
-                    value={`thread-${thread._id}`.toLowerCase()}
-                    style='shape'
-                    size={22}
-                    shadow={false}
-                    radius={999}
-                  />
+                  <span className='flex size-[22px] shrink-0 items-center justify-center'>
+                    <Avvvatars
+                      value={`thread-${thread._id}`.toLowerCase()}
+                      style='shape'
+                      size={22}
+                      shadow={false}
+                      radius={999}
+                    />
+                  </span>
                   <div className='min-w-0 flex-1'>
-                    <div className='flex items-center gap-2'>
-                      <span className='truncate text-sm font-medium'>
+                    <div className='flex min-w-0 items-center gap-2'>
+                      <span className='min-w-0 flex-1 truncate text-sm font-medium'>
                         {thread.title || 'Untitled Thread'}
                       </span>
                       <VisibilityIcon visibility={thread.visibility} />

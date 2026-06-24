@@ -52,12 +52,12 @@ export function LinkedDocuments({
           {docs.length}
         </span>
       </div>
-      <div className='divide-y rounded-lg border'>
+      <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
         {docs.map(doc => (
           <Link
             key={doc._id}
             href={`/${orgSlug}/documents/${doc._id}`}
-            className='hover:bg-muted/50 flex items-center gap-2 px-3 py-2 transition-colors'
+            className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-2 px-3 py-2 transition-colors'
           >
             {doc.icon ? (
               <DynamicIcon
