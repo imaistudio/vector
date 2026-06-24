@@ -27,24 +27,58 @@ public struct VectorMobileRootView: View {
 private struct AuthenticatedVectorMobileView: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  @StateObject private var pushCoordinator = VectorPushNotificationCoordinator.shared
   @State private var selectedTab: VectorMobileTab = .issues
 
   var body: some View {
-    NavigationStack {
-      switch selectedTab {
-      case .issues:
+    TabView(selection: $selectedTab) {
+      NavigationStack {
         IssuesScreen(viewModel: viewModel)
-      case .projects:
-        ProjectsScreen(viewModel: viewModel)
-      case .teams:
-        TeamsScreen(viewModel: viewModel)
-      case .settings:
-        MobileSettingsScreen(viewModel: viewModel, sessionController: sessionController)
       }
+      .tabItem {
+        Label(VectorMobileTab.issues.title, systemImage: VectorMobileTab.issues.systemImage)
+      }
+      .tag(VectorMobileTab.issues)
+
+      NavigationStack {
+        ProjectsScreen(viewModel: viewModel)
+      }
+      .tabItem {
+        Label(VectorMobileTab.projects.title, systemImage: VectorMobileTab.projects.systemImage)
+      }
+      .tag(VectorMobileTab.projects)
+
+      NavigationStack {
+        TeamsScreen(viewModel: viewModel)
+      }
+      .tabItem {
+        Label(VectorMobileTab.teams.title, systemImage: VectorMobileTab.teams.systemImage)
+      }
+      .tag(VectorMobileTab.teams)
+
+      NavigationStack {
+        MobileSettingsScreen(
+          viewModel: viewModel,
+          sessionController: sessionController,
+          pushCoordinator: pushCoordinator
+        )
+      }
+      .tabItem {
+        Label(VectorMobileTab.settings.title, systemImage: VectorMobileTab.settings.systemImage)
+      }
+      .tag(VectorMobileTab.settings)
     }
     .tint(VectorTheme.accent)
-    .safeAreaInset(edge: .bottom, spacing: 0) {
-      VectorCompactTabBar(selection: $selectedTab)
+    .onAppear {
+      Task {
+        await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
+        if let token = pushCoordinator.deviceToken {
+          viewModel.upsertMobilePushToken(token)
+        }
+      }
+    }
+    .onReceive(pushCoordinator.$deviceToken.compactMap { $0 }.removeDuplicates()) { token in
+      viewModel.upsertMobilePushToken(token)
     }
   }
 }
@@ -73,38 +107,6 @@ private enum VectorMobileTab: String, CaseIterable, Identifiable {
     case .teams: "person.3"
     case .settings: "gearshape"
     }
-  }
-}
-
-private struct VectorCompactTabBar: View {
-  @Binding var selection: VectorMobileTab
-
-  var body: some View {
-    VStack(spacing: 0) {
-      Divider()
-      HStack(spacing: 0) {
-        ForEach(VectorMobileTab.allCases) { tab in
-          Button {
-            selection = tab
-          } label: {
-            VStack(spacing: 3) {
-              Image(systemName: tab.systemImage)
-                .font(.system(size: 16, weight: .semibold))
-              Text(tab.title)
-                .font(.caption2.weight(.medium))
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .foregroundStyle(selection == tab ? VectorTheme.accent : Color.secondary)
-            .contentShape(Rectangle())
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(.horizontal, 4)
-      .background(VectorTheme.rowBackground)
-    }
-    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -140,25 +142,17 @@ private struct VectorSetupScreen: View {
         VectorAuthBackground()
 
         ScrollView {
-          VStack(spacing: 18) {
-            VectorLoginBrand()
+          VStack(spacing: 22) {
+            VectorLoginHero()
 
             VStack(alignment: .leading, spacing: 14) {
-              VStack(alignment: .leading, spacing: 6) {
-                Text("Sign in")
-                  .font(.headline.weight(.semibold))
-                  .foregroundStyle(.white)
-                Text("Enter your credentials to continue")
-                  .font(.caption)
-                  .foregroundStyle(.white.opacity(0.62))
-              }
-
-              VStack(spacing: 10) {
-                VectorLoginField(title: "Instance URL", text: $appURLString, prompt: "imai.tech", keyboard: .url)
-                VectorLoginField(title: "Email or Username", text: $identifier, prompt: "you@example.com", keyboard: .email)
-                VectorLoginSecureField(text: $password, onSubmit: signIn)
-                VectorLoginField(title: "Workspace slug", text: $orgSlug, prompt: "Optional", keyboard: .plain)
-              }
+              VectorNativeLoginForm(
+                appURLString: $appURLString,
+                identifier: $identifier,
+                password: $password,
+                orgSlug: $orgSlug,
+                onSubmit: signIn
+              )
 
               if let error = sessionController.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle")
@@ -178,39 +172,32 @@ private struct VectorSetupScreen: View {
                     .font(.subheadline.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 38)
-                .foregroundStyle(canSubmit ? Color.white : Color.white.opacity(0.38))
+                .frame(height: 46)
+                .foregroundStyle(Color.white)
                 .background(
-                  canSubmit ? VectorTheme.accent : Color.white.opacity(0.08),
-                  in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                  canSubmit ? VectorTheme.accent : Color.white.opacity(0.16),
+                  in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
               }
               .buttonStyle(.plain)
               .disabled(!canSubmit)
-            }
-            .padding(12)
-            .frame(maxWidth: 304)
-            .background(Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.94), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay(
-              RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(0.34), radius: 20, x: 0, y: 14)
 
-            HStack(spacing: 4) {
-              Text("Need a quick look?")
-                .foregroundStyle(.white.opacity(0.46))
-              Button("Preview sample data") {
+              Button {
                 sessionController.useDemoData()
+              } label: {
+                Text("Preview sample data")
+                  .font(.subheadline.weight(.medium))
+                  .frame(maxWidth: .infinity)
+                  .frame(height: 38)
               }
               .buttonStyle(.plain)
-              .foregroundStyle(VectorTheme.accent)
+              .foregroundStyle(.white.opacity(0.78))
             }
-            .font(.caption)
+            .frame(maxWidth: 360)
           }
           .frame(maxWidth: .infinity)
           .padding(.horizontal, 20)
-          .padding(.top, 92)
+          .padding(.top, 78)
           .padding(.bottom, 32)
         }
       }
@@ -268,72 +255,111 @@ private struct VectorAuthBackground: View {
   }
 }
 
-private struct VectorLoginBrand: View {
+private struct VectorLoginHero: View {
   var body: some View {
-    HStack(spacing: 6) {
+    VStack(spacing: 12) {
       Image("VectorLogo")
         .resizable()
         .scaledToFit()
-        .frame(width: 15, height: 15)
-      Text("Vector")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.white)
+        .frame(width: 58, height: 58)
+        .shadow(color: VectorTheme.accent.opacity(0.28), radius: 22, x: 0, y: 10)
+
+      VStack(spacing: 4) {
+        Text("Vector")
+          .font(.system(size: 28, weight: .semibold))
+          .foregroundStyle(.white)
+        Text("Sign in to your workspace")
+          .font(.subheadline)
+          .foregroundStyle(.white.opacity(0.64))
+      }
     }
     .accessibilityElement(children: .combine)
-    .accessibilityLabel("Vector")
+    .accessibilityLabel("Vector. Sign in to your workspace.")
   }
 }
 
-private struct VectorLoginField: View {
+private struct VectorNativeLoginForm: View {
+  @Binding var appURLString: String
+  @Binding var identifier: String
+  @Binding var password: String
+  @Binding var orgSlug: String
+  let onSubmit: () -> Void
+
+  var body: some View {
+    VStack(spacing: 0) {
+      VectorLoginFormRow(title: "Instance", text: $appURLString, prompt: "imai.tech", keyboard: .url)
+      VectorLoginSeparator()
+      VectorLoginFormRow(title: "Account", text: $identifier, prompt: "you@example.com", keyboard: .email)
+      VectorLoginSeparator()
+      VectorLoginPasswordRow(text: $password, onSubmit: onSubmit)
+      VectorLoginSeparator()
+      VectorLoginFormRow(title: "Workspace", text: $orgSlug, prompt: "Optional", keyboard: .plain)
+    }
+    .background(
+      Color(red: 0.08, green: 0.09, blue: 0.12).opacity(0.82),
+      in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+    )
+    .shadow(color: Color.black.opacity(0.28), radius: 18, x: 0, y: 12)
+  }
+}
+
+private struct VectorLoginSeparator: View {
+  var body: some View {
+    Rectangle()
+      .fill(Color.white.opacity(0.10))
+      .frame(height: 0.5)
+      .padding(.leading, 108)
+  }
+}
+
+private struct VectorLoginFormRow: View {
   let title: String
   @Binding var text: String
   let prompt: String
   let keyboard: VectorSetupKeyboard
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
+    HStack(spacing: 12) {
       Text(title)
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(.white.opacity(0.72))
-        .lineLimit(1)
-      TextField(prompt, text: $text)
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.white.opacity(0.92))
+        .frame(width: 84, alignment: .leading)
+      TextField("", text: $text, prompt: Text(prompt).foregroundStyle(.white.opacity(0.34)))
         .vectorSetupKeyboard(keyboard)
-        .font(.caption)
+        .font(.subheadline)
         .foregroundStyle(.white)
-        .padding(.horizontal, 9)
-        .frame(height: 34)
-        .background(Color.white.opacity(0.085), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .stroke(Color.white.opacity(0.16), lineWidth: 0.5)
-        )
+        .tint(VectorTheme.accent)
+        .submitLabel(.next)
     }
+    .padding(.horizontal, 14)
+    .frame(height: 46)
   }
 }
 
-private struct VectorLoginSecureField: View {
+private struct VectorLoginPasswordRow: View {
   @Binding var text: String
   let onSubmit: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
+    HStack(spacing: 12) {
       Text("Password")
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(.white.opacity(0.72))
-      SecureField("Your password", text: $text)
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.white.opacity(0.92))
+        .frame(width: 84, alignment: .leading)
+      SecureField("", text: $text, prompt: Text("Required").foregroundStyle(.white.opacity(0.34)))
         .textContentType(.password)
         .submitLabel(.go)
         .onSubmit(onSubmit)
-        .font(.caption)
+        .font(.subheadline)
         .foregroundStyle(.white)
-        .padding(.horizontal, 9)
-        .frame(height: 34)
-        .background(Color.white.opacity(0.085), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .stroke(Color.white.opacity(0.16), lineWidth: 0.5)
-        )
+        .tint(VectorTheme.accent)
     }
+    .padding(.horizontal, 14)
+    .frame(height: 46)
   }
 }
 
@@ -438,6 +464,8 @@ private struct CompactSegmentedControl<Option: Hashable>: View {
 struct IssuesScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @State private var searchText = ""
+  @State private var isSearchPresented = false
+  @FocusState private var isSearchFocused: Bool
 
   private var filteredIssues: [VectorIssueRow] {
     guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -452,12 +480,33 @@ struct IssuesScreen: View {
   var body: some View {
     VStack(spacing: 0) {
       VStack(spacing: 8) {
-        CompactSearchField(text: $searchText, prompt: "Search issues")
-        CompactSegmentedControl(options: VectorIssueScope.allCases, selection: $viewModel.issueScope) { $0.label }
-          .onChange(of: viewModel.issueScope) {
-            viewModel.refresh()
+        if isSearchPresented || !searchText.isEmpty {
+          HStack(spacing: 8) {
+            TextField("Search issues", text: $searchText)
+              .textFieldStyle(.roundedBorder)
+              .focused($isSearchFocused)
+              .submitLabel(.search)
+            Button("Cancel") {
+              withAnimation(.snappy(duration: 0.18)) {
+                searchText = ""
+                isSearchPresented = false
+                isSearchFocused = false
+              }
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.plain)
+            .foregroundStyle(VectorTheme.accent)
           }
-        CompactSegmentedControl(options: VectorIssueLayoutMode.allCases, selection: $viewModel.issueLayoutMode) { $0.label }
+          .transition(.move(edge: .top).combined(with: .opacity))
+        }
+
+        HStack(spacing: 8) {
+          CompactSegmentedControl(options: VectorIssueScope.allCases, selection: $viewModel.issueScope) { $0.label }
+            .onChange(of: viewModel.issueScope) {
+              viewModel.refresh()
+            }
+          IssueLayoutMenu(selection: $viewModel.issueLayoutMode)
+        }
       }
       .padding(12)
 
@@ -468,11 +517,42 @@ struct IssuesScreen: View {
     .navigationTitle("Issues")
     .vectorInlineNavigationTitle()
     .toolbar {
-      ToolbarItem(placement: .primaryAction) {
+      #if os(iOS)
+      ToolbarItem(placement: .topBarLeading) {
         Link(destination: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")) {
           Image(systemName: "safari")
         }
         .accessibilityLabel("Open issues on web")
+      }
+      #else
+      ToolbarItem(placement: .automatic) {
+        Link(destination: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")) {
+          Image(systemName: "safari")
+        }
+        .accessibilityLabel("Open issues on web")
+      }
+      #endif
+
+      ToolbarItem(placement: .primaryAction) {
+        Button {
+          withAnimation(.snappy(duration: 0.18)) {
+            isSearchPresented.toggle()
+            if !isSearchPresented {
+              isSearchFocused = false
+            }
+          }
+        } label: {
+          Image(systemName: isSearchPresented ? "xmark" : "magnifyingglass")
+        }
+        .accessibilityLabel(isSearchPresented ? "Hide search" : "Search issues")
+      }
+    }
+    .onChange(of: isSearchPresented) { _, presented in
+      if presented {
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 120_000_000)
+          isSearchFocused = true
+        }
       }
     }
   }
@@ -491,6 +571,48 @@ struct IssuesScreen: View {
       case .timeline:
         IssueTimeline(issues: filteredIssues, viewModel: viewModel)
       }
+    }
+  }
+}
+
+private struct IssueLayoutMenu: View {
+  @Binding var selection: VectorIssueLayoutMode
+
+  var body: some View {
+    Menu {
+      ForEach(VectorIssueLayoutMode.allCases, id: \.self) { mode in
+        Button {
+          selection = mode
+        } label: {
+          Label(mode.label, systemImage: mode == selection ? "checkmark" : mode.systemImage)
+        }
+      }
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: selection.systemImage)
+          .font(.caption.weight(.semibold))
+        Text(selection.label)
+          .font(.caption.weight(.semibold))
+          .lineLimit(1)
+        Image(systemName: "chevron.down")
+          .font(.caption2.weight(.bold))
+      }
+      .foregroundStyle(Color.primary)
+      .padding(.horizontal, 10)
+      .frame(height: 34)
+      .background(VectorTheme.rowBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .vectorShadowRing(cornerRadius: 7)
+    }
+    .buttonStyle(.plain)
+  }
+}
+
+private extension VectorIssueLayoutMode {
+  var systemImage: String {
+    switch self {
+    case .list: "list.bullet"
+    case .board: "rectangle.grid.2x2"
+    case .timeline: "clock"
     }
   }
 }
@@ -718,67 +840,228 @@ struct IssueDetailScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
 
   var body: some View {
-    List {
-      Section {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 22) {
         VStack(alignment: .leading, spacing: 12) {
           Text(issue.key)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
           Text(issue.title)
-            .font(.title3.weight(.semibold))
-          if let description = issue.description {
-            Text(description)
-              .font(.subheadline)
-              .foregroundStyle(.secondary)
-          }
+            .font(.system(size: 28, weight: .semibold))
+            .fixedSize(horizontal: false, vertical: true)
           HStack(spacing: 6) {
             VectorPill(text: issue.stateLabel, color: Color(vectorHex: issue.workflowStateColor), systemImage: vectorSystemImage(for: issue.workflowStateIcon))
             if let priority = issue.priorityName {
               VectorPill(text: priority, color: Color(vectorHex: issue.priorityColor), systemImage: vectorSystemImage(for: issue.priorityIcon))
             }
+            if let projectKey = issue.projectKey {
+              VectorPill(text: projectKey, color: .secondary, systemImage: "folder")
+            }
           }
         }
-        .padding(.vertical, 4)
-      }
 
-      Section("Assignments") {
-        if viewModel.assignments.isEmpty {
-          AssignmentRow(assignment: VectorIssueAssignment(
-            id: "current-\(issue.id)",
-            assigneeId: issue.assigneeId,
-            assigneeName: issue.assigneeName,
-            assigneeEmail: issue.assigneeEmail,
-            assigneeImage: issue.assigneeImage,
-            stateId: issue.workflowStateId,
-            stateName: issue.workflowStateName,
-            stateIcon: issue.workflowStateIcon,
-            stateColor: issue.workflowStateColor,
-            stateType: issue.workflowStateType
-          ))
+        if let description = issue.description, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          MarkdownDocumentView(markdown: description)
         } else {
-          ForEach(viewModel.assignments) { assignment in
-            AssignmentRow(assignment: assignment)
+          Text("No description")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+
+        Divider()
+
+        DocumentSection(title: "Assignments") {
+          if viewModel.assignments.isEmpty {
+            AssignmentRow(assignment: VectorIssueAssignment(
+              id: "current-\(issue.id)",
+              assigneeId: issue.assigneeId,
+              assigneeName: issue.assigneeName,
+              assigneeEmail: issue.assigneeEmail,
+              assigneeImage: issue.assigneeImage,
+              stateId: issue.workflowStateId,
+              stateName: issue.workflowStateName,
+              stateIcon: issue.workflowStateIcon,
+              stateColor: issue.workflowStateColor,
+              stateType: issue.workflowStateType
+            ))
+          } else {
+            ForEach(viewModel.assignments) { assignment in
+              AssignmentRow(assignment: assignment)
+            }
           }
         }
-      }
 
-      Section("Comments") {
-        ForEach(viewModel.comments) { comment in
-          CommentRow(comment: comment)
+        DocumentSection(title: "Comments") {
+          if viewModel.comments.isEmpty {
+            Text("No comments yet")
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          } else {
+            ForEach(viewModel.comments) { comment in
+              CommentRow(comment: comment)
+            }
+          }
         }
-      }
 
-      Section {
         Link(destination: viewModel.openWebURL(for: issue)) {
           Label("Open full issue on web", systemImage: "safari")
+            .font(.subheadline.weight(.medium))
         }
       }
+      .padding(.horizontal, 22)
+      .padding(.top, 22)
+      .padding(.bottom, 104)
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
+    .background(VectorTheme.rowBackground)
     .navigationTitle(issue.key)
     .vectorInlineNavigationTitle()
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Link(destination: viewModel.openWebURL(for: issue)) {
+          Image(systemName: "safari")
+        }
+        .accessibilityLabel("Open full issue on web")
+      }
+    }
     .onAppear {
       viewModel.loadIssueSupport(issueId: issue.id)
     }
+  }
+}
+
+private struct DocumentSection<Content: View>: View {
+  let title: String
+  @ViewBuilder var content: Content
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      Text(title)
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .textCase(.uppercase)
+      VStack(alignment: .leading, spacing: 12) {
+        content
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct MarkdownDocumentView: View {
+  let markdown: String
+
+  private var blocks: [VectorMarkdownBlock] {
+    VectorMarkdownParser.parse(markdown)
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 13) {
+      ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+        MarkdownBlockView(block: block)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct MarkdownBlockView: View {
+  let block: VectorMarkdownBlock
+
+  var body: some View {
+    switch block {
+    case let .heading(level, text):
+      InlineMarkdownText(text: text)
+        .font(headingFont(for: level))
+        .foregroundStyle(.primary)
+        .padding(.top, level <= 2 ? 6 : 2)
+    case let .paragraph(text):
+      InlineMarkdownText(text: text)
+        .font(.body)
+        .foregroundStyle(.primary.opacity(0.72))
+        .lineSpacing(4)
+    case let .unorderedList(items):
+      VStack(alignment: .leading, spacing: 7) {
+        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+          HStack(alignment: .top, spacing: 8) {
+            Circle()
+              .fill(Color.secondary)
+              .frame(width: 4, height: 4)
+              .padding(.top, 9)
+            InlineMarkdownText(text: item)
+              .font(.body)
+              .foregroundStyle(.primary.opacity(0.72))
+          }
+        }
+      }
+    case let .orderedList(items):
+      VStack(alignment: .leading, spacing: 7) {
+        ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+          HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(index + 1).")
+              .font(.body.monospacedDigit())
+              .foregroundStyle(.secondary)
+              .frame(width: 24, alignment: .trailing)
+            InlineMarkdownText(text: item)
+              .font(.body)
+              .foregroundStyle(.primary.opacity(0.72))
+          }
+        }
+      }
+    case let .codeBlock(code):
+      ScrollView(.horizontal, showsIndicators: false) {
+        Text(code)
+          .font(.system(.footnote, design: .monospaced))
+          .foregroundStyle(.primary)
+          .padding(10)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    case let .quote(text):
+      HStack(alignment: .top, spacing: 10) {
+        Rectangle()
+          .fill(Color.secondary.opacity(0.28))
+          .frame(width: 3)
+        InlineMarkdownText(text: text)
+          .font(.body)
+          .foregroundStyle(.secondary)
+          .lineSpacing(4)
+      }
+    case .horizontalRule:
+      Divider()
+        .padding(.vertical, 4)
+    }
+  }
+
+  private func headingFont(for level: Int) -> Font {
+    switch level {
+    case 1:
+      .title2.weight(.semibold)
+    case 2:
+      .title3.weight(.semibold)
+    case 3:
+      .headline.weight(.semibold)
+    default:
+      .subheadline.weight(.semibold)
+    }
+  }
+}
+
+private struct InlineMarkdownText: View {
+  let text: String
+
+  var body: some View {
+    Text(attributedText)
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private var attributedText: AttributedString {
+    (
+      try? AttributedString(
+        markdown: text,
+        options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+      )
+    ) ?? AttributedString(text)
   }
 }
 
@@ -809,8 +1092,7 @@ struct CommentRow: View {
       Text(comment.author?.displayName ?? "Unknown user")
         .font(.caption.weight(.semibold))
         .foregroundStyle(.secondary)
-      Text(comment.body)
-        .font(.subheadline)
+      MarkdownDocumentView(markdown: comment.body)
     }
     .padding(.vertical, 4)
   }
@@ -1037,6 +1319,7 @@ struct EntityHeader: View {
 struct MobileSettingsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  @ObservedObject var pushCoordinator: VectorPushNotificationCoordinator
 
   var body: some View {
     List {
@@ -1064,14 +1347,14 @@ struct MobileSettingsScreen: View {
 
       Section("Mobile") {
         NavigationLink {
-          PersonalSettingsPreview()
+          ProfileStatusSettingsScreen(viewModel: viewModel)
         } label: {
-          Label("Personal settings", systemImage: "person.crop.circle")
+          Label("Profile status", systemImage: "person.crop.circle.badge.checkmark")
         }
         NavigationLink {
-          StatusSettingsPreview()
+          MobilePushNotificationsScreen(viewModel: viewModel, pushCoordinator: pushCoordinator)
         } label: {
-          Label("Status settings", systemImage: "slider.horizontal.3")
+          Label("Push notifications", systemImage: "bell.badge")
         }
       }
 
@@ -1088,42 +1371,241 @@ struct MobileSettingsScreen: View {
       }
     }
     .navigationTitle("Settings")
+    .onAppear {
+      viewModel.loadSettings()
+      Task {
+        await pushCoordinator.refreshAuthorizationStatus()
+      }
+    }
   }
 }
 
-struct PersonalSettingsPreview: View {
+struct ProfileStatusSettingsScreen: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var customText = ""
+  @State private var customEmoji = ""
+  @State private var clearAfter: StatusClearAfter = .never
+
   var body: some View {
     List {
-      Section {
-        Label("Profile", systemImage: "person")
-        Label("Notifications", systemImage: "bell")
-        Label("Devices", systemImage: "iphone")
+      Section("Presence") {
+        ForEach(VectorPresenceStatus.allCases) { presence in
+          Button {
+            viewModel.setPresence(presence)
+          } label: {
+            HStack {
+              Label {
+                Text(presence.label)
+              } icon: {
+                Image(systemName: presence.systemImage)
+                  .foregroundStyle(Color(vectorHex: presence.colorHex))
+              }
+              Spacer()
+              if viewModel.userStatus?.presence == presence {
+                Image(systemName: "checkmark")
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(VectorTheme.accent)
+              }
+            }
+          }
+          .buttonStyle(.plain)
+        }
+      }
+
+      Section("Custom status") {
+        HStack {
+          Text("Emoji")
+          TextField("Optional", text: $customEmoji)
+            .multilineTextAlignment(.trailing)
+        }
+        HStack {
+          Text("Status")
+          TextField("What's happening?", text: $customText)
+            .multilineTextAlignment(.trailing)
+        }
+        Picker("Clear", selection: $clearAfter) {
+          ForEach(StatusClearAfter.allCases) { option in
+            Text(option.label).tag(option)
+          }
+        }
+
+        Button {
+          viewModel.setCustomStatus(
+            text: customText,
+            emoji: customEmoji,
+            clearsAt: clearAfter.clearsAt
+          )
+        } label: {
+          Label("Save custom status", systemImage: "checkmark.circle")
+        }
+
+        if (viewModel.userStatus?.customText?.isEmpty == false) || (viewModel.userStatus?.customEmoji?.isEmpty == false) {
+          Button(role: .destructive) {
+            customText = ""
+            customEmoji = ""
+            clearAfter = .never
+            viewModel.clearCustomStatus()
+          } label: {
+            Label("Clear custom status", systemImage: "xmark.circle")
+          }
+        }
+      }
+
+      if let status = viewModel.userStatus {
+        Section("Current") {
+          LabeledContent("Presence", value: status.presence.label)
+          if let emoji = status.customEmoji, !emoji.isEmpty {
+            LabeledContent("Emoji", value: emoji)
+          }
+          if let text = status.customText, !text.isEmpty {
+            LabeledContent("Status", value: text)
+          }
+        }
+      }
+
+      if let error = viewModel.settingsErrorMessage {
+        Section {
+          Label(error, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.red)
+        }
       }
     }
-    .navigationTitle("Personal")
+    .navigationTitle("Profile Status")
+    .onAppear {
+      viewModel.loadSettings()
+      syncDraft()
+    }
+    .onChange(of: viewModel.userStatus) {
+      syncDraft()
+    }
+  }
+
+  private func syncDraft() {
+    customText = viewModel.userStatus?.customText ?? ""
+    customEmoji = viewModel.userStatus?.customEmoji ?? ""
   }
 }
 
-struct StatusSettingsPreview: View {
+private enum StatusClearAfter: String, CaseIterable, Identifiable {
+  case never
+  case oneHour
+  case today
+  case week
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .never: "Never"
+    case .oneHour: "In 1 hour"
+    case .today: "Tonight"
+    case .week: "In 1 week"
+    }
+  }
+
+  var clearsAt: Double? {
+    let now = Date()
+    let calendar = Calendar.current
+    switch self {
+    case .never:
+      return nil
+    case .oneHour:
+      return now.addingTimeInterval(60 * 60).timeIntervalSince1970 * 1000
+    case .today:
+      return (calendar.date(bySettingHour: 23, minute: 59, second: 0, of: now) ?? now).timeIntervalSince1970 * 1000
+    case .week:
+      return now.addingTimeInterval(7 * 24 * 60 * 60).timeIntervalSince1970 * 1000
+    }
+  }
+}
+
+struct MobilePushNotificationsScreen: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var pushCoordinator: VectorPushNotificationCoordinator
+
+  private var currentRegistration: VectorMobilePushTokenRegistration? {
+    guard let token = pushCoordinator.deviceToken else { return nil }
+    return viewModel.mobilePushTokens.first {
+      $0.token == token.value && $0.environment == token.environment && $0.disabledAt == nil
+    }
+  }
+
   var body: some View {
     List {
-      Section("Issue states") {
-        ForEach(VectorMockData.issueStates) { state in
-          Label(state.name, systemImage: vectorSystemImage(for: state.icon))
+      Section("This iPhone") {
+        LabeledContent("Permission", value: pushCoordinator.authorizationStatus.label)
+        if let token = pushCoordinator.deviceToken {
+          LabeledContent("APNs", value: currentRegistration == nil ? "Ready" : "Registered")
+          LabeledContent("Environment", value: token.environment.capitalized)
+        }
+        if let error = pushCoordinator.registrationError {
+          Label(error, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.red)
+        }
+
+        Button {
+          Task {
+            await pushCoordinator.requestRegistration()
+            if let token = pushCoordinator.deviceToken {
+              viewModel.upsertMobilePushToken(token)
+            }
+          }
+        } label: {
+          Label(currentRegistration == nil ? "Enable push on this iPhone" : "Refresh registration", systemImage: "bell.badge")
+        }
+
+        if let token = pushCoordinator.deviceToken, currentRegistration != nil {
+          Button(role: .destructive) {
+            viewModel.removeMobilePushToken(token)
+            pushCoordinator.clearRegistration()
+          } label: {
+            Label("Remove this iPhone", systemImage: "trash")
+          }
         }
       }
-      Section("Priorities") {
-        ForEach(VectorMockData.priorities) { priority in
-          Label(priority.name, systemImage: vectorSystemImage(for: priority.icon))
+
+      Section("Push categories") {
+        ForEach(viewModel.notificationPreferences) { preference in
+          Toggle(isOn: Binding(
+            get: { preference.pushEnabled },
+            set: { viewModel.setPushEnabled(for: preference.category, isEnabled: $0) }
+          )) {
+            Text(preference.category.label)
+          }
         }
       }
-      Section("Project statuses") {
-        ForEach(VectorMockData.projectStatuses) { status in
-          Label(status.name, systemImage: vectorSystemImage(for: status.icon))
+
+      Section("Registered devices") {
+        if viewModel.mobilePushTokens.filter({ $0.disabledAt == nil }).isEmpty {
+          Label("No registered iOS devices", systemImage: "iphone")
+            .foregroundStyle(.secondary)
+        } else {
+          ForEach(viewModel.mobilePushTokens.filter { $0.disabledAt == nil }) { token in
+            VStack(alignment: .leading, spacing: 3) {
+              Text(token.deviceLabel ?? "iOS device")
+                .font(.subheadline.weight(.medium))
+              Text(token.environment.capitalized)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+          }
+        }
+      }
+
+      if let error = viewModel.settingsErrorMessage {
+        Section {
+          Label(error, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.red)
         }
       }
     }
-    .navigationTitle("Statuses")
+    .navigationTitle("Push")
+    .onAppear {
+      viewModel.loadSettings()
+      Task {
+        await pushCoordinator.refreshAuthorizationStatus()
+      }
+    }
   }
 }
 

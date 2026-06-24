@@ -152,6 +152,22 @@ export const listPushSubscriptions = query({
   },
 });
 
+export const listMobilePushTokens = query({
+  args: {},
+  handler: async ctx => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    return await ctx.db
+      .query('mobilePushTokens')
+      .withIndex('by_user', q => q.eq('userId', userId))
+      .order('desc')
+      .take(50);
+  },
+});
+
 export const getPreferenceByCategory = internalQuery({
   args: {
     userId: v.id('users'),
@@ -216,6 +232,12 @@ export const getDeliveryContext = internalQuery({
           .withIndex('by_user', q => q.eq('userId', recipient.userId!))
           .collect()
       : [];
+    const mobilePushTokens = recipient.userId
+      ? await ctx.db
+          .query('mobilePushTokens')
+          .withIndex('by_user', q => q.eq('userId', recipient.userId!))
+          .take(20)
+      : [];
 
     return {
       recipient,
@@ -227,6 +249,7 @@ export const getDeliveryContext = internalQuery({
         pushEnabled: preference.pushEnabled,
       },
       pushSubscriptions: pushSubscriptions.filter(sub => !sub.disabledAt),
+      mobilePushTokens: mobilePushTokens.filter(token => !token.disabledAt),
     };
   },
 });

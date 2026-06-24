@@ -1179,6 +1179,20 @@ export default defineSchema({
     .index('by_endpoint', ['endpoint'])
     .index('by_user_endpoint', ['userId', 'endpoint']),
 
+  mobilePushTokens: defineTable({
+    userId: v.id('users'),
+    token: v.string(),
+    environment: v.union(v.literal('sandbox'), v.literal('production')),
+    platform: v.union(v.literal('ios')),
+    bundleId: v.optional(v.string()),
+    deviceLabel: v.optional(v.string()),
+    disabledAt: v.optional(v.number()),
+    lastSeenAt: v.number(),
+  })
+    .index('by_user', ['userId'])
+    .index('by_token', ['token'])
+    .index('by_user_token_and_environment', ['userId', 'token', 'environment']),
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Agent Device Bridge
   // ═══════════════════════════════════════════════════════════════════════════

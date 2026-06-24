@@ -9,6 +9,8 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(VectorConvexFunctions.listIssuesPage, "issues/queries:listIssuesPage")
     XCTAssertEqual(VectorConvexFunctions.changeWorkflowState, "issues/mutations:changeWorkflowState")
     XCTAssertEqual(VectorConvexFunctions.listProjectActivity, "activities/queries:listProjectActivity")
+    XCTAssertEqual(VectorConvexFunctions.getCurrentUserStatus, "status:getCurrentUserStatus")
+    XCTAssertEqual(VectorConvexFunctions.upsertMobilePushToken, "notifications/mutations:upsertMobilePushToken")
   }
 
   func testAuthNormalizesAppURLLikeCLI() throws {
@@ -109,6 +111,29 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertTrue(encoded.contains("\"issueId\":\"issue-1\""))
     XCTAssertTrue(encoded.contains("\"stateId\":\"state-1\""))
     XCTAssertFalse(encoded.contains("workflowStateId"))
+  }
+
+  func testMarkdownParserBuildsDocumentBlocks() {
+    let blocks = VectorMarkdownParser.parse(
+      """
+      # Goal
+
+      Build the **native** detail view.
+
+      - Render Markdown
+      - Keep it compact
+
+      ```swift
+      Text("Vector")
+      ```
+      """
+    )
+
+    XCTAssertEqual(blocks.count, 4)
+    XCTAssertEqual(blocks[0], .heading(level: 1, text: "Goal"))
+    XCTAssertEqual(blocks[1], .paragraph("Build the **native** detail view."))
+    XCTAssertEqual(blocks[2], .unorderedList(["Render Markdown", "Keep it compact"]))
+    XCTAssertEqual(blocks[3], .codeBlock("Text(\"Vector\")"))
   }
 
   func testIssueRowFallsBackToCreationTimeWhenUpdatedAtIsMissing() throws {

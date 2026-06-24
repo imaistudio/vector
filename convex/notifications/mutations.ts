@@ -202,6 +202,96 @@ export const removePushSubscription = mutation({
   },
 });
 
+export const upsertMobilePushToken = mutation({
+  args: {
+    token: v.string(),
+    environment: v.union(v.literal('sandbox'), v.literal('production')),
+    bundleId: v.optional(v.string()),
+    deviceLabel: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const now = Date.now();
+    const matchingTokens = await ctx.db
+      .query('mobilePushTokens')
+      .withIndex('by_token', q => q.eq('token', args.token))
+      .take(20);
+
+    for (const token of matchingTokens) {
+      if (token.userId !== userId && !token.disabledAt) {
+        await ctx.db.patch('mobilePushTokens', token._id, {
+          disabledAt: now,
+          lastSeenAt: now,
+        });
+      }
+    }
+
+    const existing = await ctx.db
+      .query('mobilePushTokens')
+      .withIndex('by_user_token_and_environment', q =>
+        q
+          .eq('userId', userId)
+          .eq('token', args.token)
+          .eq('environment', args.environment),
+      )
+      .first();
+
+    if (existing) {
+      await ctx.db.patch('mobilePushTokens', existing._id, {
+        bundleId: args.bundleId,
+        deviceLabel: args.deviceLabel,
+        disabledAt: undefined,
+        lastSeenAt: now,
+      });
+      return { tokenId: existing._id } as const;
+    }
+
+    const tokenId = await ctx.db.insert('mobilePushTokens', {
+      userId,
+      token: args.token,
+      environment: args.environment,
+      platform: 'ios',
+      bundleId: args.bundleId,
+      deviceLabel: args.deviceLabel,
+      lastSeenAt: now,
+    });
+
+    return { tokenId } as const;
+  },
+});
+
+export const removeMobilePushToken = mutation({
+  args: {
+    token: v.string(),
+    environment: v.union(v.literal('sandbox'), v.literal('production')),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) {
+      throw new ConvexError('UNAUTHORIZED');
+    }
+
+    const token = await ctx.db
+      .query('mobilePushTokens')
+      .withIndex('by_user_token_and_environment', q =>
+        q
+          .eq('userId', userId)
+          .eq('token', args.token)
+          .eq('environment', args.environment),
+      )
+      .first();
+
+    if (token) {
+      await ctx.db.delete('mobilePushTokens', token._id);
+    }
+    return { success: true } as const;
+  },
+});
+
 export const setDeliveryResult = internalMutation({
   args: {
     recipientId: v.id('notificationRecipients'),
@@ -262,6 +352,19 @@ export const disablePushSubscription = internalMutation({
   },
   handler: async (ctx, args) => {
     await ctx.db.patch('pushSubscriptions', args.subscriptionId, {
+      disabledAt: Date.now(),
+      lastSeenAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+export const disableMobilePushToken = internalMutation({
+  args: {
+    tokenId: v.id('mobilePushTokens'),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch('mobilePushTokens', args.tokenId, {
       disabledAt: Date.now(),
       lastSeenAt: Date.now(),
     });
