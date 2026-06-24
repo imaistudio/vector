@@ -1,0 +1,277 @@
+import Combine
+import ConvexMobile
+import Foundation
+
+public enum VectorConvexFunctions {
+  public static let listIssuesPage = "issues/queries:listIssuesPage"
+  public static let getIssueByKey = "issues/queries:getByKey"
+  public static let listComments = "issues/queries:listComments"
+  public static let getAssignments = "issues/queries:getAssignments"
+  public static let addComment = "issues/mutations:addComment"
+  public static let changeWorkflowState = "issues/mutations:changeWorkflowState"
+  public static let changePriority = "issues/mutations:changePriority"
+  public static let updateAssignees = "issues/mutations:updateAssignees"
+  public static let listProjectActivity = "activities/queries:listProjectActivity"
+  public static let listTeamActivity = "activities/queries:listTeamActivity"
+  public static let listIssueActivity = "activities/queries:listIssueActivity"
+  public static let listProjectsPage = "projects/queries:listPage"
+  public static let getProjectByKey = "projects/queries:getByKey"
+  public static let listTeamsPage = "teams/queries:listPage"
+  public static let getTeamByKey = "teams/queries:getByKey"
+  public static let getWorkspaceOptions = "organizations/queries:getWorkspaceOptions"
+  public static let setCustomStatus = "status:setCustomStatus"
+}
+
+enum VectorConvexArguments {
+  static func pagination(numItems: Int, cursor: String? = nil) -> [String: ConvexEncodable?] {
+    [
+      "numItems": Double(numItems),
+      "cursor": cursor,
+    ]
+  }
+
+  static func changeWorkflowState(issueId: VectorID, stateId: VectorID) -> [String: ConvexEncodable?] {
+    [
+      "issueId": issueId,
+      "stateId": stateId,
+    ]
+  }
+}
+
+public enum VectorIssueScope: String, CaseIterable, Identifiable {
+  case mine
+  case related
+  case all
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .mine: "Mine"
+    case .related: "Related"
+    case .all: "All"
+    }
+  }
+}
+
+public enum VectorProjectScope: String, CaseIterable, Identifiable {
+  case mine
+  case all
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .mine: "Mine"
+    case .all: "All"
+    }
+  }
+}
+
+public enum VectorIssueLayoutMode: String, CaseIterable, Identifiable {
+  case list
+  case board
+  case timeline
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .list: "List"
+    case .board: "Board"
+    case .timeline: "Timeline"
+    }
+  }
+}
+
+@MainActor
+public protocol VectorMobileRepository {
+  func issues(orgSlug: String, scope: VectorIssueScope, pageSize: Int) -> AnyPublisher<[VectorIssueRow], Error>
+  func projects(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorProject], Error>
+  func teams(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorTeam], Error>
+  func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
+  func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
+  func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
+}
+
+@MainActor
+public final class ConvexVectorRepository: VectorMobileRepository {
+  // ConvexClient is owned by the app process and the SDK exposes async/thread-safe entry points.
+  private nonisolated(unsafe) let client: ConvexClient
+
+  public init(client: ConvexClient) {
+    self.client = client
+  }
+
+  public convenience init(configuration: VectorMobileConfiguration) {
+    self.init(client: ConvexClient(deploymentUrl: configuration.convexDeploymentURL.absoluteString))
+  }
+
+  public func issues(
+    orgSlug: String,
+    scope: VectorIssueScope = .mine,
+    pageSize: Int = 30
+  ) -> AnyPublisher<[VectorIssueRow], Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": scope.rawValue,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listIssuesPage, with: args, yielding: VectorPaginatedPage<VectorIssueRow>.self)
+      .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func projects(
+    orgSlug: String,
+    scope: VectorProjectScope = .mine,
+    pageSize: Int = 30
+  ) -> AnyPublisher<[VectorProject], Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": scope.rawValue,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listProjectsPage, with: args, yielding: VectorPaginatedPage<VectorProject>.self)
+      .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func teams(
+    orgSlug: String,
+    scope: VectorProjectScope = .mine,
+    pageSize: Int = 30
+  ) -> AnyPublisher<[VectorTeam], Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": scope.rawValue,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listTeamsPage, with: args, yielding: VectorPaginatedPage<VectorTeam>.self)
+      .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error> {
+    client
+      .subscribe(to: VectorConvexFunctions.listComments, with: ["issueId": issueId], yielding: [VectorComment].self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error> {
+    client
+      .subscribe(to: VectorConvexFunctions.getAssignments, with: ["issueId": issueId], yielding: [VectorIssueAssignment].self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
+    let args: [String: ConvexEncodable?] = [
+      "issueId": issueId,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: 30),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listIssueActivity, with: args, yielding: VectorPaginatedPage<VectorActivityItem>.self)
+      .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.changeWorkflowState,
+      with: VectorConvexArguments.changeWorkflowState(issueId: issueId, stateId: stateId)
+    )
+  }
+
+  public func addComment(issueId: VectorID, body: String) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.addComment,
+      with: [
+        "issueId": issueId,
+        "body": body,
+      ]
+    )
+  }
+}
+
+@MainActor
+public final class MockVectorRepository: VectorMobileRepository {
+  public init() {}
+
+  public func issues(
+    orgSlug: String,
+    scope: VectorIssueScope,
+    pageSize: Int
+  ) -> AnyPublisher<[VectorIssueRow], Error> {
+    Just(Array(VectorMockData.issues.prefix(pageSize)))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func projects(
+    orgSlug: String,
+    scope: VectorProjectScope,
+    pageSize: Int
+  ) -> AnyPublisher<[VectorProject], Error> {
+    Just(Array(VectorMockData.projects.prefix(pageSize)))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func teams(
+    orgSlug: String,
+    scope: VectorProjectScope,
+    pageSize: Int
+  ) -> AnyPublisher<[VectorTeam], Error> {
+    Just(Array(VectorMockData.teams.prefix(pageSize)))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error> {
+    Just(VectorMockData.comments)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error> {
+    let assignments = VectorMockData.issues
+      .filter { $0.id == issueId }
+      .map {
+        VectorIssueAssignment(
+          id: "assignment-\($0.id)",
+          assigneeId: $0.assigneeId,
+          assigneeName: $0.assigneeName,
+          assigneeEmail: $0.assigneeEmail,
+          assigneeImage: $0.assigneeImage,
+          stateId: $0.workflowStateId,
+          stateName: $0.workflowStateName,
+          stateIcon: $0.workflowStateIcon,
+          stateColor: $0.workflowStateColor,
+          stateType: $0.workflowStateType
+        )
+      }
+
+    return Just(assignments)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
+    Just([])
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+}

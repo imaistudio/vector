@@ -1,0 +1,622 @@
+import ConvexMobile
+import Foundation
+
+public typealias VectorID = String
+
+public struct VectorMobileConfiguration: Equatable {
+  public var orgSlug: String
+  public var convexDeploymentURL: URL
+  public var webBaseURL: URL
+
+  public init(
+    orgSlug: String = "imai",
+    convexDeploymentURL: URL = URL(string: "https://jovial-eagle-684.convex.cloud")!,
+    webBaseURL: URL = URL(string: "https://vector.imai.studio")!
+  ) {
+    self.orgSlug = orgSlug
+    self.convexDeploymentURL = convexDeploymentURL
+    self.webBaseURL = webBaseURL
+  }
+
+  public func webURL(path: String) -> URL {
+    webBaseURL.appending(path: path)
+  }
+
+  public var workspaceWebURL: URL {
+    webURL(path: "/\(orgSlug)")
+  }
+}
+
+public struct VectorUser: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String?
+  public let email: String?
+  public let image: String?
+
+  public init(id: VectorID, name: String?, email: String? = nil, image: String? = nil) {
+    self.id = id
+    self.name = name
+    self.email = email
+    self.image = image
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case email
+    case image
+  }
+
+  public var displayName: String {
+    name ?? email ?? "Unknown user"
+  }
+}
+
+public struct VectorState: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let color: String?
+  public let icon: String?
+  public let type: String
+  @ConvexFloat public var position: Double
+
+  public init(
+    id: VectorID,
+    name: String,
+    type: String,
+    position: Double,
+    color: String? = nil,
+    icon: String? = nil
+  ) {
+    self.id = id
+    self.name = name
+    self.type = type
+    self._position = ConvexFloat(wrappedValue: position)
+    self.color = color
+    self.icon = icon
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case color
+    case icon
+    case type
+    case position
+  }
+}
+
+public struct VectorPriority: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let color: String?
+  public let icon: String?
+  @ConvexFloat public var weight: Double
+
+  public init(id: VectorID, name: String, weight: Double, color: String? = nil, icon: String? = nil) {
+    self.id = id
+    self.name = name
+    self._weight = ConvexFloat(wrappedValue: weight)
+    self.color = color
+    self.icon = icon
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case color
+    case icon
+    case weight
+  }
+}
+
+public struct VectorProjectStatus: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let type: String
+  public let color: String?
+  public let icon: String?
+  @ConvexFloat public var position: Double
+
+  public init(
+    id: VectorID,
+    name: String,
+    type: String,
+    position: Double,
+    color: String? = nil,
+    icon: String? = nil
+  ) {
+    self.id = id
+    self.name = name
+    self.type = type
+    self._position = ConvexFloat(wrappedValue: position)
+    self.color = color
+    self.icon = icon
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case type
+    case color
+    case icon
+    case position
+  }
+}
+
+public struct VectorIssueAssignment: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let assigneeId: VectorID?
+  public let assigneeName: String?
+  public let assigneeEmail: String?
+  public let assigneeImage: String?
+  public let stateId: VectorID?
+  public let stateName: String?
+  public let stateIcon: String?
+  public let stateColor: String?
+  public let stateType: String?
+  public let note: String?
+
+  public init(
+    id: VectorID,
+    assigneeId: VectorID?,
+    assigneeName: String?,
+    assigneeEmail: String? = nil,
+    assigneeImage: String? = nil,
+    stateId: VectorID?,
+    stateName: String?,
+    stateIcon: String? = nil,
+    stateColor: String? = nil,
+    stateType: String? = nil,
+    note: String? = nil
+  ) {
+    self.id = id
+    self.assigneeId = assigneeId
+    self.assigneeName = assigneeName
+    self.assigneeEmail = assigneeEmail
+    self.assigneeImage = assigneeImage
+    self.stateId = stateId
+    self.stateName = stateName
+    self.stateIcon = stateIcon
+    self.stateColor = stateColor
+    self.stateType = stateType
+    self.note = note
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case assignmentId
+    case assignee
+    case assigneeId
+    case assigneeName
+    case assigneeEmail
+    case assigneeImage
+    case state
+    case stateId
+    case stateName
+    case stateIcon
+    case stateColor
+    case stateType
+    case note
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let nestedAssignee = try container.decodeIfPresent(VectorUser.self, forKey: .assignee)
+    let nestedState = try container.decodeIfPresent(VectorState.self, forKey: .state)
+
+    self.id = try container.decodeIfPresent(VectorID.self, forKey: .assignmentId)
+      ?? container.decodeIfPresent(VectorID.self, forKey: .id)
+      ?? "assignment"
+    self.assigneeId = try container.decodeIfPresent(VectorID.self, forKey: .assigneeId) ?? nestedAssignee?.id
+    self.assigneeName = try container.decodeIfPresent(String.self, forKey: .assigneeName) ?? nestedAssignee?.name
+    self.assigneeEmail = try container.decodeIfPresent(String.self, forKey: .assigneeEmail) ?? nestedAssignee?.email
+    self.assigneeImage = try container.decodeIfPresent(String.self, forKey: .assigneeImage) ?? nestedAssignee?.image
+    self.stateId = try container.decodeIfPresent(VectorID.self, forKey: .stateId) ?? nestedState?.id
+    self.stateName = try container.decodeIfPresent(String.self, forKey: .stateName) ?? nestedState?.name
+    self.stateIcon = try container.decodeIfPresent(String.self, forKey: .stateIcon) ?? nestedState?.icon
+    self.stateColor = try container.decodeIfPresent(String.self, forKey: .stateColor) ?? nestedState?.color
+    self.stateType = try container.decodeIfPresent(String.self, forKey: .stateType) ?? nestedState?.type
+    self.note = try container.decodeIfPresent(String.self, forKey: .note)
+  }
+}
+
+public struct VectorPullRequestSummary: Decodable, Equatable, Identifiable {
+  public var id: String { url }
+  @ConvexFloat private var numberValue: Double
+  public let state: String
+  public let url: String
+
+  public var number: Int {
+    Int(numberValue)
+  }
+
+  public init(number: Int, state: String, url: String) {
+    self._numberValue = ConvexFloat(wrappedValue: Double(number))
+    self.state = state
+    self.url = url
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case numberValue = "number"
+    case state
+    case url
+  }
+}
+
+public struct VectorIssueRow: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let key: String
+  public let title: String
+  public let description: String?
+  public let projectId: VectorID?
+  public let projectKey: String?
+  public let teamId: VectorID?
+  public let teamKey: String?
+  public let priorityId: VectorID?
+  public let priorityName: String?
+  public let priorityIcon: String?
+  public let priorityColor: String?
+  public let workflowStateId: VectorID?
+  public let workflowStateName: String?
+  public let workflowStateIcon: String?
+  public let workflowStateColor: String?
+  public let workflowStateType: String?
+  public let reporterName: String?
+  public let parentIssueKey: String?
+  public let assignmentId: VectorID?
+  public let assigneeId: VectorID?
+  public let assigneeName: String?
+  public let assigneeEmail: String?
+  public let assigneeImage: String?
+  public let dueDate: String?
+  public let visibility: String?
+  public let lastActivityEventType: String?
+  public let linkedPrs: [VectorPullRequestSummary]
+  @ConvexFloat public var creationTime: Double
+  @OptionalConvexFloat private var updatedAtValue: Double?
+
+  public init(
+    id: VectorID,
+    key: String,
+    title: String,
+    description: String? = nil,
+    projectId: VectorID? = nil,
+    projectKey: String? = nil,
+    teamId: VectorID? = nil,
+    teamKey: String? = nil,
+    priorityId: VectorID? = nil,
+    priorityName: String? = nil,
+    priorityIcon: String? = nil,
+    priorityColor: String? = nil,
+    workflowStateId: VectorID? = nil,
+    workflowStateName: String? = nil,
+    workflowStateIcon: String? = nil,
+    workflowStateColor: String? = nil,
+    workflowStateType: String? = nil,
+    reporterName: String? = nil,
+    parentIssueKey: String? = nil,
+    assignmentId: VectorID? = nil,
+    assigneeId: VectorID? = nil,
+    assigneeName: String? = nil,
+    assigneeEmail: String? = nil,
+    assigneeImage: String? = nil,
+    dueDate: String? = nil,
+    visibility: String? = "organization",
+    lastActivityEventType: String? = nil,
+    linkedPrs: [VectorPullRequestSummary] = [],
+    creationTime: Double,
+    updatedAt: Double? = nil
+  ) {
+    self.id = id
+    self.key = key
+    self.title = title
+    self.description = description
+    self.projectId = projectId
+    self.projectKey = projectKey
+    self.teamId = teamId
+    self.teamKey = teamKey
+    self.priorityId = priorityId
+    self.priorityName = priorityName
+    self.priorityIcon = priorityIcon
+    self.priorityColor = priorityColor
+    self.workflowStateId = workflowStateId
+    self.workflowStateName = workflowStateName
+    self.workflowStateIcon = workflowStateIcon
+    self.workflowStateColor = workflowStateColor
+    self.workflowStateType = workflowStateType
+    self.reporterName = reporterName
+    self.parentIssueKey = parentIssueKey
+    self.assignmentId = assignmentId
+    self.assigneeId = assigneeId
+    self.assigneeName = assigneeName
+    self.assigneeEmail = assigneeEmail
+    self.assigneeImage = assigneeImage
+    self.dueDate = dueDate
+    self.visibility = visibility
+    self.lastActivityEventType = lastActivityEventType
+    self.linkedPrs = linkedPrs
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+    self._updatedAtValue = OptionalConvexFloat(wrappedValue: updatedAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case key
+    case title
+    case description
+    case projectId
+    case projectKey
+    case teamId
+    case teamKey
+    case priorityId
+    case priorityName
+    case priorityIcon
+    case priorityColor
+    case workflowStateId
+    case workflowStateName
+    case workflowStateIcon
+    case workflowStateColor
+    case workflowStateType
+    case reporterName
+    case parentIssueKey
+    case assignmentId
+    case assigneeId
+    case assigneeName
+    case assigneeEmail
+    case assigneeImage
+    case dueDate
+    case visibility
+    case lastActivityEventType
+    case linkedPrs
+    case creationTime = "_creationTime"
+    case updatedAtValue = "updatedAt"
+  }
+
+  public var updatedAt: Double {
+    updatedAtValue ?? creationTime
+  }
+
+  public var rowId: String {
+    "\(id):\(assignmentId ?? assigneeId ?? "unassigned")"
+  }
+
+  public var stateLabel: String {
+    workflowStateName ?? "No status"
+  }
+
+  public var assigneeLabel: String {
+    assigneeName ?? "Unassigned"
+  }
+}
+
+public struct VectorIssueDetail: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let key: String
+  public let title: String
+  public let description: String?
+  public let priority: VectorPriority?
+  public let workflowState: VectorState?
+  public let project: VectorProject?
+  public let assignees: [VectorUser]
+  public let createdBy: VectorUser?
+  public let children: [VectorIssueRow]
+  @ConvexFloat public var creationTime: Double
+
+  public init(
+    id: VectorID,
+    key: String,
+    title: String,
+    description: String?,
+    priority: VectorPriority?,
+    workflowState: VectorState?,
+    project: VectorProject?,
+    assignees: [VectorUser],
+    createdBy: VectorUser?,
+    children: [VectorIssueRow],
+    creationTime: Double
+  ) {
+    self.id = id
+    self.key = key
+    self.title = title
+    self.description = description
+    self.priority = priority
+    self.workflowState = workflowState
+    self.project = project
+    self.assignees = assignees
+    self.createdBy = createdBy
+    self.children = children
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case key
+    case title
+    case description
+    case priority
+    case workflowState
+    case project
+    case assignees
+    case createdBy
+    case children
+    case creationTime = "_creationTime"
+  }
+}
+
+public struct VectorProject: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let key: String
+  public let name: String
+  public let description: String?
+  public let icon: String?
+  public let color: String?
+  public let teamId: VectorID?
+  public let lead: VectorUser?
+  public let status: VectorProjectStatus?
+  public let visibility: String?
+  @ConvexFloat public var creationTime: Double
+
+  public init(
+    id: VectorID,
+    key: String,
+    name: String,
+    description: String? = nil,
+    icon: String? = nil,
+    color: String? = nil,
+    teamId: VectorID? = nil,
+    lead: VectorUser? = nil,
+    status: VectorProjectStatus? = nil,
+    visibility: String? = "organization",
+    creationTime: Double
+  ) {
+    self.id = id
+    self.key = key
+    self.name = name
+    self.description = description
+    self.icon = icon
+    self.color = color
+    self.teamId = teamId
+    self.lead = lead
+    self.status = status
+    self.visibility = visibility
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case key
+    case name
+    case description
+    case icon
+    case color
+    case teamId
+    case lead
+    case status
+    case visibility
+    case creationTime = "_creationTime"
+  }
+}
+
+public struct VectorTeam: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let key: String
+  public let name: String
+  public let description: String?
+  public let icon: String?
+  public let color: String?
+  public let lead: VectorUser?
+  public let visibility: String?
+  @ConvexFloat public var creationTime: Double
+  @OptionalConvexFloat private var memberCountValue: Double?
+
+  public init(
+    id: VectorID,
+    key: String,
+    name: String,
+    description: String? = nil,
+    icon: String? = nil,
+    color: String? = nil,
+    lead: VectorUser? = nil,
+    visibility: String? = "organization",
+    memberCount: Int? = nil,
+    creationTime: Double
+  ) {
+    self.id = id
+    self.key = key
+    self.name = name
+    self.description = description
+    self.icon = icon
+    self.color = color
+    self.lead = lead
+    self.visibility = visibility
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+    self._memberCountValue = OptionalConvexFloat(wrappedValue: memberCount.map(Double.init))
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case key
+    case name
+    case description
+    case icon
+    case color
+    case lead
+    case visibility
+    case creationTime = "_creationTime"
+    case memberCountValue = "memberCount"
+  }
+
+  public var memberCount: Int? {
+    memberCountValue.map(Int.init)
+  }
+}
+
+public struct VectorComment: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let body: String
+  public let author: VectorUser?
+  public let parentId: VectorID?
+  @ConvexFloat public var creationTime: Double
+
+  public init(id: VectorID, body: String, author: VectorUser?, parentId: VectorID? = nil, creationTime: Double) {
+    self.id = id
+    self.body = body
+    self.author = author
+    self.parentId = parentId
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case body
+    case author
+    case parentId
+    case creationTime = "_creationTime"
+  }
+}
+
+public struct VectorActivityTarget: Decodable, Equatable {
+  public let type: String
+  public let id: VectorID?
+  public let key: String?
+  public let name: String?
+}
+
+public struct VectorActivityDetails: Decodable, Equatable {
+  public let field: String?
+  public let fromLabel: String?
+  public let toLabel: String?
+  public let roleName: String?
+  public let commentPreview: String?
+  public let addedUserNames: [String]
+  public let removedUserNames: [String]
+}
+
+public struct VectorActivityItem: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let entityType: String
+  public let eventType: String
+  public let actor: VectorUser?
+  public let subjectUser: VectorUser?
+  public let target: VectorActivityTarget
+  public let details: VectorActivityDetails
+  @ConvexFloat public var createdAt: Double
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case createdAt
+    case entityType
+    case eventType
+    case actor
+    case subjectUser
+    case target
+    case details
+  }
+}
+
+public struct VectorPaginatedPage<Item: Decodable>: Decodable {
+  public let page: [Item]
+  public let continueCursor: String
+  public let isDone: Bool
+}
