@@ -71,7 +71,7 @@ concurrency:
 jobs:
   package:
     name: Package
-    runs-on: macos-latest
+    runs-on: macos-26
 
     steps:
       - name: Checkout repository
@@ -86,14 +86,14 @@ jobs:
         run: swift test
         working-directory: apps/ios
 
-      - name: Build Swift package for iOS Simulator
-        run: xcodebuild -scheme VectorMobile -destination 'generic/platform=iOS Simulator' build
+      - name: Build app target for iOS Simulator
+        run: xcodebuild -project Vector.xcodeproj -scheme Vector -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
         working-directory: apps/ios
 
   signed-archive:
     name: Signed Archive
     if: github.event_name == 'workflow_dispatch' && inputs.signed_archive
-    runs-on: macos-latest
+    runs-on: macos-26
     needs: package
 
     env:
@@ -177,6 +177,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="$IOS_CODESIGN_IDENTITY_NAME" \
             PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_UUID" \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             OTHER_CODE_SIGN_FLAGS="--keychain $IOS_CODESIGN_KEYCHAIN"
 
       - name: Write export options
@@ -285,6 +286,7 @@ jobs:
             echo "- Scheme: \`$IOS_SCHEME\`"
             echo "- Configuration: \`$IOS_CONFIGURATION\`"
             echo "- Bundle ID: \`$IOS_BUNDLE_ID\`"
+            echo "- Build number: \`${GITHUB_RUN_NUMBER}\`"
             echo "- Export method: \`$IOS_EXPORT_METHOD\`"
             echo "- TestFlight upload: \`${{ inputs.upload_testflight }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
