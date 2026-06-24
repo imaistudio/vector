@@ -4,7 +4,12 @@ import { v, ConvexError } from 'convex/values';
 import type { Id, Doc, DataModel } from '../_generated/dataModel';
 import { hasScopedPermission, permissionMatches } from '../authz';
 import { getAuthUserId } from '../authUtils';
-import { canViewIssue, canViewProject, canViewTeam } from '../access';
+import {
+  canEditIssue,
+  canViewIssue,
+  canViewProject,
+  canViewTeam,
+} from '../access';
 import { PERMISSIONS, type Permission } from '../permissions/utils';
 import { isDefined } from '../_shared/typeGuards';
 import { buildIssueSearchTextFromIssue } from './search';
@@ -130,9 +135,15 @@ export const getByKey = query({
         state,
       };
     });
+    const [row] = await flattenIssueRows(
+      ctx,
+      [issue],
+      new Map([[issue._id, assignees]]),
+    );
 
     return {
-      ...issue,
+      ...row,
+      canEdit: await canEditIssue(ctx, issue),
       project,
       assignees: assigneeUsers,
       createdBy: createdByUser,

@@ -98,6 +98,7 @@ enum VectorMockData {
       dueDate: "2026-07-08",
       lastActivityEventType: "comment_added",
       linkedPrs: [VectorPullRequestSummary(number: 42, state: "open", url: "https://github.com/xrehpicx/vector/pull/42")],
+      canEdit: true,
       creationTime: 1_774_450_000_000,
       updatedAt: 1_774_550_000_000
     ),
@@ -125,6 +126,7 @@ enum VectorMockData {
       assigneeEmail: "maya@example.com",
       dueDate: "2026-07-15",
       lastActivityEventType: "status_changed",
+      canEdit: true,
       creationTime: 1_774_350_000_000,
       updatedAt: 1_774_500_000_000
     ),
@@ -151,6 +153,7 @@ enum VectorMockData {
       assigneeName: nil,
       dueDate: nil,
       lastActivityEventType: "created",
+      canEdit: true,
       creationTime: 1_774_250_000_000,
       updatedAt: 1_774_250_000_000
     ),
@@ -168,6 +171,39 @@ enum VectorMockData {
       body: "For deeper editing, opening the web route is fine.",
       author: maya,
       creationTime: 1_774_565_000_000
+    ),
+  ]
+
+  static let workspaceOptions = VectorWorkspaceOptions(
+    members: [
+      VectorWorkspaceMember(id: "member-raj", userId: raj.id, user: raj, role: "admin"),
+      VectorWorkspaceMember(id: "member-maya", userId: maya.id, user: maya, role: "member"),
+    ],
+    teams: teams,
+    projects: projects,
+    issueStates: issueStates,
+    issuePriorities: priorities,
+    projectStatuses: projectStatuses
+  )
+
+  static let activityItems = [
+    VectorActivityItem(
+      id: "activity-comment",
+      entityType: "issue",
+      eventType: "issue_comment_added",
+      actor: maya,
+      target: VectorActivityTarget(type: "issue", id: "issue-5", key: "ROADMAP-5", name: "Advanced technical blueprint flow"),
+      details: VectorActivityDetails(commentPreview: "For deeper editing, opening the web route is fine."),
+      createdAt: 1_774_565_000_000
+    ),
+    VectorActivityItem(
+      id: "activity-status",
+      entityType: "issue",
+      eventType: "issue_workflow_state_changed",
+      actor: raj,
+      target: VectorActivityTarget(type: "issue", id: "issue-5", key: "ROADMAP-5", name: "Advanced technical blueprint flow"),
+      details: VectorActivityDetails(field: "workflow_state", fromLabel: "In Progress", toLabel: "Done"),
+      createdAt: 1_774_550_000_000
     ),
   ]
 }
