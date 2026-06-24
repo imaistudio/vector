@@ -2,8 +2,18 @@ import Foundation
 
 @MainActor
 enum VectorMockData {
-  static let raj = VectorUser(id: "user-raj", name: "raj", email: "raj@example.com")
-  static let maya = VectorUser(id: "user-maya", name: "Maya", email: "maya@example.com")
+  static let raj = VectorUser(
+    id: "user-raj",
+    name: "raj",
+    email: "raj@example.com",
+    status: VectorUserStatus(presence: .online, customText: "Building Vector iOS", customEmoji: "V")
+  )
+  static let maya = VectorUser(
+    id: "user-maya",
+    name: "Maya",
+    email: "maya@example.com",
+    status: VectorUserStatus(presence: .idle)
+  )
 
   static let issueStates = [
     VectorState(id: "state-done", name: "Done", type: "done", position: 4, color: "#10b981", icon: "check-circle"),

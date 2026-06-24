@@ -54,6 +54,45 @@ async function loadUsersById(ctx: QueryCtx, userIds: readonly Id<'users'>[]) {
   );
 }
 
+async function loadUserStatusesById(
+  ctx: QueryCtx,
+  userIds: readonly Id<'users'>[],
+) {
+  const uniqueUserIds = Array.from(new Set(userIds));
+  const statuses = await Promise.all(
+    uniqueUserIds.map(id =>
+      ctx.db
+        .query('userStatuses')
+        .withIndex('by_user', q => q.eq('userId', id))
+        .unique(),
+    ),
+  );
+
+  return new Map(
+    uniqueUserIds.flatMap((id, index) => {
+      const status = statuses[index];
+      if (!status) return [];
+      const expired = status.clearsAt && status.clearsAt < Date.now();
+      const hidden = status.presence === 'invisible' || expired;
+      return [
+        [
+          id,
+          {
+            presence:
+              status.presence === 'invisible'
+                ? ('offline' as const)
+                : status.presence,
+            customText: hidden ? undefined : status.customText,
+            customEmoji: hidden ? undefined : status.customEmoji,
+            clearsAt: hidden ? undefined : status.clearsAt,
+            updatedAt: status.updatedAt,
+          },
+        ] as const,
+      ];
+    }),
+  );
+}
+
 async function getInviteCustomRoleName(
   ctx: QueryCtx,
   organizationId: Id<'organizations'>,
@@ -96,6 +135,10 @@ async function listOrganizationMembersInternal(
     ctx,
     members.map(member => member.userId),
   );
+  const statusMap = await loadUserStatusesById(
+    ctx,
+    members.map(member => member.userId),
+  );
 
   return members.map(member => {
     const user = userMap.get(member.userId);
@@ -109,6 +152,7 @@ async function listOrganizationMembersInternal(
             image: user.image,
             username: user.username,
             role: user.role,
+            status: statusMap.get(member.userId) ?? null,
           }
         : null,
     };

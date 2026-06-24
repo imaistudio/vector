@@ -74,8 +74,24 @@ public enum VectorPresenceStatus: String, CaseIterable, Codable, Equatable, Iden
   case idle
   case dnd
   case invisible
+  case offline
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    let rawValue = try container.decode(String.self)
+    self = VectorPresenceStatus(rawValue: rawValue) ?? .offline
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(rawValue)
+  }
 
   public var id: String { rawValue }
+
+  public static var selectableCases: [VectorPresenceStatus] {
+    [.online, .idle, .dnd, .invisible]
+  }
 
   public var label: String {
     switch self {
@@ -83,6 +99,7 @@ public enum VectorPresenceStatus: String, CaseIterable, Codable, Equatable, Iden
     case .idle: "Idle"
     case .dnd: "Do not disturb"
     case .invisible: "Invisible"
+    case .offline: "Offline"
     }
   }
 
@@ -92,6 +109,7 @@ public enum VectorPresenceStatus: String, CaseIterable, Codable, Equatable, Iden
     case .idle: "moon.fill"
     case .dnd: "minus.circle.fill"
     case .invisible: "circle"
+    case .offline: "circle"
     }
   }
 
@@ -101,6 +119,7 @@ public enum VectorPresenceStatus: String, CaseIterable, Codable, Equatable, Iden
     case .idle: "#f59e0b"
     case .dnd: "#ef4444"
     case .invisible: "#94a3b8"
+    case .offline: "#94a3b8"
     }
   }
 }
@@ -149,6 +168,7 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
   case mentions
   case comments
   case workSessions = "work_sessions"
+  case teamStatusChanges = "team_status_changes"
 
   public var id: String { rawValue }
 
@@ -159,6 +179,7 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
     case .mentions: "Mentions"
     case .comments: "Comments"
     case .workSessions: "Work sessions"
+    case .teamStatusChanges: "Team status changes"
     }
   }
 }
@@ -234,12 +255,14 @@ public struct VectorUser: Decodable, Equatable, Identifiable {
   public let name: String?
   public let email: String?
   public let image: String?
+  public let status: VectorUserStatus?
 
-  public init(id: VectorID, name: String?, email: String? = nil, image: String? = nil) {
+  public init(id: VectorID, name: String?, email: String? = nil, image: String? = nil, status: VectorUserStatus? = nil) {
     self.id = id
     self.name = name
     self.email = email
     self.image = image
+    self.status = status
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -254,6 +277,7 @@ public struct VectorUser: Decodable, Equatable, Identifiable {
     case profileImage
     case photoURL
     case picture
+    case status
   }
 
   public init(from decoder: Decoder) throws {
@@ -281,6 +305,7 @@ public struct VectorUser: Decodable, Equatable, Identifiable {
       value?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     .first { !$0.isEmpty }
+    self.status = try container.decodeIfPresent(VectorUserStatus.self, forKey: .status)
   }
 
   public var displayName: String {
@@ -1051,6 +1076,22 @@ public struct VectorWorkspaceOptions: Decodable, Equatable {
     self.issuePriorities = issuePriorities
     self.projectStatuses = projectStatuses
   }
+
+  public func memberStatus(userId: VectorID?, email: String?) -> VectorUserStatus? {
+    guard userId != nil || email != nil else {
+      return nil
+    }
+
+    return members.first { member in
+      if let userId, member.userId == userId || member.user?.id == userId {
+        return true
+      }
+      if let email, member.email == email {
+        return true
+      }
+      return false
+    }?.user?.status
+  }
 }
 
 public struct VectorActivityTarget: Decodable, Equatable {
@@ -1141,4 +1182,9 @@ public struct VectorPaginatedPage<Item: Decodable>: Decodable {
   public let page: [Item]
   public let continueCursor: String
   public let isDone: Bool
+}
+
+public struct VectorOrgActivityPage: Decodable {
+  public let items: [VectorActivityItem]
+  public let nextCursor: String?
 }

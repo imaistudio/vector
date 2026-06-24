@@ -46,6 +46,14 @@ const categoryLabels: Record<string, { title: string; description: string }> = {
     title: 'Comments',
     description: 'New comments on work already assigned to you.',
   },
+  work_sessions: {
+    title: 'Work sessions',
+    description: 'Completed or failed agent work sessions on your issues.',
+  },
+  team_status_changes: {
+    title: 'Team status changes',
+    description: 'Shared-team users coming online or updating their status.',
+  },
 };
 
 export function NotificationPreferencesPage() {

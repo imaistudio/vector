@@ -6,6 +6,7 @@ export const NOTIFICATION_CATEGORIES = [
   'mentions',
   'comments',
   'work_sessions',
+  'team_status_changes',
 ] as const;
 
 export const NOTIFICATION_EVENT_TYPES = [
@@ -17,6 +18,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   'work_session_completed',
   'work_session_failed',
   'issue_reminder',
+  'user_status_changed',
 ] as const;
 
 export const NOTIFICATION_CHANNELS = ['email', 'push'] as const;
@@ -58,6 +60,9 @@ export const notificationPayloadValidator = v.object({
   roleLabel: v.optional(v.string()),
   href: v.optional(v.string()),
   subjectUserName: v.optional(v.string()),
+  statusLabel: v.optional(v.string()),
+  statusText: v.optional(v.string()),
+  statusEmoji: v.optional(v.string()),
 });
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: Record<
@@ -93,6 +98,11 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: Record<
     emailEnabled: false,
     pushEnabled: true,
   },
+  team_status_changes: {
+    inAppEnabled: false,
+    emailEnabled: false,
+    pushEnabled: false,
+  },
 };
 
 export function categoryForEvent(
@@ -113,5 +123,7 @@ export function categoryForEvent(
       return 'work_sessions';
     case 'issue_reminder':
       return 'assignments';
+    case 'user_status_changed':
+      return 'team_status_changes';
   }
 }
