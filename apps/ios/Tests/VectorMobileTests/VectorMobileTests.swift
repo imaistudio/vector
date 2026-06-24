@@ -5,9 +5,45 @@ import XCTest
 
 final class VectorMobileTests: XCTestCase {
   func testFunctionNamesUseNestedConvexPathSyntax() {
+    XCTAssertEqual(VectorConvexFunctions.getOrganizations, "users:getOrganizations")
     XCTAssertEqual(VectorConvexFunctions.listIssuesPage, "issues/queries:listIssuesPage")
     XCTAssertEqual(VectorConvexFunctions.changeWorkflowState, "issues/mutations:changeWorkflowState")
     XCTAssertEqual(VectorConvexFunctions.listProjectActivity, "activities/queries:listProjectActivity")
+  }
+
+  func testAuthNormalizesAppURLLikeCLI() throws {
+    XCTAssertEqual(try VectorAuthClient.normalizeAppURL("vector.example.com").absoluteString, "https://vector.example.com")
+    XCTAssertEqual(try VectorAuthClient.normalizeAppURL("https://vector.example.com/").absoluteString, "https://vector.example.com")
+    XCTAssertEqual(try VectorAuthClient.normalizeAppURL("localhost:3000/").absoluteString, "http://localhost:3000")
+    XCTAssertThrowsError(try VectorAuthClient.normalizeAppURL(""))
+  }
+
+  func testCookieHeaderSplitPreservesExpiresCommas() {
+    let rawHeader = "session=abc; Path=/; Expires=Wed, 24 Jun 2026 12:00:00 GMT, token=def; Path=/; HttpOnly"
+
+    let cookies = VectorAuthClient.splitSetCookieHeader(rawHeader)
+
+    XCTAssertEqual(cookies.count, 2)
+    XCTAssertTrue(cookies[0].contains("Expires=Wed, 24 Jun 2026"))
+    XCTAssertTrue(cookies[1].hasPrefix("token=def"))
+  }
+
+  func testAppConfigFallsBackToLocalConvexForLocalDevelopment() async throws {
+    let client = VectorAuthClient(transport: FailingAuthTransport())
+    let config = try await client.fetchAppConfig(appURL: URL(string: "http://localhost:3000")!)
+
+    XCTAssertEqual(config.convexURL.absoluteString, "http://127.0.0.1:3210")
+  }
+
+  func testAppConfigDoesNotFallbackForRemoteInstances() async {
+    let client = VectorAuthClient(transport: FailingAuthTransport())
+
+    do {
+      _ = try await client.fetchAppConfig(appURL: URL(string: "https://vector.example.com")!)
+      XCTFail("Expected remote config fetch to fail.")
+    } catch {
+      XCTAssertTrue(error is URLError)
+    }
   }
 
   func testIssueRowDecodesConvexNumberFields() throws {
@@ -142,5 +178,11 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertFalse(teams.isEmpty)
 
     withExtendedLifetime([issuesCancellable, projectsCancellable, teamsCancellable]) {}
+  }
+}
+
+private struct FailingAuthTransport: VectorAuthTransport {
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    throw URLError(.notConnectedToInternet)
   }
 }

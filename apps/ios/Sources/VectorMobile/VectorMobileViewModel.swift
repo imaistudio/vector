@@ -20,7 +20,7 @@ public final class VectorMobileViewModel: ObservableObject {
   private var issueSupportCancellables = Set<AnyCancellable>()
 
   public init(
-    configuration: VectorMobileConfiguration = VectorMobileConfiguration(),
+    configuration: VectorMobileConfiguration = .demo,
     repository: VectorMobileRepository = MockVectorRepository()
   ) {
     self.configuration = configuration

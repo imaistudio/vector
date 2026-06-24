@@ -1,22 +1,28 @@
-import ConvexMobile
+@preconcurrency import ConvexMobile
 import Foundation
 
 public typealias VectorID = String
 
-public struct VectorMobileConfiguration: Equatable {
+public struct VectorMobileConfiguration: Equatable, Sendable {
   public var orgSlug: String
   public var convexDeploymentURL: URL
   public var webBaseURL: URL
 
   public init(
-    orgSlug: String = "imai",
-    convexDeploymentURL: URL = URL(string: "https://jovial-eagle-684.convex.cloud")!,
-    webBaseURL: URL = URL(string: "https://vector.imai.studio")!
+    orgSlug: String,
+    convexDeploymentURL: URL,
+    webBaseURL: URL
   ) {
     self.orgSlug = orgSlug
     self.convexDeploymentURL = convexDeploymentURL
     self.webBaseURL = webBaseURL
   }
+
+  public static let demo = VectorMobileConfiguration(
+    orgSlug: "demo",
+    convexDeploymentURL: URL(string: "https://demo.invalid")!,
+    webBaseURL: URL(string: "https://vector.imai.studio")!
+  )
 
   public func webURL(path: String) -> URL {
     webBaseURL.appending(path: path)
@@ -24,6 +30,42 @@ public struct VectorMobileConfiguration: Equatable {
 
   public var workspaceWebURL: URL {
     webURL(path: "/\(orgSlug)")
+  }
+}
+
+public struct VectorOrganization: Decodable, Equatable, Identifiable, Sendable {
+  public let id: VectorID
+  public let name: String
+  public let slug: String
+
+  public init(id: VectorID, name: String, slug: String) {
+    self.id = id
+    self.name = name
+    self.slug = slug
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case slug
+  }
+}
+
+public struct VectorAuthenticatedUser: Codable, Equatable, Sendable {
+  public let id: String?
+  public let email: String?
+  public let name: String?
+  public let username: String?
+
+  public init(id: String? = nil, email: String? = nil, name: String? = nil, username: String? = nil) {
+    self.id = id
+    self.email = email
+    self.name = name
+    self.username = username
+  }
+
+  public var displayName: String {
+    name ?? username ?? email ?? "Signed in"
   }
 }
 
