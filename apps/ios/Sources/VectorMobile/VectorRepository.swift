@@ -12,6 +12,11 @@ public enum VectorConvexFunctions {
   public static let changeWorkflowState = "issues/mutations:changeWorkflowState"
   public static let changePriority = "issues/mutations:changePriority"
   public static let updateAssignees = "issues/mutations:updateAssignees"
+  public static let updateTitle = "issues/mutations:updateTitle"
+  public static let updateDescription = "issues/mutations:updateDescription"
+  public static let changeProject = "issues/mutations:changeProject"
+  public static let changeTeam = "issues/mutations:changeTeam"
+  public static let changeVisibility = "issues/mutations:changeVisibility"
   public static let listProjectActivity = "activities/queries:listProjectActivity"
   public static let listTeamActivity = "activities/queries:listTeamActivity"
   public static let listIssueActivity = "activities/queries:listIssueActivity"
@@ -43,6 +48,34 @@ enum VectorConvexArguments {
     [
       "issueId": issueId,
       "stateId": stateId,
+    ]
+  }
+
+  static func changePriority(issueId: VectorID, priorityId: VectorID) -> [String: ConvexEncodable?] {
+    [
+      "issueId": issueId,
+      "priorityId": priorityId,
+    ]
+  }
+
+  static func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) -> [String: ConvexEncodable?] {
+    [
+      "issueId": issueId,
+      "assigneeIds": assigneeIds.map { $0 as ConvexEncodable? },
+    ]
+  }
+
+  static func changeProject(issueId: VectorID, projectId: VectorID?) -> [String: ConvexEncodable?] {
+    [
+      "issueId": issueId,
+      "projectId": projectId,
+    ]
+  }
+
+  static func changeTeam(issueId: VectorID, teamId: VectorID?) -> [String: ConvexEncodable?] {
+    [
+      "issueId": issueId,
+      "teamId": teamId,
     ]
   }
 }
@@ -96,8 +129,10 @@ public enum VectorIssueLayoutMode: String, CaseIterable, Identifiable {
 @MainActor
 public protocol VectorMobileRepository {
   func issues(orgSlug: String, scope: VectorIssueScope, pageSize: Int) -> AnyPublisher<[VectorIssueRow], Error>
+  func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
   func projects(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorProject], Error>
   func teams(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorTeam], Error>
+  func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error>
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
@@ -110,6 +145,15 @@ public protocol VectorMobileRepository {
   func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws
   func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
+  func updateTitle(issueId: VectorID, title: String) async throws
+  func updateDescription(issueId: VectorID, description: String?) async throws
+  func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws
+  func changePriority(issueId: VectorID, priorityId: VectorID) async throws
+  func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws
+  func changeProject(issueId: VectorID, projectId: VectorID?) async throws
+  func changeTeam(issueId: VectorID, teamId: VectorID?) async throws
+  func changeVisibility(issueId: VectorID, visibility: String) async throws
+  func addComment(issueId: VectorID, body: String) async throws
 }
 
 @MainActor
@@ -139,6 +183,20 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     return client
       .subscribe(to: VectorConvexFunctions.listIssuesPage, with: args, yielding: VectorPaginatedPage<VectorIssueRow>.self)
       .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getIssueByKey,
+        with: [
+          "orgSlug": orgSlug,
+          "issueKey": key,
+        ],
+        yielding: VectorIssueRow?.self
+      )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -175,6 +233,17 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     return client
       .subscribe(to: VectorConvexFunctions.listTeamsPage, with: args, yielding: VectorPaginatedPage<VectorTeam>.self)
       .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getWorkspaceOptions,
+        with: ["orgSlug": orgSlug],
+        yielding: VectorWorkspaceOptions.self
+      )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -303,6 +372,64 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     )
   }
 
+  public func changePriority(issueId: VectorID, priorityId: VectorID) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.changePriority,
+      with: VectorConvexArguments.changePriority(issueId: issueId, priorityId: priorityId)
+    )
+  }
+
+  public func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.updateAssignees,
+      with: VectorConvexArguments.updateAssignees(issueId: issueId, assigneeIds: assigneeIds)
+    )
+  }
+
+  public func changeProject(issueId: VectorID, projectId: VectorID?) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.changeProject,
+      with: VectorConvexArguments.changeProject(issueId: issueId, projectId: projectId)
+    )
+  }
+
+  public func changeTeam(issueId: VectorID, teamId: VectorID?) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.changeTeam,
+      with: VectorConvexArguments.changeTeam(issueId: issueId, teamId: teamId)
+    )
+  }
+
+  public func changeVisibility(issueId: VectorID, visibility: String) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.changeVisibility,
+      with: [
+        "issueId": issueId,
+        "visibility": visibility,
+      ]
+    )
+  }
+
+  public func updateTitle(issueId: VectorID, title: String) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.updateTitle,
+      with: [
+        "issueId": issueId,
+        "title": title,
+      ]
+    )
+  }
+
+  public func updateDescription(issueId: VectorID, description: String?) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.updateDescription,
+      with: [
+        "issueId": issueId,
+        "description": description,
+      ]
+    )
+  }
+
   public func addComment(issueId: VectorID, body: String) async throws {
     try await client.mutation(
       VectorConvexFunctions.addComment,
@@ -328,6 +455,12 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error> {
+    Just(VectorMockData.issues.first { $0.key == key })
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   public func projects(
     orgSlug: String,
     scope: VectorProjectScope,
@@ -344,6 +477,12 @@ public final class MockVectorRepository: VectorMobileRepository {
     pageSize: Int
   ) -> AnyPublisher<[VectorTeam], Error> {
     Just(Array(VectorMockData.teams.prefix(pageSize)))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
+    Just(VectorMockData.workspaceOptions)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -378,7 +517,7 @@ public final class MockVectorRepository: VectorMobileRepository {
   }
 
   public func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
-    Just([])
+    Just(VectorMockData.activityItems)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -417,4 +556,22 @@ public final class MockVectorRepository: VectorMobileRepository {
   public func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
 
   public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
+
+  public func updateTitle(issueId: VectorID, title: String) async throws {}
+
+  public func updateDescription(issueId: VectorID, description: String?) async throws {}
+
+  public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
+
+  public func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
+
+  public func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {}
+
+  public func changeProject(issueId: VectorID, projectId: VectorID?) async throws {}
+
+  public func changeTeam(issueId: VectorID, teamId: VectorID?) async throws {}
+
+  public func changeVisibility(issueId: VectorID, visibility: String) async throws {}
+
+  public func addComment(issueId: VectorID, body: String) async throws {}
 }

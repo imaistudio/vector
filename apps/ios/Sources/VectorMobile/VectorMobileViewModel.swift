@@ -8,6 +8,9 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var teams: [VectorTeam] = []
   @Published public private(set) var comments: [VectorComment] = []
   @Published public private(set) var assignments: [VectorIssueAssignment] = []
+  @Published public private(set) var issueActivity: [VectorActivityItem] = []
+  @Published public private(set) var selectedIssue: VectorIssueRow?
+  @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
   @Published public private(set) var userStatus: VectorUserStatus?
   @Published public private(set) var notificationPreferences: [VectorNotificationPreference] = []
   @Published public private(set) var mobilePushTokens: [VectorMobilePushTokenRegistration] = []
@@ -71,15 +74,43 @@ public final class VectorMobileViewModel: ObservableObject {
       )
       .store(in: &listCancellables)
 
+    repository.workspaceOptions(orgSlug: configuration.orgSlug)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { _ in },
+        receiveValue: { [weak self] options in
+          self?.workspaceOptions = options
+        }
+      )
+      .store(in: &listCancellables)
+
     loadSettings()
   }
 
-  public func loadIssueSupport(issueId: VectorID) {
+  public func loadIssueSupport(issue: VectorIssueRow) {
     issueSupportCancellables.removeAll()
+    selectedIssue = issue
     comments = []
     assignments = []
+    issueActivity = []
 
-    repository.comments(issueId: issueId)
+    repository.issue(orgSlug: configuration.orgSlug, key: issue.key)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.errorMessage = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] issue in
+          if let issue {
+            self?.selectedIssue = issue
+          }
+        }
+      )
+      .store(in: &issueSupportCancellables)
+
+    repository.comments(issueId: issue.id)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { _ in },
@@ -89,12 +120,22 @@ public final class VectorMobileViewModel: ObservableObject {
       )
       .store(in: &issueSupportCancellables)
 
-    repository.assignments(issueId: issueId)
+    repository.assignments(issueId: issue.id)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { _ in },
         receiveValue: { [weak self] assignments in
           self?.assignments = assignments
+        }
+      )
+      .store(in: &issueSupportCancellables)
+
+    repository.issueActivity(issueId: issue.id)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { _ in },
+        receiveValue: { [weak self] activity in
+          self?.issueActivity = activity
         }
       )
       .store(in: &issueSupportCancellables)
@@ -273,6 +314,196 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
+  public func updateIssueTitle(issueId: VectorID, title: String) async throws {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty else {
+      return
+    }
+
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withTitle(trimmedTitle) }
+
+    do {
+      try await repository.updateTitle(issueId: issueId, title: trimmedTitle)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func updateIssueDescription(issueId: VectorID, description: String) async throws {
+    let trimmedDescription = description.trimmingCharacters(in: .whitespacesAndNewlines)
+    let nextDescription = trimmedDescription.isEmpty ? nil : description
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withDescription(nextDescription) }
+
+    do {
+      try await repository.updateDescription(issueId: issueId, description: nextDescription)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func changeIssueWorkflowState(issueId: VectorID, state: VectorState) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    let previousAssignments = assignments
+    updateIssue(issueId) { $0.withWorkflowState(state) }
+    assignments = assignments.map {
+      VectorIssueAssignment(
+        id: $0.id,
+        assigneeId: $0.assigneeId,
+        assigneeName: $0.assigneeName,
+        assigneeEmail: $0.assigneeEmail,
+        assigneeImage: $0.assigneeImage,
+        stateId: state.id,
+        stateName: state.name,
+        stateIcon: state.icon,
+        stateColor: state.color,
+        stateType: state.type,
+        note: $0.note
+      )
+    }
+
+    do {
+      try await repository.changeWorkflowState(issueId: issueId, stateId: state.id)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      assignments = previousAssignments
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func changeIssuePriority(issueId: VectorID, priority: VectorPriority) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withPriority(priority) }
+
+    do {
+      try await repository.changePriority(issueId: issueId, priorityId: priority.id)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func updateIssueAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    let previousAssignments = assignments
+    let selectedMembers = assigneeIds.compactMap { assigneeId in
+      workspaceOptions?.members.first { $0.userId == assigneeId }
+    }
+    let issue = currentIssue(issueId)
+    let state = workspaceOptions?.issueStates.first { $0.id == issue?.workflowStateId }
+    updateIssue(issueId) { $0.withPrimaryAssignee(selectedMembers.first) }
+    assignments = selectedMembers.map { member in
+      VectorIssueAssignment(
+        id: "optimistic-\(issueId)-\(member.userId ?? member.id)",
+        assigneeId: member.userId,
+        assigneeName: member.displayName,
+        assigneeEmail: member.email,
+        assigneeImage: member.image,
+        stateId: issue?.workflowStateId,
+        stateName: state?.name ?? issue?.workflowStateName,
+        stateIcon: state?.icon ?? issue?.workflowStateIcon,
+        stateColor: state?.color ?? issue?.workflowStateColor,
+        stateType: state?.type ?? issue?.workflowStateType
+      )
+    }
+
+    do {
+      try await repository.updateAssignees(issueId: issueId, assigneeIds: assigneeIds)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      assignments = previousAssignments
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func changeIssueProject(issueId: VectorID, project: VectorProject?) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withProject(project) }
+
+    do {
+      try await repository.changeProject(issueId: issueId, projectId: project?.id)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func changeIssueTeam(issueId: VectorID, team: VectorTeam?) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withTeam(team) }
+
+    do {
+      try await repository.changeTeam(issueId: issueId, teamId: team?.id)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func changeIssueVisibility(issueId: VectorID, visibility: String) async throws {
+    let previousIssues = issues
+    let previousSelectedIssue = selectedIssue
+    updateIssue(issueId) { $0.withVisibility(visibility) }
+
+    do {
+      try await repository.changeVisibility(issueId: issueId, visibility: visibility)
+    } catch {
+      issues = previousIssues
+      selectedIssue = previousSelectedIssue
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
+  public func addIssueComment(issueId: VectorID, body: String) async throws {
+    let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedBody.isEmpty else {
+      return
+    }
+
+    let previousComments = comments
+    comments.append(
+      VectorComment(
+        id: "optimistic-\(UUID().uuidString)",
+        body: body,
+        author: nil,
+        creationTime: Date().timeIntervalSince1970 * 1000
+      )
+    )
+
+    do {
+      try await repository.addComment(issueId: issueId, body: trimmedBody)
+    } catch {
+      comments = previousComments
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
   public func openWebURL(for issue: VectorIssueRow) -> URL {
     configuration.webURL(path: "/\(configuration.orgSlug)/issues/\(issue.key)")
   }
@@ -289,6 +520,19 @@ public final class VectorMobileViewModel: ObservableObject {
     if case let .failure(error) = completion {
       errorMessage = error.localizedDescription
       isLoading = false
+    }
+  }
+
+  private func currentIssue(_ issueId: VectorID) -> VectorIssueRow? {
+    selectedIssue?.id == issueId ? selectedIssue : issues.first { $0.id == issueId }
+  }
+
+  private func updateIssue(_ issueId: VectorID, transform: (VectorIssueRow) -> VectorIssueRow) {
+    issues = issues.map { issue in
+      issue.id == issueId ? transform(issue) : issue
+    }
+    if let selectedIssue, selectedIssue.id == issueId {
+      self.selectedIssue = transform(selectedIssue)
     }
   }
 }

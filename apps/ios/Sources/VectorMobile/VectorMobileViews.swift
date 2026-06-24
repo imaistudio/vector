@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 public struct VectorMobileRootView: View {
   @StateObject private var sessionController: VectorMobileSessionController
@@ -628,7 +631,7 @@ struct IssueList: View {
           NavigationLink {
             IssueDetailScreen(issue: issue, viewModel: viewModel)
           } label: {
-            IssueRowView(issue: issue)
+            IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
               .padding(.horizontal, 12)
               .padding(.vertical, 8)
               .contentShape(Rectangle())
@@ -648,30 +651,63 @@ struct IssueBoard: View {
   let issues: [VectorIssueRow]
   @ObservedObject var viewModel: VectorMobileViewModel
 
-  private var groups: [(String, [VectorIssueRow])] {
-    Dictionary(grouping: issues, by: { $0.workflowStateName ?? "No status" })
-      .map { ($0.key, $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
-      .sorted { $0.0 < $1.0 }
+  private var groups: [(name: String, position: Double, status: VectorIssueMetadataValue, rows: [VectorIssueRow])] {
+    let options = viewModel.workspaceOptions
+
+    return Dictionary(grouping: issues) { issue in
+      VectorIssueMetadataResolver.state(for: issue, options: options).name
+    }
+    .map { name, rows in
+      let status = rows.first.map {
+        VectorIssueMetadataResolver.state(for: $0, options: options)
+      } ?? VectorIssueMetadataValue(id: nil, name: name, icon: nil, color: nil)
+      let position = rows
+        .compactMap { issue in
+          guard let stateId = issue.workflowStateId else {
+            return nil
+          }
+
+          return options?.issueStates.first { $0.id == stateId }?.position
+        }
+        .min() ?? Double.greatestFiniteMagnitude
+
+      return (
+        name: name,
+        position: position,
+        status: status,
+        rows: rows.sorted { $0.updatedAt > $1.updatedAt }
+      )
+    }
+    .sorted {
+      if $0.position == $1.position {
+        return $0.name < $1.name
+      }
+
+      return $0.position < $1.position
+    }
   }
 
   var body: some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 14) {
-        ForEach(groups, id: \.0) { group in
+        ForEach(groups, id: \.name) { group in
           VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-              Text(group.0)
+              Image(systemName: vectorSystemImage(for: group.status.icon))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color(vectorHex: group.status.color))
+              Text(group.name)
                 .font(.subheadline.weight(.semibold))
-              Text("\(group.1.count)")
+              Text("\(group.rows.count)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             }
 
-            ForEach(group.1, id: \.rowId) { issue in
+            ForEach(group.rows, id: \.rowId) { issue in
               NavigationLink {
                 IssueDetailScreen(issue: issue, viewModel: viewModel)
               } label: {
-                IssueBoardCard(issue: issue)
+                IssueBoardCard(issue: issue, workspaceOptions: viewModel.workspaceOptions)
               }
               .buttonStyle(.plain)
             }
@@ -715,7 +751,7 @@ struct IssueTimeline: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              TimelineIssueRow(issue: issue)
+              TimelineIssueRow(issue: issue, workspaceOptions: viewModel.workspaceOptions)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
@@ -734,6 +770,15 @@ struct IssueTimeline: View {
 
 struct IssueRowView: View {
   let issue: VectorIssueRow
+  let workspaceOptions: VectorWorkspaceOptions?
+
+  private var status: VectorIssueMetadataValue {
+    VectorIssueMetadataResolver.state(for: issue, options: workspaceOptions)
+  }
+
+  private var priority: VectorIssueMetadataValue? {
+    VectorIssueMetadataResolver.priority(for: issue, options: workspaceOptions)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
@@ -751,15 +796,15 @@ struct IssueRowView: View {
 
       HStack(spacing: 6) {
         VectorPill(
-          text: issue.stateLabel,
-          color: Color(vectorHex: issue.workflowStateColor),
-          systemImage: vectorSystemImage(for: issue.workflowStateIcon)
+          text: status.name,
+          color: Color(vectorHex: status.color),
+          systemImage: vectorSystemImage(for: status.icon)
         )
-        if let priority = issue.priorityName {
+        if let priority {
           VectorPill(
-            text: priority,
-            color: Color(vectorHex: issue.priorityColor),
-            systemImage: vectorSystemImage(for: issue.priorityIcon)
+            text: priority.name,
+            color: Color(vectorHex: priority.color),
+            systemImage: vectorSystemImage(for: priority.icon)
           )
         }
         if let projectKey = issue.projectKey {
@@ -773,6 +818,11 @@ struct IssueRowView: View {
 
 struct IssueBoardCard: View {
   let issue: VectorIssueRow
+  let workspaceOptions: VectorWorkspaceOptions?
+
+  private var priority: VectorIssueMetadataValue? {
+    VectorIssueMetadataResolver.priority(for: issue, options: workspaceOptions)
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -792,6 +842,14 @@ struct IssueBoardCard: View {
         .font(.subheadline.weight(.medium))
         .foregroundStyle(.primary)
         .lineLimit(2)
+
+      if let priority {
+        VectorPill(
+          text: priority.name,
+          color: Color(vectorHex: priority.color),
+          systemImage: vectorSystemImage(for: priority.icon)
+        )
+      }
 
       HStack {
         Text(issue.assigneeLabel)
@@ -814,19 +872,24 @@ struct IssueBoardCard: View {
 
 struct TimelineIssueRow: View {
   let issue: VectorIssueRow
+  let workspaceOptions: VectorWorkspaceOptions?
+
+  private var status: VectorIssueMetadataValue {
+    VectorIssueMetadataResolver.state(for: issue, options: workspaceOptions)
+  }
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
-      Image(systemName: vectorSystemImage(for: issue.workflowStateIcon))
+      Image(systemName: vectorSystemImage(for: status.icon))
         .font(.caption)
-        .foregroundStyle(Color(vectorHex: issue.workflowStateColor))
+        .foregroundStyle(Color(vectorHex: status.color))
         .frame(width: 20, height: 20)
 
       VStack(alignment: .leading, spacing: 4) {
         Text(issue.title)
           .font(.subheadline.weight(.medium))
           .lineLimit(2)
-        Text("\(issue.key) updated in \(issue.stateLabel)")
+        Text("\(issue.key) updated in \(status.name)")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -838,74 +901,220 @@ struct TimelineIssueRow: View {
 struct IssueDetailScreen: View {
   let issue: VectorIssueRow
   @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var draftTitle = ""
+  @State private var draftDescription = ""
+  @State private var isEditingDescription = false
+  @State private var isSavingDocument = false
+  @State private var isPostingComment = false
+  @State private var commentDraft = ""
+  @State private var pendingProperty: IssueDetailProperty?
+  @State private var issueErrorMessage: String?
+  @FocusState private var focusedField: IssueDetailFocusField?
+
+  private var displayIssue: VectorIssueRow {
+    if let selectedIssue = viewModel.selectedIssue, selectedIssue.id == issue.id {
+      return selectedIssue
+    }
+    return viewModel.issues.first { $0.id == issue.id } ?? issue
+  }
+
+  private var canEditIssue: Bool {
+    displayIssue.canEdit ?? false
+  }
+
+  private var selectedAssigneeIds: Set<VectorID> {
+    let assignmentIds = viewModel.assignments.compactMap(\.assigneeId)
+    if !assignmentIds.isEmpty {
+      return Set(assignmentIds)
+    }
+    if let assigneeId = displayIssue.assigneeId {
+      return [assigneeId]
+    }
+    return []
+  }
+
+  private var hasDocumentChanges: Bool {
+    draftTitle.trimmingCharacters(in: .whitespacesAndNewlines) != displayIssue.title
+      || draftDescription != (displayIssue.description ?? "")
+  }
+
+  private var timelineEntries: [IssueTimelineEntry] {
+    let commentEntries = viewModel.comments.map(IssueTimelineEntry.comment)
+    let activityEntries = viewModel.issueActivity
+      .filter { $0.eventType != "issue_comment_added" }
+      .map(IssueTimelineEntry.activity)
+
+    return (commentEntries + activityEntries).sorted { $0.createdAt < $1.createdAt }
+  }
 
   var body: some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 22) {
-        VStack(alignment: .leading, spacing: 12) {
-          Text(issue.key)
+      VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 10) {
+          Text(displayIssue.key)
             .font(.caption.monospaced())
             .foregroundStyle(.secondary)
-          Text(issue.title)
-            .font(.system(size: 28, weight: .semibold))
-            .fixedSize(horizontal: false, vertical: true)
-          HStack(spacing: 6) {
-            VectorPill(text: issue.stateLabel, color: Color(vectorHex: issue.workflowStateColor), systemImage: vectorSystemImage(for: issue.workflowStateIcon))
-            if let priority = issue.priorityName {
-              VectorPill(text: priority, color: Color(vectorHex: issue.priorityColor), systemImage: vectorSystemImage(for: issue.priorityIcon))
-            }
-            if let projectKey = issue.projectKey {
-              VectorPill(text: projectKey, color: .secondary, systemImage: "folder")
-            }
-          }
-        }
 
-        if let description = issue.description, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          MarkdownDocumentView(markdown: description)
-        } else {
-          Text("No description")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        }
-
-        Divider()
-
-        DocumentSection(title: "Assignments") {
-          if viewModel.assignments.isEmpty {
-            AssignmentRow(assignment: VectorIssueAssignment(
-              id: "current-\(issue.id)",
-              assigneeId: issue.assigneeId,
-              assigneeName: issue.assigneeName,
-              assigneeEmail: issue.assigneeEmail,
-              assigneeImage: issue.assigneeImage,
-              stateId: issue.workflowStateId,
-              stateName: issue.workflowStateName,
-              stateIcon: issue.workflowStateIcon,
-              stateColor: issue.workflowStateColor,
-              stateType: issue.workflowStateType
-            ))
+          if canEditIssue {
+            TextField("Issue title", text: $draftTitle, axis: .vertical)
+              .font(.system(size: 28, weight: .semibold))
+              .textFieldStyle(.plain)
+              .focused($focusedField, equals: .title)
+              .submitLabel(.done)
+              .onSubmit(saveDocumentChanges)
           } else {
-            ForEach(viewModel.assignments) { assignment in
-              AssignmentRow(assignment: assignment)
+            Text(displayIssue.title)
+              .font(.system(size: 28, weight: .semibold))
+              .foregroundStyle(.primary)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+
+          IssuePropertyBar(
+            issue: displayIssue,
+            options: viewModel.workspaceOptions,
+            selectedAssigneeIds: selectedAssigneeIds,
+            pendingProperty: pendingProperty,
+            isEditable: canEditIssue,
+            onStateSelect: { state in
+              runPropertyUpdate(.status) {
+                try await viewModel.changeIssueWorkflowState(issueId: displayIssue.id, state: state)
+              }
+            },
+            onPrioritySelect: { priority in
+              runPropertyUpdate(.priority) {
+                try await viewModel.changeIssuePriority(issueId: displayIssue.id, priority: priority)
+              }
+            },
+            onAssigneesSelect: { assigneeIds in
+              runPropertyUpdate(.assignees) {
+                try await viewModel.updateIssueAssignees(issueId: displayIssue.id, assigneeIds: assigneeIds)
+              }
+            },
+            onProjectSelect: { project in
+              runPropertyUpdate(.project) {
+                try await viewModel.changeIssueProject(issueId: displayIssue.id, project: project)
+              }
+            },
+            onTeamSelect: { team in
+              runPropertyUpdate(.team) {
+                try await viewModel.changeIssueTeam(issueId: displayIssue.id, team: team)
+              }
+            },
+            onVisibilitySelect: { visibility in
+              runPropertyUpdate(.visibility) {
+                try await viewModel.changeIssueVisibility(issueId: displayIssue.id, visibility: visibility.rawValue)
+              }
+            }
+          )
+          .padding(.horizontal, -22)
+        }
+
+        DocumentSection(title: "Description") {
+          if !canEditIssue {
+            if draftDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              Text("No description")
+                .font(.body)
+                .foregroundStyle(.secondary)
+            } else {
+              MarkdownDocumentView(markdown: draftDescription)
+            }
+          } else if isEditingDescription || draftDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ZStack(alignment: .topLeading) {
+              if draftDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Add description")
+                  .font(.body)
+                  .foregroundStyle(.secondary)
+                  .padding(.horizontal, 4)
+                  .padding(.vertical, 8)
+              }
+
+              TextEditor(text: $draftDescription)
+                .font(.body)
+                .lineSpacing(4)
+                .frame(minHeight: 220)
+                .scrollContentBackground(.hidden)
+                .focused($focusedField, equals: .description)
+            }
+            .background(Color.clear)
+          } else {
+            Button {
+              withAnimation(.snappy(duration: 0.18)) {
+                isEditingDescription = true
+                focusedField = .description
+              }
+            } label: {
+              MarkdownDocumentView(markdown: draftDescription)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+          }
+
+          HStack(spacing: 10) {
+            if canEditIssue && !isEditingDescription && !draftDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              Button("Edit description") {
+                withAnimation(.snappy(duration: 0.18)) {
+                  isEditingDescription = true
+                  focusedField = .description
+                }
+              }
+              .font(.caption.weight(.semibold))
+              .buttonStyle(.plain)
+              .foregroundStyle(VectorTheme.accent)
+            }
+
+            Spacer()
+
+            if canEditIssue && (isEditingDescription || hasDocumentChanges) {
+              Button(action: saveDocumentChanges) {
+                HStack(spacing: 6) {
+                  if isSavingDocument {
+                    ProgressView()
+                      .controlSize(.small)
+                  }
+                  Text(hasDocumentChanges ? "Save changes" : "Done")
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(VectorTheme.accent.opacity(hasDocumentChanges ? 0.15 : 0.08), in: Capsule())
+              }
+              .buttonStyle(.plain)
+              .disabled(isSavingDocument)
             }
           }
         }
 
-        DocumentSection(title: "Comments") {
-          if viewModel.comments.isEmpty {
-            Text("No comments yet")
+        DocumentSection(title: "Activity") {
+          if timelineEntries.isEmpty {
+            Text("No activity yet")
               .font(.subheadline)
               .foregroundStyle(.secondary)
           } else {
-            ForEach(viewModel.comments) { comment in
-              CommentRow(comment: comment)
+            VStack(alignment: .leading, spacing: 14) {
+              ForEach(timelineEntries) { entry in
+                switch entry {
+                case let .comment(comment):
+                  CommentRow(comment: comment)
+                case let .activity(activity):
+                  ActivityRow(activity: activity)
+                }
+              }
             }
           }
+
+          IssueCommentComposer(
+            text: $commentDraft,
+            isPosting: isPostingComment,
+            focusedField: $focusedField,
+            onSubmit: postComment
+          )
         }
 
-        Link(destination: viewModel.openWebURL(for: issue)) {
-          Label("Open full issue on web", systemImage: "safari")
-            .font(.subheadline.weight(.medium))
+        if let issueErrorMessage {
+          Label(issueErrorMessage, systemImage: "exclamationmark.triangle")
+            .font(.caption)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
       .padding(.horizontal, 22)
@@ -914,18 +1123,722 @@ struct IssueDetailScreen: View {
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .background(VectorTheme.rowBackground)
-    .navigationTitle(issue.key)
+    .navigationTitle(displayIssue.key)
     .vectorInlineNavigationTitle()
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
-        Link(destination: viewModel.openWebURL(for: issue)) {
+        Link(destination: viewModel.openWebURL(for: displayIssue)) {
           Image(systemName: "safari")
         }
         .accessibilityLabel("Open full issue on web")
       }
+      #if os(iOS)
+      ToolbarItemGroup(placement: .keyboard) {
+        if focusedField == .description || focusedField == .comment {
+          MarkdownFormattingKeyboardToolbar(
+            onAction: { action in
+              applyMarkdownFormatting(action)
+            },
+            onDismiss: {
+              focusedField = nil
+            }
+          )
+        }
+      }
+      #endif
     }
     .onAppear {
-      viewModel.loadIssueSupport(issueId: issue.id)
+      syncDraft(from: displayIssue)
+      viewModel.loadIssueSupport(issue: displayIssue)
+    }
+    .onChange(of: displayIssue) { _, nextIssue in
+      guard !hasDocumentChanges && !isEditingDescription else {
+        return
+      }
+      syncDraft(from: nextIssue)
+    }
+    #if os(iOS)
+    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+      if focusedField == .description || focusedField == .comment {
+        focusedField = nil
+      }
+    }
+    #endif
+  }
+
+  private func syncDraft(from issue: VectorIssueRow) {
+    draftTitle = issue.title
+    draftDescription = issue.description ?? ""
+  }
+
+  private func saveDocumentChanges() {
+    guard canEditIssue else {
+      issueErrorMessage = "You do not have permission to edit this issue."
+      return
+    }
+
+    guard !isSavingDocument else {
+      return
+    }
+
+    let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else {
+      issueErrorMessage = "Title is required."
+      return
+    }
+
+    isSavingDocument = true
+    issueErrorMessage = nil
+    Task { @MainActor in
+      do {
+        if title != displayIssue.title {
+          try await viewModel.updateIssueTitle(issueId: displayIssue.id, title: title)
+          draftTitle = title
+        }
+        if draftDescription != (displayIssue.description ?? "") {
+          try await viewModel.updateIssueDescription(issueId: displayIssue.id, description: draftDescription)
+        }
+        isEditingDescription = false
+        focusedField = nil
+      } catch {
+        issueErrorMessage = error.localizedDescription
+      }
+      isSavingDocument = false
+    }
+  }
+
+  private func postComment() {
+    guard !isPostingComment else {
+      return
+    }
+
+    let body = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !body.isEmpty else {
+      return
+    }
+
+    isPostingComment = true
+    issueErrorMessage = nil
+    Task { @MainActor in
+      do {
+        try await viewModel.addIssueComment(issueId: displayIssue.id, body: body)
+        commentDraft = ""
+        focusedField = nil
+      } catch {
+        issueErrorMessage = error.localizedDescription
+      }
+      isPostingComment = false
+    }
+  }
+
+  private func runPropertyUpdate(_ property: IssueDetailProperty, operation: @escaping () async throws -> Void) {
+    guard canEditIssue else {
+      issueErrorMessage = "You do not have permission to edit this issue."
+      return
+    }
+
+    guard pendingProperty == nil else {
+      return
+    }
+
+    pendingProperty = property
+    issueErrorMessage = nil
+    Task { @MainActor in
+      do {
+        try await operation()
+      } catch {
+        issueErrorMessage = error.localizedDescription
+      }
+      pendingProperty = nil
+    }
+  }
+
+  private func applyMarkdownFormatting(_ action: MarkdownFormatAction) {
+    switch focusedField {
+    case .description:
+      draftDescription = action.apply(to: draftDescription)
+    case .comment:
+      commentDraft = action.apply(to: commentDraft)
+    case .title, nil:
+      return
+    }
+  }
+}
+
+private enum IssueDetailFocusField: Hashable {
+  case title
+  case description
+  case comment
+}
+
+private enum IssueDetailProperty: Hashable {
+  case status
+  case priority
+  case assignees
+  case project
+  case team
+  case visibility
+}
+
+private enum IssueTimelineEntry: Identifiable {
+  case comment(VectorComment)
+  case activity(VectorActivityItem)
+
+  var id: String {
+    switch self {
+    case let .comment(comment):
+      "comment:\(comment.id)"
+    case let .activity(activity):
+      "activity:\(activity.id)"
+    }
+  }
+
+  var createdAt: Double {
+    switch self {
+    case let .comment(comment):
+      comment.creationTime
+    case let .activity(activity):
+      activity.createdAt
+    }
+  }
+}
+
+private enum MarkdownFormatAction: String, CaseIterable, Identifiable {
+  case bold
+  case italic
+  case heading
+  case bullet
+  case code
+  case quote
+  case link
+
+  var id: String { rawValue }
+
+  var systemImage: String {
+    switch self {
+    case .bold: "bold"
+    case .italic: "italic"
+    case .heading: "textformat.size"
+    case .bullet: "list.bullet"
+    case .code: "chevron.left.forwardslash.chevron.right"
+    case .quote: "quote.opening"
+    case .link: "link"
+    }
+  }
+
+  var accessibilityLabel: String {
+    switch self {
+    case .bold: "Bold"
+    case .italic: "Italic"
+    case .heading: "Heading"
+    case .bullet: "Bullet list"
+    case .code: "Inline code"
+    case .quote: "Quote"
+    case .link: "Link"
+    }
+  }
+
+  func apply(to text: String) -> String {
+    switch self {
+    case .bold:
+      appendInline("**bold**", to: text)
+    case .italic:
+      appendInline("_italic_", to: text)
+    case .heading:
+      appendLine("## Heading", to: text)
+    case .bullet:
+      appendLine("- ", to: text)
+    case .code:
+      appendInline("`code`", to: text)
+    case .quote:
+      appendLine("> ", to: text)
+    case .link:
+      appendInline("[link](https://)", to: text)
+    }
+  }
+
+  private func appendInline(_ snippet: String, to text: String) -> String {
+    if text.isEmpty || text.hasSuffix(" ") || text.hasSuffix("\n") {
+      return text + snippet
+    }
+    return text + " " + snippet
+  }
+
+  private func appendLine(_ snippet: String, to text: String) -> String {
+    if text.isEmpty || text.hasSuffix("\n") {
+      return text + snippet
+    }
+    return text + "\n" + snippet
+  }
+}
+
+private enum IssueVisibilityOption: String, CaseIterable, Identifiable {
+  case privateVisibility = "private"
+  case organization
+  case publicVisibility = "public"
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .privateVisibility: "Private"
+    case .organization: "Organization"
+    case .publicVisibility: "Public"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .privateVisibility: "lock"
+    case .organization: "building.2"
+    case .publicVisibility: "globe"
+    }
+  }
+}
+
+private struct IssuePropertyBar: View {
+  let issue: VectorIssueRow
+  let options: VectorWorkspaceOptions?
+  let selectedAssigneeIds: Set<VectorID>
+  let pendingProperty: IssueDetailProperty?
+  let isEditable: Bool
+  let onStateSelect: (VectorState) -> Void
+  let onPrioritySelect: (VectorPriority) -> Void
+  let onAssigneesSelect: ([VectorID]) -> Void
+  let onProjectSelect: (VectorProject?) -> Void
+  let onTeamSelect: (VectorTeam?) -> Void
+  let onVisibilitySelect: (IssueVisibilityOption) -> Void
+
+  private var currentVisibility: IssueVisibilityOption {
+    IssueVisibilityOption(rawValue: issue.visibility ?? "organization") ?? .organization
+  }
+
+  private var isStatusDisabled: Bool {
+    !isEditable || (options?.issueStates.isEmpty ?? true) || pendingProperty != nil
+  }
+
+  private var isPriorityDisabled: Bool {
+    !isEditable || (options?.issuePriorities.isEmpty ?? true) || pendingProperty != nil
+  }
+
+  private var isAssigneeDisabled: Bool {
+    !isEditable || (options?.members.isEmpty ?? true) || pendingProperty != nil
+  }
+
+  private var status: VectorIssueMetadataValue {
+    VectorIssueMetadataResolver.state(for: issue, options: options)
+  }
+
+  private var priority: VectorIssueMetadataValue? {
+    VectorIssueMetadataResolver.priority(for: issue, options: options)
+  }
+
+  private var statusText: String {
+    status.name
+  }
+
+  private var statusColor: Color {
+    Color(vectorHex: status.color)
+  }
+
+  private var statusSystemImage: String {
+    vectorSystemImage(for: status.icon)
+  }
+
+  private var priorityText: String {
+    priority?.name ?? "Priority"
+  }
+
+  private var priorityColor: Color {
+    Color(vectorHex: priority?.color)
+  }
+
+  private var prioritySystemImage: String {
+    vectorSystemImage(for: priority?.icon)
+  }
+
+  var body: some View {
+    ScrollView(.horizontal, showsIndicators: false) {
+      HStack(spacing: 6) {
+        Menu {
+          ForEach((options?.issueStates ?? []).sorted { $0.position < $1.position }) { state in
+            Button {
+              onStateSelect(state)
+            } label: {
+              Label(state.name, systemImage: issue.workflowStateId == state.id ? "checkmark" : vectorSystemImage(for: state.icon))
+            }
+          }
+        } label: {
+          IssuePropertyPill(
+            text: statusText,
+            color: statusColor,
+            systemImage: statusSystemImage,
+            isPending: pendingProperty == .status
+          )
+        }
+        .disabled(isStatusDisabled)
+
+        Menu {
+          ForEach((options?.issuePriorities ?? []).sorted { $0.weight > $1.weight }) { priority in
+            Button {
+              onPrioritySelect(priority)
+            } label: {
+              Label(priority.name, systemImage: issue.priorityId == priority.id ? "checkmark" : vectorSystemImage(for: priority.icon))
+            }
+          }
+        } label: {
+          IssuePropertyPill(
+            text: priorityText,
+            color: priorityColor,
+            systemImage: prioritySystemImage,
+            isPending: pendingProperty == .priority
+          )
+        }
+        .disabled(isPriorityDisabled)
+
+        IssueAssigneeMenu(
+          members: options?.members ?? [],
+          selectedAssigneeIds: selectedAssigneeIds,
+          isPending: pendingProperty == .assignees,
+          onSelect: onAssigneesSelect
+        )
+        .disabled(isAssigneeDisabled)
+
+        Menu {
+          Button {
+            onProjectSelect(nil)
+          } label: {
+            Label("No project", systemImage: issue.projectId == nil ? "checkmark" : "folder")
+          }
+          ForEach(options?.projects ?? []) { project in
+            Button {
+              onProjectSelect(project)
+            } label: {
+              Label(project.name, systemImage: issue.projectId == project.id ? "checkmark" : vectorSystemImage(for: project.icon))
+            }
+          }
+        } label: {
+          IssuePropertyPill(
+            text: issue.projectKey ?? "No project",
+            color: Color.secondary,
+            systemImage: "folder",
+            isPending: pendingProperty == .project
+          )
+        }
+        .disabled(!isEditable || options == nil || pendingProperty != nil)
+
+        Menu {
+          Button {
+            onTeamSelect(nil)
+          } label: {
+            Label("No team", systemImage: issue.teamId == nil ? "checkmark" : "person.3")
+          }
+          ForEach(options?.teams ?? []) { team in
+            Button {
+              onTeamSelect(team)
+            } label: {
+              Label(team.name, systemImage: issue.teamId == team.id ? "checkmark" : vectorSystemImage(for: team.icon))
+            }
+          }
+        } label: {
+          IssuePropertyPill(
+            text: issue.teamKey ?? "No team",
+            color: Color.secondary,
+            systemImage: "person.3",
+            isPending: pendingProperty == .team
+          )
+        }
+        .disabled(!isEditable || options == nil || pendingProperty != nil)
+
+        Menu {
+          ForEach(IssueVisibilityOption.allCases) { visibility in
+            Button {
+              onVisibilitySelect(visibility)
+            } label: {
+              Label(visibility.label, systemImage: currentVisibility == visibility ? "checkmark" : visibility.systemImage)
+            }
+          }
+        } label: {
+          IssuePropertyPill(
+            text: currentVisibility.label,
+            color: Color.secondary,
+            systemImage: currentVisibility.systemImage,
+            isPending: pendingProperty == .visibility
+          )
+        }
+        .disabled(!isEditable || pendingProperty != nil)
+      }
+      .padding(.horizontal, 22)
+      .padding(.vertical, 2)
+    }
+    #if os(iOS)
+    .scrollClipDisabled()
+    #endif
+  }
+}
+
+private struct IssuePropertyPill: View {
+  let text: String
+  var color: Color
+  var systemImage: String
+  var isPending: Bool
+
+  var body: some View {
+    HStack(spacing: 5) {
+      if isPending {
+        ProgressView()
+          .controlSize(.small)
+      } else {
+        Image(systemName: systemImage)
+          .font(.caption2.weight(.semibold))
+      }
+      Text(text)
+        .lineLimit(1)
+      Image(systemName: "chevron.down")
+        .font(.caption2.weight(.bold))
+        .foregroundStyle(.secondary)
+    }
+    .font(.caption.weight(.medium))
+    .foregroundStyle(color)
+    .padding(.horizontal, 9)
+    .frame(height: 30)
+    .background(color.opacity(0.10), in: Capsule())
+  }
+}
+
+private struct IssueAssigneeMenu: View {
+  let members: [VectorWorkspaceMember]
+  let selectedAssigneeIds: Set<VectorID>
+  let isPending: Bool
+  let onSelect: ([VectorID]) -> Void
+
+  private var label: String {
+    if selectedAssigneeIds.isEmpty {
+      return "Unassigned"
+    }
+    if selectedAssigneeIds.count == 1,
+      let selectedId = selectedAssigneeIds.first,
+      let member = members.first(where: { $0.userId == selectedId })
+    {
+      return member.displayName
+    }
+    return "\(selectedAssigneeIds.count) assignees"
+  }
+
+  var body: some View {
+    Menu {
+      Button {
+        onSelect([])
+      } label: {
+        Label("Unassigned", systemImage: selectedAssigneeIds.isEmpty ? "checkmark" : "person.slash")
+      }
+
+      ForEach(members.filter { $0.userId != nil }) { member in
+        let userId = member.userId ?? member.id
+        Button {
+          var next = selectedAssigneeIds
+          if next.contains(userId) {
+            next.remove(userId)
+          } else {
+            next.insert(userId)
+          }
+          onSelect(Array(next))
+        } label: {
+          Label(member.displayName, systemImage: selectedAssigneeIds.contains(userId) ? "checkmark" : "person")
+        }
+      }
+    } label: {
+      IssuePropertyPill(
+        text: label,
+        color: Color.secondary,
+        systemImage: "person.crop.circle",
+        isPending: isPending
+      )
+    }
+  }
+}
+
+private struct IssueCommentComposer: View {
+  @Binding var text: String
+  let isPosting: Bool
+  let focusedField: FocusState<IssueDetailFocusField?>.Binding
+  let onSubmit: () -> Void
+
+  private var canSubmit: Bool {
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting
+  }
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      ZStack(alignment: .topLeading) {
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          Text("Write a comment")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+        }
+
+        TextEditor(text: $text)
+          .font(.subheadline)
+          .frame(minHeight: 76)
+          .scrollContentBackground(.hidden)
+          .focused(focusedField, equals: .comment)
+      }
+      .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+      .vectorShadowRing(cornerRadius: 8)
+
+      HStack {
+        Spacer()
+        Button(action: onSubmit) {
+          HStack(spacing: 6) {
+            if isPosting {
+              ProgressView()
+                .controlSize(.small)
+            }
+            Text("Comment")
+          }
+          .font(.caption.weight(.semibold))
+          .padding(.horizontal, 10)
+          .frame(height: 30)
+          .background(VectorTheme.accent.opacity(canSubmit ? 0.15 : 0.08), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSubmit)
+      }
+    }
+  }
+}
+
+private struct MarkdownFormattingKeyboardToolbar: View {
+  let onAction: (MarkdownFormatAction) -> Void
+  let onDismiss: () -> Void
+
+  var body: some View {
+    HStack(spacing: 8) {
+      ForEach(MarkdownFormatAction.allCases) { action in
+        Button {
+          onAction(action)
+        } label: {
+          Image(systemName: action.systemImage)
+            .font(.system(size: 15, weight: .semibold))
+            .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(action.accessibilityLabel)
+      }
+
+      Spacer(minLength: 8)
+
+      Button {
+        onDismiss()
+      } label: {
+        Image(systemName: "keyboard.chevron.compact.down")
+          .font(.system(size: 15, weight: .semibold))
+          .frame(width: 34, height: 30)
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Dismiss keyboard")
+    }
+    .foregroundStyle(.secondary)
+  }
+}
+
+private struct ActivityRow: View {
+  let activity: VectorActivityItem
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      Image(systemName: systemImage)
+        .font(.caption)
+        .foregroundStyle(VectorTheme.accent)
+        .frame(width: 18, height: 18)
+        .padding(.top, 1)
+
+      VStack(alignment: .leading, spacing: 3) {
+        Text(title)
+          .font(.subheadline.weight(.medium))
+        if let detail {
+          Text(detail)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        Text(timestamp)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 4)
+  }
+
+  private var actorName: String {
+    activity.actor?.displayName ?? "Someone"
+  }
+
+  private var title: String {
+    switch activity.eventType {
+    case "issue_created":
+      "\(actorName) created this issue"
+    case "issue_title_changed":
+      "\(actorName) updated the title"
+    case "issue_description_changed":
+      "\(actorName) updated the description"
+    case "issue_workflow_state_changed":
+      "\(actorName) changed the status"
+    case "issue_priority_changed":
+      "\(actorName) changed the priority"
+    case "issue_assignees_changed":
+      "\(actorName) changed assignees"
+    case "issue_project_changed":
+      "\(actorName) changed the project"
+    case "issue_team_changed":
+      "\(actorName) changed the team"
+    case "issue_visibility_changed":
+      "\(actorName) changed visibility"
+    case "issue_comment_added":
+      "\(actorName) commented"
+    default:
+      "\(actorName) updated the issue"
+    }
+  }
+
+  private var detail: String? {
+    if let commentPreview = activity.details.commentPreview, !commentPreview.isEmpty {
+      return commentPreview
+    }
+    if !activity.details.addedUserNames.isEmpty || !activity.details.removedUserNames.isEmpty {
+      let added = activity.details.addedUserNames.isEmpty ? nil : "Added \(activity.details.addedUserNames.joined(separator: ", "))"
+      let removed = activity.details.removedUserNames.isEmpty ? nil : "Removed \(activity.details.removedUserNames.joined(separator: ", "))"
+      return [added, removed].compactMap { $0 }.joined(separator: " · ")
+    }
+    if let from = activity.details.fromLabel, let to = activity.details.toLabel {
+      return "\(from) -> \(to)"
+    }
+    if let to = activity.details.toLabel {
+      return to
+    }
+    return nil
+  }
+
+  private var timestamp: String {
+    Date(timeIntervalSince1970: activity.createdAt / 1000)
+      .formatted(date: .abbreviated, time: .shortened)
+  }
+
+  private var systemImage: String {
+    switch activity.eventType {
+    case "issue_comment_added":
+      "text.bubble"
+    case "issue_assignees_changed":
+      "person.2"
+    case "issue_workflow_state_changed":
+      "arrow.triangle.2.circlepath"
+    case "issue_priority_changed":
+      "exclamationmark.2"
+    default:
+      "clock"
     }
   }
 }
@@ -1065,25 +1978,6 @@ private struct InlineMarkdownText: View {
   }
 }
 
-struct AssignmentRow: View {
-  let assignment: VectorIssueAssignment
-
-  var body: some View {
-    HStack(spacing: 10) {
-      Circle()
-        .fill(Color(vectorHex: assignment.stateColor))
-        .frame(width: 8, height: 8)
-      VStack(alignment: .leading, spacing: 2) {
-        Text(assignment.assigneeName ?? "Unassigned")
-          .font(.subheadline.weight(.medium))
-        Text(assignment.stateName ?? "No status")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
-  }
-}
-
 struct CommentRow: View {
   let comment: VectorComment
 
@@ -1174,7 +2068,7 @@ struct ProjectDetailScreen: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              IssueRowView(issue: issue)
+              IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
             }
           }
         } else if tab == "members" {
@@ -1262,7 +2156,7 @@ struct TeamDetailScreen: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              IssueRowView(issue: issue)
+              IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
             }
           }
         } else if tab == "projects" {

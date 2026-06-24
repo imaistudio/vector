@@ -475,6 +475,7 @@ public struct VectorIssueRow: Decodable, Equatable, Identifiable {
   public let visibility: String?
   public let lastActivityEventType: String?
   public let linkedPrs: [VectorPullRequestSummary]
+  public let canEdit: Bool?
   @ConvexFloat public var creationTime: Double
   @OptionalConvexFloat private var updatedAtValue: Double?
 
@@ -507,6 +508,7 @@ public struct VectorIssueRow: Decodable, Equatable, Identifiable {
     visibility: String? = "organization",
     lastActivityEventType: String? = nil,
     linkedPrs: [VectorPullRequestSummary] = [],
+    canEdit: Bool? = nil,
     creationTime: Double,
     updatedAt: Double? = nil
   ) {
@@ -538,6 +540,7 @@ public struct VectorIssueRow: Decodable, Equatable, Identifiable {
     self.visibility = visibility
     self.lastActivityEventType = lastActivityEventType
     self.linkedPrs = linkedPrs
+    self.canEdit = canEdit
     self._creationTime = ConvexFloat(wrappedValue: creationTime)
     self._updatedAtValue = OptionalConvexFloat(wrappedValue: updatedAt)
   }
@@ -571,6 +574,7 @@ public struct VectorIssueRow: Decodable, Equatable, Identifiable {
     case visibility
     case lastActivityEventType
     case linkedPrs
+    case canEdit
     case creationTime = "_creationTime"
     case updatedAtValue = "updatedAt"
   }
@@ -589,6 +593,185 @@ public struct VectorIssueRow: Decodable, Equatable, Identifiable {
 
   public var assigneeLabel: String {
     assigneeName ?? "Unassigned"
+  }
+
+  public func withTitle(_ title: String) -> VectorIssueRow {
+    copying(title: title, updatedAt: Date().timeIntervalSince1970 * 1000)
+  }
+
+  public func withDescription(_ description: String?) -> VectorIssueRow {
+    copying(description: .some(description), updatedAt: Date().timeIntervalSince1970 * 1000)
+  }
+
+  public func withWorkflowState(_ state: VectorState) -> VectorIssueRow {
+    copying(
+      workflowStateId: state.id,
+      workflowStateName: state.name,
+      workflowStateIcon: state.icon,
+      workflowStateColor: state.color,
+      workflowStateType: state.type,
+      updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  public func withPriority(_ priority: VectorPriority) -> VectorIssueRow {
+    copying(
+      priorityId: priority.id,
+      priorityName: priority.name,
+      priorityIcon: priority.icon,
+      priorityColor: priority.color,
+      updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  public func withProject(_ project: VectorProject?) -> VectorIssueRow {
+    copying(
+      projectId: .some(project?.id),
+      projectKey: .some(project?.key),
+      updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  public func withTeam(_ team: VectorTeam?) -> VectorIssueRow {
+    copying(
+      teamId: .some(team?.id),
+      teamKey: .some(team?.key),
+      updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  public func withPrimaryAssignee(_ member: VectorWorkspaceMember?) -> VectorIssueRow {
+    copying(
+      assigneeId: .some(member?.userId),
+      assigneeName: .some(member?.displayName),
+      assigneeEmail: .some(member?.email),
+      assigneeImage: .some(member?.image),
+      updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  public func withVisibility(_ visibility: String) -> VectorIssueRow {
+    copying(visibility: visibility, updatedAt: Date().timeIntervalSince1970 * 1000)
+  }
+
+  private func copying(
+    title: String? = nil,
+    description: String?? = nil,
+    projectId: VectorID?? = nil,
+    projectKey: String?? = nil,
+    teamId: VectorID?? = nil,
+    teamKey: String?? = nil,
+    priorityId: VectorID? = nil,
+    priorityName: String? = nil,
+    priorityIcon: String? = nil,
+    priorityColor: String? = nil,
+    workflowStateId: VectorID? = nil,
+    workflowStateName: String? = nil,
+    workflowStateIcon: String? = nil,
+    workflowStateColor: String? = nil,
+    workflowStateType: String? = nil,
+    assigneeId: VectorID?? = nil,
+    assigneeName: String?? = nil,
+    assigneeEmail: String?? = nil,
+    assigneeImage: String?? = nil,
+    visibility: String? = nil,
+    updatedAt: Double? = nil
+  ) -> VectorIssueRow {
+    VectorIssueRow(
+      id: id,
+      key: key,
+      title: title ?? self.title,
+      description: description ?? self.description,
+      projectId: projectId ?? self.projectId,
+      projectKey: projectKey ?? self.projectKey,
+      teamId: teamId ?? self.teamId,
+      teamKey: teamKey ?? self.teamKey,
+      priorityId: priorityId ?? self.priorityId,
+      priorityName: priorityName ?? self.priorityName,
+      priorityIcon: priorityIcon ?? self.priorityIcon,
+      priorityColor: priorityColor ?? self.priorityColor,
+      workflowStateId: workflowStateId ?? self.workflowStateId,
+      workflowStateName: workflowStateName ?? self.workflowStateName,
+      workflowStateIcon: workflowStateIcon ?? self.workflowStateIcon,
+      workflowStateColor: workflowStateColor ?? self.workflowStateColor,
+      workflowStateType: workflowStateType ?? self.workflowStateType,
+      reporterName: reporterName,
+      parentIssueKey: parentIssueKey,
+      assignmentId: assignmentId,
+      assigneeId: assigneeId ?? self.assigneeId,
+      assigneeName: assigneeName ?? self.assigneeName,
+      assigneeEmail: assigneeEmail ?? self.assigneeEmail,
+      assigneeImage: assigneeImage ?? self.assigneeImage,
+      dueDate: dueDate,
+      visibility: visibility ?? self.visibility,
+      lastActivityEventType: lastActivityEventType,
+      linkedPrs: linkedPrs,
+      canEdit: canEdit,
+      creationTime: creationTime,
+      updatedAt: updatedAt ?? self.updatedAt
+    )
+  }
+}
+
+public struct VectorIssueMetadataValue: Equatable {
+  public let id: VectorID?
+  public let name: String
+  public let icon: String?
+  public let color: String?
+
+  public init(id: VectorID?, name: String, icon: String?, color: String?) {
+    self.id = id
+    self.name = name
+    self.icon = icon
+    self.color = color
+  }
+}
+
+public enum VectorIssueMetadataResolver {
+  public static func state(
+    for issue: VectorIssueRow,
+    options: VectorWorkspaceOptions?
+  ) -> VectorIssueMetadataValue {
+    if let state = options?.issueStates.first(where: { $0.id == issue.workflowStateId }) {
+      return VectorIssueMetadataValue(
+        id: state.id,
+        name: state.name,
+        icon: state.icon,
+        color: state.color
+      )
+    }
+
+    return VectorIssueMetadataValue(
+      id: issue.workflowStateId,
+      name: issue.stateLabel,
+      icon: issue.workflowStateIcon,
+      color: issue.workflowStateColor
+    )
+  }
+
+  public static func priority(
+    for issue: VectorIssueRow,
+    options: VectorWorkspaceOptions?
+  ) -> VectorIssueMetadataValue? {
+    if let priority = options?.issuePriorities.first(where: { $0.id == issue.priorityId }) {
+      return VectorIssueMetadataValue(
+        id: priority.id,
+        name: priority.name,
+        icon: priority.icon,
+        color: priority.color
+      )
+    }
+
+    guard let priorityName = issue.priorityName else {
+      return nil
+    }
+
+    return VectorIssueMetadataValue(
+      id: issue.priorityId,
+      name: priorityName,
+      icon: issue.priorityIcon,
+      color: issue.priorityColor
+    )
   }
 }
 
@@ -778,11 +961,76 @@ public struct VectorComment: Decodable, Equatable, Identifiable {
   }
 }
 
+public struct VectorWorkspaceMember: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let userId: VectorID?
+  public let user: VectorUser?
+  public let role: String?
+
+  public init(id: VectorID, userId: VectorID?, user: VectorUser?, role: String? = nil) {
+    self.id = id
+    self.userId = userId
+    self.user = user
+    self.role = role
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case userId
+    case user
+    case role
+  }
+
+  public var displayName: String {
+    user?.displayName ?? "Unknown member"
+  }
+
+  public var email: String? {
+    user?.email
+  }
+
+  public var image: String? {
+    user?.image
+  }
+}
+
+public struct VectorWorkspaceOptions: Decodable, Equatable {
+  public let members: [VectorWorkspaceMember]
+  public let teams: [VectorTeam]
+  public let projects: [VectorProject]
+  public let issueStates: [VectorState]
+  public let issuePriorities: [VectorPriority]
+  public let projectStatuses: [VectorProjectStatus]
+
+  public init(
+    members: [VectorWorkspaceMember],
+    teams: [VectorTeam],
+    projects: [VectorProject],
+    issueStates: [VectorState],
+    issuePriorities: [VectorPriority],
+    projectStatuses: [VectorProjectStatus]
+  ) {
+    self.members = members
+    self.teams = teams
+    self.projects = projects
+    self.issueStates = issueStates
+    self.issuePriorities = issuePriorities
+    self.projectStatuses = projectStatuses
+  }
+}
+
 public struct VectorActivityTarget: Decodable, Equatable {
   public let type: String
   public let id: VectorID?
   public let key: String?
   public let name: String?
+
+  public init(type: String, id: VectorID?, key: String?, name: String?) {
+    self.type = type
+    self.id = id
+    self.key = key
+    self.name = name
+  }
 }
 
 public struct VectorActivityDetails: Decodable, Equatable {
@@ -793,6 +1041,24 @@ public struct VectorActivityDetails: Decodable, Equatable {
   public let commentPreview: String?
   public let addedUserNames: [String]
   public let removedUserNames: [String]
+
+  public init(
+    field: String? = nil,
+    fromLabel: String? = nil,
+    toLabel: String? = nil,
+    roleName: String? = nil,
+    commentPreview: String? = nil,
+    addedUserNames: [String] = [],
+    removedUserNames: [String] = []
+  ) {
+    self.field = field
+    self.fromLabel = fromLabel
+    self.toLabel = toLabel
+    self.roleName = roleName
+    self.commentPreview = commentPreview
+    self.addedUserNames = addedUserNames
+    self.removedUserNames = removedUserNames
+  }
 }
 
 public struct VectorActivityItem: Decodable, Equatable, Identifiable {
@@ -804,6 +1070,26 @@ public struct VectorActivityItem: Decodable, Equatable, Identifiable {
   public let target: VectorActivityTarget
   public let details: VectorActivityDetails
   @ConvexFloat public var createdAt: Double
+
+  public init(
+    id: VectorID,
+    entityType: String,
+    eventType: String,
+    actor: VectorUser?,
+    subjectUser: VectorUser? = nil,
+    target: VectorActivityTarget,
+    details: VectorActivityDetails,
+    createdAt: Double
+  ) {
+    self.id = id
+    self.entityType = entityType
+    self.eventType = eventType
+    self.actor = actor
+    self.subjectUser = subjectUser
+    self.target = target
+    self.details = details
+    self._createdAt = ConvexFloat(wrappedValue: createdAt)
+  }
 
   private enum CodingKeys: String, CodingKey {
     case id = "_id"
