@@ -499,6 +499,7 @@ private struct VectorEmptyState: View {
 struct InboxScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  @State private var isShowingProfileStatusSettings = false
 
   var body: some View {
     ScrollView {
@@ -527,6 +528,9 @@ struct InboxScreen: View {
     .background(VectorTheme.rowBackground)
     .navigationTitle("Inbox")
     .vectorInlineNavigationTitle()
+    .navigationDestination(isPresented: $isShowingProfileStatusSettings) {
+      ProfileStatusSettingsScreen(viewModel: viewModel)
+    }
     .toolbar {
       #if os(iOS)
       ToolbarItem(placement: .topBarLeading) {
@@ -538,7 +542,13 @@ struct InboxScreen: View {
         )
       }
       ToolbarItem(placement: .topBarTrailing) {
-        ProfileStatusToolbarMenu(viewModel: viewModel, sessionController: sessionController)
+        ProfileStatusToolbarMenu(
+          viewModel: viewModel,
+          sessionController: sessionController,
+          onOpenProfileStatusSettings: {
+            isShowingProfileStatusSettings = true
+          }
+        )
       }
       #else
       ToolbarItem(placement: .automatic) {
@@ -550,7 +560,13 @@ struct InboxScreen: View {
         )
       }
       ToolbarItem(placement: .primaryAction) {
-        ProfileStatusToolbarMenu(viewModel: viewModel, sessionController: sessionController)
+        ProfileStatusToolbarMenu(
+          viewModel: viewModel,
+          sessionController: sessionController,
+          onOpenProfileStatusSettings: {
+            isShowingProfileStatusSettings = true
+          }
+        )
       }
       #endif
     }
@@ -970,6 +986,7 @@ private struct WorkspaceMenuContent: View {
 private struct ProfileStatusToolbarMenu: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  let onOpenProfileStatusSettings: () -> Void
 
   private var toolbarUser: VectorUser {
     let user = sessionController.user
@@ -1005,9 +1022,7 @@ private struct ProfileStatusToolbarMenu: View {
       }
 
       Section {
-        NavigationLink {
-          ProfileStatusSettingsScreen(viewModel: viewModel)
-        } label: {
+        Button(action: onOpenProfileStatusSettings) {
           Label("Profile status", systemImage: "person.crop.circle.badge.checkmark")
         }
       }
