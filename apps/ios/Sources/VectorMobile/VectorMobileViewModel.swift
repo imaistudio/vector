@@ -24,19 +24,40 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public let configuration: VectorMobileConfiguration
   private let repository: VectorMobileRepository
+  private let pageSize = 50
+  private let rootPageKey = "__root"
   private var issueCache: [VectorIssueScope: [VectorIssueRow]] = [:]
   private var projectCache: [VectorProjectScope: [VectorProject]] = [:]
   private var teamCache: [VectorProjectScope: [VectorTeam]] = [:]
-  private var inboxActivityCache: [VectorActivityItem]?
-  private var issueListCancellables: [VectorIssueScope: AnyCancellable] = [:]
-  private var projectListCancellables: [VectorProjectScope: AnyCancellable] = [:]
-  private var teamListCancellables: [VectorProjectScope: AnyCancellable] = [:]
-  private var inboxActivityCancellable: AnyCancellable?
+  private var inboxActivityCache: [VectorActivityItem] = []
+  private var issuePages: [VectorIssueScope: [String: [VectorIssueRow]]] = [:]
+  private var issuePageOrder: [VectorIssueScope: [String]] = [:]
+  private var issuePagination: [VectorIssueScope: PaginationState] = [:]
+  private var projectPages: [VectorProjectScope: [String: [VectorProject]]] = [:]
+  private var projectPageOrder: [VectorProjectScope: [String]] = [:]
+  private var projectPagination: [VectorProjectScope: PaginationState] = [:]
+  private var teamPages: [VectorProjectScope: [String: [VectorTeam]]] = [:]
+  private var teamPageOrder: [VectorProjectScope: [String]] = [:]
+  private var teamPagination: [VectorProjectScope: PaginationState] = [:]
+  private var inboxActivityPages: [String: [VectorActivityItem]] = [:]
+  private var inboxActivityPageOrder: [String] = []
+  private var inboxActivityPagination = PaginationState()
+  // Loaded pages stay subscribed so cached tabs remain live when users switch back.
+  private var issueListCancellables: [VectorIssueScope: [String: AnyCancellable]] = [:]
+  private var projectListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
+  private var teamListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
+  private var inboxActivityCancellables: [String: AnyCancellable] = [:]
   private var workspaceOptionsCancellable: AnyCancellable?
   private var issueSupportCancellables = Set<AnyCancellable>()
   private var activeIssueSupportId: VectorID?
   private var settingsCancellables = Set<AnyCancellable>()
   private var isSettingsSubscribed = false
+
+  private struct PaginationState {
+    var continueCursor: String?
+    var isDone = false
+    var isLoadingMore = false
+  }
 
   public init(
     configuration: VectorMobileConfiguration = .demo,
@@ -63,30 +84,12 @@ public final class VectorMobileViewModel: ObservableObject {
         issues = cachedIssues
         isLoading = false
       }
-    } else if issueScope == scope && issueListCancellables[scope] == nil {
+    } else if issueScope == scope && issueListCancellables[scope]?[rootPageKey] == nil {
       issues = []
       isLoading = true
     }
 
-    guard issueListCancellables[scope] == nil else {
-      return
-    }
-
-    issueListCancellables[scope] = repository.issues(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { [weak self, scope] completion in
-          self?.handleIssueListCompletion(completion, scope: scope)
-        },
-        receiveValue: { [weak self, scope] issues in
-          guard let self else { return }
-          issueCache[scope] = issues
-          if issueScope == scope {
-            self.issues = issues
-            isLoading = false
-          }
-        }
-      )
+    subscribeToIssuePage(scope: scope, cursor: nil)
   }
 
   private func subscribeToProjectsIfNeeded(scope: VectorProjectScope) {
@@ -94,34 +97,11 @@ public final class VectorMobileViewModel: ObservableObject {
       if projectScope == scope {
         projects = cachedProjects
       }
-    } else if projectScope == scope && projectListCancellables[scope] == nil {
+    } else if projectScope == scope && projectListCancellables[scope]?[rootPageKey] == nil {
       projects = []
     }
 
-    guard projectListCancellables[scope] == nil else {
-      return
-    }
-
-    projectListCancellables[scope] = repository.projects(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { [weak self, scope] completion in
-          guard let self else { return }
-          if case let .failure(error) = completion {
-            projectListCancellables[scope] = nil
-            if projectScope == scope {
-              errorMessage = error.localizedDescription
-            }
-          }
-        },
-        receiveValue: { [weak self, scope] projects in
-          guard let self else { return }
-          projectCache[scope] = projects
-          if projectScope == scope {
-            self.projects = projects
-          }
-        }
-      )
+    subscribeToProjectPage(scope: scope, cursor: nil)
   }
 
   private func subscribeToTeamsIfNeeded(scope: VectorProjectScope) {
@@ -129,34 +109,11 @@ public final class VectorMobileViewModel: ObservableObject {
       if projectScope == scope {
         teams = cachedTeams
       }
-    } else if projectScope == scope && teamListCancellables[scope] == nil {
+    } else if projectScope == scope && teamListCancellables[scope]?[rootPageKey] == nil {
       teams = []
     }
 
-    guard teamListCancellables[scope] == nil else {
-      return
-    }
-
-    teamListCancellables[scope] = repository.teams(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { [weak self, scope] completion in
-          guard let self else { return }
-          if case let .failure(error) = completion {
-            teamListCancellables[scope] = nil
-            if projectScope == scope {
-              errorMessage = error.localizedDescription
-            }
-          }
-        },
-        receiveValue: { [weak self, scope] teams in
-          guard let self else { return }
-          teamCache[scope] = teams
-          if projectScope == scope {
-            self.teams = teams
-          }
-        }
-      )
+    subscribeToTeamPage(scope: scope, cursor: nil)
   }
 
   private func subscribeToWorkspaceOptionsIfNeeded() {
@@ -180,28 +137,11 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   private func subscribeToInboxActivityIfNeeded() {
-    if let inboxActivityCache {
+    if !inboxActivityCache.isEmpty {
       inboxActivity = inboxActivityCache
     }
 
-    guard inboxActivityCancellable == nil else {
-      return
-    }
-
-    inboxActivityCancellable = repository.inboxActivity(orgSlug: configuration.orgSlug, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { [weak self] completion in
-          if case let .failure(error) = completion {
-            self?.inboxActivityCancellable = nil
-            self?.errorMessage = error.localizedDescription
-          }
-        },
-        receiveValue: { [weak self] activity in
-          self?.inboxActivityCache = activity
-          self?.inboxActivity = activity
-        }
-      )
+    subscribeToInboxActivityPage(cursor: nil)
   }
 
   public func loadIssueSupport(issue: VectorIssueRow) {
@@ -658,14 +598,271 @@ public final class VectorMobileViewModel: ObservableObject {
     configuration.webURL(path: "/\(configuration.orgSlug)/teams/\(team.key)")
   }
 
-  private func handleIssueListCompletion(_ completion: Subscribers.Completion<Error>, scope: VectorIssueScope) {
+  public var canLoadMoreIssues: Bool {
+    canLoadMore(issuePagination[issueScope])
+  }
+
+  public var isLoadingMoreIssues: Bool {
+    issuePagination[issueScope]?.isLoadingMore ?? false
+  }
+
+  public var canLoadMoreProjects: Bool {
+    canLoadMore(projectPagination[projectScope])
+  }
+
+  public var isLoadingMoreProjects: Bool {
+    projectPagination[projectScope]?.isLoadingMore ?? false
+  }
+
+  public var canLoadMoreTeams: Bool {
+    canLoadMore(teamPagination[projectScope])
+  }
+
+  public var isLoadingMoreTeams: Bool {
+    teamPagination[projectScope]?.isLoadingMore ?? false
+  }
+
+  public var canLoadMoreInboxActivity: Bool {
+    canLoadMore(inboxActivityPagination)
+  }
+
+  public var isLoadingMoreInboxActivity: Bool {
+    inboxActivityPagination.isLoadingMore
+  }
+
+  public func loadMoreIssues() {
+    guard let cursor = nextCursor(issuePagination[issueScope]) else {
+      return
+    }
+    subscribeToIssuePage(scope: issueScope, cursor: cursor)
+  }
+
+  public func loadMoreProjects() {
+    guard let cursor = nextCursor(projectPagination[projectScope]) else {
+      return
+    }
+    subscribeToProjectPage(scope: projectScope, cursor: cursor)
+  }
+
+  public func loadMoreTeams() {
+    guard let cursor = nextCursor(teamPagination[projectScope]) else {
+      return
+    }
+    subscribeToTeamPage(scope: projectScope, cursor: cursor)
+  }
+
+  public func loadMoreInboxActivity() {
+    guard let cursor = nextCursor(inboxActivityPagination) else {
+      return
+    }
+    subscribeToInboxActivityPage(cursor: cursor)
+  }
+
+  private func subscribeToIssuePage(scope: VectorIssueScope, cursor: String?) {
+    let key = pageKey(cursor)
+    guard issueListCancellables[scope]?[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &issuePagination[scope, default: PaginationState()])
+    issueListCancellables[scope, default: [:]][key] = repository
+      .issuesPage(orgSlug: configuration.orgSlug, scope: scope, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: self?.issueScope == scope) {
+            self?.issueListCancellables[scope]?[key] = nil
+            self?.issuePagination[scope, default: PaginationState()].isLoadingMore = false
+            if key == self?.rootPageKey {
+              self?.isLoading = false
+            }
+          }
+        },
+        receiveValue: { [weak self, scope, key] page in
+          guard let self else { return }
+          issuePages[scope, default: [:]][key] = page.page
+          appendPageKey(key, to: &issuePageOrder[scope, default: []])
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: issuePageOrder[scope] ?? [], state: &issuePagination[scope, default: PaginationState()])
+          rebuildIssues(scope: scope)
+        }
+      )
+  }
+
+  private func subscribeToProjectPage(scope: VectorProjectScope, cursor: String?) {
+    let key = pageKey(cursor)
+    guard projectListCancellables[scope]?[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &projectPagination[scope, default: PaginationState()])
+    projectListCancellables[scope, default: [:]][key] = repository
+      .projectsPage(orgSlug: configuration.orgSlug, scope: scope, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: self?.projectScope == scope) {
+            self?.projectListCancellables[scope]?[key] = nil
+            self?.projectPagination[scope, default: PaginationState()].isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, scope, key] page in
+          guard let self else { return }
+          projectPages[scope, default: [:]][key] = page.page
+          appendPageKey(key, to: &projectPageOrder[scope, default: []])
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: projectPageOrder[scope] ?? [], state: &projectPagination[scope, default: PaginationState()])
+          rebuildProjects(scope: scope)
+        }
+      )
+  }
+
+  private func subscribeToTeamPage(scope: VectorProjectScope, cursor: String?) {
+    let key = pageKey(cursor)
+    guard teamListCancellables[scope]?[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &teamPagination[scope, default: PaginationState()])
+    teamListCancellables[scope, default: [:]][key] = repository
+      .teamsPage(orgSlug: configuration.orgSlug, scope: scope, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: self?.projectScope == scope) {
+            self?.teamListCancellables[scope]?[key] = nil
+            self?.teamPagination[scope, default: PaginationState()].isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, scope, key] page in
+          guard let self else { return }
+          teamPages[scope, default: [:]][key] = page.page
+          appendPageKey(key, to: &teamPageOrder[scope, default: []])
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: teamPageOrder[scope] ?? [], state: &teamPagination[scope, default: PaginationState()])
+          rebuildTeams(scope: scope)
+        }
+      )
+  }
+
+  private func subscribeToInboxActivityPage(cursor: String?) {
+    let key = pageKey(cursor)
+    guard inboxActivityCancellables[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &inboxActivityPagination)
+    inboxActivityCancellables[key] = repository
+      .inboxActivityPage(orgSlug: configuration.orgSlug, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: true) {
+            self?.inboxActivityCancellables[key] = nil
+            self?.inboxActivityPagination.isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, key] page in
+          guard let self else { return }
+          inboxActivityPages[key] = page.items
+          appendPageKey(key, to: &inboxActivityPageOrder)
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: inboxActivityPageOrder, state: &inboxActivityPagination)
+          rebuildInboxActivity()
+        }
+      )
+  }
+
+  private func markLoading(cursor: String?, pagination: inout PaginationState) {
+    guard cursor != nil else {
+      return
+    }
+    objectWillChange.send()
+    pagination.isLoadingMore = true
+  }
+
+  private func updatePagination(_ cursor: String?, isDone: Bool, key: String, order: [String], state: inout PaginationState) {
+    objectWillChange.send()
+    guard order.last == key else {
+      return
+    }
+    state.isLoadingMore = false
+    state.continueCursor = cursor?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    state.isDone = isDone || state.continueCursor == nil
+  }
+
+  private func handlePageCompletion(_ completion: Subscribers.Completion<Error>, key: String, active: Bool, cleanup: () -> Void) {
     if case let .failure(error) = completion {
-      issueListCancellables[scope] = nil
-      if issueScope == scope {
+      cleanup()
+      if active {
         errorMessage = error.localizedDescription
-        isLoading = false
+        if key == rootPageKey {
+          isLoading = false
+        }
       }
     }
+  }
+
+  private func rebuildIssues(scope: VectorIssueScope) {
+    let merged = uniqueItems(orderedPages(issuePages[scope] ?? [:], order: issuePageOrder[scope] ?? []), id: \.rowId)
+    issueCache[scope] = merged
+    if issueScope == scope {
+      issues = merged
+      isLoading = false
+    }
+  }
+
+  private func rebuildProjects(scope: VectorProjectScope) {
+    let merged = uniqueItems(orderedPages(projectPages[scope] ?? [:], order: projectPageOrder[scope] ?? []), id: \.id)
+    projectCache[scope] = merged
+    if projectScope == scope {
+      projects = merged
+    }
+  }
+
+  private func rebuildTeams(scope: VectorProjectScope) {
+    let merged = uniqueItems(orderedPages(teamPages[scope] ?? [:], order: teamPageOrder[scope] ?? []), id: \.id)
+    teamCache[scope] = merged
+    if projectScope == scope {
+      teams = merged
+    }
+  }
+
+  private func rebuildInboxActivity() {
+    inboxActivityCache = uniqueItems(orderedPages(inboxActivityPages, order: inboxActivityPageOrder), id: \.id)
+    inboxActivity = inboxActivityCache
+  }
+
+  private func pageKey(_ cursor: String?) -> String {
+    cursor ?? rootPageKey
+  }
+
+  private func appendPageKey(_ key: String, to order: inout [String]) {
+    guard !order.contains(key) else {
+      return
+    }
+    order.append(key)
+  }
+
+  private func orderedPages<Item>(_ pages: [String: [Item]], order: [String]) -> [Item] {
+    order.flatMap { pages[$0] ?? [] }
+  }
+
+  private func uniqueItems<Item, ID: Hashable>(_ items: [Item], id: KeyPath<Item, ID>) -> [Item] {
+    var seen = Set<ID>()
+    return items.filter { item in
+      seen.insert(item[keyPath: id]).inserted
+    }
+  }
+
+  private func canLoadMore(_ state: PaginationState?) -> Bool {
+    guard let state else {
+      return false
+    }
+    return !state.isDone && !state.isLoadingMore && state.continueCursor != nil
+  }
+
+  private func nextCursor(_ state: PaginationState?) -> String? {
+    guard canLoadMore(state) else {
+      return nil
+    }
+    return state?.continueCursor
   }
 
   private func currentIssue(_ issueId: VectorID) -> VectorIssueRow? {
@@ -679,5 +876,11 @@ public final class VectorMobileViewModel: ObservableObject {
     if let selectedIssue, selectedIssue.id == issueId {
       self.selectedIssue = transform(selectedIssue)
     }
+  }
+}
+
+private extension String {
+  var nilIfEmpty: String? {
+    isEmpty ? nil : self
   }
 }

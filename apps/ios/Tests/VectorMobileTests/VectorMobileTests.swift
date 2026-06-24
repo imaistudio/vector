@@ -117,6 +117,44 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertFalse(encoded.contains("$integer"))
   }
 
+  func testOrganizationDecodesLogoStorageId() throws {
+    let payload = """
+      {
+        "_id": "org-1",
+        "name": "Vector",
+        "slug": "imai",
+        "logo": "storage-logo-1"
+      }
+      """.data(using: .utf8)!
+
+    let organization = try JSONDecoder().decode(VectorOrganization.self, from: payload)
+
+    XCTAssertEqual(organization.logo, "storage-logo-1")
+    XCTAssertEqual(
+      organization.logoURL(baseURL: URL(string: "https://imai.tech")!)?.absoluteString,
+      "https://imai.tech/api/files/storage-logo-1"
+    )
+  }
+
+  func testOrganizationLogoURLHandlesAbsoluteAndEmptyValues() {
+    let baseURL = URL(string: "https://imai.tech")!
+    let absolute = VectorOrganization(
+      id: "org-absolute",
+      name: "Vector",
+      slug: "vector",
+      logo: "https://cdn.example.com/vector.png"
+    )
+    let empty = VectorOrganization(
+      id: "org-empty",
+      name: "Vector",
+      slug: "vector",
+      logo: "  "
+    )
+
+    XCTAssertEqual(absolute.logoURL(baseURL: baseURL)?.absoluteString, "https://cdn.example.com/vector.png")
+    XCTAssertNil(empty.logoURL(baseURL: baseURL))
+  }
+
   func testChangeWorkflowStateArgsUseBackendStateIdName() throws {
     let encoded = try VectorConvexArguments
       .changeWorkflowState(issueId: "issue-1", stateId: "state-1")
@@ -338,14 +376,14 @@ final class VectorMobileTests: XCTestCase {
     var teams: [VectorTeam] = []
     var workspaceOptions: VectorWorkspaceOptions?
 
-    let issuesCancellable = repository.issues(orgSlug: "imai", scope: .mine, pageSize: 10)
-      .sink(receiveCompletion: { _ in }, receiveValue: { issues = $0 })
+    let issuesCancellable = repository.issuesPage(orgSlug: "imai", scope: .mine, pageSize: 10, cursor: nil)
+      .sink(receiveCompletion: { _ in }, receiveValue: { issues = $0.page })
     let detailCancellable = repository.issue(orgSlug: "imai", key: "ROADMAP-5")
       .sink(receiveCompletion: { _ in }, receiveValue: { detailIssue = $0 })
-    let projectsCancellable = repository.projects(orgSlug: "imai", scope: .mine, pageSize: 10)
-      .sink(receiveCompletion: { _ in }, receiveValue: { projects = $0 })
-    let teamsCancellable = repository.teams(orgSlug: "imai", scope: .mine, pageSize: 10)
-      .sink(receiveCompletion: { _ in }, receiveValue: { teams = $0 })
+    let projectsCancellable = repository.projectsPage(orgSlug: "imai", scope: .mine, pageSize: 10, cursor: nil)
+      .sink(receiveCompletion: { _ in }, receiveValue: { projects = $0.page })
+    let teamsCancellable = repository.teamsPage(orgSlug: "imai", scope: .mine, pageSize: 10, cursor: nil)
+      .sink(receiveCompletion: { _ in }, receiveValue: { teams = $0.page })
     let optionsCancellable = repository.workspaceOptions(orgSlug: "imai")
       .sink(receiveCompletion: { _ in }, receiveValue: { workspaceOptions = $0 })
 
@@ -392,6 +430,74 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(repository.projectListCalls[.all, default: 0], 1)
     XCTAssertEqual(repository.teamListCalls[.all, default: 0], 1)
   }
+
+  @MainActor
+  func testViewModelLoadsAdditionalIssuePages() async throws {
+    let repository = PagingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+    await waitUntil {
+      viewModel.issues.map(\.id) == [VectorMockData.issues[0].id]
+    }
+
+    XCTAssertEqual(viewModel.issues.map(\.id), [VectorMockData.issues[0].id])
+    XCTAssertTrue(viewModel.canLoadMoreIssues)
+
+    viewModel.loadMoreIssues()
+    await waitUntil {
+      viewModel.issues.map(\.id) == [VectorMockData.issues[0].id, VectorMockData.issues[1].id]
+    }
+
+    XCTAssertEqual(viewModel.issues.map(\.id), [VectorMockData.issues[0].id, VectorMockData.issues[1].id])
+    XCTAssertFalse(viewModel.canLoadMoreIssues)
+    XCTAssertEqual(repository.issuePageCursors, [nil, "next"])
+  }
+
+  @MainActor
+  func testViewModelLoadsAdditionalWorkspaceAndInboxPages() async throws {
+    let repository = PagingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+
+    await waitUntil {
+      viewModel.projects.map(\.id) == [VectorMockData.projects[0].id]
+        && viewModel.teams.map(\.id) == [VectorMockData.teams[0].id]
+        && viewModel.inboxActivity.map(\.id) == [VectorMockData.activityItems[0].id]
+    }
+
+    XCTAssertTrue(viewModel.canLoadMoreProjects)
+    XCTAssertTrue(viewModel.canLoadMoreTeams)
+    XCTAssertTrue(viewModel.canLoadMoreInboxActivity)
+
+    viewModel.loadMoreProjects()
+    viewModel.loadMoreTeams()
+    viewModel.loadMoreInboxActivity()
+
+    await waitUntil {
+      viewModel.projects.map(\.id) == [VectorMockData.projects[0].id, VectorMockData.projects[1].id]
+        && viewModel.teams.map(\.id) == [VectorMockData.teams[0].id, VectorMockData.teams[1].id]
+        && viewModel.inboxActivity.map(\.id) == [VectorMockData.activityItems[0].id, VectorMockData.activityItems[1].id]
+    }
+
+    XCTAssertFalse(viewModel.canLoadMoreProjects)
+    XCTAssertFalse(viewModel.canLoadMoreTeams)
+    XCTAssertFalse(viewModel.canLoadMoreInboxActivity)
+    XCTAssertEqual(repository.projectPageCursors, [nil, "next"])
+    XCTAssertEqual(repository.teamPageCursors, [nil, "next"])
+    XCTAssertEqual(repository.inboxActivityCursors, [nil, "next"])
+  }
+
+  @MainActor
+  private func waitUntil(
+    timeout: TimeInterval = 1,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ condition: @MainActor @escaping () -> Bool
+  ) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition(), Date() < deadline {
+      try? await Task.sleep(nanoseconds: 1_000_000)
+    }
+    XCTAssertTrue(condition(), file: file, line: line)
+  }
 }
 
 private struct FailingAuthTransport: VectorAuthTransport {
@@ -408,23 +514,23 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var workspaceOptionsCalls = 0
   var userStatusCalls = 0
 
-  func issues(orgSlug: String, scope: VectorIssueScope, pageSize: Int) -> AnyPublisher<[VectorIssueRow], Error> {
+  func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
     issueListCalls[scope, default: 0] += 1
-    return publisher(VectorMockData.issues)
+    return publisher(VectorPaginatedPage(page: VectorMockData.issues, isDone: true))
   }
 
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error> {
     publisher(VectorMockData.issues.first { $0.key == key })
   }
 
-  func projects(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorProject], Error> {
+  func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error> {
     projectListCalls[scope, default: 0] += 1
-    return publisher(VectorMockData.projects)
+    return publisher(VectorPaginatedPage(page: VectorMockData.projects, isDone: true))
   }
 
-  func teams(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorTeam], Error> {
+  func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error> {
     teamListCalls[scope, default: 0] += 1
-    return publisher(VectorMockData.teams)
+    return publisher(VectorPaginatedPage(page: VectorMockData.teams, isDone: true))
   }
 
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
@@ -444,13 +550,121 @@ private final class CountingVectorRepository: VectorMobileRepository {
     publisher([])
   }
 
-  func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
-    publisher([])
+  func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorOrgActivityPage, Error> {
+    publisher(VectorOrgActivityPage(items: []))
   }
 
   func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
     userStatusCalls += 1
     return publisher(nil)
+  }
+
+  func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
+    publisher([])
+  }
+
+  func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error> {
+    publisher([])
+  }
+
+  func setPresence(_ presence: VectorPresenceStatus) async throws {}
+
+  func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws {}
+
+  func clearCustomStatus() async throws {}
+
+  func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws {}
+
+  func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
+
+  func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
+
+  func updateTitle(issueId: VectorID, title: String) async throws {}
+
+  func updateDescription(issueId: VectorID, description: String?) async throws {}
+
+  func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
+
+  func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
+
+  func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {}
+
+  func changeProject(issueId: VectorID, projectId: VectorID?) async throws {}
+
+  func changeTeam(issueId: VectorID, teamId: VectorID?) async throws {}
+
+  func changeVisibility(issueId: VectorID, visibility: String) async throws {}
+
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws {}
+
+  private func publisher<Value>(_ value: Value) -> AnyPublisher<Value, Error> {
+    Just(value)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+}
+
+@MainActor
+private final class PagingVectorRepository: VectorMobileRepository {
+  var issuePageCursors: [String?] = []
+  var projectPageCursors: [String?] = []
+  var teamPageCursors: [String?] = []
+  var inboxActivityCursors: [String?] = []
+
+  func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
+    issuePageCursors.append(cursor)
+    if cursor == nil {
+      return publisher(VectorPaginatedPage(page: [VectorMockData.issues[0]], continueCursor: "next", isDone: false))
+    }
+    return publisher(VectorPaginatedPage(page: [VectorMockData.issues[0], VectorMockData.issues[1]], isDone: true))
+  }
+
+  func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error> {
+    publisher(VectorMockData.issues.first { $0.key == key })
+  }
+
+  func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error> {
+    projectPageCursors.append(cursor)
+    if cursor == nil {
+      return publisher(VectorPaginatedPage(page: [VectorMockData.projects[0]], continueCursor: "next", isDone: false))
+    }
+    return publisher(VectorPaginatedPage(page: [VectorMockData.projects[0], VectorMockData.projects[1]], isDone: true))
+  }
+
+  func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error> {
+    teamPageCursors.append(cursor)
+    if cursor == nil {
+      return publisher(VectorPaginatedPage(page: [VectorMockData.teams[0]], continueCursor: "next", isDone: false))
+    }
+    return publisher(VectorPaginatedPage(page: [VectorMockData.teams[0], VectorMockData.teams[1]], isDone: true))
+  }
+
+  func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
+    publisher(VectorMockData.workspaceOptions)
+  }
+
+  func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error> {
+    publisher([])
+  }
+
+  func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error> {
+    publisher([])
+  }
+
+  func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
+    publisher([])
+  }
+
+  func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorOrgActivityPage, Error> {
+    inboxActivityCursors.append(cursor)
+    if cursor == nil {
+      return publisher(VectorOrgActivityPage(items: [VectorMockData.activityItems[0]], nextCursor: "next"))
+    }
+    return publisher(VectorOrgActivityPage(items: [VectorMockData.activityItems[0], VectorMockData.activityItems[1]]))
+  }
+
+  func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
+    publisher(nil)
   }
 
   func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
