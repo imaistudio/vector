@@ -13,6 +13,8 @@
 
 # testing
 /coverage
+**/.build/
+**/.swiftpm/
 
 # next.js
 /.next/

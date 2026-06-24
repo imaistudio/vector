@@ -1,0 +1,15 @@
+{
+  "originHash" : "44a1ab6b7edc480bc20644af7f25585b89c181aec3a32bb65e766fede23d8e3f",
+  "pins" : [
+    {
+      "identity" : "convex-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/get-convex/convex-swift.git",
+      "state" : {
+        "revision" : "125b71b2f8725931a5b0e8252f0799ef2adad120",
+        "version" : "0.8.1"
+      }
+    }
+  ],
+  "version" : 3
+}
