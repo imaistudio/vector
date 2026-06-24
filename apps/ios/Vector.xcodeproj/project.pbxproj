@@ -14,6 +14,7 @@
 		3826640E48D5C4C1FB003B85 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = FF97248DE4DFD449F8128391 /* LaunchScreen.storyboard */; };
 		751D31391E37FF2364BE88F9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0A182B3545D4DAFBE74A4FC1 /* PrivacyInfo.xcprivacy */; };
 		7F4B89F1B106E747BAC7D3ED /* VectorRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC3DF8C3A0271059E02CC0E4 /* VectorRepository.swift */; };
+		8753FD4E77B24F33B2C9D480 /* VectorAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE72140905845F1B33A1E85 /* VectorAuth.swift */; };
 		97FD1C6F2E227D10EBD57545 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 667BB9B58FA533FA0D76BCC6 /* Assets.xcassets */; };
 		CE7DB19068F9D3E387DAAB7B /* VectorMockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DF9D1A97A8145CA3EA068D /* VectorMockData.swift */; };
 		F2108BAAF6DB22E3B31FB27A /* VectorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584C0BF3804405EB697974 /* VectorApp.swift */; };
@@ -26,6 +27,7 @@
 		34DF9D1A97A8145CA3EA068D /* VectorMockData.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorMockData.swift; sourceTree = "<group>"; };
 		667BB9B58FA533FA0D76BCC6 /* Assets.xcassets */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		69584C0BF3804405EB697974 /* VectorApp.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorApp.swift; sourceTree = "<group>"; };
+		7BE72140905845F1B33A1E85 /* VectorAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorAuth.swift; sourceTree = "<group>"; };
 		840C90867400EFDFCD805908 /* VectorTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorTheme.swift; sourceTree = "<group>"; };
 		88FFA3CD89144F9542092013 /* Vector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vector.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		AD860F95F5144A9FF3D8D54D /* VectorModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorModels.swift; sourceTree = "<group>"; };
@@ -88,6 +90,7 @@
 			children = (
 				ED286312BC9E7D6FCB8247E0 /* VectorMobileViewModel.swift */,
 				0459F93D9DD7857DFB1B545D /* VectorMobileViews.swift */,
+				7BE72140905845F1B33A1E85 /* VectorAuth.swift */,
 				34DF9D1A97A8145CA3EA068D /* VectorMockData.swift */,
 				AD860F95F5144A9FF3D8D54D /* VectorModels.swift */,
 				DC3DF8C3A0271059E02CC0E4 /* VectorRepository.swift */,
@@ -186,6 +189,7 @@
 			files = (
 				26825279CED08F6EB5EF5464 /* VectorMobileViewModel.swift in Sources */,
 				0D4BC45BE1192B15774D18E8 /* VectorMobileViews.swift in Sources */,
+				8753FD4E77B24F33B2C9D480 /* VectorAuth.swift in Sources */,
 				CE7DB19068F9D3E387DAAB7B /* VectorMockData.swift in Sources */,
 				06DC41386BBF01B7097D1E81 /* VectorModels.swift in Sources */,
 				7F4B89F1B106E747BAC7D3ED /* VectorRepository.swift in Sources */,

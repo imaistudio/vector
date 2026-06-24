@@ -1,43 +1,437 @@
 import SwiftUI
 
 public struct VectorMobileRootView: View {
-  @StateObject private var viewModel: VectorMobileViewModel
+  @StateObject private var sessionController: VectorMobileSessionController
 
-  public init(viewModel: VectorMobileViewModel = VectorMobileViewModel()) {
-    self._viewModel = StateObject(wrappedValue: viewModel)
+  public init(sessionController: VectorMobileSessionController = VectorMobileSessionController()) {
+    self._sessionController = StateObject(wrappedValue: sessionController)
   }
 
+  @ViewBuilder
   public var body: some View {
-    TabView {
-      NavigationStack {
+    switch sessionController.phase {
+    case .restoring:
+      VectorSessionRestoreScreen()
+    case .signedOut, .authenticating:
+      VectorSetupScreen(sessionController: sessionController)
+    case .signedIn:
+      if let viewModel = sessionController.viewModel {
+        AuthenticatedVectorMobileView(viewModel: viewModel, sessionController: sessionController)
+      } else {
+        VectorSessionRestoreScreen()
+      }
+    }
+  }
+}
+
+private struct AuthenticatedVectorMobileView: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
+  @State private var selectedTab: VectorMobileTab = .issues
+
+  var body: some View {
+    NavigationStack {
+      switch selectedTab {
+      case .issues:
         IssuesScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label("Issues", systemImage: "checklist")
-      }
-
-      NavigationStack {
+      case .projects:
         ProjectsScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label("Projects", systemImage: "folder")
-      }
-
-      NavigationStack {
+      case .teams:
         TeamsScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label("Teams", systemImage: "person.3")
-      }
-
-      NavigationStack {
-        MobileSettingsScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label("Settings", systemImage: "gearshape")
+      case .settings:
+        MobileSettingsScreen(viewModel: viewModel, sessionController: sessionController)
       }
     }
     .tint(VectorTheme.accent)
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      VectorCompactTabBar(selection: $selectedTab)
+    }
+  }
+}
+
+private enum VectorMobileTab: String, CaseIterable, Identifiable {
+  case issues
+  case projects
+  case teams
+  case settings
+
+  var id: String { rawValue }
+
+  var title: String {
+    switch self {
+    case .issues: "Issues"
+    case .projects: "Projects"
+    case .teams: "Teams"
+    case .settings: "Settings"
+    }
+  }
+
+  var systemImage: String {
+    switch self {
+    case .issues: "checklist"
+    case .projects: "folder"
+    case .teams: "person.3"
+    case .settings: "gearshape"
+    }
+  }
+}
+
+private struct VectorCompactTabBar: View {
+  @Binding var selection: VectorMobileTab
+
+  var body: some View {
+    VStack(spacing: 0) {
+      Divider()
+      HStack(spacing: 0) {
+        ForEach(VectorMobileTab.allCases) { tab in
+          Button {
+            selection = tab
+          } label: {
+            VStack(spacing: 3) {
+              Image(systemName: tab.systemImage)
+                .font(.system(size: 16, weight: .semibold))
+              Text(tab.title)
+                .font(.caption2.weight(.medium))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+            .foregroundStyle(selection == tab ? VectorTheme.accent : Color.secondary)
+            .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .padding(.horizontal, 4)
+      .background(VectorTheme.rowBackground)
+    }
+    .background(VectorTheme.rowBackground)
+  }
+}
+
+private struct VectorSessionRestoreScreen: View {
+  var body: some View {
+    VStack(spacing: 18) {
+      VectorLogoMark(size: 72)
+      ProgressView()
+        .tint(VectorTheme.accent)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(VectorTheme.groupedBackground)
+  }
+}
+
+private struct VectorSetupScreen: View {
+  @ObservedObject var sessionController: VectorMobileSessionController
+  @State private var appURLString = ""
+  @State private var identifier = ""
+  @State private var password = ""
+  @State private var orgSlug = ""
+
+  private var canSubmit: Bool {
+    !appURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      && !password.isEmpty
+      && sessionController.phase != .authenticating
+  }
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        VectorAuthBackground()
+
+        ScrollView {
+          VStack(spacing: 18) {
+            VectorLoginBrand()
+
+            VStack(alignment: .leading, spacing: 14) {
+              VStack(alignment: .leading, spacing: 6) {
+                Text("Sign in")
+                  .font(.headline.weight(.semibold))
+                  .foregroundStyle(.white)
+                Text("Enter your credentials to continue")
+                  .font(.caption)
+                  .foregroundStyle(.white.opacity(0.62))
+              }
+
+              VStack(spacing: 10) {
+                VectorLoginField(title: "Instance URL", text: $appURLString, prompt: "imai.tech", keyboard: .url)
+                VectorLoginField(title: "Email or Username", text: $identifier, prompt: "you@example.com", keyboard: .email)
+                VectorLoginSecureField(text: $password, onSubmit: signIn)
+                VectorLoginField(title: "Workspace slug", text: $orgSlug, prompt: "Optional", keyboard: .plain)
+              }
+
+              if let error = sessionController.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle")
+                  .font(.caption)
+                  .foregroundStyle(Color(red: 1.0, green: 0.42, blue: 0.48))
+                  .fixedSize(horizontal: false, vertical: true)
+              }
+
+              Button(action: signIn) {
+                HStack(spacing: 8) {
+                  if sessionController.phase == .authenticating {
+                    ProgressView()
+                      .controlSize(.small)
+                      .tint(.white)
+                  }
+                  Text(sessionController.phase == .authenticating ? "Signing in" : "Sign in")
+                    .font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .foregroundStyle(canSubmit ? Color.white : Color.white.opacity(0.38))
+                .background(
+                  canSubmit ? VectorTheme.accent : Color.white.opacity(0.08),
+                  in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+              }
+              .buttonStyle(.plain)
+              .disabled(!canSubmit)
+            }
+            .padding(12)
+            .frame(maxWidth: 304)
+            .background(Color(red: 0.08, green: 0.08, blue: 0.10).opacity(0.94), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+              RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(0.34), radius: 20, x: 0, y: 14)
+
+            HStack(spacing: 4) {
+              Text("Need a quick look?")
+                .foregroundStyle(.white.opacity(0.46))
+              Button("Preview sample data") {
+                sessionController.useDemoData()
+              }
+              .buttonStyle(.plain)
+              .foregroundStyle(VectorTheme.accent)
+            }
+            .font(.caption)
+          }
+          .frame(maxWidth: .infinity)
+          .padding(.horizontal, 20)
+          .padding(.top, 92)
+          .padding(.bottom, 32)
+        }
+      }
+      .ignoresSafeArea()
+      .vectorHiddenNavigationBar()
+    }
+  }
+
+  private func signIn() {
+    guard canSubmit else {
+      return
+    }
+    Task {
+      await sessionController.signIn(
+        appURLString: appURLString,
+        identifier: identifier,
+        password: password,
+        orgSlug: orgSlug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : orgSlug
+      )
+    }
+  }
+}
+
+private struct VectorAuthBackground: View {
+  var body: some View {
+    ZStack {
+      LinearGradient(
+        colors: [
+          Color(red: 0.01, green: 0.01, blue: 0.04),
+          Color(red: 0.02, green: 0.03, blue: 0.08),
+          Color(red: 0.01, green: 0.01, blue: 0.03),
+        ],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+      )
+      RadialGradient(
+        colors: [
+          Color(red: 0.05, green: 0.47, blue: 0.62).opacity(0.34),
+          Color.clear,
+        ],
+        center: .bottomTrailing,
+        startRadius: 12,
+        endRadius: 360
+      )
+      RadialGradient(
+        colors: [
+          Color(red: 0.20, green: 0.12, blue: 0.46).opacity(0.24),
+          Color.clear,
+        ],
+        center: .topLeading,
+        startRadius: 0,
+        endRadius: 280
+      )
+    }
+  }
+}
+
+private struct VectorLoginBrand: View {
+  var body: some View {
+    HStack(spacing: 6) {
+      Image("VectorLogo")
+        .resizable()
+        .scaledToFit()
+        .frame(width: 15, height: 15)
+      Text("Vector")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.white)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("Vector")
+  }
+}
+
+private struct VectorLoginField: View {
+  let title: String
+  @Binding var text: String
+  let prompt: String
+  let keyboard: VectorSetupKeyboard
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text(title)
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.white.opacity(0.72))
+        .lineLimit(1)
+      TextField(prompt, text: $text)
+        .vectorSetupKeyboard(keyboard)
+        .font(.caption)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .frame(height: 34)
+        .background(Color.white.opacity(0.085), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .stroke(Color.white.opacity(0.16), lineWidth: 0.5)
+        )
+    }
+  }
+}
+
+private struct VectorLoginSecureField: View {
+  @Binding var text: String
+  let onSubmit: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      Text("Password")
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.white.opacity(0.72))
+      SecureField("Your password", text: $text)
+        .textContentType(.password)
+        .submitLabel(.go)
+        .onSubmit(onSubmit)
+        .font(.caption)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 9)
+        .frame(height: 34)
+        .background(Color.white.opacity(0.085), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: 6, style: .continuous)
+            .stroke(Color.white.opacity(0.16), lineWidth: 0.5)
+        )
+    }
+  }
+}
+
+private enum VectorSetupKeyboard {
+  case url
+  case email
+  case plain
+}
+
+private extension View {
+  @ViewBuilder
+  func vectorSetupKeyboard(_ keyboard: VectorSetupKeyboard) -> some View {
+    #if os(iOS)
+      switch keyboard {
+      case .url:
+        self
+          .keyboardType(.URL)
+          .textContentType(.URL)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+      case .email:
+        self
+          .keyboardType(.emailAddress)
+          .textContentType(.username)
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+      case .plain:
+        self
+          .textInputAutocapitalization(.never)
+          .autocorrectionDisabled()
+      }
+    #else
+      self
+    #endif
+  }
+}
+
+private struct VectorLogoMark: View {
+  let size: CGFloat
+
+  var body: some View {
+    Image("VectorLogo")
+      .resizable()
+      .scaledToFit()
+      .padding(size * 0.24)
+      .frame(width: size, height: size)
+      .background(
+        Color.black,
+        in: RoundedRectangle(cornerRadius: min(size * 0.18, 8), style: .continuous)
+      )
+      .accessibilityLabel("Vector")
+  }
+}
+
+private struct CompactSearchField: View {
+  @Binding var text: String
+  let prompt: String
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+      TextField(prompt, text: $text)
+        .font(.subheadline)
+        .vectorSetupKeyboard(.plain)
+    }
+    .padding(.horizontal, 10)
+    .frame(height: 34)
+    .background(VectorTheme.rowBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+    .vectorShadowRing(cornerRadius: 7)
+  }
+}
+
+private struct CompactSegmentedControl<Option: Hashable>: View {
+  let options: [Option]
+  @Binding var selection: Option
+  let label: (Option) -> String
+
+  var body: some View {
+    HStack(spacing: 0) {
+      ForEach(options, id: \.self) { option in
+        Button {
+          selection = option
+        } label: {
+          Text(label(option))
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+            .frame(height: 30)
+            .foregroundStyle(selection == option ? Color.primary : Color.secondary)
+            .background(selection == option ? VectorTheme.rowBackground : Color.clear)
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(2)
+    .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
   }
 }
 
@@ -57,29 +451,22 @@ struct IssuesScreen: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      Picker("Scope", selection: $viewModel.issueScope) {
-        ForEach(VectorIssueScope.allCases) { scope in
-          Text(scope.label).tag(scope)
-        }
+      VStack(spacing: 8) {
+        CompactSearchField(text: $searchText, prompt: "Search issues")
+        CompactSegmentedControl(options: VectorIssueScope.allCases, selection: $viewModel.issueScope) { $0.label }
+          .onChange(of: viewModel.issueScope) {
+            viewModel.refresh()
+          }
+        CompactSegmentedControl(options: VectorIssueLayoutMode.allCases, selection: $viewModel.issueLayoutMode) { $0.label }
       }
-      .pickerStyle(.segmented)
-      .padding([.horizontal, .top], 12)
-      .onChange(of: viewModel.issueScope) {
-        viewModel.refresh()
-      }
-
-      Picker("Layout", selection: $viewModel.issueLayoutMode) {
-        ForEach(VectorIssueLayoutMode.allCases) { mode in
-          Text(mode.label).tag(mode)
-        }
-      }
-      .pickerStyle(.segmented)
       .padding(12)
 
       content
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     .background(VectorTheme.groupedBackground)
     .navigationTitle("Issues")
+    .vectorInlineNavigationTitle()
     .toolbar {
       ToolbarItem(placement: .primaryAction) {
         Link(destination: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")) {
@@ -88,7 +475,6 @@ struct IssuesScreen: View {
         .accessibilityLabel("Open issues on web")
       }
     }
-    .searchable(text: $searchText, prompt: "Search issues")
   }
 
   @ViewBuilder private var content: some View {
@@ -114,15 +500,25 @@ struct IssueList: View {
   @ObservedObject var viewModel: VectorMobileViewModel
 
   var body: some View {
-    List(issues, id: \.rowId) { issue in
-      NavigationLink {
-        IssueDetailScreen(issue: issue, viewModel: viewModel)
-      } label: {
-        IssueRowView(issue: issue)
+    ScrollView {
+      LazyVStack(spacing: 0) {
+        ForEach(issues, id: \.rowId) { issue in
+          NavigationLink {
+            IssueDetailScreen(issue: issue, viewModel: viewModel)
+          } label: {
+            IssueRowView(issue: issue)
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+              .contentShape(Rectangle())
+          }
+          .buttonStyle(.plain)
+
+          Divider()
+            .padding(.leading, 12)
+        }
       }
-      .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
     }
-    .listStyle(.plain)
+    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -137,8 +533,8 @@ struct IssueBoard: View {
   }
 
   var body: some View {
-    ScrollView(.horizontal) {
-      HStack(alignment: .top, spacing: 12) {
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: 14) {
         ForEach(groups, id: \.0) { group in
           VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
@@ -158,7 +554,7 @@ struct IssueBoard: View {
               .buttonStyle(.plain)
             }
           }
-          .frame(width: 280, alignment: .topLeading)
+          .frame(maxWidth: .infinity, alignment: .topLeading)
         }
       }
       .padding(12)
@@ -183,20 +579,34 @@ struct IssueTimeline: View {
   }
 
   var body: some View {
-    List {
-      ForEach(groups, id: \.0) { group in
-        Section(group.0) {
+    ScrollView {
+      LazyVStack(alignment: .leading, spacing: 0, pinnedViews: []) {
+        ForEach(groups, id: \.0) { group in
+          Text(group.0)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
+
           ForEach(group.1, id: \.rowId) { issue in
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
               TimelineIssueRow(issue: issue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+
+            Divider()
+              .padding(.leading, 12)
           }
         }
       }
     }
-    .listStyle(.plain)
+    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -276,10 +686,7 @@ struct IssueBoardCard: View {
     }
     .padding(10)
     .background(VectorTheme.rowBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8, style: .continuous)
-        .stroke(VectorTheme.border.opacity(0.35), lineWidth: 0.5)
-    )
+    .vectorShadowRing(cornerRadius: 8)
   }
 }
 
@@ -413,29 +820,25 @@ struct ProjectsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
 
   var body: some View {
-    List(viewModel.projects) { project in
-      NavigationLink {
-        ProjectDetailScreen(project: project, viewModel: viewModel)
-      } label: {
-        ProjectRow(project: project)
-      }
-    }
-    .listStyle(.plain)
-    .navigationTitle("Projects")
-    .toolbar {
-      ToolbarItem(placement: .principal) {
-        Picker("Scope", selection: $viewModel.projectScope) {
-          ForEach(VectorProjectScope.allCases) { scope in
-            Text(scope.label).tag(scope)
-          }
-        }
-        .pickerStyle(.segmented)
-        .frame(width: 180)
+    VStack(spacing: 0) {
+      CompactSegmentedControl(options: VectorProjectScope.allCases, selection: $viewModel.projectScope) { $0.label }
+        .padding(12)
         .onChange(of: viewModel.projectScope) {
           viewModel.refresh()
         }
+
+      List(viewModel.projects) { project in
+        NavigationLink {
+          ProjectDetailScreen(project: project, viewModel: viewModel)
+        } label: {
+          ProjectRow(project: project)
+        }
       }
+      .listStyle(.plain)
     }
+    .background(VectorTheme.groupedBackground)
+    .navigationTitle("Projects")
+    .vectorInlineNavigationTitle()
   }
 }
 
@@ -480,13 +883,8 @@ struct ProjectDetailScreen: View {
         title: project.name,
         subtitle: project.description ?? project.key
       )
-      Picker("Project section", selection: $tab) {
-        Text("Issues").tag("issues")
-        Text("Activity").tag("activity")
-        Text("Members").tag("members")
-      }
-      .pickerStyle(.segmented)
-      .padding()
+      CompactSegmentedControl(options: ["issues", "activity", "members"], selection: $tab) { $0.capitalized }
+        .padding()
 
       List {
         if tab == "issues" {
@@ -528,6 +926,7 @@ struct TeamsScreen: View {
     }
     .listStyle(.plain)
     .navigationTitle("Teams")
+    .vectorInlineNavigationTitle()
   }
 }
 
@@ -572,14 +971,8 @@ struct TeamDetailScreen: View {
         title: team.name,
         subtitle: team.description ?? team.key
       )
-      Picker("Team section", selection: $tab) {
-        Text("Issues").tag("issues")
-        Text("Projects").tag("projects")
-        Text("Members").tag("members")
-        Text("Activity").tag("activity")
-      }
-      .pickerStyle(.segmented)
-      .padding()
+      CompactSegmentedControl(options: ["issues", "projects", "members", "activity"], selection: $tab) { $0.capitalized }
+        .padding()
 
       List {
         if tab == "issues" {
@@ -643,9 +1036,32 @@ struct EntityHeader: View {
 
 struct MobileSettingsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
 
   var body: some View {
     List {
+      Section("Account") {
+        HStack {
+          Label(sessionController.user?.displayName ?? "Signed in", systemImage: "person.crop.circle")
+          Spacer()
+          if sessionController.isDemoMode {
+            Text("Preview")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+        }
+        Button(role: .destructive) {
+          sessionController.signOut()
+        } label: {
+          Label(sessionController.isDemoMode ? "Exit preview" : "Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+        }
+      }
+
+      Section("Instance") {
+        LabeledContent("App URL", value: viewModel.configuration.webBaseURL.absoluteString)
+        LabeledContent("Workspace", value: viewModel.configuration.orgSlug)
+      }
+
       Section("Mobile") {
         NavigationLink {
           PersonalSettingsPreview()

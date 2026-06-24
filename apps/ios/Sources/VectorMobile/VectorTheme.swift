@@ -94,4 +94,22 @@ extension View {
     self
     #endif
   }
+
+  func vectorShadowRing(cornerRadius: CGFloat = 8) -> some View {
+    self
+      .overlay(
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+          .stroke(VectorTheme.border.opacity(0.22), lineWidth: 0.5)
+      )
+      .shadow(color: Color.black.opacity(0.055), radius: 10, x: 0, y: 5)
+  }
+
+  @ViewBuilder
+  func vectorHiddenNavigationBar() -> some View {
+    #if os(iOS)
+    toolbar(.hidden, for: .navigationBar)
+    #else
+    self
+    #endif
+  }
 }

@@ -1,8 +1,9 @@
 import Combine
-import ConvexMobile
+@preconcurrency import ConvexMobile
 import Foundation
 
 public enum VectorConvexFunctions {
+  public static let getOrganizations = "users:getOrganizations"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
   public static let getIssueByKey = "issues/queries:getByKey"
   public static let listComments = "issues/queries:listComments"
