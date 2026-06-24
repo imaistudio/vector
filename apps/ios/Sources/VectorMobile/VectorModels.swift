@@ -37,17 +37,30 @@ public struct VectorOrganization: Decodable, Equatable, Identifiable, Sendable {
   public let id: VectorID
   public let name: String
   public let slug: String
+  public let logo: String?
 
-  public init(id: VectorID, name: String, slug: String) {
+  public init(id: VectorID, name: String, slug: String, logo: String? = nil) {
     self.id = id
     self.name = name
     self.slug = slug
+    self.logo = logo
   }
 
   private enum CodingKeys: String, CodingKey {
     case id = "_id"
     case name
     case slug
+    case logo
+  }
+
+  public func logoURL(baseURL: URL) -> URL? {
+    guard let logo = logo?.trimmingCharacters(in: .whitespacesAndNewlines), !logo.isEmpty else {
+      return nil
+    }
+    if let url = URL(string: logo), url.scheme != nil {
+      return url
+    }
+    return baseURL.appending(path: "/api/files/\(logo)")
   }
 }
 
@@ -1182,9 +1195,29 @@ public struct VectorPaginatedPage<Item: Decodable>: Decodable {
   public let page: [Item]
   public let continueCursor: String
   public let isDone: Bool
+
+  public init(page: [Item], continueCursor: String = "", isDone: Bool) {
+    self.page = page
+    self.continueCursor = continueCursor
+    self.isDone = isDone
+  }
+
+  public var nextCursor: String? {
+    let cursor = continueCursor.trimmingCharacters(in: .whitespacesAndNewlines)
+    return isDone || cursor.isEmpty ? nil : cursor
+  }
 }
 
 public struct VectorOrgActivityPage: Decodable {
   public let items: [VectorActivityItem]
   public let nextCursor: String?
+
+  public init(items: [VectorActivityItem], nextCursor: String? = nil) {
+    self.items = items
+    self.nextCursor = nextCursor
+  }
+
+  public var isDone: Bool {
+    nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+  }
 }

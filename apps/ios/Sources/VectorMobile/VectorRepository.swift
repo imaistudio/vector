@@ -131,15 +131,15 @@ public enum VectorIssueLayoutMode: String, CaseIterable, Identifiable {
 
 @MainActor
 public protocol VectorMobileRepository {
-  func issues(orgSlug: String, scope: VectorIssueScope, pageSize: Int) -> AnyPublisher<[VectorIssueRow], Error>
+  func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error>
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
-  func projects(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorProject], Error>
-  func teams(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorTeam], Error>
+  func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
+  func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error>
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error>
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
-  func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error>
+  func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorOrgActivityPage, Error>
   func userStatus() -> AnyPublisher<VectorUserStatus?, Error>
   func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error>
   func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error>
@@ -173,20 +173,20 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     self.init(client: ConvexClient(deploymentUrl: configuration.convexDeploymentURL.absoluteString))
   }
 
-  public func issues(
+  public func issuesPage(
     orgSlug: String,
     scope: VectorIssueScope = .mine,
-    pageSize: Int = 30
-  ) -> AnyPublisher<[VectorIssueRow], Error> {
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
     let args: [String: ConvexEncodable?] = [
       "orgSlug": orgSlug,
       "scope": scope.rawValue,
-      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
     ]
 
     return client
       .subscribe(to: VectorConvexFunctions.listIssuesPage, with: args, yielding: VectorPaginatedPage<VectorIssueRow>.self)
-      .map(\.page)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -205,38 +205,38 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
-  public func projects(
+  public func projectsPage(
     orgSlug: String,
     scope: VectorProjectScope = .mine,
-    pageSize: Int = 30
-  ) -> AnyPublisher<[VectorProject], Error> {
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error> {
     let args: [String: ConvexEncodable?] = [
       "orgSlug": orgSlug,
       "scope": scope.rawValue,
-      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
     ]
 
     return client
       .subscribe(to: VectorConvexFunctions.listProjectsPage, with: args, yielding: VectorPaginatedPage<VectorProject>.self)
-      .map(\.page)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
 
-  public func teams(
+  public func teamsPage(
     orgSlug: String,
     scope: VectorProjectScope = .mine,
-    pageSize: Int = 30
-  ) -> AnyPublisher<[VectorTeam], Error> {
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error> {
     let args: [String: ConvexEncodable?] = [
       "orgSlug": orgSlug,
       "scope": scope.rawValue,
-      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize),
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
     ]
 
     return client
       .subscribe(to: VectorConvexFunctions.listTeamsPage, with: args, yielding: VectorPaginatedPage<VectorTeam>.self)
-      .map(\.page)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -279,15 +279,17 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
-  public func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
-    let args: [String: ConvexEncodable?] = [
+  public func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String? = nil) -> AnyPublisher<VectorOrgActivityPage, Error> {
+    var args: [String: ConvexEncodable?] = [
       "orgSlug": orgSlug,
       "limit": Double(pageSize),
     ]
+    if let cursor {
+      args["cursor"] = cursor
+    }
 
     return client
       .subscribe(to: VectorConvexFunctions.listOrgActivity, with: args, yielding: VectorOrgActivityPage.self)
-      .map(\.items)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -467,12 +469,13 @@ public final class ConvexVectorRepository: VectorMobileRepository {
 public final class MockVectorRepository: VectorMobileRepository {
   public init() {}
 
-  public func issues(
+  public func issuesPage(
     orgSlug: String,
     scope: VectorIssueScope,
-    pageSize: Int
-  ) -> AnyPublisher<[VectorIssueRow], Error> {
-    Just(Array(VectorMockData.issues.prefix(pageSize)))
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
+    mockPage(VectorMockData.issues, pageSize: pageSize, cursor: cursor)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -483,22 +486,24 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
-  public func projects(
+  public func projectsPage(
     orgSlug: String,
     scope: VectorProjectScope,
-    pageSize: Int
-  ) -> AnyPublisher<[VectorProject], Error> {
-    Just(Array(VectorMockData.projects.prefix(pageSize)))
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error> {
+    mockPage(VectorMockData.projects, pageSize: pageSize, cursor: cursor)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
 
-  public func teams(
+  public func teamsPage(
     orgSlug: String,
     scope: VectorProjectScope,
-    pageSize: Int
-  ) -> AnyPublisher<[VectorTeam], Error> {
-    Just(Array(VectorMockData.teams.prefix(pageSize)))
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error> {
+    mockPage(VectorMockData.teams, pageSize: pageSize, cursor: cursor)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -544,8 +549,13 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
-  public func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
-    Just(Array(VectorMockData.activityItems.prefix(pageSize)))
+  public func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorOrgActivityPage, Error> {
+    let start = min(cursor.flatMap(Int.init) ?? 0, VectorMockData.activityItems.count)
+    let end = min(start + pageSize, VectorMockData.activityItems.count)
+    let items = Array(VectorMockData.activityItems[start..<end])
+    let nextCursor = end < VectorMockData.activityItems.count ? String(end) : nil
+
+    return Just(VectorOrgActivityPage(items: items, nextCursor: nextCursor))
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -603,4 +613,17 @@ public final class MockVectorRepository: VectorMobileRepository {
   public func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
   public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {}
+
+  private func mockPage<Item: Decodable>(_ items: [Item], pageSize: Int, cursor: String?) -> Just<VectorPaginatedPage<Item>> {
+    let start = min(cursor.flatMap(Int.init) ?? 0, items.count)
+    let end = min(start + pageSize, items.count)
+    let page = Array(items[start..<end])
+    return Just(
+      VectorPaginatedPage(
+        page: page,
+        continueCursor: end < items.count ? String(end) : "",
+        isDone: end >= items.count
+      )
+    )
+  }
 }

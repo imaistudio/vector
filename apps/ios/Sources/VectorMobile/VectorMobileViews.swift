@@ -496,6 +496,33 @@ private struct VectorEmptyState: View {
   }
 }
 
+private struct PagingTrigger: View {
+  let canLoadMore: Bool
+  let isLoading: Bool
+  let action: () -> Void
+
+  var body: some View {
+    Group {
+      if canLoadMore || isLoading {
+        HStack {
+          if isLoading {
+            ProgressView()
+              .controlSize(.small)
+              .tint(VectorTheme.accent)
+          }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 44)
+        .onAppear {
+          if canLoadMore {
+            action()
+          }
+        }
+      }
+    }
+  }
+}
+
 struct InboxScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
@@ -519,6 +546,12 @@ struct InboxScreen: View {
               viewModel: viewModel
             )
           }
+
+          PagingTrigger(
+            canLoadMore: viewModel.canLoadMoreInboxActivity,
+            isLoading: viewModel.isLoadingMoreInboxActivity,
+            action: viewModel.loadMoreInboxActivity
+          )
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
@@ -537,6 +570,7 @@ struct InboxScreen: View {
         WorkspaceToolbarMenu(
           sessionController: sessionController,
           currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
           issuesURL: viewModel.configuration.workspaceWebURL,
           webLabel: "Open workspace on web"
         )
@@ -555,6 +589,7 @@ struct InboxScreen: View {
         WorkspaceToolbarMenu(
           sessionController: sessionController,
           currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
           issuesURL: viewModel.configuration.workspaceWebURL,
           webLabel: "Open workspace on web"
         )
@@ -788,13 +823,17 @@ struct IssuesScreen: View {
   @FocusState private var isSearchFocused: Bool
 
   private var filteredIssues: [VectorIssueRow] {
-    guard !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    guard isSearchActive else {
       return viewModel.issues
     }
     return viewModel.issues.filter {
       $0.key.localizedCaseInsensitiveContains(searchText)
         || $0.title.localizedCaseInsensitiveContains(searchText)
     }
+  }
+
+  private var isSearchActive: Bool {
+    !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   var body: some View {
@@ -842,6 +881,7 @@ struct IssuesScreen: View {
         WorkspaceToolbarMenu(
           sessionController: sessionController,
           currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
           issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")
         )
       }
@@ -850,6 +890,7 @@ struct IssuesScreen: View {
         WorkspaceToolbarMenu(
           sessionController: sessionController,
           currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
           issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")
         )
       }
@@ -893,11 +934,11 @@ struct IssuesScreen: View {
     } else {
       switch viewModel.issueLayoutMode {
       case .list:
-        IssueList(issues: filteredIssues, viewModel: viewModel)
+        IssueList(issues: filteredIssues, viewModel: viewModel, allowsPaging: !isSearchActive)
       case .board:
-        IssueBoard(issues: filteredIssues, viewModel: viewModel)
+        IssueBoard(issues: filteredIssues, viewModel: viewModel, allowsPaging: !isSearchActive)
       case .timeline:
-        IssueTimeline(issues: filteredIssues, viewModel: viewModel)
+        IssueTimeline(issues: filteredIssues, viewModel: viewModel, allowsPaging: !isSearchActive)
       }
     }
   }
@@ -906,11 +947,16 @@ struct IssuesScreen: View {
 private struct WorkspaceToolbarMenu: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   let currentOrgSlug: String
+  let webBaseURL: URL
   let issuesURL: URL
   var webLabel = "Open issues on web"
 
+  private var currentWorkspace: VectorOrganization? {
+    sessionController.organizations.first { $0.slug == currentOrgSlug }
+  }
+
   private var currentWorkspaceName: String {
-    sessionController.organizations.first { $0.slug == currentOrgSlug }?.name ?? currentOrgSlug
+    currentWorkspace?.name ?? currentOrgSlug
   }
 
   var body: some View {
@@ -922,7 +968,11 @@ private struct WorkspaceToolbarMenu: View {
         webLabel: webLabel
       )
     } label: {
-      WorkspaceAvatarIcon(name: currentWorkspaceName, size: 28)
+      WorkspaceAvatarIcon(
+        name: currentWorkspaceName,
+        logoURL: currentWorkspace?.logoURL(baseURL: webBaseURL),
+        size: 28
+      )
     }
     .accessibilityLabel("Workspace menu")
   }
@@ -930,6 +980,7 @@ private struct WorkspaceToolbarMenu: View {
 
 private struct WorkspaceAvatarIcon: View {
   let name: String
+  let logoURL: URL?
   var size: CGFloat = 26
 
   private var initial: String {
@@ -938,17 +989,34 @@ private struct WorkspaceAvatarIcon: View {
 
   var body: some View {
     ZStack {
-      RoundedRectangle(cornerRadius: min(size * 0.26, 8), style: .continuous)
+      Circle()
         .fill(VectorTheme.accent.opacity(0.14))
         .overlay(
-          RoundedRectangle(cornerRadius: min(size * 0.26, 8), style: .continuous)
+          Circle()
             .stroke(VectorTheme.accent.opacity(0.28), lineWidth: 0.8)
         )
-      Text(initial)
-        .font(.system(size: max(11, size * 0.44), weight: .semibold))
-        .foregroundStyle(VectorTheme.accent)
+
+      if let logoURL {
+        AsyncImage(url: logoURL) { phase in
+          switch phase {
+          case let .success(image):
+            image
+              .resizable()
+              .scaledToFill()
+          default:
+            Text(initial)
+              .font(.system(size: max(11, size * 0.44), weight: .semibold))
+              .foregroundStyle(VectorTheme.accent)
+          }
+        }
+      } else {
+        Text(initial)
+          .font(.system(size: max(11, size * 0.44), weight: .semibold))
+          .foregroundStyle(VectorTheme.accent)
+      }
     }
     .frame(width: size, height: size)
+    .clipShape(Circle())
   }
 }
 
@@ -1121,6 +1189,7 @@ private extension VectorIssueLayoutMode {
 struct IssueList: View {
   let issues: [VectorIssueRow]
   @ObservedObject var viewModel: VectorMobileViewModel
+  let allowsPaging: Bool
 
   var body: some View {
     ScrollView {
@@ -1143,6 +1212,12 @@ struct IssueList: View {
           Divider()
             .padding(.leading, 12)
         }
+
+        PagingTrigger(
+          canLoadMore: allowsPaging && viewModel.canLoadMoreIssues,
+          isLoading: allowsPaging && viewModel.isLoadingMoreIssues,
+          action: viewModel.loadMoreIssues
+        )
       }
     }
     .background(VectorTheme.rowBackground)
@@ -1152,6 +1227,7 @@ struct IssueList: View {
 struct IssueBoard: View {
   let issues: [VectorIssueRow]
   @ObservedObject var viewModel: VectorMobileViewModel
+  let allowsPaging: Bool
 
   private var groups: [(name: String, position: Double, status: VectorIssueMetadataValue, rows: [VectorIssueRow])] {
     let options = viewModel.workspaceOptions
@@ -1191,33 +1267,48 @@ struct IssueBoard: View {
 
   var body: some View {
     ScrollView {
-      LazyVStack(alignment: .leading, spacing: 14) {
-        ForEach(groups, id: \.name) { group in
-          VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-              Image(systemName: vectorSystemImage(for: group.status.icon))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(vectorHex: group.status.color))
-              Text(group.name)
-                .font(.subheadline.weight(.semibold))
-              Text("\(group.rows.count)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            ForEach(group.rows, id: \.rowId) { issue in
-              NavigationLink {
-                IssueDetailScreen(issue: issue, viewModel: viewModel)
-              } label: {
-                IssueBoardCard(issue: issue, workspaceOptions: viewModel.workspaceOptions)
+      ScrollView(.horizontal) {
+        LazyHStack(alignment: .top, spacing: 10) {
+          ForEach(groups, id: \.name) { group in
+            VStack(alignment: .leading, spacing: 8) {
+              HStack(spacing: 6) {
+                Image(systemName: vectorSystemImage(for: group.status.icon))
+                  .font(.caption.weight(.semibold))
+                  .foregroundStyle(Color(vectorHex: group.status.color))
+                Text(group.name)
+                  .font(.subheadline.weight(.semibold))
+                Text("\(group.rows.count)")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
               }
-              .buttonStyle(.plain)
+
+              ForEach(group.rows, id: \.rowId) { issue in
+                NavigationLink {
+                  IssueDetailScreen(issue: issue, viewModel: viewModel)
+                } label: {
+                  IssueBoardCard(
+                    issue: issue,
+                    workspaceOptions: viewModel.workspaceOptions,
+                    baseURL: viewModel.configuration.webBaseURL
+                  )
+                }
+                .buttonStyle(.plain)
+              }
             }
+            .padding(10)
+            .frame(width: 282, alignment: .topLeading)
+            .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .vectorShadowRing(cornerRadius: 8)
           }
-          .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .padding(12)
       }
-      .padding(12)
+
+      PagingTrigger(
+        canLoadMore: allowsPaging && viewModel.canLoadMoreIssues,
+        isLoading: allowsPaging && viewModel.isLoadingMoreIssues,
+        action: viewModel.loadMoreIssues
+      )
     }
   }
 }
@@ -1225,6 +1316,7 @@ struct IssueBoard: View {
 struct IssueTimeline: View {
   let issues: [VectorIssueRow]
   @ObservedObject var viewModel: VectorMobileViewModel
+  let allowsPaging: Bool
 
   private var groups: [(String, [VectorIssueRow])] {
     let sorted = issues.sorted { $0.updatedAt > $1.updatedAt }
@@ -1253,7 +1345,11 @@ struct IssueTimeline: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              TimelineIssueRow(issue: issue, workspaceOptions: viewModel.workspaceOptions)
+              TimelineIssueRow(
+                issue: issue,
+                workspaceOptions: viewModel.workspaceOptions,
+                baseURL: viewModel.configuration.webBaseURL
+              )
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
@@ -1264,6 +1360,12 @@ struct IssueTimeline: View {
               .padding(.leading, 12)
           }
         }
+
+        PagingTrigger(
+          canLoadMore: allowsPaging && viewModel.canLoadMoreIssues,
+          isLoading: allowsPaging && viewModel.isLoadingMoreIssues,
+          action: viewModel.loadMoreIssues
+        )
       }
     }
     .background(VectorTheme.rowBackground)
@@ -1285,35 +1387,18 @@ struct IssueRowView: View {
 
   var body: some View {
     HStack(alignment: .center, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Text(issue.key)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .fixedSize(horizontal: true, vertical: false)
-
-        Text(issue.title)
-          .font(.subheadline.weight(.medium))
-          .foregroundStyle(.primary)
-          .lineLimit(1)
-      }
+      Text(issue.title)
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(.primary)
+        .lineLimit(1)
+        .truncationMode(.tail)
       .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
       HStack(spacing: 5) {
-        VectorPill(
-          text: status.name,
-          color: Color(vectorHex: status.color),
-          systemImage: vectorSystemImage(for: status.icon)
-        )
-        .frame(maxWidth: 86, alignment: .trailing)
+        IssueMetadataIcon(value: status, fallbackSystemImage: "circle")
 
         if let priority {
-          VectorPill(
-            text: priority.name,
-            color: Color(vectorHex: priority.color),
-            systemImage: vectorSystemImage(for: priority.icon)
-          )
-          .frame(maxWidth: 82, alignment: .trailing)
+          IssueMetadataIcon(value: priority, fallbackSystemImage: "minus")
         }
 
         IssueRowAssigneeAvatar(issue: issue, workspaceOptions: workspaceOptions, baseURL: baseURL)
@@ -1321,6 +1406,29 @@ struct IssueRowView: View {
       .layoutPriority(1)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct IssueMetadataIcon: View {
+  let value: VectorIssueMetadataValue
+  let fallbackSystemImage: String
+  var size: CGFloat = 24
+
+  private var color: Color {
+    Color(vectorHex: value.color)
+  }
+
+  var body: some View {
+    let mappedSystemImage = vectorSystemImage(for: value.icon)
+    let systemImage = mappedSystemImage == "circle.dotted" ? fallbackSystemImage : mappedSystemImage
+
+    Image(systemName: systemImage)
+      .font(.caption.weight(.semibold))
+      .foregroundStyle(color)
+      .frame(width: size, height: size)
+      .background(color.opacity(0.12), in: Circle())
+      .overlay(Circle().stroke(color.opacity(0.28), lineWidth: 0.7))
+      .accessibilityLabel(value.name)
   }
 }
 
@@ -1363,6 +1471,11 @@ private struct IssueRowAssigneeAvatar: View {
 struct IssueBoardCard: View {
   let issue: VectorIssueRow
   let workspaceOptions: VectorWorkspaceOptions?
+  let baseURL: URL
+
+  private var status: VectorIssueMetadataValue {
+    VectorIssueMetadataResolver.state(for: issue, options: workspaceOptions)
+  }
 
   private var priority: VectorIssueMetadataValue? {
     VectorIssueMetadataResolver.priority(for: issue, options: workspaceOptions)
@@ -1370,37 +1483,23 @@ struct IssueBoardCard: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 6) {
-        Text(issue.key)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-        Spacer(minLength: 8)
-        if !issue.linkedPrs.isEmpty {
-          Image(systemName: "point.3.connected.trianglepath.dotted")
-            .font(.caption)
-            .foregroundStyle(VectorTheme.accent)
-        }
-      }
-
       Text(issue.title)
         .font(.subheadline.weight(.medium))
         .foregroundStyle(.primary)
         .lineLimit(2)
 
-      if let priority {
-        VectorPill(
-          text: priority.name,
-          color: Color(vectorHex: priority.color),
-          systemImage: vectorSystemImage(for: priority.icon)
-        )
-      }
-
       HStack {
-        Text(issue.assigneeLabel)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+        IssueMetadataIcon(value: status, fallbackSystemImage: "circle", size: 22)
+        if let priority {
+          IssueMetadataIcon(value: priority, fallbackSystemImage: "minus", size: 22)
+        }
+        IssueRowAssigneeAvatar(issue: issue, workspaceOptions: workspaceOptions, baseURL: baseURL)
         Spacer()
+        if !issue.linkedPrs.isEmpty {
+          Image(systemName: "point.3.connected.trianglepath.dotted")
+            .font(.caption)
+            .foregroundStyle(VectorTheme.accent)
+        }
         if let dueDate = issue.dueDate {
           Text(dueDate)
             .font(.caption2.monospaced())
@@ -1410,32 +1509,46 @@ struct IssueBoardCard: View {
     }
     .padding(10)
     .background(VectorTheme.rowBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    .vectorShadowRing(cornerRadius: 8)
+    .overlay(
+      RoundedRectangle(cornerRadius: 8, style: .continuous)
+        .stroke(VectorTheme.border.opacity(0.28), lineWidth: 0.7)
+    )
   }
 }
 
 struct TimelineIssueRow: View {
   let issue: VectorIssueRow
   let workspaceOptions: VectorWorkspaceOptions?
+  let baseURL: URL
 
   private var status: VectorIssueMetadataValue {
     VectorIssueMetadataResolver.state(for: issue, options: workspaceOptions)
   }
 
+  private var priority: VectorIssueMetadataValue? {
+    VectorIssueMetadataResolver.priority(for: issue, options: workspaceOptions)
+  }
+
   var body: some View {
-    HStack(alignment: .top, spacing: 10) {
-      Image(systemName: vectorSystemImage(for: status.icon))
-        .font(.caption)
-        .foregroundStyle(Color(vectorHex: status.color))
-        .frame(width: 20, height: 20)
+    HStack(alignment: .center, spacing: 10) {
+      IssueMetadataIcon(value: status, fallbackSystemImage: "circle", size: 22)
 
       VStack(alignment: .leading, spacing: 4) {
         Text(issue.title)
           .font(.subheadline.weight(.medium))
-          .lineLimit(2)
-        Text("\(issue.key) updated in \(status.name)")
+          .lineLimit(1)
+        Text("Updated \(relativeTimestamp(issue.updatedAt))")
           .font(.caption)
           .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+      .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+      HStack(spacing: 5) {
+        if let priority {
+          IssueMetadataIcon(value: priority, fallbackSystemImage: "minus", size: 22)
+        }
+        IssueRowAssigneeAvatar(issue: issue, workspaceOptions: workspaceOptions, baseURL: baseURL)
       }
     }
     .padding(.vertical, 4)
@@ -2954,6 +3067,10 @@ struct WorkspaceScreen: View {
     }
   }
 
+  private var isSearchActive: Bool {
+    !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   var body: some View {
     VStack(spacing: 0) {
       VStack(spacing: 8) {
@@ -3030,12 +3147,23 @@ struct WorkspaceScreen: View {
           message: searchText.isEmpty ? "Teams from this workspace will appear here." : "Try a different team name or key."
         )
       } else {
-        List(filteredTeams) { team in
-          NavigationLink {
-            TeamDetailScreen(team: team, viewModel: viewModel)
-          } label: {
-            TeamRow(team: team)
+        List {
+          ForEach(filteredTeams) { team in
+            NavigationLink {
+              TeamDetailScreen(team: team, viewModel: viewModel)
+            } label: {
+              TeamRow(team: team)
+            }
           }
+
+          PagingTrigger(
+            canLoadMore: !isSearchActive && viewModel.canLoadMoreTeams,
+            isLoading: !isSearchActive && viewModel.isLoadingMoreTeams,
+            action: viewModel.loadMoreTeams
+          )
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+          .listRowInsets(EdgeInsets())
         }
         .listStyle(.plain)
       }
@@ -3047,12 +3175,23 @@ struct WorkspaceScreen: View {
           message: searchText.isEmpty ? "Projects from this workspace will appear here." : "Try a different project name or key."
         )
       } else {
-        List(filteredProjects) { project in
-          NavigationLink {
-            ProjectDetailScreen(project: project, viewModel: viewModel)
-          } label: {
-            ProjectRow(project: project)
+        List {
+          ForEach(filteredProjects) { project in
+            NavigationLink {
+              ProjectDetailScreen(project: project, viewModel: viewModel)
+            } label: {
+              ProjectRow(project: project)
+            }
           }
+
+          PagingTrigger(
+            canLoadMore: !isSearchActive && viewModel.canLoadMoreProjects,
+            isLoading: !isSearchActive && viewModel.isLoadingMoreProjects,
+            action: viewModel.loadMoreProjects
+          )
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+          .listRowInsets(EdgeInsets())
         }
         .listStyle(.plain)
       }
