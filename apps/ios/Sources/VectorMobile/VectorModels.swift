@@ -69,6 +69,166 @@ public struct VectorAuthenticatedUser: Codable, Equatable, Sendable {
   }
 }
 
+public enum VectorPresenceStatus: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
+  case online
+  case idle
+  case dnd
+  case invisible
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .online: "Online"
+    case .idle: "Idle"
+    case .dnd: "Do not disturb"
+    case .invisible: "Invisible"
+    }
+  }
+
+  public var systemImage: String {
+    switch self {
+    case .online: "circle.fill"
+    case .idle: "moon.fill"
+    case .dnd: "minus.circle.fill"
+    case .invisible: "circle"
+    }
+  }
+
+  public var colorHex: String {
+    switch self {
+    case .online: "#22c55e"
+    case .idle: "#f59e0b"
+    case .dnd: "#ef4444"
+    case .invisible: "#94a3b8"
+    }
+  }
+}
+
+public struct VectorUserStatus: Decodable, Equatable, Sendable {
+  public let presence: VectorPresenceStatus
+  public let customText: String?
+  public let customEmoji: String?
+  @OptionalConvexFloat private var clearsAtValue: Double?
+  @OptionalConvexFloat private var updatedAtValue: Double?
+
+  public init(
+    presence: VectorPresenceStatus,
+    customText: String? = nil,
+    customEmoji: String? = nil,
+    clearsAt: Double? = nil,
+    updatedAt: Double? = nil
+  ) {
+    self.presence = presence
+    self.customText = customText
+    self.customEmoji = customEmoji
+    self._clearsAtValue = OptionalConvexFloat(wrappedValue: clearsAt)
+    self._updatedAtValue = OptionalConvexFloat(wrappedValue: updatedAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case presence
+    case customText
+    case customEmoji
+    case clearsAtValue = "clearsAt"
+    case updatedAtValue = "updatedAt"
+  }
+
+  public var clearsAt: Double? {
+    clearsAtValue
+  }
+
+  public var updatedAt: Double? {
+    updatedAtValue
+  }
+}
+
+public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable, Identifiable, Sendable {
+  case invites
+  case assignments
+  case mentions
+  case comments
+  case workSessions = "work_sessions"
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .invites: "Invites"
+    case .assignments: "Assignments"
+    case .mentions: "Mentions"
+    case .comments: "Comments"
+    case .workSessions: "Work sessions"
+    }
+  }
+}
+
+public struct VectorNotificationPreference: Decodable, Equatable, Identifiable, Sendable {
+  public var id: VectorNotificationCategory { category }
+  public let category: VectorNotificationCategory
+  public let inAppEnabled: Bool
+  public let emailEnabled: Bool
+  public let pushEnabled: Bool
+
+  public init(
+    category: VectorNotificationCategory,
+    inAppEnabled: Bool,
+    emailEnabled: Bool,
+    pushEnabled: Bool
+  ) {
+    self.category = category
+    self.inAppEnabled = inAppEnabled
+    self.emailEnabled = emailEnabled
+    self.pushEnabled = pushEnabled
+  }
+}
+
+public struct VectorMobilePushTokenRegistration: Decodable, Equatable, Identifiable, Sendable {
+  public let id: VectorID
+  public let token: String
+  public let environment: String
+  public let platform: String
+  public let bundleId: String?
+  public let deviceLabel: String?
+  @OptionalConvexFloat private var disabledAtValue: Double?
+  @ConvexFloat public var lastSeenAt: Double
+
+  public init(
+    id: VectorID,
+    token: String,
+    environment: String,
+    platform: String = "ios",
+    bundleId: String? = nil,
+    deviceLabel: String? = nil,
+    disabledAt: Double? = nil,
+    lastSeenAt: Double
+  ) {
+    self.id = id
+    self.token = token
+    self.environment = environment
+    self.platform = platform
+    self.bundleId = bundleId
+    self.deviceLabel = deviceLabel
+    self._disabledAtValue = OptionalConvexFloat(wrappedValue: disabledAt)
+    self._lastSeenAt = ConvexFloat(wrappedValue: lastSeenAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case token
+    case environment
+    case platform
+    case bundleId
+    case deviceLabel
+    case disabledAtValue = "disabledAt"
+    case lastSeenAt
+  }
+
+  public var disabledAt: Double? {
+    disabledAtValue
+  }
+}
+
 public struct VectorUser: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let name: String?

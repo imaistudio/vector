@@ -30,6 +30,17 @@ The Convex Swift SDK package currently ships an arm64 Simulator slice but not an
 
 The package pins `ConvexMobile` to `0.8.1`. Keep that exact pin until the auth and live-data slices are stable; the Swift SDK is still pre-1.0 and has shipped breaking auth-provider changes. This app uses `ConvexClientWithAuth`, so reconnects and forced token refreshes go through the SDK auth-provider callback instead of relying on a one-time token.
 
+## Push Notifications
+
+The app includes the Apple Push Notifications entitlement and registers APNs tokens from the native settings screen. Debug Simulator/device builds register sandbox tokens; Release/TestFlight builds register production tokens. The Convex deployment that sends notifications must have these environment variables set:
+
+- `APNS_TEAM_ID`
+- `APNS_KEY_ID`
+- `APNS_PRIVATE_KEY`
+- `APNS_TOPIC` or `APNS_BUNDLE_ID` set to the iOS bundle ID
+
+The Apple Developer bundle identifier and App Store provisioning profile must also have Push Notifications enabled, otherwise TestFlight can install the app but APNs registration or delivery will fail.
+
 ## CI, Signing, and TestFlight
 
 The `iOS` GitHub workflow runs package tests and an app target Simulator build for changes under `apps/ios`. The manual signed-archive job imports Apple signing material into a temporary keychain, stamps the archive build number from the GitHub run number, exports an App Store Connect IPA, and can upload it to TestFlight.

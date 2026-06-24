@@ -20,7 +20,15 @@ public enum VectorConvexFunctions {
   public static let listTeamsPage = "teams/queries:listPage"
   public static let getTeamByKey = "teams/queries:getByKey"
   public static let getWorkspaceOptions = "organizations/queries:getWorkspaceOptions"
+  public static let getCurrentUserStatus = "status:getCurrentUserStatus"
+  public static let setPresence = "status:setPresence"
   public static let setCustomStatus = "status:setCustomStatus"
+  public static let clearCustomStatus = "status:clearCustomStatus"
+  public static let getNotificationPreferences = "notifications/queries:getPreferences"
+  public static let listMobilePushTokens = "notifications/queries:listMobilePushTokens"
+  public static let updateNotificationPreferences = "notifications/mutations:updatePreferences"
+  public static let upsertMobilePushToken = "notifications/mutations:upsertMobilePushToken"
+  public static let removeMobilePushToken = "notifications/mutations:removeMobilePushToken"
 }
 
 enum VectorConvexArguments {
@@ -93,6 +101,15 @@ public protocol VectorMobileRepository {
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
+  func userStatus() -> AnyPublisher<VectorUserStatus?, Error>
+  func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error>
+  func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error>
+  func setPresence(_ presence: VectorPresenceStatus) async throws
+  func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws
+  func clearCustomStatus() async throws
+  func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws
+  func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws
+  func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
 }
 
 @MainActor
@@ -189,6 +206,96 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
+    client
+      .subscribe(to: VectorConvexFunctions.getCurrentUserStatus, yielding: VectorUserStatus?.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
+    client
+      .subscribe(to: VectorConvexFunctions.getNotificationPreferences, yielding: [VectorNotificationPreference].self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error> {
+    client
+      .subscribe(to: VectorConvexFunctions.listMobilePushTokens, yielding: [VectorMobilePushTokenRegistration].self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func setPresence(_ presence: VectorPresenceStatus) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.setPresence,
+      with: ["presence": presence.rawValue]
+    )
+  }
+
+  public func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws {
+    var args: [String: ConvexEncodable?] = [:]
+    if let text {
+      args["customText"] = text
+    }
+    if let emoji {
+      args["customEmoji"] = emoji
+    }
+    if let clearsAt {
+      args["clearsAt"] = clearsAt
+    }
+
+    try await client.mutation(
+      VectorConvexFunctions.setCustomStatus,
+      with: args
+    )
+  }
+
+  public func clearCustomStatus() async throws {
+    try await client.mutation(VectorConvexFunctions.clearCustomStatus)
+  }
+
+  public func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.updateNotificationPreferences,
+      with: [
+        "category": preference.category.rawValue,
+        "inAppEnabled": preference.inAppEnabled,
+        "emailEnabled": preference.emailEnabled,
+        "pushEnabled": preference.pushEnabled,
+      ]
+    )
+  }
+
+  public func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {
+    var args: [String: ConvexEncodable?] = [
+      "token": token.value,
+      "environment": token.environment,
+    ]
+    if let bundleId {
+      args["bundleId"] = bundleId
+    }
+    if let deviceLabel {
+      args["deviceLabel"] = deviceLabel
+    }
+
+    try await client.mutation(
+      VectorConvexFunctions.upsertMobilePushToken,
+      with: args
+    )
+  }
+
+  public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {
+    try await client.mutation(
+      VectorConvexFunctions.removeMobilePushToken,
+      with: [
+        "token": token.value,
+        "environment": token.environment,
+      ]
+    )
+  }
+
   public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {
     try await client.mutation(
       VectorConvexFunctions.changeWorkflowState,
@@ -275,4 +382,39 @@ public final class MockVectorRepository: VectorMobileRepository {
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
+
+  public func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
+    Just(VectorUserStatus(presence: .online, customText: "Building Vector iOS", customEmoji: "V", updatedAt: Date().timeIntervalSince1970 * 1000))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
+    Just([
+      VectorNotificationPreference(category: .assignments, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
+      VectorNotificationPreference(category: .mentions, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
+      VectorNotificationPreference(category: .comments, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
+      VectorNotificationPreference(category: .workSessions, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
+    ])
+    .setFailureType(to: Error.self)
+    .eraseToAnyPublisher()
+  }
+
+  public func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error> {
+    Just([])
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func setPresence(_ presence: VectorPresenceStatus) async throws {}
+
+  public func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws {}
+
+  public func clearCustomStatus() async throws {}
+
+  public func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws {}
+
+  public func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
+
+  public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
 }

@@ -4,7 +4,7 @@ This repo now has the same signing shape as Cells: CI imports Apple signing mate
 
 ## Current State
 
-The first iOS increment is still a Swift package, not a runnable app target. The `iOS` workflow can already run package tests and simulator builds. The signed archive and TestFlight upload job is ready, but it will intentionally fail with a clear message until an Xcode app target such as `apps/ios/Vector.xcodeproj` is added.
+The iOS increment now includes a Swift package and a runnable `apps/ios/Vector.xcodeproj` app target. The `iOS` workflow runs package tests, a Simulator app build, and can produce a signed App Store Connect IPA for TestFlight.
 
 The signing setup is intended for GitHub-hosted or otherwise ephemeral macOS runners. It imports certificates into the user keychain search list and installs a provisioning profile under `~/Library/MobileDevice`, so do not run it unchanged on a shared self-hosted runner.
 
@@ -17,6 +17,7 @@ The signing setup is intended for GitHub-hosted or otherwise ephemeral macOS run
 5. Export that certificate and private key as a `.p12` from Keychain Access.
 6. Create an App Store provisioning profile for the bundle ID and distribution certificate.
 7. Create an App Store Connect API key with enough access to upload builds, usually Developer or App Manager.
+8. Enable the Push Notifications capability for the bundle identifier if mobile push delivery should work.
 
 ## GitHub Secrets
 
@@ -32,6 +33,13 @@ Set these repository secrets before running a signed archive:
 Optional:
 
 - `APPLE_TEAM_ID`: Apple Developer team ID. If omitted, CI tries to read the team from the provisioning profile.
+
+Convex push delivery also requires deployment environment variables:
+
+- `APNS_TEAM_ID`: Apple Developer team ID.
+- `APNS_KEY_ID`: Apple Push Notifications Auth Key ID.
+- `APNS_PRIVATE_KEY`: Raw `.p8` key contents. Escaped `\n` line breaks are accepted.
+- `APNS_TOPIC` or `APNS_BUNDLE_ID`: Bundle ID, currently `studio.imai.vector`.
 
 Useful commands for creating the base64 secrets:
 
@@ -60,8 +68,13 @@ The workflow uploads the `.xcarchive` and `.ipa` as GitHub artifacts even when `
 
 ## Simulator Testing
 
-Simulator testing is blocked until the runnable app target exists. Once it does, the next slice should:
+The app target can be installed and launched in Simulator after a local build:
 
-- Add an app scheme that installs on iOS Simulator.
-- Add a UI smoke-test workflow step using `xcodebuild test` or `xcodebuild build` plus `simctl install/launch`.
-- Use the Simulator through the Computer Use plugin for visual checks of the SwiftUI shell before merging UI-heavy slices.
+```bash
+cd apps/ios
+xcodebuild -project Vector.xcodeproj -scheme Vector -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/vector-ios-derived CODE_SIGNING_ALLOWED=NO build
+xcrun simctl install booted /tmp/vector-ios-derived/Build/Products/Debug-iphonesimulator/Vector.app
+xcrun simctl launch booted studio.imai.vector
+```
+
+Use the Simulator through the Computer Use plugin for visual checks of SwiftUI UI slices before merging UI-heavy changes.

@@ -518,12 +518,18 @@ public final class VectorMobileSessionController: ObservableObject {
 
   public func signOut() {
     let client = convexClient
+    let viewModel = viewModel
+    let pushToken = VectorPushNotificationCoordinator.shared.deviceToken
     Task {
+      if let pushToken {
+        await viewModel?.unregisterMobilePushToken(pushToken)
+      }
       if let authClient = client as? ConvexClientWithAuth<VectorBetterAuthData> {
         await authClient.logout()
       }
       try? sessionStore.clear()
       await MainActor.run {
+        VectorPushNotificationCoordinator.shared.clearRegistration()
         self.convexClient = nil
         self.viewModel = nil
         self.user = nil
