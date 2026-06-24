@@ -31,10 +31,18 @@ private struct AuthenticatedVectorMobileView: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
   @StateObject private var pushCoordinator = VectorPushNotificationCoordinator.shared
-  @State private var selectedTab: VectorMobileTab = .issues
+  @State private var selectedTab: VectorMobileTab = .inbox
 
   var body: some View {
     TabView(selection: $selectedTab) {
+      NavigationStack {
+        InboxScreen(viewModel: viewModel, sessionController: sessionController)
+      }
+      .tabItem {
+        Label(VectorMobileTab.inbox.title, systemImage: VectorMobileTab.inbox.systemImage)
+      }
+      .tag(VectorMobileTab.inbox)
+
       NavigationStack {
         IssuesScreen(viewModel: viewModel, sessionController: sessionController)
       }
@@ -44,20 +52,12 @@ private struct AuthenticatedVectorMobileView: View {
       .tag(VectorMobileTab.issues)
 
       NavigationStack {
-        ProjectsScreen(viewModel: viewModel)
+        WorkspaceScreen(viewModel: viewModel)
       }
       .tabItem {
-        Label(VectorMobileTab.projects.title, systemImage: VectorMobileTab.projects.systemImage)
+        Label(VectorMobileTab.workspace.title, systemImage: VectorMobileTab.workspace.systemImage)
       }
-      .tag(VectorMobileTab.projects)
-
-      NavigationStack {
-        TeamsScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label(VectorMobileTab.teams.title, systemImage: VectorMobileTab.teams.systemImage)
-      }
-      .tag(VectorMobileTab.teams)
+      .tag(VectorMobileTab.workspace)
 
       NavigationStack {
         MobileSettingsScreen(
@@ -87,27 +87,27 @@ private struct AuthenticatedVectorMobileView: View {
 }
 
 private enum VectorMobileTab: String, CaseIterable, Identifiable {
+  case inbox
   case issues
-  case projects
-  case teams
+  case workspace
   case settings
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
+    case .inbox: "Inbox"
     case .issues: "Issues"
-    case .projects: "Projects"
-    case .teams: "Teams"
+    case .workspace: "Workspace"
     case .settings: "Settings"
     }
   }
 
   var systemImage: String {
     switch self {
+    case .inbox: "bell"
     case .issues: "checklist"
-    case .projects: "folder"
-    case .teams: "person.3"
+    case .workspace: "square.grid.2x2"
     case .settings: "gearshape"
     }
   }
@@ -204,6 +204,11 @@ private struct VectorSetupScreen: View {
       }
       .ignoresSafeArea()
       .vectorHiddenNavigationBar()
+      .onAppear {
+        if appURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          appURLString = "imai.tech"
+        }
+      }
     }
   }
 
@@ -462,6 +467,303 @@ private struct CompactSegmentedControl<Option: Hashable>: View {
   }
 }
 
+private struct VectorEmptyState: View {
+  let title: String
+  let systemImage: String
+  let message: String
+
+  var body: some View {
+    VStack(spacing: 10) {
+      Image(systemName: systemImage)
+        .font(.system(size: 28, weight: .semibold))
+        .foregroundStyle(VectorTheme.accent)
+        .frame(width: 48, height: 48)
+        .background(VectorTheme.accent.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+      VStack(spacing: 4) {
+        Text(title)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.primary)
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .multilineTextAlignment(.center)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+    .padding(.horizontal, 32)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+  }
+}
+
+struct InboxScreen: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
+
+  var body: some View {
+    ScrollView {
+      if viewModel.inboxActivity.isEmpty {
+        VectorEmptyState(
+          title: "No inbox activity",
+          systemImage: "bell",
+          message: "Workspace updates, comments, and assignment changes will appear here."
+        )
+        .frame(minHeight: 420)
+      } else {
+        LazyVStack(alignment: .leading, spacing: 0) {
+          ForEach(Array(viewModel.inboxActivity.enumerated()), id: \.element.id) { index, activity in
+            InboxActivityNavigationRow(
+              activity: activity,
+              isLast: index == viewModel.inboxActivity.count - 1,
+              viewModel: viewModel
+            )
+          }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
+      }
+    }
+    .background(VectorTheme.rowBackground)
+    .navigationTitle("Inbox")
+    .vectorInlineNavigationTitle()
+    .toolbar {
+      #if os(iOS)
+      ToolbarItem(placement: .topBarLeading) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          issuesURL: viewModel.configuration.workspaceWebURL,
+          webLabel: "Open workspace on web"
+        )
+      }
+      ToolbarItem(placement: .topBarTrailing) {
+        ProfileStatusToolbarMenu(viewModel: viewModel, sessionController: sessionController)
+      }
+      #else
+      ToolbarItem(placement: .automatic) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          issuesURL: viewModel.configuration.workspaceWebURL,
+          webLabel: "Open workspace on web"
+        )
+      }
+      ToolbarItem(placement: .primaryAction) {
+        ProfileStatusToolbarMenu(viewModel: viewModel, sessionController: sessionController)
+      }
+      #endif
+    }
+  }
+}
+
+private struct InboxActivityNavigationRow: View {
+  let activity: VectorActivityItem
+  let isLast: Bool
+  @ObservedObject var viewModel: VectorMobileViewModel
+
+  private var matchingIssue: VectorIssueRow? {
+    guard activity.target.type == "issue" else { return nil }
+    return viewModel.issues.first { issue in
+      issue.id == activity.target.id || issue.key == activity.target.key
+    }
+  }
+
+  var body: some View {
+    Group {
+      if let matchingIssue {
+        NavigationLink {
+          IssueDetailScreen(issue: matchingIssue, viewModel: viewModel)
+        } label: {
+          InboxActivityRow(activity: activity, isLast: isLast)
+        }
+      } else {
+        Link(destination: webURL) {
+          InboxActivityRow(activity: activity, isLast: isLast)
+        }
+      }
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var webURL: URL {
+    switch activity.target.type {
+    case "issue":
+      if let key = activity.target.key {
+        return viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues/\(key)")
+      }
+    case "project":
+      if let key = activity.target.key {
+        return viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/projects/\(key)")
+      }
+    case "team":
+      if let key = activity.target.key {
+        return viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/teams/\(key)")
+      }
+    default:
+      break
+    }
+    return viewModel.configuration.workspaceWebURL
+  }
+}
+
+private struct InboxActivityRow: View {
+  let activity: VectorActivityItem
+  let isLast: Bool
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      ZStack(alignment: .top) {
+        if !isLast {
+          Rectangle()
+            .fill(VectorTheme.border.opacity(0.35))
+            .frame(width: 1)
+            .offset(y: 24)
+        }
+        Image(systemName: systemImage)
+          .font(.caption2.weight(.semibold))
+          .symbolRenderingMode(.monochrome)
+          .foregroundStyle(iconColor)
+          .frame(width: 20, height: 20)
+          .background(VectorTheme.rowBackground, in: Circle())
+          .overlay(Circle().stroke(VectorTheme.border.opacity(0.55), lineWidth: 0.8))
+      }
+      .frame(width: 28, alignment: .top)
+      .frame(minHeight: 48, alignment: .top)
+
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+          activityText
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 10)
+          Text(relativeTimestamp(activity.createdAt))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+
+        if let targetLabel {
+          Text(targetLabel)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+
+        if let preview = activity.details.commentPreview, !preview.isEmpty {
+          Text(preview)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(2)
+        }
+      }
+      .padding(.bottom, isLast ? 0 : 14)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var actorName: String {
+    activity.actor?.displayName ?? "Someone"
+  }
+
+  private var targetLabel: String? {
+    let name = activity.target.name ?? activity.target.key
+    guard let name else { return nil }
+    if let key = activity.target.key, key != name {
+      return "\(key) · \(name)"
+    }
+    return name
+  }
+
+  private var activityText: Text {
+    Text(actorName).fontWeight(.semibold) + Text(" \(description)")
+  }
+
+  private var description: String {
+    switch activity.eventType {
+    case "issue_created":
+      "created an issue"
+    case "issue_title_changed":
+      "updated an issue title"
+    case "issue_description_changed":
+      "updated a description"
+    case "issue_workflow_state_changed":
+      "changed a status"
+    case "issue_priority_changed":
+      "changed a priority"
+    case "issue_assignees_changed":
+      assignmentDescription
+    case "issue_project_changed":
+      "changed an issue project"
+    case "issue_team_changed":
+      "changed an issue team"
+    case "issue_comment_added":
+      "commented"
+    default:
+      "updated \(activity.target.type)"
+    }
+  }
+
+  private var assignmentDescription: String {
+    if !activity.details.addedUserNames.isEmpty {
+      return "assigned \(activity.details.addedUserNames.joined(separator: ", "))"
+    }
+    if !activity.details.removedUserNames.isEmpty {
+      return "unassigned \(activity.details.removedUserNames.joined(separator: ", "))"
+    }
+    return "changed assignees"
+  }
+
+  private var systemImage: String {
+    switch activity.eventType {
+    case "issue_created":
+      "plus"
+    case "issue_comment_added":
+      "text.bubble"
+    case "issue_assignees_changed":
+      "person.2"
+    case "issue_workflow_state_changed", "issue_assignment_state_changed":
+      "circle.circle"
+    case "issue_title_changed", "issue_description_changed":
+      "textformat"
+    case "issue_priority_changed":
+      "arrow.left.arrow.right"
+    case "issue_project_changed", "issue_project_added", "issue_project_removed":
+      "folder"
+    case "issue_team_changed", "issue_team_added", "issue_team_removed":
+      "person.2"
+    case "issue_visibility_changed":
+      "eye"
+    case "issue_live_activity_started",
+      "issue_live_activity_delegated",
+      "issue_live_activity_completed",
+      "issue_live_activity_status_changed":
+      "terminal"
+    default:
+      "doc.text"
+    }
+  }
+
+  private var iconColor: Color {
+    switch activity.eventType {
+    case "issue_created", "issue_sub_issue_created":
+      Color(vectorHex: "#8b5cf6")
+    case "issue_workflow_state_changed",
+      "issue_assignment_state_changed",
+      "issue_live_activity_started",
+      "issue_live_activity_delegated":
+      Color(vectorHex: "#22c55e")
+    case "issue_priority_changed":
+      Color(vectorHex: "#f97316")
+    case "issue_assignees_changed", "issue_comment_added":
+      Color(vectorHex: "#3b82f6")
+    default:
+      Color.secondary
+    }
+  }
+}
+
 struct IssuesScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
@@ -566,6 +868,12 @@ struct IssuesScreen: View {
       SkeletonIssueList()
     } else if let error = viewModel.errorMessage {
       ContentUnavailableView("Unable to load issues", systemImage: "wifi.exclamationmark", description: Text(error))
+    } else if filteredIssues.isEmpty {
+      VectorEmptyState(
+        title: searchText.isEmpty ? "No issues" : "No matching issues",
+        systemImage: "checklist",
+        message: searchText.isEmpty ? "Issues assigned or visible to you will appear here." : "Try a different issue key or title."
+      )
     } else {
       switch viewModel.issueLayoutMode {
       case .list:
@@ -583,6 +891,11 @@ private struct WorkspaceToolbarMenu: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   let currentOrgSlug: String
   let issuesURL: URL
+  var webLabel = "Open issues on web"
+
+  private var currentWorkspaceName: String {
+    sessionController.organizations.first { $0.slug == currentOrgSlug }?.name ?? currentOrgSlug
+  }
 
   var body: some View {
     Menu {
@@ -590,12 +903,36 @@ private struct WorkspaceToolbarMenu: View {
         sessionController: sessionController,
         currentOrgSlug: currentOrgSlug,
         webURL: issuesURL,
-        webLabel: "Open issues on web"
+        webLabel: webLabel
       )
     } label: {
-      Image(systemName: "safari")
+      WorkspaceAvatarIcon(name: currentWorkspaceName, size: 28)
     }
     .accessibilityLabel("Workspace menu")
+  }
+}
+
+private struct WorkspaceAvatarIcon: View {
+  let name: String
+  var size: CGFloat = 26
+
+  private var initial: String {
+    name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "V"
+  }
+
+  var body: some View {
+    ZStack {
+      RoundedRectangle(cornerRadius: min(size * 0.26, 8), style: .continuous)
+        .fill(VectorTheme.accent.opacity(0.14))
+        .overlay(
+          RoundedRectangle(cornerRadius: min(size * 0.26, 8), style: .continuous)
+            .stroke(VectorTheme.accent.opacity(0.28), lineWidth: 0.8)
+        )
+      Text(initial)
+        .font(.system(size: max(11, size * 0.44), weight: .semibold))
+        .foregroundStyle(VectorTheme.accent)
+    }
+    .frame(width: size, height: size)
   }
 }
 
@@ -626,6 +963,60 @@ private struct WorkspaceMenuContent: View {
       Link(destination: webURL) {
         Label(webLabel, systemImage: "safari")
       }
+    }
+  }
+}
+
+private struct ProfileStatusToolbarMenu: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
+
+  private var toolbarUser: VectorUser {
+    let user = sessionController.user
+    return VectorUser(
+      id: user?.id ?? user?.email ?? "current-user",
+      name: user?.displayName,
+      email: user?.email,
+      status: viewModel.userStatus
+    )
+  }
+
+  var body: some View {
+    Menu {
+      if let user = sessionController.user {
+        Section(user.displayName) {
+          if let email = user.email {
+            Text(email)
+          }
+        }
+      }
+
+      Section("Presence") {
+        ForEach(VectorPresenceStatus.selectableCases) { presence in
+          Button {
+            viewModel.setPresence(presence)
+          } label: {
+            Label(
+              presence.label,
+              systemImage: viewModel.userStatus?.presence == presence ? "checkmark.circle.fill" : presence.systemImage
+            )
+          }
+        }
+      }
+
+      Section {
+        NavigationLink {
+          ProfileStatusSettingsScreen(viewModel: viewModel)
+        } label: {
+          Label("Profile status", systemImage: "person.crop.circle.badge.checkmark")
+        }
+      }
+    } label: {
+      VectorUserAvatar(user: toolbarUser, baseURL: viewModel.configuration.webBaseURL, size: 28)
+    }
+    .accessibilityLabel("Profile and status")
+    .onAppear {
+      viewModel.loadSettings()
     }
   }
 }
@@ -910,7 +1301,7 @@ struct IssueRowView: View {
           .frame(maxWidth: 82, alignment: .trailing)
         }
 
-        IssueRowAssigneeAvatar(issue: issue, baseURL: baseURL)
+        IssueRowAssigneeAvatar(issue: issue, workspaceOptions: workspaceOptions, baseURL: baseURL)
       }
       .layoutPriority(1)
     }
@@ -920,6 +1311,7 @@ struct IssueRowView: View {
 
 private struct IssueRowAssigneeAvatar: View {
   let issue: VectorIssueRow
+  let workspaceOptions: VectorWorkspaceOptions?
   let baseURL: URL
 
   private var user: VectorUser? {
@@ -931,7 +1323,8 @@ private struct IssueRowAssigneeAvatar: View {
       id: issue.assigneeId ?? issue.assigneeEmail ?? issue.assigneeName ?? "assignee",
       name: issue.assigneeName,
       email: issue.assigneeEmail,
-      image: issue.assigneeImage
+      image: issue.assigneeImage,
+      status: workspaceOptions?.memberStatus(userId: issue.assigneeId, email: issue.assigneeEmail)
     )
   }
 
@@ -1236,9 +1629,12 @@ struct IssueDetailScreen: View {
 
         DocumentSection(title: "Activity") {
           if timelineEntries.isEmpty {
-            Text("No activity yet")
-              .font(.subheadline)
-              .foregroundStyle(.secondary)
+            VectorEmptyState(
+              title: "No activity",
+              systemImage: "rays",
+              message: "Comments and issue updates will appear here."
+            )
+            .frame(minHeight: 180)
           } else {
             VStack(alignment: .leading, spacing: 0) {
               ForEach(Array(timelineEntries.enumerated()), id: \.element.id) { index, entry in
@@ -1312,7 +1708,7 @@ struct IssueDetailScreen: View {
       }
       .padding(.horizontal, 22)
       .padding(.top, 22)
-      .padding(.bottom, 104)
+      .padding(.bottom, 148)
       .frame(maxWidth: .infinity, alignment: .leading)
     }
     .background(VectorTheme.rowBackground)
@@ -2274,25 +2670,52 @@ private struct VectorUserAvatar: View {
   var size: CGFloat = 26
 
   var body: some View {
-    Group {
-      if let url = imageURL {
-        AsyncImage(url: url) { phase in
-          switch phase {
-          case let .success(image):
-            image
-              .resizable()
-              .scaledToFill()
-          default:
-            fallback
-          }
-        }
-      } else {
-        fallback
+    ZStack(alignment: .bottomTrailing) {
+      avatar
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(
+          Circle()
+            .stroke(statusRingColor, lineWidth: status == nil ? 0.5 : max(1.2, size * 0.06))
+        )
+
+      if let status {
+        Circle()
+          .fill(Color(vectorHex: status.presence.colorHex))
+          .frame(width: max(7, size * 0.30), height: max(7, size * 0.30))
+          .overlay(Circle().stroke(VectorTheme.rowBackground, lineWidth: max(1.5, size * 0.08)))
+          .offset(x: max(1, size * 0.06), y: max(1, size * 0.06))
       }
     }
     .frame(width: size, height: size)
-    .clipShape(Circle())
-    .overlay(Circle().stroke(VectorTheme.border.opacity(0.25), lineWidth: 0.5))
+  }
+
+  @ViewBuilder private var avatar: some View {
+    if let url = imageURL {
+      AsyncImage(url: url) { phase in
+        switch phase {
+        case let .success(image):
+          image
+            .resizable()
+            .scaledToFill()
+        default:
+          fallback
+        }
+      }
+    } else {
+      fallback
+    }
+  }
+
+  private var status: VectorUserStatus? {
+    user?.status
+  }
+
+  private var statusRingColor: Color {
+    if let status {
+      return Color(vectorHex: status.presence.colorHex).opacity(0.68)
+    }
+    return VectorTheme.border.opacity(0.25)
   }
 
   private var imageURL: URL? {
@@ -2468,29 +2891,157 @@ private struct InlineMarkdownText: View {
   }
 }
 
-struct ProjectsScreen: View {
+private enum WorkspaceSection: String, CaseIterable, Identifiable {
+  case teams
+  case projects
+
+  var id: String { rawValue }
+
+  var label: String {
+    switch self {
+    case .teams: "Teams"
+    case .projects: "Projects"
+    }
+  }
+
+  var searchPrompt: String {
+    switch self {
+    case .teams: "Search teams"
+    case .projects: "Search projects"
+    }
+  }
+}
+
+struct WorkspaceScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var section: WorkspaceSection = .teams
+  @State private var searchText = ""
+  @State private var isSearchPresented = false
+  @FocusState private var isSearchFocused: Bool
+
+  private var filteredTeams: [VectorTeam] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return viewModel.teams }
+    return viewModel.teams.filter {
+      $0.name.localizedCaseInsensitiveContains(query)
+        || $0.key.localizedCaseInsensitiveContains(query)
+        || ($0.description?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+  }
+
+  private var filteredProjects: [VectorProject] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return viewModel.projects }
+    return viewModel.projects.filter {
+      $0.name.localizedCaseInsensitiveContains(query)
+        || $0.key.localizedCaseInsensitiveContains(query)
+        || ($0.description?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+  }
 
   var body: some View {
     VStack(spacing: 0) {
-      CompactSegmentedControl(options: VectorProjectScope.allCases, selection: $viewModel.projectScope) { $0.label }
-        .padding(12)
-        .onChange(of: viewModel.projectScope) {
-          viewModel.refresh()
+      VStack(spacing: 8) {
+        if isSearchPresented || !searchText.isEmpty {
+          HStack(spacing: 8) {
+            TextField(section.searchPrompt, text: $searchText)
+              .textFieldStyle(.roundedBorder)
+              .focused($isSearchFocused)
+              .submitLabel(.search)
+            Button("Cancel") {
+              withAnimation(.snappy(duration: 0.18)) {
+                searchText = ""
+                isSearchPresented = false
+                isSearchFocused = false
+              }
+            }
+            .font(.caption.weight(.semibold))
+            .buttonStyle(.plain)
+            .foregroundStyle(VectorTheme.accent)
+          }
+          .transition(.move(edge: .top).combined(with: .opacity))
         }
 
-      List(viewModel.projects) { project in
-        NavigationLink {
-          ProjectDetailScreen(project: project, viewModel: viewModel)
-        } label: {
-          ProjectRow(project: project)
-        }
+        CompactSegmentedControl(options: WorkspaceSection.allCases, selection: $section) { $0.label }
       }
-      .listStyle(.plain)
+      .padding(12)
+
+      content
     }
     .background(VectorTheme.groupedBackground)
-    .navigationTitle("Projects")
+    .navigationTitle("Workspace")
     .vectorInlineNavigationTitle()
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button {
+          withAnimation(.snappy(duration: 0.18)) {
+            isSearchPresented.toggle()
+            if !isSearchPresented {
+              isSearchFocused = false
+            }
+          }
+        } label: {
+          Image(systemName: isSearchPresented ? "xmark" : "magnifyingglass")
+        }
+        .accessibilityLabel(isSearchPresented ? "Hide search" : "Search workspace")
+      }
+    }
+    .onChange(of: section) {
+      searchText = ""
+      if isSearchPresented {
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 80_000_000)
+          isSearchFocused = true
+        }
+      }
+    }
+    .onChange(of: isSearchPresented) { _, presented in
+      if presented {
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 120_000_000)
+          isSearchFocused = true
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var content: some View {
+    switch section {
+    case .teams:
+      if filteredTeams.isEmpty {
+        VectorEmptyState(
+          title: searchText.isEmpty ? "No teams" : "No matching teams",
+          systemImage: "person.2",
+          message: searchText.isEmpty ? "Teams from this workspace will appear here." : "Try a different team name or key."
+        )
+      } else {
+        List(filteredTeams) { team in
+          NavigationLink {
+            TeamDetailScreen(team: team, viewModel: viewModel)
+          } label: {
+            TeamRow(team: team)
+          }
+        }
+        .listStyle(.plain)
+      }
+    case .projects:
+      if filteredProjects.isEmpty {
+        VectorEmptyState(
+          title: searchText.isEmpty ? "No projects" : "No matching projects",
+          systemImage: "folder",
+          message: searchText.isEmpty ? "Projects from this workspace will appear here." : "Try a different project name or key."
+        )
+      } else {
+        List(filteredProjects) { project in
+          NavigationLink {
+            ProjectDetailScreen(project: project, viewModel: viewModel)
+          } label: {
+            ProjectRow(project: project)
+          }
+        }
+        .listStyle(.plain)
+      }
+    }
   }
 }
 
@@ -2540,23 +3091,57 @@ struct ProjectDetailScreen: View {
 
       List {
         if tab == "issues" {
-          ForEach(projectIssues, id: \.rowId) { issue in
-            NavigationLink {
-              IssueDetailScreen(issue: issue, viewModel: viewModel)
-            } label: {
-              IssueRowView(
-                issue: issue,
-                workspaceOptions: viewModel.workspaceOptions,
-                baseURL: viewModel.configuration.webBaseURL
-              )
+          if projectIssues.isEmpty {
+            VectorEmptyState(
+              title: "No project issues",
+              systemImage: "checklist",
+              message: "Issues linked to this project will appear here."
+            )
+            .frame(minHeight: 190)
+            .listRowSeparator(.hidden)
+          } else {
+            ForEach(projectIssues, id: \.rowId) { issue in
+              NavigationLink {
+                IssueDetailScreen(issue: issue, viewModel: viewModel)
+              } label: {
+                IssueRowView(
+                  issue: issue,
+                  workspaceOptions: viewModel.workspaceOptions,
+                  baseURL: viewModel.configuration.webBaseURL
+                )
+              }
             }
           }
         } else if tab == "members" {
           if let lead = project.lead {
-            Label(lead.displayName, systemImage: "person.crop.circle")
+            HStack(spacing: 10) {
+              VectorUserAvatar(user: lead, baseURL: viewModel.configuration.webBaseURL, size: 28)
+              VStack(alignment: .leading, spacing: 2) {
+                Text(lead.displayName)
+                  .font(.subheadline.weight(.medium))
+                Text("Lead")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .padding(.vertical, 4)
+          } else {
+            VectorEmptyState(
+              title: "No project members",
+              systemImage: "person.crop.circle",
+              message: "Project leads and members will appear here."
+            )
+            .frame(minHeight: 190)
+            .listRowSeparator(.hidden)
           }
         } else {
-          Label("Activity will stream from Convex in the live-data slice", systemImage: "rays")
+          VectorEmptyState(
+            title: "No project activity",
+            systemImage: "rays",
+            message: "Project updates will appear here when activity is available on mobile."
+          )
+          .frame(minHeight: 190)
+          .listRowSeparator(.hidden)
         }
         Link(destination: viewModel.openWebURL(for: project)) {
           Label("Open project on web", systemImage: "safari")
@@ -2565,23 +3150,6 @@ struct ProjectDetailScreen: View {
       .listStyle(.plain)
     }
     .navigationTitle(project.key)
-    .vectorInlineNavigationTitle()
-  }
-}
-
-struct TeamsScreen: View {
-  @ObservedObject var viewModel: VectorMobileViewModel
-
-  var body: some View {
-    List(viewModel.teams) { team in
-      NavigationLink {
-        TeamDetailScreen(team: team, viewModel: viewModel)
-      } label: {
-        TeamRow(team: team)
-      }
-    }
-    .listStyle(.plain)
-    .navigationTitle("Teams")
     .vectorInlineNavigationTitle()
   }
 }
@@ -2632,27 +3200,76 @@ struct TeamDetailScreen: View {
 
       List {
         if tab == "issues" {
-          ForEach(teamIssues, id: \.rowId) { issue in
-            NavigationLink {
-              IssueDetailScreen(issue: issue, viewModel: viewModel)
-            } label: {
-              IssueRowView(
-                issue: issue,
-                workspaceOptions: viewModel.workspaceOptions,
-                baseURL: viewModel.configuration.webBaseURL
-              )
+          if teamIssues.isEmpty {
+            VectorEmptyState(
+              title: "No team issues",
+              systemImage: "checklist",
+              message: "Issues owned by this team will appear here."
+            )
+            .frame(minHeight: 190)
+            .listRowSeparator(.hidden)
+          } else {
+            ForEach(teamIssues, id: \.rowId) { issue in
+              NavigationLink {
+                IssueDetailScreen(issue: issue, viewModel: viewModel)
+              } label: {
+                IssueRowView(
+                  issue: issue,
+                  workspaceOptions: viewModel.workspaceOptions,
+                  baseURL: viewModel.configuration.webBaseURL
+                )
+              }
             }
           }
         } else if tab == "projects" {
-          ForEach(viewModel.projects.filter { $0.teamId == team.id }) { project in
-            ProjectRow(project: project)
+          let teamProjects = viewModel.projects.filter { $0.teamId == team.id }
+          if teamProjects.isEmpty {
+            VectorEmptyState(
+              title: "No team projects",
+              systemImage: "folder",
+              message: "Projects linked to this team will appear here."
+            )
+            .frame(minHeight: 190)
+            .listRowSeparator(.hidden)
+          } else {
+            ForEach(teamProjects) { project in
+              NavigationLink {
+                ProjectDetailScreen(project: project, viewModel: viewModel)
+              } label: {
+                ProjectRow(project: project)
+              }
+            }
           }
         } else if tab == "members" {
           if let lead = team.lead {
-            Label(lead.displayName, systemImage: "person.crop.circle")
+            HStack(spacing: 10) {
+              VectorUserAvatar(user: lead, baseURL: viewModel.configuration.webBaseURL, size: 28)
+              VStack(alignment: .leading, spacing: 2) {
+                Text(lead.displayName)
+                  .font(.subheadline.weight(.medium))
+                Text("Lead")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+            }
+            .padding(.vertical, 4)
+          } else {
+            VectorEmptyState(
+              title: "No team members",
+              systemImage: "person.2",
+              message: "Team leads and members will appear here."
+            )
+            .frame(minHeight: 190)
+            .listRowSeparator(.hidden)
           }
         } else {
-          Label("Activity will stream from Convex in the live-data slice", systemImage: "rays")
+          VectorEmptyState(
+            title: "No team activity",
+            systemImage: "rays",
+            message: "Team updates will appear here when activity is available on mobile."
+          )
+          .frame(minHeight: 190)
+          .listRowSeparator(.hidden)
         }
         Link(destination: viewModel.openWebURL(for: team)) {
           Label("Open team on web", systemImage: "safari")
@@ -2770,7 +3387,7 @@ struct ProfileStatusSettingsScreen: View {
   var body: some View {
     List {
       Section("Presence") {
-        ForEach(VectorPresenceStatus.allCases) { presence in
+        ForEach(VectorPresenceStatus.selectableCases) { presence in
           Button {
             viewModel.setPresence(presence)
           } label: {

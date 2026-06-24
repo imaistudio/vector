@@ -22,6 +22,16 @@ import {
 type ActivityEventDoc = Doc<'activityEvents'>;
 
 type HydratedUsers = Map<Id<'users'>, Doc<'users'>>;
+type HydratedUserStatuses = Map<
+  Id<'users'>,
+  {
+    presence: 'online' | 'idle' | 'dnd' | 'offline';
+    customText?: string;
+    customEmoji?: string;
+    clearsAt?: number;
+    updatedAt: number;
+  }
+>;
 type HydratedIssues = Map<Id<'issues'>, Doc<'issues'>>;
 type HydratedProjects = Map<Id<'projects'>, Doc<'projects'>>;
 type HydratedTeams = Map<Id<'teams'>, Doc<'teams'>>;
@@ -37,6 +47,45 @@ async function hydrateUsers(
     uniqueIds.flatMap((id, index) =>
       users[index] ? [[id, users[index]]] : [],
     ),
+  );
+}
+
+async function hydrateUserStatuses(
+  ctx: QueryCtx,
+  ids: readonly Id<'users'>[],
+): Promise<HydratedUserStatuses> {
+  const uniqueIds = [...new Set(ids)];
+  const statuses = await Promise.all(
+    uniqueIds.map(id =>
+      ctx.db
+        .query('userStatuses')
+        .withIndex('by_user', q => q.eq('userId', id))
+        .unique(),
+    ),
+  );
+
+  return new Map(
+    uniqueIds.flatMap((id, index) => {
+      const status = statuses[index];
+      if (!status) return [];
+      const expired = status.clearsAt && status.clearsAt < Date.now();
+      const hidden = status.presence === 'invisible' || expired;
+      return [
+        [
+          id,
+          {
+            presence:
+              status.presence === 'invisible'
+                ? ('offline' as const)
+                : status.presence,
+            customText: hidden ? undefined : status.customText,
+            customEmoji: hidden ? undefined : status.customEmoji,
+            clearsAt: hidden ? undefined : status.clearsAt,
+            updatedAt: status.updatedAt,
+          },
+        ] as const,
+      ];
+    }),
   );
 }
 
@@ -157,6 +206,7 @@ async function filterVisibleEvents(
 function mapActivityItem(
   event: ActivityEventDoc,
   users: HydratedUsers,
+  userStatuses: HydratedUserStatuses,
   issues: HydratedIssues,
   projects: HydratedProjects,
   teams: HydratedTeams,
@@ -215,6 +265,7 @@ function mapActivityItem(
           name: getUserDisplayName(actor),
           email: actor.email ?? null,
           image: actor.image ?? null,
+          status: userStatuses.get(actor._id) ?? null,
         }
       : null,
     subjectUser: event.subjectUserId
@@ -228,6 +279,7 @@ function mapActivityItem(
             'Unknown user',
           email: subjectUser?.email ?? null,
           image: subjectUser?.image ?? null,
+          status: userStatuses.get(event.subjectUserId) ?? null,
         }
       : null,
     target,
@@ -245,6 +297,14 @@ function mapActivityItem(
 
 async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
   const users = await hydrateUsers(
+    ctx,
+    events.flatMap(event =>
+      event.subjectUserId
+        ? [event.actorId, event.subjectUserId]
+        : [event.actorId],
+    ),
+  );
+  const userStatuses = await hydrateUserStatuses(
     ctx,
     events.flatMap(event =>
       event.subjectUserId
@@ -279,7 +339,15 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
   );
 
   return visibleEvents.map(event =>
-    mapActivityItem(event, users, issues, projects, teams, documents),
+    mapActivityItem(
+      event,
+      users,
+      userStatuses,
+      issues,
+      projects,
+      teams,
+      documents,
+    ),
   );
 }
 

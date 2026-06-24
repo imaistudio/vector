@@ -9,6 +9,7 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var comments: [VectorComment] = []
   @Published public private(set) var assignments: [VectorIssueAssignment] = []
   @Published public private(set) var issueActivity: [VectorActivityItem] = []
+  @Published public private(set) var inboxActivity: [VectorActivityItem] = []
   @Published public private(set) var selectedIssue: VectorIssueRow?
   @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
   @Published public private(set) var userStatus: VectorUserStatus?
@@ -26,9 +27,11 @@ public final class VectorMobileViewModel: ObservableObject {
   private var issueCache: [VectorIssueScope: [VectorIssueRow]] = [:]
   private var projectCache: [VectorProjectScope: [VectorProject]] = [:]
   private var teamCache: [VectorProjectScope: [VectorTeam]] = [:]
+  private var inboxActivityCache: [VectorActivityItem]?
   private var issueListCancellables: [VectorIssueScope: AnyCancellable] = [:]
   private var projectListCancellables: [VectorProjectScope: AnyCancellable] = [:]
   private var teamListCancellables: [VectorProjectScope: AnyCancellable] = [:]
+  private var inboxActivityCancellable: AnyCancellable?
   private var workspaceOptionsCancellable: AnyCancellable?
   private var issueSupportCancellables = Set<AnyCancellable>()
   private var activeIssueSupportId: VectorID?
@@ -49,6 +52,7 @@ public final class VectorMobileViewModel: ObservableObject {
     subscribeToIssuesIfNeeded(scope: issueScope)
     subscribeToProjectsIfNeeded(scope: projectScope)
     subscribeToTeamsIfNeeded(scope: projectScope)
+    subscribeToInboxActivityIfNeeded()
     subscribeToWorkspaceOptionsIfNeeded()
     loadSettings()
   }
@@ -171,6 +175,31 @@ public final class VectorMobileViewModel: ObservableObject {
         },
         receiveValue: { [weak self] options in
           self?.workspaceOptions = options
+        }
+      )
+  }
+
+  private func subscribeToInboxActivityIfNeeded() {
+    if let inboxActivityCache {
+      inboxActivity = inboxActivityCache
+    }
+
+    guard inboxActivityCancellable == nil else {
+      return
+    }
+
+    inboxActivityCancellable = repository.inboxActivity(orgSlug: configuration.orgSlug, pageSize: 50)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.inboxActivityCancellable = nil
+            self?.errorMessage = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] activity in
+          self?.inboxActivityCache = activity
+          self?.inboxActivity = activity
         }
       )
   }

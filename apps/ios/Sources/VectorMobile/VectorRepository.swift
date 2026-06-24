@@ -22,6 +22,7 @@ public enum VectorConvexFunctions {
   public static let listProjectActivity = "activities/queries:listProjectActivity"
   public static let listTeamActivity = "activities/queries:listTeamActivity"
   public static let listIssueActivity = "activities/queries:listIssueActivity"
+  public static let listOrgActivity = "activities/queries:listOrgActivity"
   public static let listProjectsPage = "projects/queries:listPage"
   public static let getProjectByKey = "projects/queries:getByKey"
   public static let listTeamsPage = "teams/queries:listPage"
@@ -138,6 +139,7 @@ public protocol VectorMobileRepository {
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
+  func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error>
   func userStatus() -> AnyPublisher<VectorUserStatus?, Error>
   func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error>
   func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error>
@@ -273,6 +275,19 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     return client
       .subscribe(to: VectorConvexFunctions.listIssueActivity, with: args, yielding: VectorPaginatedPage<VectorActivityItem>.self)
       .map(\.page)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "limit": Double(pageSize),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listOrgActivity, with: args, yielding: VectorOrgActivityPage.self)
+      .map(\.items)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -529,6 +544,12 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
+    Just(Array(VectorMockData.activityItems.prefix(pageSize)))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   public func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
     Just(VectorUserStatus(presence: .online, customText: "Building Vector iOS", customEmoji: "V", updatedAt: Date().timeIntervalSince1970 * 1000))
       .setFailureType(to: Error.self)
@@ -541,6 +562,7 @@ public final class MockVectorRepository: VectorMobileRepository {
       VectorNotificationPreference(category: .mentions, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
       VectorNotificationPreference(category: .comments, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
       VectorNotificationPreference(category: .workSessions, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
+      VectorNotificationPreference(category: .teamStatusChanges, inAppEnabled: false, emailEnabled: false, pushEnabled: false),
     ])
     .setFailureType(to: Error.self)
     .eraseToAnyPublisher()

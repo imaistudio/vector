@@ -15,8 +15,14 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(VectorConvexFunctions.changeVisibility, "issues/mutations:changeVisibility")
     XCTAssertEqual(VectorConvexFunctions.getWorkspaceOptions, "organizations/queries:getWorkspaceOptions")
     XCTAssertEqual(VectorConvexFunctions.listProjectActivity, "activities/queries:listProjectActivity")
+    XCTAssertEqual(VectorConvexFunctions.listOrgActivity, "activities/queries:listOrgActivity")
     XCTAssertEqual(VectorConvexFunctions.getCurrentUserStatus, "status:getCurrentUserStatus")
     XCTAssertEqual(VectorConvexFunctions.upsertMobilePushToken, "notifications/mutations:upsertMobilePushToken")
+  }
+
+  func testNotificationCategoryRawValuesMatchBackend() {
+    XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.rawValue, "team_status_changes")
+    XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.label, "Team status changes")
   }
 
   func testAuthNormalizesAppURLLikeCLI() throws {
@@ -435,6 +441,10 @@ private final class CountingVectorRepository: VectorMobileRepository {
   }
 
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
+    publisher([])
+  }
+
+  func inboxActivity(orgSlug: String, pageSize: Int) -> AnyPublisher<[VectorActivityItem], Error> {
     publisher([])
   }
 

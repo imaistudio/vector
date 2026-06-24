@@ -391,6 +391,9 @@ export function renderNotificationEmailTemplate({
     commentPreview?: string;
     inviterName?: string;
     roleLabel?: string;
+    statusLabel?: string;
+    statusText?: string;
+    statusEmoji?: string;
   };
 }) {
   switch (type) {
@@ -474,6 +477,51 @@ export function renderNotificationEmailTemplate({
           },
           ...(payload.commentPreview
             ? [{ label: 'Comment', value: payload.commentPreview }]
+            : []),
+        ],
+      });
+    case 'work_session_completed':
+    case 'work_session_failed':
+    case 'issue_reminder':
+    case 'user_status_changed':
+      return vectorEmailLayout({
+        preview: title,
+        eyebrow:
+          type === 'user_status_changed'
+            ? 'Status Update'
+            : type === 'issue_reminder'
+              ? 'Issue Reminder'
+              : 'Work Session',
+        title,
+        body,
+        ctaHref: href,
+        ctaLabel:
+          type === 'user_status_changed' ? 'Open workspace' : 'Open issue',
+        meta: [
+          ...(payload.organizationName
+            ? [{ label: 'Workspace', value: payload.organizationName }]
+            : []),
+          ...(payload.issueKey
+            ? [
+                {
+                  label: 'Issue',
+                  value: payload.issueKey,
+                  tone: 'mono' as const,
+                },
+              ]
+            : []),
+          ...(payload.statusLabel
+            ? [{ label: 'Status', value: payload.statusLabel }]
+            : []),
+          ...(payload.statusText
+            ? [
+                {
+                  label: 'Custom status',
+                  value: [payload.statusEmoji, payload.statusText]
+                    .filter(Boolean)
+                    .join(' '),
+                },
+              ]
             : []),
         ],
       });

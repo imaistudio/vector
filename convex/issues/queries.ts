@@ -1772,12 +1772,52 @@ export const listComments = query({
       )
       .collect();
 
+    const authorIds = Array.from(
+      new Set(comments.map(comment => comment.authorId)),
+    );
+    const statuses = await Promise.all(
+      authorIds.map(authorId =>
+        ctx.db
+          .query('userStatuses')
+          .withIndex('by_user', q => q.eq('userId', authorId))
+          .unique(),
+      ),
+    );
+    const statusMap = new Map(
+      authorIds.flatMap((authorId, index) => {
+        const status = statuses[index];
+        if (!status) return [];
+        const expired = status.clearsAt && status.clearsAt < Date.now();
+        const hidden = status.presence === 'invisible' || expired;
+        return [
+          [
+            authorId,
+            {
+              presence:
+                status.presence === 'invisible'
+                  ? ('offline' as const)
+                  : status.presence,
+              customText: hidden ? undefined : status.customText,
+              customEmoji: hidden ? undefined : status.customEmoji,
+              clearsAt: hidden ? undefined : status.clearsAt,
+              updatedAt: status.updatedAt,
+            },
+          ] as const,
+        ];
+      }),
+    );
+
     const commentsWithAuthors = await Promise.all(
       comments.map(async comment => {
         const author = await ctx.db.get('users', comment.authorId);
         return {
           ...comment,
-          author,
+          author: author
+            ? {
+                ...author,
+                status: statusMap.get(author._id) ?? null,
+              }
+            : null,
         };
       }),
     );

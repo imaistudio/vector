@@ -18,6 +18,9 @@ type NotificationPayload = {
   roleLabel?: string;
   href?: string;
   subjectUserName?: string;
+  statusLabel?: string;
+  statusText?: string;
+  statusEmoji?: string;
 };
 
 type NotificationRecipientInput = {
@@ -106,6 +109,23 @@ export function buildNotificationCopy(
           'You have a pending issue that needs attention.',
         href: payload.href,
       };
+    case 'user_status_changed': {
+      const subject = payload.subjectUserName ?? 'A teammate';
+      const customStatus = [payload.statusEmoji, payload.statusText]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+
+      return {
+        title: customStatus
+          ? `${subject} set a status`
+          : `${subject} is ${payload.statusLabel ?? 'available'}`,
+        body:
+          customStatus ||
+          `Shared team status changed in ${payload.organizationName ?? 'Vector'}.`,
+        href: payload.href,
+      };
+    }
   }
 }
 
