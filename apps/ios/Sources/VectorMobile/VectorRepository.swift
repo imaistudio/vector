@@ -2,6 +2,8 @@ import Combine
 @preconcurrency import ConvexMobile
 import Foundation
 
+struct VectorMutationResponse: Decodable {}
+
 public enum VectorConvexFunctions {
   public static let getOrganizations = "users:getOrganizations"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
@@ -153,7 +155,7 @@ public protocol VectorMobileRepository {
   func changeProject(issueId: VectorID, projectId: VectorID?) async throws
   func changeTeam(issueId: VectorID, teamId: VectorID?) async throws
   func changeVisibility(issueId: VectorID, visibility: String) async throws
-  func addComment(issueId: VectorID, body: String) async throws
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws
 }
 
 @MainActor
@@ -297,7 +299,7 @@ public final class ConvexVectorRepository: VectorMobileRepository {
   }
 
   public func setPresence(_ presence: VectorPresenceStatus) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.setPresence,
       with: ["presence": presence.rawValue]
     )
@@ -315,18 +317,18 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       args["clearsAt"] = clearsAt
     }
 
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.setCustomStatus,
       with: args
     )
   }
 
   public func clearCustomStatus() async throws {
-    try await client.mutation(VectorConvexFunctions.clearCustomStatus)
+    let _: VectorMutationResponse = try await client.mutation(VectorConvexFunctions.clearCustomStatus)
   }
 
   public func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.updateNotificationPreferences,
       with: [
         "category": preference.category.rawValue,
@@ -349,14 +351,14 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       args["deviceLabel"] = deviceLabel
     }
 
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.upsertMobilePushToken,
       with: args
     )
   }
 
   public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.removeMobilePushToken,
       with: [
         "token": token.value,
@@ -366,42 +368,42 @@ public final class ConvexVectorRepository: VectorMobileRepository {
   }
 
   public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changeWorkflowState,
       with: VectorConvexArguments.changeWorkflowState(issueId: issueId, stateId: stateId)
     )
   }
 
   public func changePriority(issueId: VectorID, priorityId: VectorID) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changePriority,
       with: VectorConvexArguments.changePriority(issueId: issueId, priorityId: priorityId)
     )
   }
 
   public func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.updateAssignees,
       with: VectorConvexArguments.updateAssignees(issueId: issueId, assigneeIds: assigneeIds)
     )
   }
 
   public func changeProject(issueId: VectorID, projectId: VectorID?) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changeProject,
       with: VectorConvexArguments.changeProject(issueId: issueId, projectId: projectId)
     )
   }
 
   public func changeTeam(issueId: VectorID, teamId: VectorID?) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changeTeam,
       with: VectorConvexArguments.changeTeam(issueId: issueId, teamId: teamId)
     )
   }
 
   public func changeVisibility(issueId: VectorID, visibility: String) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changeVisibility,
       with: [
         "issueId": issueId,
@@ -411,7 +413,7 @@ public final class ConvexVectorRepository: VectorMobileRepository {
   }
 
   public func updateTitle(issueId: VectorID, title: String) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.updateTitle,
       with: [
         "issueId": issueId,
@@ -421,7 +423,7 @@ public final class ConvexVectorRepository: VectorMobileRepository {
   }
 
   public func updateDescription(issueId: VectorID, description: String?) async throws {
-    try await client.mutation(
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.updateDescription,
       with: [
         "issueId": issueId,
@@ -430,13 +432,18 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     )
   }
 
-  public func addComment(issueId: VectorID, body: String) async throws {
-    try await client.mutation(
+  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {
+    var args: [String: ConvexEncodable?] = [
+      "issueId": issueId,
+      "body": body,
+    ]
+    if let parentId {
+      args["parentId"] = parentId
+    }
+
+    let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.addComment,
-      with: [
-        "issueId": issueId,
-        "body": body,
-      ]
+      with: args
     )
   }
 }
@@ -573,5 +580,5 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
-  public func addComment(issueId: VectorID, body: String) async throws {}
+  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {}
 }

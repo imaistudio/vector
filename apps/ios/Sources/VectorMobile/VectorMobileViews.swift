@@ -36,7 +36,7 @@ private struct AuthenticatedVectorMobileView: View {
   var body: some View {
     TabView(selection: $selectedTab) {
       NavigationStack {
-        IssuesScreen(viewModel: viewModel)
+        IssuesScreen(viewModel: viewModel, sessionController: sessionController)
       }
       .tabItem {
         Label(VectorMobileTab.issues.title, systemImage: VectorMobileTab.issues.systemImage)
@@ -127,10 +127,9 @@ private struct VectorSessionRestoreScreen: View {
 
 private struct VectorSetupScreen: View {
   @ObservedObject var sessionController: VectorMobileSessionController
-  @State private var appURLString = ""
+  @State private var appURLString = "imai.tech"
   @State private var identifier = ""
   @State private var password = ""
-  @State private var orgSlug = ""
 
   private var canSubmit: Bool {
     !appURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -153,7 +152,6 @@ private struct VectorSetupScreen: View {
                 appURLString: $appURLString,
                 identifier: $identifier,
                 password: $password,
-                orgSlug: $orgSlug,
                 onSubmit: signIn
               )
 
@@ -218,7 +216,7 @@ private struct VectorSetupScreen: View {
         appURLString: appURLString,
         identifier: identifier,
         password: password,
-        orgSlug: orgSlug.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : orgSlug
+        orgSlug: nil
       )
     }
   }
@@ -285,7 +283,6 @@ private struct VectorNativeLoginForm: View {
   @Binding var appURLString: String
   @Binding var identifier: String
   @Binding var password: String
-  @Binding var orgSlug: String
   let onSubmit: () -> Void
 
   var body: some View {
@@ -295,8 +292,6 @@ private struct VectorNativeLoginForm: View {
       VectorLoginFormRow(title: "Account", text: $identifier, prompt: "you@example.com", keyboard: .email)
       VectorLoginSeparator()
       VectorLoginPasswordRow(text: $password, onSubmit: onSubmit)
-      VectorLoginSeparator()
-      VectorLoginFormRow(title: "Workspace", text: $orgSlug, prompt: "Optional", keyboard: .plain)
     }
     .background(
       Color(red: 0.08, green: 0.09, blue: 0.12).opacity(0.82),
@@ -455,8 +450,11 @@ private struct CompactSegmentedControl<Option: Hashable>: View {
             .frame(height: 30)
             .foregroundStyle(selection == option ? Color.primary : Color.secondary)
             .background(selection == option ? VectorTheme.rowBackground : Color.clear)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
       }
     }
     .padding(2)
@@ -466,6 +464,7 @@ private struct CompactSegmentedControl<Option: Hashable>: View {
 
 struct IssuesScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
   @State private var searchText = ""
   @State private var isSearchPresented = false
   @FocusState private var isSearchFocused: Bool
@@ -522,17 +521,19 @@ struct IssuesScreen: View {
     .toolbar {
       #if os(iOS)
       ToolbarItem(placement: .topBarLeading) {
-        Link(destination: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")) {
-          Image(systemName: "safari")
-        }
-        .accessibilityLabel("Open issues on web")
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")
+        )
       }
       #else
       ToolbarItem(placement: .automatic) {
-        Link(destination: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")) {
-          Image(systemName: "safari")
-        }
-        .accessibilityLabel("Open issues on web")
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/issues")
+        )
       }
       #endif
 
@@ -578,6 +579,96 @@ struct IssuesScreen: View {
   }
 }
 
+private struct WorkspaceToolbarMenu: View {
+  @ObservedObject var sessionController: VectorMobileSessionController
+  let currentOrgSlug: String
+  let issuesURL: URL
+
+  var body: some View {
+    Menu {
+      WorkspaceMenuContent(
+        sessionController: sessionController,
+        currentOrgSlug: currentOrgSlug,
+        webURL: issuesURL,
+        webLabel: "Open issues on web"
+      )
+    } label: {
+      Image(systemName: "safari")
+    }
+    .accessibilityLabel("Workspace menu")
+  }
+}
+
+private struct WorkspaceMenuContent: View {
+  @ObservedObject var sessionController: VectorMobileSessionController
+  let currentOrgSlug: String
+  let webURL: URL
+  let webLabel: String
+
+  var body: some View {
+    if !sessionController.organizations.isEmpty {
+      Section("Workspaces") {
+        ForEach(sessionController.organizations) { organization in
+          Button {
+            sessionController.switchWorkspace(to: organization)
+          } label: {
+            Label(
+              organization.name,
+              systemImage: organization.slug == currentOrgSlug ? "checkmark" : "building.2"
+            )
+          }
+          .disabled(organization.slug == currentOrgSlug || sessionController.isDemoMode)
+        }
+      }
+    }
+
+    Section {
+      Link(destination: webURL) {
+        Label(webLabel, systemImage: "safari")
+      }
+    }
+  }
+}
+
+private struct WorkspaceSettingsRow: View {
+  @ObservedObject var sessionController: VectorMobileSessionController
+  let currentOrgSlug: String
+
+  private var currentWorkspaceLabel: String {
+    sessionController.organizations.first { $0.slug == currentOrgSlug }?.name ?? currentOrgSlug
+  }
+
+  var body: some View {
+    Menu {
+      if !sessionController.organizations.isEmpty {
+        ForEach(sessionController.organizations) { organization in
+          Button {
+            sessionController.switchWorkspace(to: organization)
+          } label: {
+            Label(
+              organization.name,
+              systemImage: organization.slug == currentOrgSlug ? "checkmark" : "building.2"
+            )
+          }
+          .disabled(organization.slug == currentOrgSlug || sessionController.isDemoMode)
+        }
+      }
+    } label: {
+      HStack {
+        Text("Workspace")
+        Spacer()
+        Text(currentWorkspaceLabel)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(.secondary)
+      }
+    }
+    .disabled(sessionController.organizations.count <= 1 || sessionController.isDemoMode)
+  }
+}
+
 private struct IssueLayoutMenu: View {
   @Binding var selection: VectorIssueLayoutMode
 
@@ -605,6 +696,7 @@ private struct IssueLayoutMenu: View {
       .frame(height: 34)
       .background(VectorTheme.rowBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
       .vectorShadowRing(cornerRadius: 7)
+      .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
     }
     .buttonStyle(.plain)
   }
@@ -631,7 +723,11 @@ struct IssueList: View {
           NavigationLink {
             IssueDetailScreen(issue: issue, viewModel: viewModel)
           } label: {
-            IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
+            IssueRowView(
+              issue: issue,
+              workspaceOptions: viewModel.workspaceOptions,
+              baseURL: viewModel.configuration.webBaseURL
+            )
               .padding(.horizontal, 12)
               .padding(.vertical, 8)
               .contentShape(Rectangle())
@@ -771,6 +867,7 @@ struct IssueTimeline: View {
 struct IssueRowView: View {
   let issue: VectorIssueRow
   let workspaceOptions: VectorWorkspaceOptions?
+  let baseURL: URL
 
   private var status: VectorIssueMetadataValue {
     VectorIssueMetadataResolver.state(for: issue, options: workspaceOptions)
@@ -781,38 +878,77 @@ struct IssueRowView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
+    HStack(alignment: .center, spacing: 10) {
       HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(issue.key)
           .font(.caption.monospaced())
           .foregroundStyle(.secondary)
           .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
 
         Text(issue.title)
           .font(.subheadline.weight(.medium))
           .foregroundStyle(.primary)
           .lineLimit(1)
       }
+      .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
 
-      HStack(spacing: 6) {
+      HStack(spacing: 5) {
         VectorPill(
           text: status.name,
           color: Color(vectorHex: status.color),
           systemImage: vectorSystemImage(for: status.icon)
         )
+        .frame(maxWidth: 86, alignment: .trailing)
+
         if let priority {
           VectorPill(
             text: priority.name,
             color: Color(vectorHex: priority.color),
             systemImage: vectorSystemImage(for: priority.icon)
           )
+          .frame(maxWidth: 82, alignment: .trailing)
         }
-        if let projectKey = issue.projectKey {
-          VectorPill(text: projectKey, color: .secondary, systemImage: "folder")
-        }
+
+        IssueRowAssigneeAvatar(issue: issue, baseURL: baseURL)
       }
+      .layoutPriority(1)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct IssueRowAssigneeAvatar: View {
+  let issue: VectorIssueRow
+  let baseURL: URL
+
+  private var user: VectorUser? {
+    guard issue.assigneeId != nil || issue.assigneeName != nil || issue.assigneeEmail != nil || issue.assigneeImage != nil else {
+      return nil
+    }
+
+    return VectorUser(
+      id: issue.assigneeId ?? issue.assigneeEmail ?? issue.assigneeName ?? "assignee",
+      name: issue.assigneeName,
+      email: issue.assigneeEmail,
+      image: issue.assigneeImage
+    )
+  }
+
+  var body: some View {
+    Group {
+      if let user {
+        VectorUserAvatar(user: user, baseURL: baseURL, size: 24)
+      } else {
+        Image(systemName: "person.crop.circle")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 24, height: 24)
+          .background(Color.secondary.opacity(0.10), in: Circle())
+          .overlay(Circle().stroke(VectorTheme.border.opacity(0.25), lineWidth: 0.5))
+      }
+    }
+    .accessibilityLabel("Assignee: \(issue.assigneeLabel)")
   }
 }
 
@@ -907,6 +1043,9 @@ struct IssueDetailScreen: View {
   @State private var isSavingDocument = false
   @State private var isPostingComment = false
   @State private var commentDraft = ""
+  @State private var activeReplyParentId: VectorID?
+  @State private var postingReplyParentId: VectorID?
+  @State private var replyDrafts: [VectorID: String] = [:]
   @State private var pendingProperty: IssueDetailProperty?
   @State private var issueErrorMessage: String?
   @FocusState private var focusedField: IssueDetailFocusField?
@@ -939,12 +1078,23 @@ struct IssueDetailScreen: View {
   }
 
   private var timelineEntries: [IssueTimelineEntry] {
-    let commentEntries = viewModel.comments.map(IssueTimelineEntry.comment)
+    let commentEntries = viewModel.comments
+      .filter { $0.parentId == nil }
+      .map(IssueTimelineEntry.comment)
     let activityEntries = viewModel.issueActivity
       .filter { $0.eventType != "issue_comment_added" }
       .map(IssueTimelineEntry.activity)
 
     return (commentEntries + activityEntries).sorted { $0.createdAt < $1.createdAt }
+  }
+
+  private var repliesByParent: [VectorID: [VectorComment]] {
+    Dictionary(grouping: viewModel.comments.filter { $0.parentId != nil }) { comment in
+      comment.parentId ?? ""
+    }
+    .mapValues { replies in
+      replies.sorted { $0.creationTime < $1.creationTime }
+    }
   }
 
   var body: some View {
@@ -1090,13 +1240,49 @@ struct IssueDetailScreen: View {
               .font(.subheadline)
               .foregroundStyle(.secondary)
           } else {
-            VStack(alignment: .leading, spacing: 14) {
-              ForEach(timelineEntries) { entry in
+            VStack(alignment: .leading, spacing: 0) {
+              ForEach(Array(timelineEntries.enumerated()), id: \.element.id) { index, entry in
+                if index > 0 {
+                  let spacing = timelineSpacing(before: index)
+                  if spacing > 0 {
+                    Color.clear.frame(height: spacing)
+                  }
+                }
+
                 switch entry {
                 case let .comment(comment):
-                  CommentRow(comment: comment)
+                  IssueCommentCard(
+                    comment: comment,
+                    replies: repliesByParent[comment.id] ?? [],
+                    baseURL: viewModel.configuration.webBaseURL,
+                    replyDraft: Binding(
+                      get: { replyDrafts[comment.id, default: ""] },
+                      set: { replyDrafts[comment.id] = $0 }
+                    ),
+                    isReplying: activeReplyParentId == comment.id,
+                    isPostingReply: postingReplyParentId == comment.id,
+                    focusedField: $focusedField,
+                    onReplyTap: {
+                      withAnimation(.snappy(duration: 0.18)) {
+                        activeReplyParentId = comment.id
+                        focusedField = .replyComment(comment.id)
+                      }
+                    },
+                    onCancelReply: {
+                      withAnimation(.snappy(duration: 0.18)) {
+                        activeReplyParentId = nil
+                        replyDrafts[comment.id] = ""
+                      }
+                    },
+                    onSubmitReply: {
+                      postReply(parentId: comment.id)
+                    }
+                  )
                 case let .activity(activity):
-                  ActivityRow(activity: activity)
+                  IssueActivityTimelineRow(
+                    activity: activity,
+                    isLast: index == timelineEntries.count - 1
+                  )
                 }
               }
             }
@@ -1105,9 +1291,16 @@ struct IssueDetailScreen: View {
           IssueCommentComposer(
             text: $commentDraft,
             isPosting: isPostingComment,
+            placeholder: "Leave a comment... Use @ to mention",
+            focusTarget: .mainComment,
             focusedField: $focusedField,
             onSubmit: postComment
           )
+          .onChange(of: focusedField) { _, focusedField in
+            if focusedField == .mainComment {
+              activeReplyParentId = nil
+            }
+          }
         }
 
         if let issueErrorMessage {
@@ -1134,7 +1327,7 @@ struct IssueDetailScreen: View {
       }
       #if os(iOS)
       ToolbarItemGroup(placement: .keyboard) {
-        if focusedField == .description || focusedField == .comment {
+        if focusedField?.showsMarkdownToolbar == true {
           MarkdownFormattingKeyboardToolbar(
             onAction: { action in
               applyMarkdownFormatting(action)
@@ -1159,7 +1352,7 @@ struct IssueDetailScreen: View {
     }
     #if os(iOS)
     .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-      if focusedField == .description || focusedField == .comment {
+      if focusedField?.showsMarkdownToolbar == true {
         focusedField = nil
       }
     }
@@ -1169,6 +1362,18 @@ struct IssueDetailScreen: View {
   private func syncDraft(from issue: VectorIssueRow) {
     draftTitle = issue.title
     draftDescription = issue.description ?? ""
+  }
+
+  private func timelineSpacing(before index: Int) -> CGFloat {
+    guard index > 0 else {
+      return 0
+    }
+
+    if timelineEntries[index - 1].isComment && timelineEntries[index].isComment {
+      return 0
+    }
+
+    return 12
   }
 
   private func saveDocumentChanges() {
@@ -1223,11 +1428,37 @@ struct IssueDetailScreen: View {
       do {
         try await viewModel.addIssueComment(issueId: displayIssue.id, body: body)
         commentDraft = ""
+        activeReplyParentId = nil
         focusedField = nil
       } catch {
         issueErrorMessage = error.localizedDescription
       }
       isPostingComment = false
+    }
+  }
+
+  private func postReply(parentId: VectorID) {
+    guard postingReplyParentId == nil else {
+      return
+    }
+
+    let body = replyDrafts[parentId, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !body.isEmpty else {
+      return
+    }
+
+    postingReplyParentId = parentId
+    issueErrorMessage = nil
+    Task { @MainActor in
+      do {
+        try await viewModel.addIssueComment(issueId: displayIssue.id, body: body, parentId: parentId)
+        replyDrafts[parentId] = ""
+        activeReplyParentId = nil
+        focusedField = nil
+      } catch {
+        issueErrorMessage = error.localizedDescription
+      }
+      postingReplyParentId = nil
     }
   }
 
@@ -1257,8 +1488,10 @@ struct IssueDetailScreen: View {
     switch focusedField {
     case .description:
       draftDescription = action.apply(to: draftDescription)
-    case .comment:
+    case .mainComment:
       commentDraft = action.apply(to: commentDraft)
+    case let .replyComment(parentId):
+      replyDrafts[parentId, default: ""] = action.apply(to: replyDrafts[parentId, default: ""])
     case .title, nil:
       return
     }
@@ -1268,7 +1501,17 @@ struct IssueDetailScreen: View {
 private enum IssueDetailFocusField: Hashable {
   case title
   case description
-  case comment
+  case mainComment
+  case replyComment(VectorID)
+
+  var showsMarkdownToolbar: Bool {
+    switch self {
+    case .description, .mainComment, .replyComment:
+      true
+    case .title:
+      false
+    }
+  }
 }
 
 private enum IssueDetailProperty: Hashable {
@@ -1300,6 +1543,13 @@ private enum IssueTimelineEntry: Identifiable {
     case let .activity(activity):
       activity.createdAt
     }
+  }
+
+  var isComment: Bool {
+    if case .comment = self {
+      return true
+    }
+    return false
   }
 }
 
@@ -1661,6 +1911,9 @@ private struct IssueAssigneeMenu: View {
 private struct IssueCommentComposer: View {
   @Binding var text: String
   let isPosting: Bool
+  var placeholder = "Write a comment"
+  var minHeight: CGFloat = 76
+  let focusTarget: IssueDetailFocusField
   let focusedField: FocusState<IssueDetailFocusField?>.Binding
   let onSubmit: () -> Void
 
@@ -1672,7 +1925,7 @@ private struct IssueCommentComposer: View {
     VStack(alignment: .leading, spacing: 8) {
       ZStack(alignment: .topLeading) {
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-          Text("Write a comment")
+          Text(placeholder)
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10)
@@ -1681,9 +1934,9 @@ private struct IssueCommentComposer: View {
 
         TextEditor(text: $text)
           .font(.subheadline)
-          .frame(minHeight: 76)
+          .frame(minHeight: minHeight)
           .scrollContentBackground(.hidden)
-          .focused(focusedField, equals: .comment)
+          .focused(focusedField, equals: focusTarget)
       }
       .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
       .vectorShadowRing(cornerRadius: 8)
@@ -1744,102 +1997,339 @@ private struct MarkdownFormattingKeyboardToolbar: View {
   }
 }
 
-private struct ActivityRow: View {
+private func relativeTimestamp(_ milliseconds: Double) -> String {
+  let date = Date(timeIntervalSince1970: milliseconds / 1000)
+  let seconds = max(0, Int(Date().timeIntervalSince(date)))
+
+  if seconds < 60 {
+    return "just now"
+  }
+
+  let minutes = seconds / 60
+  if minutes < 60 {
+    return "\(minutes) minute\(minutes == 1 ? "" : "s") ago"
+  }
+
+  let hours = minutes / 60
+  if hours < 24 {
+    return "\(hours) hour\(hours == 1 ? "" : "s") ago"
+  }
+
+  let days = hours / 24
+  if days < 7 {
+    return "\(days) day\(days == 1 ? "" : "s") ago"
+  }
+
+  return date.formatted(date: .abbreviated, time: .omitted)
+}
+
+private struct IssueActivityTimelineRow: View {
   let activity: VectorActivityItem
+  let isLast: Bool
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
-      Image(systemName: systemImage)
-        .font(.caption)
-        .foregroundStyle(VectorTheme.accent)
-        .frame(width: 18, height: 18)
-        .padding(.top, 1)
-
-      VStack(alignment: .leading, spacing: 3) {
-        Text(title)
-          .font(.subheadline.weight(.medium))
-        if let detail {
-          Text(detail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+      ZStack(alignment: .top) {
+        if !isLast {
+          Rectangle()
+            .fill(VectorTheme.border.opacity(0.35))
+            .frame(width: 1)
+            .offset(y: 22)
         }
-        Text(timestamp)
-          .font(.caption2)
+        Image(systemName: systemImage)
+          .font(.caption2.weight(.semibold))
+          .symbolRenderingMode(.monochrome)
+          .foregroundStyle(iconColor)
+          .frame(width: 18, height: 18)
+          .background(VectorTheme.rowBackground, in: Circle())
+          .overlay(
+            Circle()
+              .stroke(VectorTheme.border.opacity(0.55), lineWidth: 0.8)
+          )
+      }
+      .frame(width: 28, alignment: .top)
+      .frame(minHeight: 30, alignment: .top)
+
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        activityText
+          .font(.subheadline)
+          .foregroundStyle(.primary)
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 12)
+        Text(relativeTimestamp(activity.createdAt))
+          .font(.caption)
           .foregroundStyle(.secondary)
+          .lineLimit(1)
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 4)
+    .padding(.vertical, 5)
   }
 
   private var actorName: String {
     activity.actor?.displayName ?? "Someone"
   }
 
-  private var title: String {
+  private var activityText: Text {
+    Text(actorName).fontWeight(.semibold) + Text(" \(description)")
+  }
+
+  private var description: String {
     switch activity.eventType {
     case "issue_created":
-      "\(actorName) created this issue"
+      "created this issue"
     case "issue_title_changed":
-      "\(actorName) updated the title"
+      "updated the title"
     case "issue_description_changed":
-      "\(actorName) updated the description"
+      "updated the description"
     case "issue_workflow_state_changed":
-      "\(actorName) changed the status"
+      "changed the status"
     case "issue_priority_changed":
-      "\(actorName) changed the priority"
+      "changed the priority"
     case "issue_assignees_changed":
-      "\(actorName) changed assignees"
+      assignmentDescription
     case "issue_project_changed":
-      "\(actorName) changed the project"
+      "changed the project"
     case "issue_team_changed":
-      "\(actorName) changed the team"
+      "changed the team"
     case "issue_visibility_changed":
-      "\(actorName) changed visibility"
+      "changed visibility"
     case "issue_comment_added":
-      "\(actorName) commented"
+      "commented"
     default:
-      "\(actorName) updated the issue"
+      "updated the issue"
     }
   }
 
-  private var detail: String? {
-    if let commentPreview = activity.details.commentPreview, !commentPreview.isEmpty {
-      return commentPreview
+  private var assignmentDescription: String {
+    if !activity.details.addedUserNames.isEmpty {
+      return "assigned \(activity.details.addedUserNames.joined(separator: ", "))"
     }
-    if !activity.details.addedUserNames.isEmpty || !activity.details.removedUserNames.isEmpty {
-      let added = activity.details.addedUserNames.isEmpty ? nil : "Added \(activity.details.addedUserNames.joined(separator: ", "))"
-      let removed = activity.details.removedUserNames.isEmpty ? nil : "Removed \(activity.details.removedUserNames.joined(separator: ", "))"
-      return [added, removed].compactMap { $0 }.joined(separator: " · ")
+    if !activity.details.removedUserNames.isEmpty {
+      return "unassigned \(activity.details.removedUserNames.joined(separator: ", "))"
     }
-    if let from = activity.details.fromLabel, let to = activity.details.toLabel {
-      return "\(from) -> \(to)"
-    }
-    if let to = activity.details.toLabel {
-      return to
-    }
-    return nil
-  }
-
-  private var timestamp: String {
-    Date(timeIntervalSince1970: activity.createdAt / 1000)
-      .formatted(date: .abbreviated, time: .shortened)
+    return "changed assignees"
   }
 
   private var systemImage: String {
     switch activity.eventType {
+    case "issue_created":
+      "plus"
     case "issue_comment_added":
       "text.bubble"
     case "issue_assignees_changed":
       "person.2"
-    case "issue_workflow_state_changed":
-      "arrow.triangle.2.circlepath"
+    case "issue_workflow_state_changed", "issue_assignment_state_changed":
+      "circle.circle"
+    case "issue_title_changed", "issue_description_changed":
+      "textformat"
     case "issue_priority_changed":
-      "exclamationmark.2"
+      "arrow.left.arrow.right"
+    case "issue_project_changed", "issue_project_added", "issue_project_removed":
+      "folder"
+    case "issue_team_changed", "issue_team_added", "issue_team_removed":
+      "person.2"
+    case "issue_visibility_changed":
+      "eye"
+    case "issue_sub_issue_created",
+      "issue_github_artifact_linked",
+      "issue_github_artifact_unlinked",
+      "issue_github_artifact_suppressed",
+      "issue_github_artifact_status_changed":
+      "point.3.connected.trianglepath.dotted"
+    case "issue_live_activity_started",
+      "issue_live_activity_delegated",
+      "issue_live_activity_completed",
+      "issue_live_activity_status_changed":
+      "terminal"
     default:
-      "clock"
+      "doc.text"
     }
+  }
+
+  private var iconColor: Color {
+    switch activity.eventType {
+    case "issue_created", "issue_sub_issue_created":
+      Color(vectorHex: "#8b5cf6")
+    case "issue_workflow_state_changed",
+      "issue_assignment_state_changed",
+      "issue_live_activity_started",
+      "issue_live_activity_delegated":
+      Color(vectorHex: "#22c55e")
+    case "issue_priority_changed":
+      Color(vectorHex: "#f97316")
+    case "issue_assignees_changed", "issue_comment_added":
+      Color(vectorHex: "#3b82f6")
+    case "issue_team_changed",
+      "issue_team_added",
+      "issue_team_removed",
+      "issue_project_changed",
+      "issue_project_added",
+      "issue_project_removed",
+      "issue_visibility_changed",
+      "issue_title_changed",
+      "issue_description_changed",
+      "issue_github_artifact_linked",
+      "issue_github_artifact_unlinked",
+      "issue_github_artifact_suppressed",
+      "issue_github_artifact_status_changed",
+      "issue_live_activity_completed",
+      "issue_live_activity_status_changed":
+      Color.secondary
+    default:
+      Color.secondary
+    }
+  }
+}
+
+private struct IssueCommentCard: View {
+  let comment: VectorComment
+  let replies: [VectorComment]
+  let baseURL: URL
+  @Binding var replyDraft: String
+  let isReplying: Bool
+  let isPostingReply: Bool
+  let focusedField: FocusState<IssueDetailFocusField?>.Binding
+  let onReplyTap: () -> Void
+  let onCancelReply: () -> Void
+  let onSubmitReply: () -> Void
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      commentContent(comment, compact: false, showsReplyAction: true)
+        .padding(.vertical, 10)
+
+      ForEach(replies) { reply in
+        commentContent(reply, compact: true)
+          .padding(.leading, 36)
+          .padding(.top, 2)
+          .padding(.bottom, 8)
+      }
+
+      if isReplying {
+        VStack(alignment: .leading, spacing: 8) {
+          IssueCommentComposer(
+            text: $replyDraft,
+            isPosting: isPostingReply,
+            placeholder: "Leave a reply... Use @ to mention",
+            minHeight: 46,
+            focusTarget: .replyComment(comment.id),
+            focusedField: focusedField,
+            onSubmit: onSubmitReply
+          )
+        }
+        .padding(.top, 6)
+        .padding(.leading, 36)
+        .padding(.bottom, 8)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  @ViewBuilder
+  private func commentContent(_ comment: VectorComment, compact: Bool, showsReplyAction: Bool = false) -> some View {
+    HStack(alignment: .top, spacing: 10) {
+      VectorUserAvatar(user: comment.author, baseURL: baseURL, size: compact ? 22 : 28)
+
+      VStack(alignment: .leading, spacing: compact ? 5 : 7) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+          Text(comment.author?.displayName ?? "Unknown user")
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+          Text(relativeTimestamp(comment.creationTime))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+          Spacer(minLength: 8)
+          if showsReplyAction {
+            Button {
+              if isReplying {
+                onCancelReply()
+              } else {
+                onReplyTap()
+              }
+            } label: {
+              Text(isReplying ? "Cancel" : "Reply")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(VectorTheme.accent)
+                .frame(height: 24)
+            }
+            .buttonStyle(.plain)
+            .disabled(isPostingReply)
+          }
+        }
+
+        MarkdownDocumentView(markdown: comment.body)
+          .font(compact ? .subheadline : .body)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct VectorUserAvatar: View {
+  let user: VectorUser?
+  let baseURL: URL?
+  var size: CGFloat = 26
+
+  var body: some View {
+    Group {
+      if let url = imageURL {
+        AsyncImage(url: url) { phase in
+          switch phase {
+          case let .success(image):
+            image
+              .resizable()
+              .scaledToFill()
+          default:
+            fallback
+          }
+        }
+      } else {
+        fallback
+      }
+    }
+    .frame(width: size, height: size)
+    .clipShape(Circle())
+    .overlay(Circle().stroke(VectorTheme.border.opacity(0.25), lineWidth: 0.5))
+  }
+
+  private var imageURL: URL? {
+    guard let rawImage = user?.image?.trimmingCharacters(in: .whitespacesAndNewlines), !rawImage.isEmpty else {
+      return nil
+    }
+
+    if rawImage.hasPrefix("//") {
+      return URL(string: "https:\(rawImage)")
+    }
+
+    if let absoluteURL = URL(string: rawImage), absoluteURL.scheme != nil {
+      return absoluteURL
+    }
+
+    if let baseURL {
+      return URL(string: rawImage, relativeTo: baseURL)?.absoluteURL
+    }
+
+    return URL(string: rawImage)
+  }
+
+  private var fallback: some View {
+    Circle()
+      .fill(VectorTheme.accent.opacity(0.14))
+      .overlay(
+        Text(initials)
+          .font(.system(size: max(10, size * 0.38), weight: .semibold))
+          .foregroundStyle(VectorTheme.accent)
+      )
+  }
+
+  private var initials: String {
+    let source = user?.displayName.trimmingCharacters(in: .whitespacesAndNewlines) ?? "?"
+    let parts = source.split(separator: " ")
+    let value = parts.prefix(2).compactMap { $0.first }.map(String.init).joined()
+    return value.isEmpty ? "?" : value.uppercased()
   }
 }
 
@@ -1978,20 +2468,6 @@ private struct InlineMarkdownText: View {
   }
 }
 
-struct CommentRow: View {
-  let comment: VectorComment
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 6) {
-      Text(comment.author?.displayName ?? "Unknown user")
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-      MarkdownDocumentView(markdown: comment.body)
-    }
-    .padding(.vertical, 4)
-  }
-}
-
 struct ProjectsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
 
@@ -2068,7 +2544,11 @@ struct ProjectDetailScreen: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
+              IssueRowView(
+                issue: issue,
+                workspaceOptions: viewModel.workspaceOptions,
+                baseURL: viewModel.configuration.webBaseURL
+              )
             }
           }
         } else if tab == "members" {
@@ -2156,7 +2636,11 @@ struct TeamDetailScreen: View {
             NavigationLink {
               IssueDetailScreen(issue: issue, viewModel: viewModel)
             } label: {
-              IssueRowView(issue: issue, workspaceOptions: viewModel.workspaceOptions)
+              IssueRowView(
+                issue: issue,
+                workspaceOptions: viewModel.workspaceOptions,
+                baseURL: viewModel.configuration.webBaseURL
+              )
             }
           }
         } else if tab == "projects" {
@@ -2236,7 +2720,10 @@ struct MobileSettingsScreen: View {
 
       Section("Instance") {
         LabeledContent("App URL", value: viewModel.configuration.webBaseURL.absoluteString)
-        LabeledContent("Workspace", value: viewModel.configuration.orgSlug)
+        WorkspaceSettingsRow(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug
+        )
       }
 
       Section("Mobile") {

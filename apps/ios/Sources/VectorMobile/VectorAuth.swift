@@ -506,6 +506,44 @@ public final class VectorMobileSessionController: ObservableObject {
     }
   }
 
+  public func switchWorkspace(to organization: VectorOrganization) {
+    guard viewModel?.configuration.orgSlug != organization.slug else {
+      return
+    }
+
+    guard !isDemoMode else {
+      return
+    }
+
+    do {
+      guard var storedSession = try sessionStore.load(), let client = convexClient else {
+        throw VectorAuthError.missingStoredSession
+      }
+
+      storedSession.orgSlug = organization.slug
+      try sessionStore.save(storedSession)
+
+      let configuration = VectorMobileConfiguration(
+        orgSlug: organization.slug,
+        convexDeploymentURL: storedSession.convexURL,
+        webBaseURL: storedSession.appURL
+      )
+      let nextViewModel = VectorMobileViewModel(
+        configuration: configuration,
+        repository: ConvexVectorRepository(client: client)
+      )
+      if let pushToken = VectorPushNotificationCoordinator.shared.deviceToken {
+        nextViewModel.upsertMobilePushToken(pushToken)
+      }
+
+      viewModel = nextViewModel
+      errorMessage = nil
+      phase = .signedIn
+    } catch {
+      errorMessage = error.localizedDescription
+    }
+  }
+
   public func useDemoData() {
     isDemoMode = true
     user = VectorAuthenticatedUser(name: "Demo")
