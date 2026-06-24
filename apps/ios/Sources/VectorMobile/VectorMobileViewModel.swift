@@ -23,9 +23,17 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public let configuration: VectorMobileConfiguration
   private let repository: VectorMobileRepository
-  private var listCancellables = Set<AnyCancellable>()
+  private var issueCache: [VectorIssueScope: [VectorIssueRow]] = [:]
+  private var projectCache: [VectorProjectScope: [VectorProject]] = [:]
+  private var teamCache: [VectorProjectScope: [VectorTeam]] = [:]
+  private var issueListCancellables: [VectorIssueScope: AnyCancellable] = [:]
+  private var projectListCancellables: [VectorProjectScope: AnyCancellable] = [:]
+  private var teamListCancellables: [VectorProjectScope: AnyCancellable] = [:]
+  private var workspaceOptionsCancellable: AnyCancellable?
   private var issueSupportCancellables = Set<AnyCancellable>()
+  private var activeIssueSupportId: VectorID?
   private var settingsCancellables = Set<AnyCancellable>()
+  private var isSettingsSubscribed = false
 
   public init(
     configuration: VectorMobileConfiguration = .demo,
@@ -37,58 +45,146 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   public func refresh() {
-    isLoading = true
     errorMessage = nil
-    listCancellables.removeAll()
+    subscribeToIssuesIfNeeded(scope: issueScope)
+    subscribeToProjectsIfNeeded(scope: projectScope)
+    subscribeToTeamsIfNeeded(scope: projectScope)
+    subscribeToWorkspaceOptionsIfNeeded()
+    loadSettings()
+  }
 
-    repository.issues(orgSlug: configuration.orgSlug, scope: issueScope, pageSize: 50)
+  private func subscribeToIssuesIfNeeded(scope: VectorIssueScope) {
+    if let cachedIssues = issueCache[scope] {
+      if issueScope == scope {
+        issues = cachedIssues
+        isLoading = false
+      }
+    } else if issueScope == scope && issueListCancellables[scope] == nil {
+      issues = []
+      isLoading = true
+    }
+
+    guard issueListCancellables[scope] == nil else {
+      return
+    }
+
+    issueListCancellables[scope] = repository.issues(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope] completion in
+          self?.handleIssueListCompletion(completion, scope: scope)
+        },
+        receiveValue: { [weak self, scope] issues in
+          guard let self else { return }
+          issueCache[scope] = issues
+          if issueScope == scope {
+            self.issues = issues
+            isLoading = false
+          }
+        }
+      )
+  }
+
+  private func subscribeToProjectsIfNeeded(scope: VectorProjectScope) {
+    if let cachedProjects = projectCache[scope] {
+      if projectScope == scope {
+        projects = cachedProjects
+      }
+    } else if projectScope == scope && projectListCancellables[scope] == nil {
+      projects = []
+    }
+
+    guard projectListCancellables[scope] == nil else {
+      return
+    }
+
+    projectListCancellables[scope] = repository.projects(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope] completion in
+          guard let self else { return }
+          if case let .failure(error) = completion {
+            projectListCancellables[scope] = nil
+            if projectScope == scope {
+              errorMessage = error.localizedDescription
+            }
+          }
+        },
+        receiveValue: { [weak self, scope] projects in
+          guard let self else { return }
+          projectCache[scope] = projects
+          if projectScope == scope {
+            self.projects = projects
+          }
+        }
+      )
+  }
+
+  private func subscribeToTeamsIfNeeded(scope: VectorProjectScope) {
+    if let cachedTeams = teamCache[scope] {
+      if projectScope == scope {
+        teams = cachedTeams
+      }
+    } else if projectScope == scope && teamListCancellables[scope] == nil {
+      teams = []
+    }
+
+    guard teamListCancellables[scope] == nil else {
+      return
+    }
+
+    teamListCancellables[scope] = repository.teams(orgSlug: configuration.orgSlug, scope: scope, pageSize: 50)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, scope] completion in
+          guard let self else { return }
+          if case let .failure(error) = completion {
+            teamListCancellables[scope] = nil
+            if projectScope == scope {
+              errorMessage = error.localizedDescription
+            }
+          }
+        },
+        receiveValue: { [weak self, scope] teams in
+          guard let self else { return }
+          teamCache[scope] = teams
+          if projectScope == scope {
+            self.teams = teams
+          }
+        }
+      )
+  }
+
+  private func subscribeToWorkspaceOptionsIfNeeded() {
+    guard workspaceOptionsCancellable == nil else {
+      return
+    }
+
+    workspaceOptionsCancellable = repository.workspaceOptions(orgSlug: configuration.orgSlug)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { [weak self] completion in
-          self?.handleCompletion(completion)
+          if case let .failure(error) = completion {
+            self?.workspaceOptionsCancellable = nil
+            self?.errorMessage = error.localizedDescription
+          }
         },
-        receiveValue: { [weak self] issues in
-          self?.issues = issues
-          self?.isLoading = false
-        }
-      )
-      .store(in: &listCancellables)
-
-    repository.projects(orgSlug: configuration.orgSlug, scope: projectScope, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { _ in },
-        receiveValue: { [weak self] projects in
-          self?.projects = projects
-        }
-      )
-      .store(in: &listCancellables)
-
-    repository.teams(orgSlug: configuration.orgSlug, scope: projectScope, pageSize: 50)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { _ in },
-        receiveValue: { [weak self] teams in
-          self?.teams = teams
-        }
-      )
-      .store(in: &listCancellables)
-
-    repository.workspaceOptions(orgSlug: configuration.orgSlug)
-      .receive(on: DispatchQueue.main)
-      .sink(
-        receiveCompletion: { _ in },
         receiveValue: { [weak self] options in
           self?.workspaceOptions = options
         }
       )
-      .store(in: &listCancellables)
-
-    loadSettings()
   }
 
   public func loadIssueSupport(issue: VectorIssueRow) {
+    if activeIssueSupportId == issue.id, !issueSupportCancellables.isEmpty {
+      if selectedIssue?.id != issue.id {
+        selectedIssue = currentIssue(issue.id) ?? issue
+      }
+      return
+    }
+
     issueSupportCancellables.removeAll()
+    activeIssueSupportId = issue.id
     selectedIssue = issue
     comments = []
     assignments = []
@@ -142,6 +238,11 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   public func loadSettings() {
+    guard !isSettingsSubscribed else {
+      return
+    }
+
+    isSettingsSubscribed = true
     settingsErrorMessage = nil
     settingsCancellables.removeAll()
 
@@ -151,6 +252,7 @@ public final class VectorMobileViewModel: ObservableObject {
         receiveCompletion: { [weak self] completion in
           if case let .failure(error) = completion {
             self?.settingsErrorMessage = error.localizedDescription
+            self?.isSettingsSubscribed = false
           }
         },
         receiveValue: { [weak self] status in
@@ -162,7 +264,12 @@ public final class VectorMobileViewModel: ObservableObject {
     repository.notificationPreferences()
       .receive(on: DispatchQueue.main)
       .sink(
-        receiveCompletion: { _ in },
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.settingsErrorMessage = error.localizedDescription
+            self?.isSettingsSubscribed = false
+          }
+        },
         receiveValue: { [weak self] preferences in
           self?.notificationPreferences = preferences
         }
@@ -172,7 +279,12 @@ public final class VectorMobileViewModel: ObservableObject {
     repository.mobilePushTokens()
       .receive(on: DispatchQueue.main)
       .sink(
-        receiveCompletion: { _ in },
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.settingsErrorMessage = error.localizedDescription
+            self?.isSettingsSubscribed = false
+          }
+        },
         receiveValue: { [weak self] tokens in
           self?.mobilePushTokens = tokens
         }
@@ -479,7 +591,7 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
-  public func addIssueComment(issueId: VectorID, body: String) async throws {
+  public func addIssueComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {
     let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmedBody.isEmpty else {
       return
@@ -491,12 +603,13 @@ public final class VectorMobileViewModel: ObservableObject {
         id: "optimistic-\(UUID().uuidString)",
         body: body,
         author: nil,
+        parentId: parentId,
         creationTime: Date().timeIntervalSince1970 * 1000
       )
     )
 
     do {
-      try await repository.addComment(issueId: issueId, body: trimmedBody)
+      try await repository.addComment(issueId: issueId, body: trimmedBody, parentId: parentId)
     } catch {
       comments = previousComments
       errorMessage = error.localizedDescription
@@ -516,10 +629,13 @@ public final class VectorMobileViewModel: ObservableObject {
     configuration.webURL(path: "/\(configuration.orgSlug)/teams/\(team.key)")
   }
 
-  private func handleCompletion(_ completion: Subscribers.Completion<Error>) {
+  private func handleIssueListCompletion(_ completion: Subscribers.Completion<Error>, scope: VectorIssueScope) {
     if case let .failure(error) = completion {
-      errorMessage = error.localizedDescription
-      isLoading = false
+      issueListCancellables[scope] = nil
+      if issueScope == scope {
+        errorMessage = error.localizedDescription
+        isLoading = false
+      }
     }
   }
 

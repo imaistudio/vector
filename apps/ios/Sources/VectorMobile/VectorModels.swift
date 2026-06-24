@@ -244,9 +244,43 @@ public struct VectorUser: Decodable, Equatable, Identifiable {
 
   private enum CodingKeys: String, CodingKey {
     case id = "_id"
+    case publicId = "id"
     case name
     case email
     case image
+    case imageUrl
+    case avatarUrl
+    case avatarURL
+    case profileImage
+    case photoURL
+    case picture
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let name = try container.decodeIfPresent(String.self, forKey: .name)
+    let email = try container.decodeIfPresent(String.self, forKey: .email)
+
+    self.id = try container.decodeIfPresent(VectorID.self, forKey: .id)
+      ?? container.decodeIfPresent(VectorID.self, forKey: .publicId)
+      ?? email
+      ?? name
+      ?? "user"
+    self.name = name
+    self.email = email
+    self.image = [
+      try container.decodeIfPresent(String.self, forKey: .image),
+      try container.decodeIfPresent(String.self, forKey: .imageUrl),
+      try container.decodeIfPresent(String.self, forKey: .avatarUrl),
+      try container.decodeIfPresent(String.self, forKey: .avatarURL),
+      try container.decodeIfPresent(String.self, forKey: .profileImage),
+      try container.decodeIfPresent(String.self, forKey: .photoURL),
+      try container.decodeIfPresent(String.self, forKey: .picture),
+    ]
+    .compactMap { value in
+      value?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    .first { !$0.isEmpty }
   }
 
   public var displayName: String {

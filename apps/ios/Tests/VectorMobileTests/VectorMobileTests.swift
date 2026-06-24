@@ -130,6 +130,35 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertTrue(encoded.contains("\"assigneeIds\":[\"user-1\",\"user-2\"]"))
   }
 
+  func testMutationResponseDecodesObjectPayloads() throws {
+    let commentPayload = #"{"commentId":"comment-1"}"#.data(using: .utf8)!
+    let successPayload = #"{"success":true}"#.data(using: .utf8)!
+    let nullPayload = #"null"#.data(using: .utf8)!
+    let scalarPayload = #"true"#.data(using: .utf8)!
+
+    XCTAssertNoThrow(try JSONDecoder().decode(VectorMutationResponse.self, from: commentPayload))
+    XCTAssertNoThrow(try JSONDecoder().decode(VectorMutationResponse.self, from: successPayload))
+    XCTAssertNoThrow(try JSONDecoder().decode(VectorMutationResponse.self, from: nullPayload))
+    XCTAssertNoThrow(try JSONDecoder().decode(VectorMutationResponse.self, from: scalarPayload))
+  }
+
+  func testUserDecodesProfileImageAliases() throws {
+    let payload = """
+      {
+        "id": "user-1",
+        "name": "Nithin",
+        "email": "nithin@example.com",
+        "avatarUrl": "/api/avatar/user-1"
+      }
+      """.data(using: .utf8)!
+
+    let user = try JSONDecoder().decode(VectorUser.self, from: payload)
+
+    XCTAssertEqual(user.id, "user-1")
+    XCTAssertEqual(user.displayName, "Nithin")
+    XCTAssertEqual(user.image, "/api/avatar/user-1")
+  }
+
   func testMarkdownParserBuildsDocumentBlocks() {
     let blocks = VectorMarkdownParser.parse(
       """
@@ -323,10 +352,138 @@ final class VectorMobileTests: XCTestCase {
 
     withExtendedLifetime([issuesCancellable, detailCancellable, projectsCancellable, teamsCancellable, optionsCancellable]) {}
   }
+
+  @MainActor
+  func testViewModelReusesLiveQuerySubscriptionsAcrossRefreshes() {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+
+    XCTAssertEqual(repository.issueListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.projectListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.teamListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.workspaceOptionsCalls, 1)
+    XCTAssertEqual(repository.userStatusCalls, 1)
+
+    viewModel.refresh()
+    viewModel.loadSettings()
+
+    XCTAssertEqual(repository.issueListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.projectListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.teamListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.workspaceOptionsCalls, 1)
+    XCTAssertEqual(repository.userStatusCalls, 1)
+
+    viewModel.issueScope = .all
+    viewModel.refresh()
+    XCTAssertEqual(repository.issueListCalls[.all, default: 0], 1)
+
+    viewModel.issueScope = .mine
+    viewModel.refresh()
+    XCTAssertEqual(repository.issueListCalls[.mine, default: 0], 1)
+
+    viewModel.projectScope = .all
+    viewModel.refresh()
+    XCTAssertEqual(repository.projectListCalls[.all, default: 0], 1)
+    XCTAssertEqual(repository.teamListCalls[.all, default: 0], 1)
+  }
 }
 
 private struct FailingAuthTransport: VectorAuthTransport {
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     throw URLError(.notConnectedToInternet)
+  }
+}
+
+@MainActor
+private final class CountingVectorRepository: VectorMobileRepository {
+  var issueListCalls: [VectorIssueScope: Int] = [:]
+  var projectListCalls: [VectorProjectScope: Int] = [:]
+  var teamListCalls: [VectorProjectScope: Int] = [:]
+  var workspaceOptionsCalls = 0
+  var userStatusCalls = 0
+
+  func issues(orgSlug: String, scope: VectorIssueScope, pageSize: Int) -> AnyPublisher<[VectorIssueRow], Error> {
+    issueListCalls[scope, default: 0] += 1
+    return publisher(VectorMockData.issues)
+  }
+
+  func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error> {
+    publisher(VectorMockData.issues.first { $0.key == key })
+  }
+
+  func projects(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorProject], Error> {
+    projectListCalls[scope, default: 0] += 1
+    return publisher(VectorMockData.projects)
+  }
+
+  func teams(orgSlug: String, scope: VectorProjectScope, pageSize: Int) -> AnyPublisher<[VectorTeam], Error> {
+    teamListCalls[scope, default: 0] += 1
+    return publisher(VectorMockData.teams)
+  }
+
+  func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
+    workspaceOptionsCalls += 1
+    return publisher(VectorMockData.workspaceOptions)
+  }
+
+  func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error> {
+    publisher([])
+  }
+
+  func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error> {
+    publisher([])
+  }
+
+  func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error> {
+    publisher([])
+  }
+
+  func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
+    userStatusCalls += 1
+    return publisher(nil)
+  }
+
+  func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
+    publisher([])
+  }
+
+  func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error> {
+    publisher([])
+  }
+
+  func setPresence(_ presence: VectorPresenceStatus) async throws {}
+
+  func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws {}
+
+  func clearCustomStatus() async throws {}
+
+  func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws {}
+
+  func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
+
+  func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
+
+  func updateTitle(issueId: VectorID, title: String) async throws {}
+
+  func updateDescription(issueId: VectorID, description: String?) async throws {}
+
+  func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
+
+  func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
+
+  func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws {}
+
+  func changeProject(issueId: VectorID, projectId: VectorID?) async throws {}
+
+  func changeTeam(issueId: VectorID, teamId: VectorID?) async throws {}
+
+  func changeVisibility(issueId: VectorID, visibility: String) async throws {}
+
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws {}
+
+  private func publisher<Value>(_ value: Value) -> AnyPublisher<Value, Error> {
+    Just(value)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
   }
 }

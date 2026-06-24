@@ -119,7 +119,7 @@ function CollapsibleBody({
   );
 }
 
-// ─── Inline Reply Input (always visible, Linear-style) ───────────────────────
+// ─── Inline Reply Input ──────────────────────────────────────────────────────
 
 function InlineReplyInput({
   orgSlug,
@@ -128,9 +128,23 @@ function InlineReplyInput({
 }: {
   orgSlug: string;
   currentUser: CommentAuthor | null;
-  onSubmit: (body: string) => void;
+  onSubmit: (body: string) => Promise<void>;
 }) {
   const [body, setBody] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const submit = useCallback(async () => {
+    const trimmed = body.trim();
+    if (!trimmed || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit(trimmed);
+      setBody('');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [body, isSubmitting, onSubmit]);
 
   return (
     <div className='flex items-center gap-2'>
@@ -147,11 +161,7 @@ function InlineReplyInput({
         onKeyDown={e => {
           if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
             e.preventDefault();
-            const trimmed = body.trim();
-            if (trimmed) {
-              onSubmit(trimmed);
-              setBody('');
-            }
+            void submit();
           }
         }}
       >
@@ -169,16 +179,14 @@ function InlineReplyInput({
       <Button
         size='sm'
         className='size-7 shrink-0 cursor-pointer rounded-md p-0'
-        onClick={() => {
-          const trimmed = body.trim();
-          if (trimmed) {
-            onSubmit(trimmed);
-            setBody('');
-          }
-        }}
-        disabled={!body.trim()}
+        onClick={() => void submit()}
+        disabled={!body.trim() || isSubmitting}
       >
-        <ArrowUp className='size-2.5' />
+        {isSubmitting ? (
+          <BarsSpinner size={10} />
+        ) : (
+          <ArrowUp className='size-2.5' />
+        )}
       </Button>
     </div>
   );
@@ -349,10 +357,11 @@ function CommentCard({
   currentUser: CommentAuthor | null;
   orgSlug: string;
   isPending?: boolean;
-  onReply: (parentId: Id<'comments'>, body: string) => void;
+  onReply: (parentId: Id<'comments'>, body: string) => Promise<void>;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
+  const [isReplying, setIsReplying] = useState(false);
   const editComment = useMutation(api.issues.mutations.editComment);
   const deleteComment = useMutation(api.issues.mutations.deleteComment);
   const isOwner = comment.authorId === currentUserId;
@@ -403,25 +412,36 @@ function CommentCard({
         <span className='text-muted-foreground text-xs'>
           {formatDateHuman(new Date(comment._creationTime))}
         </span>
-        {isOwner && !isEditing && !isPending && (
-          <div className='ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover/comment:opacity-100'>
+        {!isPending && (
+          <div className='ml-auto flex items-center gap-1'>
             <button
               type='button'
-              onClick={() => {
-                setEditBody(comment.body);
-                setIsEditing(true);
-              }}
-              className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
+              onClick={() => setIsReplying(current => !current)}
+              className='text-muted-foreground hover:text-foreground hover:bg-muted h-6 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors'
             >
-              <Pencil className='size-3' />
+              {isReplying ? 'Cancel' : 'Reply'}
             </button>
-            <button
-              type='button'
-              onClick={() => void handleDelete()}
-              className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
-            >
-              <Trash2 className='size-3' />
-            </button>
+            {isOwner && !isEditing && (
+              <div className='flex items-center gap-0.5 opacity-0 transition-opacity group-hover/comment:opacity-100'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setEditBody(comment.body);
+                    setIsEditing(true);
+                  }}
+                  className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
+                >
+                  <Pencil className='size-3' />
+                </button>
+                <button
+                  type='button'
+                  onClick={() => void handleDelete()}
+                  className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
+                >
+                  <Trash2 className='size-3' />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -510,15 +530,18 @@ function CommentCard({
         );
       })}
 
-      {/* Always-visible reply input */}
-      {!isPending && (
+      {/* Reply composer is opt-in so stacked comment cards stay compact. */}
+      {!isPending && isReplying && (
         <>
           <div className='border-t' />
           <div className='p-2.5'>
             <InlineReplyInput
               orgSlug={orgSlug}
               currentUser={currentUser}
-              onSubmit={body => onReply(comment._id, body)}
+              onSubmit={async body => {
+                await onReply(comment._id, body);
+                setIsReplying(false);
+              }}
             />
           </div>
         </>
@@ -534,11 +557,26 @@ function CommentInput({
   onSubmit,
 }: {
   orgSlug: string;
-  onSubmit: (body: string) => void;
+  onSubmit: (body: string) => Promise<void>;
 }) {
   const [body, setBody] = useState('');
   const [focused, setFocused] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const expanded = focused || body.trim().length > 0;
+
+  const submit = useCallback(async () => {
+    const trimmed = body.trim();
+    if (!trimmed || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await onSubmit(trimmed);
+      setBody('');
+      setFocused(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [body, isSubmitting, onSubmit]);
 
   return (
     <div
@@ -549,12 +587,7 @@ function CommentInput({
       onKeyDown={e => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
           e.preventDefault();
-          const trimmed = body.trim();
-          if (trimmed) {
-            onSubmit(trimmed);
-            setBody('');
-            setFocused(false);
-          }
+          void submit();
         }
       }}
     >
@@ -588,17 +621,14 @@ function CommentInput({
           <Button
             size='sm'
             className='size-7 cursor-pointer rounded-md p-0'
-            onClick={() => {
-              const trimmed = body.trim();
-              if (trimmed) {
-                onSubmit(trimmed);
-                setBody('');
-                setFocused(false);
-              }
-            }}
-            disabled={!body.trim()}
+            onClick={() => void submit()}
+            disabled={!body.trim() || isSubmitting}
           >
-            <ArrowUp className='size-2.5' />
+            {isSubmitting ? (
+              <BarsSpinner size={10} />
+            ) : (
+              <ArrowUp className='size-2.5' />
+            )}
           </Button>
         </div>
       )}
@@ -746,8 +776,9 @@ export function IssueCommentsSection({
 
       try {
         await addComment({ issueId, body, parentId });
-      } catch {
+      } catch (error) {
         toast.error('Failed to post comment');
+        throw error;
       } finally {
         setPendingComments(prev => prev.filter(p => p.localId !== localId));
       }
@@ -769,8 +800,8 @@ export function IssueCommentsSection({
       pendingComments={pendingComments}
       currentUser={currentUser}
       orgSlug={orgSlug}
-      onSubmitComment={body => void handleSubmitComment(body)}
-      onReply={(parentId, body) => void handleSubmitComment(body, parentId)}
+      onSubmitComment={body => handleSubmitComment(body)}
+      onReply={(parentId, body) => handleSubmitComment(body, parentId)}
     />
   );
 }
@@ -829,8 +860,8 @@ export function DocumentCommentsSection({
       pendingComments={pendingComments}
       currentUser={currentUser}
       orgSlug={orgSlug}
-      onSubmitComment={body => void handleSubmitComment(body)}
-      onReply={(parentId, body) => void handleSubmitComment(body, parentId)}
+      onSubmitComment={body => handleSubmitComment(body)}
+      onReply={(parentId, body) => handleSubmitComment(body, parentId)}
     />
   );
 }
@@ -863,8 +894,8 @@ function CommentsAndActivityFeed({
   pendingComments: PendingComment[];
   currentUser: CommentAuthor | null;
   orgSlug: string;
-  onSubmitComment: (body: string) => void;
-  onReply: (parentId: Id<'comments'>, body: string) => void;
+  onSubmitComment: (body: string) => Promise<void>;
+  onReply: (parentId: Id<'comments'>, body: string) => Promise<void>;
 }) {
   // Separate top-level comments from replies
   const topLevelComments = comments.filter(c => !c.parentId);
