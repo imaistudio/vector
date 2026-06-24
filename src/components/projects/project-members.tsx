@@ -110,9 +110,12 @@ export function ProjectMembersSection({
             <Skeleton className='h-5 w-24' />
           </div>
         </div>
-        <div className='divide-y rounded-lg border'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-lg border'>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-3 px-3 py-2'>
+            <div
+              key={i}
+              className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2'
+            >
               <Skeleton className='size-8 rounded-full' />
               <div className='min-w-0 flex-1 space-y-1'>
                 <Skeleton className='h-4 w-28' />
@@ -313,7 +316,7 @@ function MembersList({
   const currentUserId = user?._id;
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {members.map(member => (
           <motion.div
@@ -323,7 +326,7 @@ function MembersList({
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2 }}
             key={member.userId}
-            className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+            className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
           >
             {/* Avatar */}
             <UserAvatar
@@ -335,10 +338,10 @@ function MembersList({
 
             {/* Member info */}
             <div className='min-w-0 flex-1'>
-              <div className='text-sm font-medium'>
+              <div className='truncate text-sm font-medium'>
                 {member.user?.name || 'Unknown User'}
               </div>
-              <div className='text-muted-foreground text-xs'>
+              <div className='text-muted-foreground truncate text-xs'>
                 {member.user?.email || ''}
               </div>
             </div>

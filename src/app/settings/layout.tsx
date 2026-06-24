@@ -37,7 +37,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       <div className='bg-secondary flex h-screen'>
         <aside className='hidden w-56 lg:block'>
           <div className='flex h-full flex-col'>
-            <div className='flex-1 overflow-y-auto'>
+            <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
               <div className='space-y-4 p-2 pt-0'>
                 <div className='space-y-2'>
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -63,7 +63,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
             </div>
           </div>
         </aside>
-        <main className='bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
+        <main className='bg-background m-2 ml-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border'>
           <div className='space-y-3 p-3'>
             <Skeleton className='h-4 w-32' />
             <div className='space-y-2'>
@@ -82,7 +82,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       <div className='bg-secondary flex h-screen'>
         <aside className='hidden w-56 lg:block'>
           <div className='flex h-full flex-col'>
-            <div className='flex-1 overflow-y-auto'>
+            <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
               <div className='space-y-4 p-2 pt-0'>
                 <div className='space-y-1'>
                   <div className='flex h-8 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium'>
@@ -93,7 +93,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
             </div>
           </div>
         </aside>
-        <main className='bg-background m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
+        <main className='bg-background m-2 ml-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border'>
           <div className='flex h-full items-center justify-center'>
             <div className='text-destructive text-lg font-medium'>
               Error loading settings: {userQuery.error?.message}
@@ -114,7 +114,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       <aside className='hidden w-56 lg:block'>
         <div className='flex h-full flex-col'>
           {/* Settings Navigation */}
-          <div className='flex-1 overflow-y-auto'>
+          <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
             <UserSettingsSidebar />
           </div>
 
@@ -134,7 +134,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         >
           <SheetTitle className='sr-only'>Settings navigation</SheetTitle>
           <div className='flex h-full flex-col'>
-            <div className='flex-1 overflow-y-auto'>
+            <div className='min-w-0 flex-1 overflow-x-hidden overflow-y-auto'>
               <UserSettingsSidebar />
             </div>
             <div className='border-border border-t p-2'>
@@ -145,7 +145,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       </Sheet>
 
       {/* Main Content */}
-      <main className='bg-background relative m-2 ml-0 flex-1 overflow-y-auto rounded-md border'>
+      <main className='bg-background relative m-2 ml-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border'>
         {/* Mobile menu button */}
         <button
           onClick={() => setIsMobileOpen(true)}

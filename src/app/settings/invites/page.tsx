@@ -123,9 +123,12 @@ export default function InvitesPage() {
     return (
       <div className='bg-background h-full'>
         {header}
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className='flex items-center gap-3 px-3 py-2'>
+            <div
+              key={i}
+              className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2'
+            >
               <div className='min-w-0 flex-1 space-y-1'>
                 <Skeleton className='h-4 w-36' />
                 <Skeleton className='h-3 w-24' />
@@ -152,11 +155,11 @@ export default function InvitesPage() {
           No pending invitations
         </div>
       ) : (
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {invites.map(inv => (
             <div
               key={inv._id}
-              className='flex flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap sm:gap-3'
+              className='flex w-full max-w-full min-w-0 flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap sm:gap-3'
             >
               <div className='min-w-0 flex-1'>
                 <p className='truncate text-sm font-medium'>
@@ -171,11 +174,11 @@ export default function InvitesPage() {
                 {inv.role}
               </Badge>
 
-              <div className='text-muted-foreground hidden text-xs sm:block'>
+              <div className='text-muted-foreground hidden shrink-0 text-xs sm:block'>
                 Expires {format(new Date(inv.expiresAt), 'MMM d')}
               </div>
 
-              <div className='flex gap-1'>
+              <div className='flex shrink-0 gap-1'>
                 <Button
                   size='sm'
                   className='h-6 text-xs'

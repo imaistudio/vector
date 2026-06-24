@@ -156,15 +156,18 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
           <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
             Sub-issues
           </h2>
-          <div className='divide-border divide-y rounded-md border'>
+          <div className='divide-border w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-md border'>
             {issue.subIssues.map(child => (
               <a
                 key={child.key}
                 href={`/${orgSlug}/issues/${child.key}/public`}
-                className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+                className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
               >
                 {child.state && (
-                  <div style={{ color: child.state.color ?? undefined }}>
+                  <div
+                    className='shrink-0'
+                    style={{ color: child.state.color ?? undefined }}
+                  >
                     {child.state.icon ? (
                       <DynamicIcon
                         name={child.state.icon}
@@ -183,7 +186,9 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
                 <span className='text-muted-foreground text-xs font-medium'>
                   {child.key}
                 </span>
-                <span className='truncate text-sm'>{child.title}</span>
+                <span className='min-w-0 flex-1 truncate text-sm'>
+                  {child.title}
+                </span>
               </a>
             ))}
           </div>

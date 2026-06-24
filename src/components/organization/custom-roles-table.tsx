@@ -45,7 +45,7 @@ export function CustomRolesTable({
   }
 
   return (
-    <div className='divide-y'>
+    <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
       <AnimatePresence initial={false}>
         {roles.map(role => (
           <motion.div
@@ -55,7 +55,7 @@ export function CustomRolesTable({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.2 }}
-            className='hover:bg-muted/50 flex items-center gap-3 px-3 py-2 transition-colors'
+            className='hover:bg-muted/50 flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2 transition-colors'
           >
             {/* Icon */}
             <Shield className='size-4 flex-shrink-0 text-purple-600' />

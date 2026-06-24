@@ -131,11 +131,14 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
       {/* Built-in Roles */}
       <div>
         <h3 className='mb-2 text-sm font-semibold'>Default Roles</h3>
-        <div className='divide-y'>
+        <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
           {BUILT_IN_ROLES.map(role => {
             const IconComponent = role.icon;
             return (
-              <div key={role.key} className='flex items-center gap-3 px-3 py-2'>
+              <div
+                key={role.key}
+                className='flex w-full max-w-full min-w-0 items-center gap-3 px-3 py-2'
+              >
                 <IconComponent
                   className={`size-4 flex-shrink-0 ${role.color}`}
                 />
@@ -147,11 +150,11 @@ export function RolesPageContent({ orgSlug }: RolesPageContentProps) {
                     {role.description}
                   </div>
                 </div>
-                <div className='text-muted-foreground flex flex-shrink-0 items-center gap-3'>
-                  <span className='hidden text-xs sm:inline'>
+                <div className='text-muted-foreground flex min-w-0 flex-shrink-0 items-center gap-3'>
+                  <span className='hidden max-w-72 truncate text-xs sm:inline'>
                     {role.permissions.join(' · ')}
                   </span>
-                  <span className='flex items-center gap-1 text-xs'>
+                  <span className='flex shrink-0 items-center gap-1 text-xs'>
                     <Users className='size-3' />
                     {roleCounts[role.key]}
                   </span>

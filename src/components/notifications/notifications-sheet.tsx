@@ -136,7 +136,7 @@ export function NotificationsSheet({
                 : 'No notifications yet.'}
             </div>
           ) : (
-            <div className='divide-y'>
+            <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               {results.map(recipient => {
                 const Icon = getNotificationIcon(recipient.category);
                 return (
