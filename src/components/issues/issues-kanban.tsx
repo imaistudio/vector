@@ -64,6 +64,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { IssueDragData } from '@/components/assistant/assistant-issue-dnd';
+import { getKanbanCardState } from './issues-kanban-state';
 
 export interface IssuesKanbanProps {
   orgSlug: string;
@@ -309,28 +310,34 @@ export function IssuesKanban({
             assignment => assignment.assignmentId !== 'unassigned',
           )?.assignmentId ??
           null;
+        const cardState = getKanbanCardState(
+          issue.assignments,
+          {
+            workflowStateId: issue.workflowStateId,
+            workflowStateIcon: issue.workflowStateIcon,
+            workflowStateColor: issue.workflowStateColor,
+            workflowStateName: issue.workflowStateName,
+            workflowStateType: issue.workflowStateType,
+          },
+          currentUserId,
+        );
 
         return {
           ...issue,
           cardId: issue.id,
-          assignmentId: displayAssignmentId,
+          assignmentId: cardState.assignmentId ?? displayAssignmentId,
           assigneeId: displayAssignee?.id ?? null,
           assigneeName: displayAssignee?.name ?? null,
           assigneeEmail: displayAssignee?.email ?? null,
           assigneeImage: displayAssignee?.image ?? null,
-          // stateId drives column placement — always use workflow state
-          stateId: issue.workflowStateId,
-          stateIcon: issue.workflowStateIcon,
-          stateColor: issue.workflowStateColor,
-          stateName: issue.workflowStateName,
-          stateType: issue.workflowStateType,
-          // display fields show the viewer's assignment state on the card
-          displayStateIcon:
-            viewerAssignment?.stateIcon ?? issue.workflowStateIcon,
-          displayStateColor:
-            viewerAssignment?.stateColor ?? issue.workflowStateColor,
-          displayStateName:
-            viewerAssignment?.stateName ?? issue.workflowStateName,
+          stateId: cardState.stateId,
+          stateIcon: cardState.stateIcon,
+          stateColor: cardState.stateColor,
+          stateName: cardState.stateName,
+          stateType: cardState.stateType,
+          displayStateIcon: cardState.stateIcon,
+          displayStateColor: cardState.stateColor,
+          displayStateName: cardState.stateName,
         };
       })
       .sort((a, b) => b.updatedAt - a.updatedAt);
