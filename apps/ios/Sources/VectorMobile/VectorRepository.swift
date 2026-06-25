@@ -10,6 +10,7 @@ public enum VectorConvexFunctions {
   public static let getIssueByKey = "issues/queries:getByKey"
   public static let listComments = "issues/queries:listComments"
   public static let getAssignments = "issues/queries:getAssignments"
+  public static let createIssue = "issues/mutations:create"
   public static let addComment = "issues/mutations:addComment"
   public static let changeWorkflowState = "issues/mutations:changeWorkflowState"
   public static let changePriority = "issues/mutations:changePriority"
@@ -27,11 +28,13 @@ public enum VectorConvexFunctions {
   public static let getProjectByKey = "projects/queries:getByKey"
   public static let listTeamsPage = "teams/queries:listPage"
   public static let getTeamByKey = "teams/queries:getByKey"
+  public static let listDocumentsPage = "documents/queries:listPage"
   public static let getWorkspaceOptions = "organizations/queries:getWorkspaceOptions"
   public static let getCurrentUserStatus = "status:getCurrentUserStatus"
   public static let setPresence = "status:setPresence"
   public static let setCustomStatus = "status:setCustomStatus"
   public static let clearCustomStatus = "status:clearCustomStatus"
+  public static let listInboxNotifications = "notifications/queries:listInbox"
   public static let getNotificationPreferences = "notifications/queries:getPreferences"
   public static let listMobilePushTokens = "notifications/queries:listMobilePushTokens"
   public static let updateNotificationPreferences = "notifications/mutations:updatePreferences"
@@ -135,11 +138,13 @@ public protocol VectorMobileRepository {
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
   func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
   func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error>
+  func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error>
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error>
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
   func issueActivity(issueId: VectorID) -> AnyPublisher<[VectorActivityItem], Error>
   func inboxActivityPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorOrgActivityPage, Error>
+  func inboxNotificationsPage(pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorInboxNotification>, Error>
   func userStatus() -> AnyPublisher<VectorUserStatus?, Error>
   func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error>
   func mobilePushTokens() -> AnyPublisher<[VectorMobilePushTokenRegistration], Error>
@@ -158,6 +163,16 @@ public protocol VectorMobileRepository {
   func changeTeam(issueId: VectorID, teamId: VectorID?) async throws
   func changeVisibility(issueId: VectorID, visibility: String) async throws
   func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws
+  func createIssue(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    projectId: VectorID?,
+    teamId _: VectorID?,
+    stateId: VectorID?,
+    priorityId: VectorID?,
+    assigneeIds: [VectorID]
+  ) async throws -> VectorCreateIssueResult
 }
 
 @MainActor
@@ -241,6 +256,23 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func documentsPage(
+    orgSlug: String,
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": "all",
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listDocumentsPage, with: args, yielding: VectorPaginatedPage<VectorDocument>.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
   public func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
     client
       .subscribe(
@@ -290,6 +322,18 @@ public final class ConvexVectorRepository: VectorMobileRepository {
 
     return client
       .subscribe(to: VectorConvexFunctions.listOrgActivity, with: args, yielding: VectorOrgActivityPage.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func inboxNotificationsPage(pageSize: Int, cursor: String? = nil) -> AnyPublisher<VectorPaginatedPage<VectorInboxNotification>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "filter": "all",
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+
+    return client
+      .subscribe(to: VectorConvexFunctions.listInboxNotifications, with: args, yielding: VectorPaginatedPage<VectorInboxNotification>.self)
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -463,6 +507,44 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       with: args
     )
   }
+
+  public func createIssue(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    projectId: VectorID?,
+    teamId: VectorID?,
+    stateId: VectorID?,
+    priorityId: VectorID?,
+    assigneeIds: [VectorID]
+  ) async throws -> VectorCreateIssueResult {
+    var data: [String: ConvexEncodable?] = [
+      "title": title,
+    ]
+    if let description {
+      data["description"] = description
+    }
+    if let projectId {
+      data["projectId"] = projectId
+    }
+    if let stateId {
+      data["stateId"] = stateId
+    }
+    if let priorityId {
+      data["priorityId"] = priorityId
+    }
+    if !assigneeIds.isEmpty {
+      data["assigneeIds"] = assigneeIds.map { $0 as ConvexEncodable? }
+    }
+
+    return try await client.mutation(
+      VectorConvexFunctions.createIssue,
+      with: [
+        "orgSlug": orgSlug,
+        "data": data,
+      ]
+    )
+  }
 }
 
 @MainActor
@@ -504,6 +586,12 @@ public final class MockVectorRepository: VectorMobileRepository {
     cursor: String?
   ) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error> {
     mockPage(VectorMockData.teams, pageSize: pageSize, cursor: cursor)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
+    mockPage(VectorMockData.documents, pageSize: pageSize, cursor: cursor)
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -560,6 +648,12 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func inboxNotificationsPage(pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorInboxNotification>, Error> {
+    mockPage(VectorMockData.inboxNotifications, pageSize: pageSize, cursor: cursor)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   public func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
     Just(VectorUserStatus(presence: .online, customText: "Building Vector iOS", customEmoji: "V", updatedAt: Date().timeIntervalSince1970 * 1000))
       .setFailureType(to: Error.self)
@@ -568,11 +662,12 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
     Just([
+      VectorNotificationPreference(category: .invites, inAppEnabled: true, emailEnabled: true, pushEnabled: false),
       VectorNotificationPreference(category: .assignments, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
       VectorNotificationPreference(category: .mentions, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
       VectorNotificationPreference(category: .comments, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
       VectorNotificationPreference(category: .workSessions, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
-      VectorNotificationPreference(category: .teamStatusChanges, inAppEnabled: false, emailEnabled: false, pushEnabled: false),
+      VectorNotificationPreference(category: .teamStatusChanges, inAppEnabled: true, emailEnabled: false, pushEnabled: false),
     ])
     .setFailureType(to: Error.self)
     .eraseToAnyPublisher()
@@ -613,6 +708,19 @@ public final class MockVectorRepository: VectorMobileRepository {
   public func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
   public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {}
+
+  public func createIssue(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    projectId: VectorID?,
+    teamId: VectorID?,
+    stateId: VectorID?,
+    priorityId: VectorID?,
+    assigneeIds: [VectorID]
+  ) async throws -> VectorCreateIssueResult {
+    VectorCreateIssueResult(issueId: "mock-created-issue", key: "MOCK-1")
+  }
 
   private func mockPage<Item: Decodable>(_ items: [Item], pageSize: Int, cursor: String?) -> Just<VectorPaginatedPage<Item>> {
     let start = min(cursor.flatMap(Int.init) ?? 0, items.count)

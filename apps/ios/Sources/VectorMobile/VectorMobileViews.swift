@@ -31,7 +31,9 @@ private struct AuthenticatedVectorMobileView: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
   @StateObject private var pushCoordinator = VectorPushNotificationCoordinator.shared
+  @AppStorage("vector.mobile.notificationsPrompted") private var hasPromptedForNotifications = false
   @State private var selectedTab: VectorMobileTab = .inbox
+  @State private var isShowingNotificationPrompt = false
 
   var body: some View {
     TabView(selection: $selectedTab) {
@@ -73,15 +75,43 @@ private struct AuthenticatedVectorMobileView: View {
     }
     .tint(VectorTheme.accent)
     .onAppear {
+      viewModel.setAuthenticatedUser(sessionController.user)
       Task {
         await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
         if let token = pushCoordinator.deviceToken {
           viewModel.upsertMobilePushToken(token)
         }
       }
+      if !hasPromptedForNotifications && !sessionController.isDemoMode {
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 450_000_000)
+          isShowingNotificationPrompt = true
+        }
+      }
+    }
+    .onChange(of: sessionController.user) { _, user in
+      viewModel.setAuthenticatedUser(user)
     }
     .onReceive(pushCoordinator.$deviceToken.compactMap { $0 }.removeDuplicates()) { token in
       viewModel.upsertMobilePushToken(token)
+    }
+    .sheet(
+      isPresented: $isShowingNotificationPrompt,
+      onDismiss: {
+        if !hasPromptedForNotifications {
+          hasPromptedForNotifications = true
+        }
+      }
+    ) {
+      NotificationOnboardingSheet(
+        viewModel: viewModel,
+        pushCoordinator: pushCoordinator,
+        onDone: {
+          hasPromptedForNotifications = true
+          isShowingNotificationPrompt = false
+        }
+      )
+      .presentationDetents([.medium, .large])
     }
   }
 }
@@ -530,27 +560,27 @@ struct InboxScreen: View {
 
   var body: some View {
     ScrollView {
-      if viewModel.inboxActivity.isEmpty {
+      if viewModel.inboxNotifications.isEmpty {
         VectorEmptyState(
-          title: "No inbox activity",
+          title: "Inbox is clear",
           systemImage: "bell",
-          message: "Workspace updates, comments, and assignment changes will appear here."
+          message: "Assignments, mentions, comments, and status updates that need your attention will appear here."
         )
         .frame(minHeight: 420)
       } else {
         LazyVStack(alignment: .leading, spacing: 0) {
-          ForEach(Array(viewModel.inboxActivity.enumerated()), id: \.element.id) { index, activity in
-            InboxActivityNavigationRow(
-              activity: activity,
-              isLast: index == viewModel.inboxActivity.count - 1,
+          ForEach(Array(viewModel.inboxNotifications.enumerated()), id: \.element.id) { index, notification in
+            InboxNotificationNavigationRow(
+              notification: notification,
+              isLast: index == viewModel.inboxNotifications.count - 1,
               viewModel: viewModel
             )
           }
 
           PagingTrigger(
-            canLoadMore: viewModel.canLoadMoreInboxActivity,
-            isLoading: viewModel.isLoadingMoreInboxActivity,
-            action: viewModel.loadMoreInboxActivity
+            canLoadMore: viewModel.canLoadMoreInboxNotifications,
+            isLoading: viewModel.isLoadingMoreInboxNotifications,
+            action: viewModel.loadMoreInboxNotifications
           )
         }
         .padding(.horizontal, 16)
@@ -604,6 +634,157 @@ struct InboxScreen: View {
         )
       }
       #endif
+    }
+  }
+}
+
+private struct InboxNotificationNavigationRow: View {
+  let notification: VectorInboxNotification
+  let isLast: Bool
+  @ObservedObject var viewModel: VectorMobileViewModel
+
+  private var issueTarget: VectorIssueRow? {
+    guard let key = notification.issueKey else {
+      return nil
+    }
+
+    if let issue = viewModel.issues.first(where: { $0.key == key }) {
+      return issue
+    }
+
+    return VectorIssueRow(
+      id: key,
+      key: key,
+      title: notification.title,
+      description: notification.body,
+      creationTime: notification.createdAt,
+      updatedAt: notification.createdAt
+    )
+  }
+
+  var body: some View {
+    Group {
+      if let issueTarget {
+        NavigationLink {
+          IssueDetailScreen(
+            issue: issueTarget,
+            viewModel: viewModel
+          )
+        } label: {
+          InboxNotificationRow(
+            notification: notification,
+            isLast: isLast,
+            baseURL: viewModel.configuration.webBaseURL
+          )
+        }
+      } else {
+        Link(destination: webURL) {
+          InboxNotificationRow(
+            notification: notification,
+            isLast: isLast,
+            baseURL: viewModel.configuration.webBaseURL
+          )
+        }
+      }
+    }
+    .buttonStyle(.plain)
+  }
+
+  private var webURL: URL {
+    guard let href = notification.href, !href.isEmpty else {
+      return viewModel.configuration.workspaceWebURL
+    }
+    if let absolute = URL(string: href), absolute.scheme != nil {
+      return absolute
+    }
+    let normalizedPath = href.hasPrefix("/") ? String(href.dropFirst()) : href
+    return viewModel.configuration.webBaseURL.appending(path: normalizedPath)
+  }
+}
+
+private struct InboxNotificationRow: View {
+  let notification: VectorInboxNotification
+  let isLast: Bool
+  let baseURL: URL
+
+  var body: some View {
+    HStack(alignment: .top, spacing: 10) {
+      ZStack(alignment: .top) {
+        if !isLast {
+          Rectangle()
+            .fill(VectorTheme.border.opacity(0.35))
+            .frame(width: 1)
+            .offset(y: 24)
+        }
+
+        Image(systemName: systemImage)
+          .font(.caption2.weight(.semibold))
+          .symbolRenderingMode(.monochrome)
+          .foregroundStyle(iconColor)
+          .frame(width: 20, height: 20)
+          .background(VectorTheme.rowBackground, in: Circle())
+          .overlay(Circle().stroke(VectorTheme.border.opacity(0.55), lineWidth: 0.8))
+      }
+      .frame(width: 28, alignment: .top)
+      .frame(minHeight: 54, alignment: .top)
+
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(notification.title)
+            .font(.subheadline.weight(notification.isRead ? .regular : .semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
+          Spacer(minLength: 8)
+          Text(relativeTimestamp(notification.createdAt))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+
+        if !notification.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          Text(notification.body)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+
+        if let actor = notification.actor {
+          HStack(spacing: 6) {
+            VectorUserAvatar(user: actor, baseURL: baseURL, size: 18)
+            Text(actor.displayName)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+          }
+          .padding(.top, 1)
+        }
+      }
+      .padding(.bottom, isLast ? 0 : 14)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private var systemImage: String {
+    switch notification.category {
+    case .assignments: "checklist"
+    case .mentions: "at"
+    case .comments: "text.bubble"
+    case .invites: "envelope"
+    case .workSessions: "terminal"
+    case .teamStatusChanges: "person.wave.2"
+    }
+  }
+
+  private var iconColor: Color {
+    switch notification.category {
+    case .assignments: Color(vectorHex: "#22c55e")
+    case .mentions: Color(vectorHex: "#8b5cf6")
+    case .comments: Color(vectorHex: "#0ea5e9")
+    case .invites: Color(vectorHex: "#f59e0b")
+    case .workSessions: Color(vectorHex: "#14b8a6")
+    case .teamStatusChanges: Color(vectorHex: "#06b6d4")
     }
   }
 }
@@ -859,6 +1040,7 @@ struct IssuesScreen: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   @State private var searchText = ""
   @State private var isSearchPresented = false
+  @State private var isCreateIssuePresented = false
   @FocusState private var isSearchFocused: Bool
 
   private var filteredIssues: [VectorIssueRow] {
@@ -935,7 +1117,14 @@ struct IssuesScreen: View {
       }
       #endif
 
-      ToolbarItem(placement: .primaryAction) {
+      ToolbarItemGroup(placement: .primaryAction) {
+        Button {
+          isCreateIssuePresented = true
+        } label: {
+          Image(systemName: "plus")
+        }
+        .accessibilityLabel("Create issue")
+
         Button {
           withAnimation(.snappy(duration: 0.18)) {
             isSearchPresented.toggle()
@@ -948,6 +1137,12 @@ struct IssuesScreen: View {
         }
         .accessibilityLabel(isSearchPresented ? "Hide search" : "Search issues")
       }
+    }
+    .sheet(isPresented: $isCreateIssuePresented) {
+      CreateIssueSheet(viewModel: viewModel) {
+        isCreateIssuePresented = false
+      }
+      .presentationDetents([.medium, .large])
     }
     .onChange(of: isSearchPresented) { _, presented in
       if presented {
@@ -1104,7 +1299,10 @@ private struct ProfileStatusToolbarMenu: View {
       if let userId = member.userId, let sessionUserId = sessionUser.id, userId == sessionUserId {
         return true
       }
-      if let email = member.email, let sessionEmail = sessionUser.email, email == sessionEmail {
+      if let email = member.email,
+        let sessionEmail = sessionUser.email,
+        email.caseInsensitiveCompare(sessionEmail) == .orderedSame
+      {
         return true
       }
       return false
@@ -1239,6 +1437,274 @@ private extension VectorIssueLayoutMode {
     case .board: "rectangle.grid.2x2"
     case .timeline: "clock"
     }
+  }
+}
+
+private struct CreateIssueSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  let onClose: () -> Void
+  @Environment(\.dismiss) private var dismiss
+  @State private var title = ""
+  @State private var description = ""
+  @State private var selectedProject: VectorProject?
+  @State private var selectedTeam: VectorTeam?
+  @State private var selectedState: VectorState?
+  @State private var selectedPriority: VectorPriority?
+  @State private var selectedAssigneeIds = Set<VectorID>()
+  @State private var isCreating = false
+  @State private var errorMessage: String?
+  @FocusState private var isTitleFocused: Bool
+
+  private var canCreate: Bool {
+    !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isCreating
+  }
+
+  var body: some View {
+    NavigationStack {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 16) {
+          TextField("Issue title", text: $title, axis: .vertical)
+            .font(.title3.weight(.semibold))
+            .textFieldStyle(.plain)
+            .focused($isTitleFocused)
+            .submitLabel(.done)
+
+          ZStack(alignment: .topLeading) {
+            if description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              Text("Description")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 8)
+            }
+            TextEditor(text: $description)
+              .font(.subheadline)
+              .frame(minHeight: 120)
+              .scrollContentBackground(.hidden)
+          }
+          .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+          .vectorShadowRing(cornerRadius: 8)
+
+          LazyVGrid(columns: [GridItem(.adaptive(minimum: 136), spacing: 8)], alignment: .leading, spacing: 8) {
+            CreateIssueMenu(
+              label: selectedState?.name ?? "Status",
+              systemImage: vectorSystemImage(for: selectedState?.icon),
+              color: Color(vectorHex: selectedState?.color)
+            ) {
+              ForEach(viewModel.workspaceOptions?.issueStates ?? []) { state in
+                Button {
+                  selectedState = state
+                } label: {
+                  Label(state.name, systemImage: selectedState?.id == state.id ? "checkmark" : vectorSystemImage(for: state.icon))
+                }
+              }
+            }
+
+            CreateIssueMenu(
+              label: selectedPriority?.name ?? "Priority",
+              systemImage: vectorSystemImage(for: selectedPriority?.icon),
+              color: Color(vectorHex: selectedPriority?.color)
+            ) {
+              Button {
+                selectedPriority = nil
+              } label: {
+                Label("No priority", systemImage: selectedPriority == nil ? "checkmark" : "minus")
+              }
+              ForEach(viewModel.workspaceOptions?.issuePriorities ?? []) { priority in
+                Button {
+                  selectedPriority = priority
+                } label: {
+                  Label(priority.name, systemImage: selectedPriority?.id == priority.id ? "checkmark" : vectorSystemImage(for: priority.icon))
+                }
+              }
+            }
+
+            CreateIssueMenu(
+              label: selectedAssigneeLabel,
+              systemImage: "person.crop.circle",
+              color: .secondary
+            ) {
+              Button {
+                selectedAssigneeIds = []
+              } label: {
+                Label("Unassigned", systemImage: selectedAssigneeIds.isEmpty ? "checkmark" : "person.slash")
+              }
+              ForEach((viewModel.workspaceOptions?.members ?? []).filter { $0.userId != nil }) { member in
+                let userId = member.userId ?? member.id
+                Button {
+                  if selectedAssigneeIds.contains(userId) {
+                    selectedAssigneeIds.remove(userId)
+                  } else {
+                    selectedAssigneeIds.insert(userId)
+                  }
+                } label: {
+                  Label(member.displayName, systemImage: selectedAssigneeIds.contains(userId) ? "checkmark" : "person")
+                }
+              }
+            }
+
+            CreateIssueMenu(
+              label: selectedProject?.key ?? "Project",
+              systemImage: vectorSystemImage(for: selectedProject?.icon),
+              color: Color(vectorHex: selectedProject?.color)
+            ) {
+              Button {
+                selectedProject = nil
+              } label: {
+                Label("No project", systemImage: selectedProject == nil ? "checkmark" : "folder")
+              }
+              ForEach(viewModel.workspaceOptions?.projects ?? []) { project in
+                Button {
+                  selectedProject = project
+                } label: {
+                  Label(project.name, systemImage: selectedProject?.id == project.id ? "checkmark" : vectorSystemImage(for: project.icon))
+                }
+              }
+            }
+
+            CreateIssueMenu(
+              label: selectedTeam?.key ?? "Team",
+              systemImage: vectorSystemImage(for: selectedTeam?.icon),
+              color: Color(vectorHex: selectedTeam?.color)
+            ) {
+              Button {
+                selectedTeam = nil
+              } label: {
+                Label("No team", systemImage: selectedTeam == nil ? "checkmark" : "person.2")
+              }
+              ForEach(viewModel.workspaceOptions?.teams ?? []) { team in
+                Button {
+                  selectedTeam = team
+                } label: {
+                  Label(team.name, systemImage: selectedTeam?.id == team.id ? "checkmark" : vectorSystemImage(for: team.icon))
+                }
+              }
+            }
+          }
+
+          if let errorMessage {
+            Label(errorMessage, systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(.red)
+          }
+        }
+        .padding(18)
+      }
+      .background(VectorTheme.rowBackground)
+      .navigationTitle("Create Issue")
+      .vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") {
+            dismiss()
+            onClose()
+          }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button {
+            createIssue()
+          } label: {
+            if isCreating {
+              ProgressView()
+            } else {
+              Text("Create")
+            }
+          }
+          .disabled(!canCreate)
+        }
+      }
+      .onAppear {
+        selectedState = viewModel.workspaceOptions?.issueStates.first { $0.type == "todo" }
+          ?? viewModel.workspaceOptions?.issueStates.first
+        Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 150_000_000)
+          isTitleFocused = true
+        }
+      }
+    }
+  }
+
+  private var selectedAssigneeLabel: String {
+    if selectedAssigneeIds.isEmpty {
+      return "Assignee"
+    }
+    if selectedAssigneeIds.count == 1,
+      let selectedId = selectedAssigneeIds.first,
+      let member = viewModel.workspaceOptions?.members.first(where: { $0.userId == selectedId })
+    {
+      return member.displayName
+    }
+    return "\(selectedAssigneeIds.count) assignees"
+  }
+
+  private func createIssue() {
+    guard canCreate else {
+      return
+    }
+
+    isCreating = true
+    errorMessage = nil
+    Task { @MainActor in
+      do {
+        _ = try await viewModel.createIssue(
+          title: title,
+          description: description,
+          project: selectedProject,
+          team: selectedTeam,
+          state: selectedState,
+          priority: selectedPriority,
+          assigneeIds: Array(selectedAssigneeIds)
+        )
+        dismiss()
+        onClose()
+      } catch {
+        errorMessage = error.localizedDescription
+      }
+      isCreating = false
+    }
+  }
+}
+
+private struct CreateIssueMenu<Content: View>: View {
+  let label: String
+  let systemImage: String
+  let color: Color
+  let content: Content
+
+  init(
+    label: String,
+    systemImage: String,
+    color: Color,
+    @ViewBuilder content: () -> Content
+  ) {
+    self.label = label
+    self.systemImage = systemImage
+    self.color = color
+    self.content = content()
+  }
+
+  var body: some View {
+    Menu {
+      content
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: systemImage)
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(color)
+        Text(label)
+          .font(.caption.weight(.semibold))
+          .lineLimit(1)
+        Spacer(minLength: 4)
+        Image(systemName: "chevron.down")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 10)
+      .frame(height: 34)
+      .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .vectorShadowRing(cornerRadius: 7)
+    }
+    .buttonStyle(.plain)
   }
 }
 
@@ -1875,6 +2341,8 @@ struct IssueDetailScreen: View {
             text: $commentDraft,
             isPosting: isPostingComment,
             placeholder: "Leave a comment... Use @ to mention",
+            members: viewModel.workspaceOptions?.members ?? [],
+            baseURL: viewModel.configuration.webBaseURL,
             focusTarget: .mainComment,
             focusedField: $focusedField,
             onSubmit: postComment
@@ -1962,6 +2430,7 @@ struct IssueDetailScreen: View {
         comment: comment,
         replies: repliesByParent[comment.id] ?? [],
         baseURL: viewModel.configuration.webBaseURL,
+        members: viewModel.workspaceOptions?.members ?? [],
         replyDraft: Binding(
           get: { replyDrafts[comment.id, default: ""] },
           set: { replyDrafts[comment.id] = $0 }
@@ -2095,13 +2564,14 @@ struct IssueDetailScreen: View {
 
     isPostingComment = true
     issueErrorMessage = nil
+    commentDraft = ""
+    activeReplyParentId = nil
+    focusedField = nil
     Task { @MainActor in
       do {
         try await viewModel.addIssueComment(issueId: displayIssue.id, body: body)
-        commentDraft = ""
-        activeReplyParentId = nil
-        focusedField = nil
       } catch {
+        commentDraft = body
         issueErrorMessage = error.localizedDescription
       }
       isPostingComment = false
@@ -2120,13 +2590,15 @@ struct IssueDetailScreen: View {
 
     postingReplyParentId = parentId
     issueErrorMessage = nil
+    replyDrafts[parentId] = ""
+    activeReplyParentId = nil
+    focusedField = nil
     Task { @MainActor in
       do {
         try await viewModel.addIssueComment(issueId: displayIssue.id, body: body, parentId: parentId)
-        replyDrafts[parentId] = ""
-        activeReplyParentId = nil
-        focusedField = nil
       } catch {
+        replyDrafts[parentId] = body
+        activeReplyParentId = parentId
         issueErrorMessage = error.localizedDescription
       }
       postingReplyParentId = nil
@@ -2584,6 +3056,8 @@ private struct IssueCommentComposer: View {
   let isPosting: Bool
   var placeholder = "Write a comment"
   var minHeight: CGFloat = 76
+  var members: [VectorWorkspaceMember] = []
+  var baseURL: URL?
   let focusTarget: IssueDetailFocusField
   let focusedField: FocusState<IssueDetailFocusField?>.Binding
   let onSubmit: () -> Void
@@ -2592,8 +3066,70 @@ private struct IssueCommentComposer: View {
     !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting
   }
 
+  private var mentionQuery: String? {
+    guard focusedField.wrappedValue == focusTarget else {
+      return nil
+    }
+
+    guard let atIndex = currentMentionStartIndex() else {
+      return nil
+    }
+
+    let query = text[text.index(after: atIndex)...]
+    guard query.allSatisfy({ character in isMentionCharacter(character) }) else {
+      return nil
+    }
+    return String(query).lowercased()
+  }
+
+  private var mentionSuggestions: [VectorWorkspaceMember] {
+    guard let mentionQuery else {
+      return []
+    }
+
+    return members
+      .filter { member in
+        let haystack = [
+          member.displayName,
+          member.email ?? "",
+          mentionHandle(for: member),
+        ]
+        .joined(separator: " ")
+        .lowercased()
+        return mentionQuery.isEmpty || haystack.contains(mentionQuery)
+      }
+      .prefix(6)
+      .map { $0 }
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
+      if !mentionSuggestions.isEmpty {
+        ScrollView(.horizontal, showsIndicators: false) {
+          HStack(spacing: 8) {
+            ForEach(mentionSuggestions) { member in
+              Button {
+                insertMention(member)
+              } label: {
+                HStack(spacing: 6) {
+                  VectorUserAvatar(user: member.user, baseURL: baseURL, size: 20)
+                  Text(member.displayName)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                }
+                .padding(.horizontal, 9)
+                .frame(height: 30)
+                .background(VectorTheme.groupedBackground, in: Capsule())
+                .vectorShadowRing(cornerRadius: 15)
+              }
+              .buttonStyle(.plain)
+            }
+          }
+          .padding(.horizontal, 1)
+        }
+        .transition(.opacity.combined(with: .move(edge: .top)))
+      }
+
       ZStack(alignment: .topLeading) {
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           Text(placeholder)
@@ -2631,6 +3167,56 @@ private struct IssueCommentComposer: View {
         .disabled(!canSubmit)
       }
     }
+  }
+
+  private func insertMention(_ member: VectorWorkspaceMember) {
+    let replacement = "@\(mentionHandle(for: member)) "
+    guard let atIndex = currentMentionStartIndex() else {
+      text += replacement
+      return
+    }
+
+    text.removeSubrange(atIndex..<text.endIndex)
+    text += replacement
+  }
+
+  private func currentMentionStartIndex() -> String.Index? {
+    var index = text.endIndex
+    while index > text.startIndex {
+      let previous = text.index(before: index)
+      let character = text[previous]
+      if character == "@" {
+        return previous
+      }
+      if character.isWhitespace || character == "\n" {
+        return nil
+      }
+      if !isMentionCharacter(character) {
+        return nil
+      }
+      index = previous
+    }
+    return nil
+  }
+
+  private func isMentionCharacter(_ character: Character) -> Bool {
+    guard character.unicodeScalars.allSatisfy(\.isASCII) else {
+      return false
+    }
+    return character.isLetter || character.isNumber || character == "." || character == "_" || character == "-"
+  }
+
+  private func mentionHandle(for member: VectorWorkspaceMember) -> String {
+    if let emailPrefix = member.email?.split(separator: "@").first, !emailPrefix.isEmpty {
+      return String(emailPrefix).lowercased()
+    }
+
+    let normalized = member.displayName
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+      .replacingOccurrences(of: #"\s+"#, with: "-", options: .regularExpression)
+      .filter { isMentionCharacter($0) }
+    return normalized.isEmpty ? "user" : String(normalized)
   }
 }
 
@@ -2857,6 +3443,7 @@ private struct IssueCommentCard: View {
   let comment: VectorComment
   let replies: [VectorComment]
   let baseURL: URL
+  let members: [VectorWorkspaceMember]
   @Binding var replyDraft: String
   let isReplying: Bool
   let isPostingReply: Bool
@@ -2884,6 +3471,8 @@ private struct IssueCommentCard: View {
             isPosting: isPostingReply,
             placeholder: "Leave a reply... Use @ to mention",
             minHeight: 46,
+            members: members,
+            baseURL: baseURL,
             focusTarget: .replyComment(comment.id),
             focusedField: focusedField,
             onSubmit: onSubmitReply
@@ -3169,6 +3758,7 @@ private struct InlineMarkdownText: View {
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
   case teams
   case projects
+  case docs
 
   var id: String { rawValue }
 
@@ -3176,6 +3766,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     switch self {
     case .teams: "Teams"
     case .projects: "Projects"
+    case .docs: "Docs"
     }
   }
 
@@ -3183,6 +3774,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     switch self {
     case .teams: "Search teams"
     case .projects: "Search projects"
+    case .docs: "Search docs"
     }
   }
 }
@@ -3211,6 +3803,17 @@ struct WorkspaceScreen: View {
       $0.name.localizedCaseInsensitiveContains(query)
         || $0.key.localizedCaseInsensitiveContains(query)
         || ($0.description?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+  }
+
+  private var filteredDocuments: [VectorDocument] {
+    let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !query.isEmpty else { return viewModel.documents }
+    return viewModel.documents.filter {
+      $0.title.localizedCaseInsensitiveContains(query)
+        || ($0.content?.localizedCaseInsensitiveContains(query) ?? false)
+        || ($0.team?.name.localizedCaseInsensitiveContains(query) ?? false)
+        || ($0.project?.name.localizedCaseInsensitiveContains(query) ?? false)
     }
   }
 
@@ -3294,13 +3897,18 @@ struct WorkspaceScreen: View {
           message: searchText.isEmpty ? "Teams from this workspace will appear here." : "Try a different team name or key."
         )
       } else {
-        List {
+        WorkspaceScrollList {
           ForEach(filteredTeams) { team in
             NavigationLink {
               TeamDetailScreen(team: team, viewModel: viewModel)
             } label: {
               TeamRow(team: team)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 48)
           }
 
           PagingTrigger(
@@ -3308,13 +3916,7 @@ struct WorkspaceScreen: View {
             isLoading: !isSearchActive && viewModel.isLoadingMoreTeams,
             action: viewModel.loadMoreTeams
           )
-          .listRowSeparator(.hidden)
-          .listRowBackground(Color.clear)
-          .listRowInsets(EdgeInsets())
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(VectorTheme.rowBackground)
       }
     case .projects:
       if filteredProjects.isEmpty {
@@ -3324,13 +3926,18 @@ struct WorkspaceScreen: View {
           message: searchText.isEmpty ? "Projects from this workspace will appear here." : "Try a different project name or key."
         )
       } else {
-        List {
+        WorkspaceScrollList {
           ForEach(filteredProjects) { project in
             NavigationLink {
               ProjectDetailScreen(project: project, viewModel: viewModel)
             } label: {
               ProjectRow(project: project)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 48)
           }
 
           PagingTrigger(
@@ -3338,15 +3945,53 @@ struct WorkspaceScreen: View {
             isLoading: !isSearchActive && viewModel.isLoadingMoreProjects,
             action: viewModel.loadMoreProjects
           )
-          .listRowSeparator(.hidden)
-          .listRowBackground(Color.clear)
-          .listRowInsets(EdgeInsets())
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(VectorTheme.rowBackground)
+      }
+    case .docs:
+      if filteredDocuments.isEmpty {
+        VectorEmptyState(
+          title: searchText.isEmpty ? "No docs" : "No matching docs",
+          systemImage: "doc.text",
+          message: searchText.isEmpty ? "Workspace documents will appear here." : "Try a different document title."
+        )
+      } else {
+        WorkspaceScrollList {
+          ForEach(filteredDocuments) { document in
+            Link(destination: viewModel.openWebURL(for: document)) {
+              DocumentRow(document: document)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Divider().padding(.leading, 48)
+          }
+
+          PagingTrigger(
+            canLoadMore: !isSearchActive && viewModel.canLoadMoreDocuments,
+            isLoading: !isSearchActive && viewModel.isLoadingMoreDocuments,
+            action: viewModel.loadMoreDocuments
+          )
+        }
       }
     }
+  }
+}
+
+private struct WorkspaceScrollList<Content: View>: View {
+  let content: Content
+
+  init(@ViewBuilder content: () -> Content) {
+    self.content = content()
+  }
+
+  var body: some View {
+    ScrollView {
+      LazyVStack(spacing: 0) {
+        content
+      }
+    }
+    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -3371,6 +4016,40 @@ struct ProjectRow: View {
       }
     }
     .padding(.vertical, 4)
+  }
+}
+
+struct DocumentRow: View {
+  let document: VectorDocument
+
+  var body: some View {
+    HStack(spacing: 10) {
+      Image(systemName: vectorSystemImage(for: document.icon))
+        .foregroundStyle(Color(vectorHex: document.color))
+        .frame(width: 24)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(document.title)
+          .font(.subheadline.weight(.medium))
+          .lineLimit(1)
+        HStack(spacing: 5) {
+          if let project = document.project {
+            Text(project.key)
+          } else if let team = document.team {
+            Text(team.key)
+          } else {
+            Text("DOC")
+          }
+          Text("Updated \(relativeTimestamp(document.updatedAt))")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+      }
+      Spacer()
+      Image(systemName: "safari")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
   }
 }
 
@@ -3620,6 +4299,88 @@ struct EntityHeader: View {
   }
 }
 
+private struct NotificationOnboardingSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var pushCoordinator: VectorPushNotificationCoordinator
+  let onDone: () -> Void
+  @State private var selectedCategories = Set(VectorNotificationCategory.allCases)
+  @State private var isEnabling = false
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          VStack(alignment: .leading, spacing: 8) {
+            Label("Stay updated", systemImage: "bell.badge")
+              .font(.headline)
+            Text("Vector can notify you about work that needs your attention on this iPhone.")
+              .font(.subheadline)
+              .foregroundStyle(.secondary)
+          }
+          .padding(.vertical, 4)
+        }
+
+        Section("Notify me about") {
+          ForEach(VectorNotificationCategory.allCases) { category in
+            Toggle(isOn: Binding(
+              get: { selectedCategories.contains(category) },
+              set: { isEnabled in
+                if isEnabled {
+                  selectedCategories.insert(category)
+                } else {
+                  selectedCategories.remove(category)
+                }
+              }
+            )) {
+              Text(category.label)
+            }
+          }
+        }
+      }
+      .navigationTitle("Notifications")
+      .vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Not now", action: onDone)
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button {
+            enableNotifications()
+          } label: {
+            if isEnabling {
+              ProgressView()
+            } else {
+              Text("Enable")
+            }
+          }
+          .disabled(isEnabling || selectedCategories.isEmpty)
+        }
+      }
+    }
+  }
+
+  private func enableNotifications() {
+    guard !isEnabling else {
+      return
+    }
+
+    isEnabling = true
+    let disabledCategories = Set(VectorNotificationCategory.allCases).subtracting(selectedCategories)
+    viewModel.configurePushPreferences(
+      enabledCategories: selectedCategories,
+      disabledCategories: disabledCategories
+    )
+    Task { @MainActor in
+      await pushCoordinator.requestRegistration()
+      if let token = pushCoordinator.deviceToken {
+        viewModel.upsertMobilePushToken(token)
+      }
+      isEnabling = false
+      onDone()
+    }
+  }
+}
+
 struct MobileSettingsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
@@ -3661,7 +4422,7 @@ struct MobileSettingsScreen: View {
         NavigationLink {
           MobilePushNotificationsScreen(viewModel: viewModel, pushCoordinator: pushCoordinator)
         } label: {
-          Label("Push notifications", systemImage: "bell.badge")
+          Label("Notifications", systemImage: "bell.badge")
         }
       }
 
@@ -3862,7 +4623,7 @@ struct MobilePushNotificationsScreen: View {
             }
           }
         } label: {
-          Label(currentRegistration == nil ? "Enable push on this iPhone" : "Refresh registration", systemImage: "bell.badge")
+          Label(currentRegistration == nil ? "Enable notifications on this iPhone" : "Refresh registration", systemImage: "bell.badge")
         }
 
         if let token = pushCoordinator.deviceToken, currentRegistration != nil {
@@ -3875,7 +4636,7 @@ struct MobilePushNotificationsScreen: View {
         }
       }
 
-      Section("Push categories") {
+      Section("Notification categories") {
         ForEach(viewModel.notificationPreferences) { preference in
           Toggle(isOn: Binding(
             get: { preference.pushEnabled },
@@ -3910,7 +4671,7 @@ struct MobilePushNotificationsScreen: View {
         }
       }
     }
-    .navigationTitle("Push")
+    .navigationTitle("Notifications")
     .scrollContentBackground(.hidden)
     .background(VectorTheme.rowBackground)
     .onAppear {

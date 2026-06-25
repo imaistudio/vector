@@ -1,17 +1,30 @@
 import Combine
 import Foundation
 
+public enum VectorMobileError: LocalizedError {
+  case validation(String)
+
+  public var errorDescription: String? {
+    switch self {
+    case let .validation(message): message
+    }
+  }
+}
+
 @MainActor
 public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var issues: [VectorIssueRow] = []
   @Published public private(set) var projects: [VectorProject] = []
   @Published public private(set) var teams: [VectorTeam] = []
+  @Published public private(set) var documents: [VectorDocument] = []
+  @Published public private(set) var inboxNotifications: [VectorInboxNotification] = []
   @Published public private(set) var comments: [VectorComment] = []
   @Published public private(set) var assignments: [VectorIssueAssignment] = []
   @Published public private(set) var issueActivity: [VectorActivityItem] = []
   @Published public private(set) var inboxActivity: [VectorActivityItem] = []
   @Published public private(set) var selectedIssue: VectorIssueRow?
   @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
+  @Published public private(set) var currentUser: VectorUser?
   @Published public private(set) var userStatus: VectorUserStatus?
   @Published public private(set) var notificationPreferences: [VectorNotificationPreference] = []
   @Published public private(set) var mobilePushTokens: [VectorMobilePushTokenRegistration] = []
@@ -29,6 +42,8 @@ public final class VectorMobileViewModel: ObservableObject {
   private var issueCache: [VectorIssueScope: [VectorIssueRow]] = [:]
   private var projectCache: [VectorProjectScope: [VectorProject]] = [:]
   private var teamCache: [VectorProjectScope: [VectorTeam]] = [:]
+  private var documentCache: [VectorDocument] = []
+  private var inboxNotificationCache: [VectorInboxNotification] = []
   private var inboxActivityCache: [VectorActivityItem] = []
   private var issuePages: [VectorIssueScope: [String: [VectorIssueRow]]] = [:]
   private var issuePageOrder: [VectorIssueScope: [String]] = [:]
@@ -39,6 +54,12 @@ public final class VectorMobileViewModel: ObservableObject {
   private var teamPages: [VectorProjectScope: [String: [VectorTeam]]] = [:]
   private var teamPageOrder: [VectorProjectScope: [String]] = [:]
   private var teamPagination: [VectorProjectScope: PaginationState] = [:]
+  private var documentPages: [String: [VectorDocument]] = [:]
+  private var documentPageOrder: [String] = []
+  private var documentPagination = PaginationState()
+  private var inboxNotificationPages: [String: [VectorInboxNotification]] = [:]
+  private var inboxNotificationPageOrder: [String] = []
+  private var inboxNotificationPagination = PaginationState()
   private var inboxActivityPages: [String: [VectorActivityItem]] = [:]
   private var inboxActivityPageOrder: [String] = []
   private var inboxActivityPagination = PaginationState()
@@ -46,12 +67,15 @@ public final class VectorMobileViewModel: ObservableObject {
   private var issueListCancellables: [VectorIssueScope: [String: AnyCancellable]] = [:]
   private var projectListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var teamListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
+  private var documentListCancellables: [String: AnyCancellable] = [:]
+  private var inboxNotificationCancellables: [String: AnyCancellable] = [:]
   private var inboxActivityCancellables: [String: AnyCancellable] = [:]
   private var workspaceOptionsCancellable: AnyCancellable?
   private var issueSupportCancellables = Set<AnyCancellable>()
   private var activeIssueSupportId: VectorID?
   private var settingsCancellables = Set<AnyCancellable>()
   private var isSettingsSubscribed = false
+  private var authenticatedUser: VectorAuthenticatedUser?
 
   private struct PaginationState {
     var continueCursor: String?
@@ -73,9 +97,15 @@ public final class VectorMobileViewModel: ObservableObject {
     subscribeToIssuesIfNeeded(scope: issueScope)
     subscribeToProjectsIfNeeded(scope: projectScope)
     subscribeToTeamsIfNeeded(scope: projectScope)
-    subscribeToInboxActivityIfNeeded()
+    subscribeToDocumentsIfNeeded()
+    subscribeToInboxNotificationsIfNeeded()
     subscribeToWorkspaceOptionsIfNeeded()
     loadSettings()
+  }
+
+  public func setAuthenticatedUser(_ user: VectorAuthenticatedUser?) {
+    authenticatedUser = user
+    syncCurrentUser()
   }
 
   private func subscribeToIssuesIfNeeded(scope: VectorIssueScope) {
@@ -132,8 +162,25 @@ public final class VectorMobileViewModel: ObservableObject {
         },
         receiveValue: { [weak self] options in
           self?.workspaceOptions = options
+          self?.syncCurrentUser()
         }
       )
+  }
+
+  private func subscribeToDocumentsIfNeeded() {
+    if !documentCache.isEmpty {
+      documents = documentCache
+    }
+
+    subscribeToDocumentPage(cursor: nil)
+  }
+
+  private func subscribeToInboxNotificationsIfNeeded() {
+    if !inboxNotificationCache.isEmpty {
+      inboxNotifications = inboxNotificationCache
+    }
+
+    subscribeToInboxNotificationPage(cursor: nil)
   }
 
   private func subscribeToInboxActivityIfNeeded() {
@@ -226,6 +273,7 @@ public final class VectorMobileViewModel: ObservableObject {
         },
         receiveValue: { [weak self] status in
           self?.userStatus = status
+          self?.syncCurrentUser()
         }
       )
       .store(in: &settingsCancellables)
@@ -331,23 +379,60 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   public func setPushEnabled(for category: VectorNotificationCategory, isEnabled: Bool) {
-    guard let existing = notificationPreferences.first(where: { $0.category == category }) else {
-      return
-    }
     let previous = notificationPreferences
+    let existing = notificationPreference(for: category)
     let nextPreference = VectorNotificationPreference(
       category: existing.category,
       inAppEnabled: existing.inAppEnabled,
       emailEnabled: existing.emailEnabled,
       pushEnabled: isEnabled
     )
-    notificationPreferences = notificationPreferences.map {
-      $0.category == category ? nextPreference : $0
-    }
+    notificationPreferences = mergedNotificationPreferences(replacing: [nextPreference])
 
     Task {
       do {
         try await repository.updateNotificationPreference(nextPreference)
+      } catch {
+        await MainActor.run {
+          self.notificationPreferences = previous
+          self.settingsErrorMessage = error.localizedDescription
+        }
+      }
+    }
+  }
+
+  public func setPushEnabled(for categories: [VectorNotificationCategory], isEnabled: Bool) {
+    configurePushPreferences(
+      enabledCategories: isEnabled ? Set(categories) : [],
+      disabledCategories: isEnabled ? [] : Set(categories)
+    )
+  }
+
+  public func configurePushPreferences(
+    enabledCategories: Set<VectorNotificationCategory>,
+    disabledCategories: Set<VectorNotificationCategory>
+  ) {
+    let categories = enabledCategories.union(disabledCategories)
+    guard !categories.isEmpty else {
+      return
+    }
+    let previous = notificationPreferences
+    let nextPreferences = categories.map {
+      let existing = notificationPreference(for: $0)
+      return VectorNotificationPreference(
+        category: existing.category,
+        inAppEnabled: existing.inAppEnabled,
+        emailEnabled: existing.emailEnabled,
+        pushEnabled: enabledCategories.contains($0)
+      )
+    }
+    notificationPreferences = mergedNotificationPreferences(replacing: nextPreferences)
+
+    Task {
+      do {
+        for preference in nextPreferences {
+          try await repository.updateNotificationPreference(preference)
+        }
       } catch {
         await MainActor.run {
           self.notificationPreferences = previous
@@ -571,7 +656,7 @@ public final class VectorMobileViewModel: ObservableObject {
       VectorComment(
         id: "optimistic-\(UUID().uuidString)",
         body: body,
-        author: nil,
+        author: currentUser,
         parentId: parentId,
         creationTime: Date().timeIntervalSince1970 * 1000
       )
@@ -586,6 +671,41 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
+  public func createIssue(
+    title: String,
+    description: String?,
+    project: VectorProject?,
+    team: VectorTeam?,
+    state: VectorState?,
+    priority: VectorPriority?,
+    assigneeIds: [VectorID]
+  ) async throws -> VectorCreateIssueResult {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty else {
+      throw VectorMobileError.validation("Title is required.")
+    }
+
+    let trimmedDescription = description?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+    let result = try await repository.createIssue(
+      orgSlug: configuration.orgSlug,
+      title: trimmedTitle,
+      description: trimmedDescription,
+      projectId: project?.id,
+      teamId: nil,
+      stateId: state?.id,
+      priorityId: priority?.id,
+      assigneeIds: assigneeIds
+    )
+    if let team, team.id != project?.teamId {
+      do {
+        try await repository.changeTeam(issueId: result.issueId, teamId: team.id)
+      } catch {
+        settingsErrorMessage = "Issue \(result.key) was created, but the team could not be changed."
+      }
+    }
+    return result
+  }
+
   public func openWebURL(for issue: VectorIssueRow) -> URL {
     configuration.webURL(path: "/\(configuration.orgSlug)/issues/\(issue.key)")
   }
@@ -596,6 +716,10 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public func openWebURL(for team: VectorTeam) -> URL {
     configuration.webURL(path: "/\(configuration.orgSlug)/teams/\(team.key)")
+  }
+
+  public func openWebURL(for document: VectorDocument) -> URL {
+    configuration.webURL(path: "/\(configuration.orgSlug)/documents/\(document.id)")
   }
 
   public var canLoadMoreIssues: Bool {
@@ -620,6 +744,22 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public var isLoadingMoreTeams: Bool {
     teamPagination[projectScope]?.isLoadingMore ?? false
+  }
+
+  public var canLoadMoreDocuments: Bool {
+    canLoadMore(documentPagination)
+  }
+
+  public var isLoadingMoreDocuments: Bool {
+    documentPagination.isLoadingMore
+  }
+
+  public var canLoadMoreInboxNotifications: Bool {
+    canLoadMore(inboxNotificationPagination)
+  }
+
+  public var isLoadingMoreInboxNotifications: Bool {
+    inboxNotificationPagination.isLoadingMore
   }
 
   public var canLoadMoreInboxActivity: Bool {
@@ -649,6 +789,20 @@ public final class VectorMobileViewModel: ObservableObject {
       return
     }
     subscribeToTeamPage(scope: projectScope, cursor: cursor)
+  }
+
+  public func loadMoreDocuments() {
+    guard let cursor = nextCursor(documentPagination) else {
+      return
+    }
+    subscribeToDocumentPage(cursor: cursor)
+  }
+
+  public func loadMoreInboxNotifications() {
+    guard let cursor = nextCursor(inboxNotificationPagination) else {
+      return
+    }
+    subscribeToInboxNotificationPage(cursor: cursor)
   }
 
   public func loadMoreInboxActivity() {
@@ -742,6 +896,60 @@ public final class VectorMobileViewModel: ObservableObject {
       )
   }
 
+  private func subscribeToDocumentPage(cursor: String?) {
+    let key = pageKey(cursor)
+    guard documentListCancellables[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &documentPagination)
+    documentListCancellables[key] = repository
+      .documentsPage(orgSlug: configuration.orgSlug, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: true) {
+            self?.documentListCancellables[key] = nil
+            self?.documentPagination.isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, key] page in
+          guard let self else { return }
+          documentPages[key] = page.page
+          appendPageKey(key, to: &documentPageOrder)
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: documentPageOrder, state: &documentPagination)
+          rebuildDocuments()
+        }
+      )
+  }
+
+  private func subscribeToInboxNotificationPage(cursor: String?) {
+    let key = pageKey(cursor)
+    guard inboxNotificationCancellables[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &inboxNotificationPagination)
+    inboxNotificationCancellables[key] = repository
+      .inboxNotificationsPage(pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, key] completion in
+          self?.handlePageCompletion(completion, key: key, active: true) {
+            self?.inboxNotificationCancellables[key] = nil
+            self?.inboxNotificationPagination.isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, key] page in
+          guard let self else { return }
+          inboxNotificationPages[key] = page.page
+          appendPageKey(key, to: &inboxNotificationPageOrder)
+          updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: inboxNotificationPageOrder, state: &inboxNotificationPagination)
+          rebuildInboxNotifications()
+        }
+      )
+  }
+
   private func subscribeToInboxActivityPage(cursor: String?) {
     let key = pageKey(cursor)
     guard inboxActivityCancellables[key] == nil else {
@@ -824,6 +1032,16 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
+  private func rebuildDocuments() {
+    documentCache = uniqueItems(orderedPages(documentPages, order: documentPageOrder), id: \.id)
+    documents = documentCache
+  }
+
+  private func rebuildInboxNotifications() {
+    inboxNotificationCache = uniqueItems(orderedPages(inboxNotificationPages, order: inboxNotificationPageOrder), id: \.id)
+    inboxNotifications = inboxNotificationCache
+  }
+
   private func rebuildInboxActivity() {
     inboxActivityCache = uniqueItems(orderedPages(inboxActivityPages, order: inboxActivityPageOrder), id: \.id)
     inboxActivity = inboxActivityCache
@@ -867,6 +1085,61 @@ public final class VectorMobileViewModel: ObservableObject {
 
   private func currentIssue(_ issueId: VectorID) -> VectorIssueRow? {
     selectedIssue?.id == issueId ? selectedIssue : issues.first { $0.id == issueId }
+  }
+
+  private func notificationPreference(for category: VectorNotificationCategory) -> VectorNotificationPreference {
+    notificationPreferences.first { $0.category == category } ?? defaultNotificationPreference(for: category)
+  }
+
+  private func mergedNotificationPreferences(
+    replacing replacements: [VectorNotificationPreference]
+  ) -> [VectorNotificationPreference] {
+    var byCategory = Dictionary(uniqueKeysWithValues: notificationPreferences.map { ($0.category, $0) })
+    for preference in replacements {
+      byCategory[preference.category] = preference
+    }
+    return VectorNotificationCategory.allCases.compactMap { byCategory[$0] }
+  }
+
+  private func defaultNotificationPreference(for category: VectorNotificationCategory) -> VectorNotificationPreference {
+    switch category {
+    case .invites:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: true, pushEnabled: false)
+    case .assignments, .mentions:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: true, pushEnabled: true)
+    case .comments, .workSessions:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: true)
+    case .teamStatusChanges:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: false)
+    }
+  }
+
+  private func syncCurrentUser() {
+    guard let authenticatedUser else {
+      currentUser = nil
+      return
+    }
+
+    let workspaceUser = workspaceOptions?.members.first { member in
+      if let userId = member.userId, let sessionUserId = authenticatedUser.id, userId == sessionUserId {
+        return true
+      }
+      if let email = member.email,
+        let sessionEmail = authenticatedUser.email,
+        email.caseInsensitiveCompare(sessionEmail) == .orderedSame
+      {
+        return true
+      }
+      return false
+    }?.user
+
+    currentUser = VectorUser(
+      id: workspaceUser?.id ?? authenticatedUser.id ?? authenticatedUser.email ?? "current-user",
+      name: workspaceUser?.name ?? authenticatedUser.displayName,
+      email: workspaceUser?.email ?? authenticatedUser.email,
+      image: workspaceUser?.image ?? authenticatedUser.image,
+      status: userStatus ?? workspaceUser?.status
+    )
   }
 
   private func updateIssue(_ issueId: VectorID, transform: (VectorIssueRow) -> VectorIssueRow) {
