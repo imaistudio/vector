@@ -203,7 +203,7 @@ enum VectorMockData {
       eventType: "issue_comment_added",
       actor: maya,
       target: VectorActivityTarget(type: "issue", id: "issue-5", key: "ROADMAP-5", name: "Advanced technical blueprint flow"),
-      details: VectorActivityDetails(commentPreview: "For deeper editing, opening the web route is fine."),
+      details: VectorActivityDetails(commentId: "comment-2", commentPreview: "For deeper editing, opening the web route is fine."),
       createdAt: 1_774_565_000_000
     ),
     VectorActivityItem(

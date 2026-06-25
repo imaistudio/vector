@@ -121,7 +121,7 @@ private struct VectorSessionRestoreScreen: View {
         .tint(VectorTheme.accent)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(VectorTheme.groupedBackground)
+    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -613,24 +613,50 @@ private struct InboxActivityNavigationRow: View {
   let isLast: Bool
   @ObservedObject var viewModel: VectorMobileViewModel
 
-  private var matchingIssue: VectorIssueRow? {
+  private var issueTarget: VectorIssueRow? {
     guard activity.target.type == "issue" else { return nil }
-    return viewModel.issues.first { issue in
+    if let issue = viewModel.issues.first(where: { issue in
       issue.id == activity.target.id || issue.key == activity.target.key
+    }) {
+      return issue
     }
+
+    guard let key = activity.target.key?.trimmingCharacters(in: .whitespacesAndNewlines), !key.isEmpty else {
+      return nil
+    }
+
+    return VectorIssueRow(
+      id: activity.target.id ?? key,
+      key: key,
+      title: activity.target.name ?? key,
+      creationTime: activity.createdAt,
+      updatedAt: activity.createdAt
+    )
   }
 
   var body: some View {
     Group {
-      if let matchingIssue {
+      if let issueTarget {
         NavigationLink {
-          IssueDetailScreen(issue: matchingIssue, viewModel: viewModel)
+          IssueDetailScreen(
+            issue: issueTarget,
+            viewModel: viewModel,
+            scrollTarget: IssueDetailScrollTarget(activity: activity)
+          )
         } label: {
-          InboxActivityRow(activity: activity, isLast: isLast)
+          InboxActivityRow(
+            activity: activity,
+            isLast: isLast,
+            baseURL: viewModel.configuration.webBaseURL
+          )
         }
       } else {
         Link(destination: webURL) {
-          InboxActivityRow(activity: activity, isLast: isLast)
+          InboxActivityRow(
+            activity: activity,
+            isLast: isLast,
+            baseURL: viewModel.configuration.webBaseURL
+          )
         }
       }
     }
@@ -661,6 +687,7 @@ private struct InboxActivityNavigationRow: View {
 private struct InboxActivityRow: View {
   let activity: VectorActivityItem
   let isLast: Bool
+  let baseURL: URL
 
   var body: some View {
     HStack(alignment: .top, spacing: 10) {
@@ -703,10 +730,22 @@ private struct InboxActivityRow: View {
         }
 
         if let preview = activity.details.commentPreview, !preview.isEmpty {
-          Text(preview)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
+          if activity.eventType == "issue_comment_added" {
+            HStack(alignment: .top, spacing: 8) {
+              VectorUserAvatar(user: activity.actor, baseURL: baseURL, size: 22)
+              Text(preview)
+                .font(.subheadline)
+                .foregroundStyle(.primary.opacity(0.78))
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 2)
+          } else {
+            Text(preview)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
         }
       }
       .padding(.bottom, isLast ? 0 : 14)
@@ -872,7 +911,7 @@ struct IssuesScreen: View {
       content
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    .background(VectorTheme.groupedBackground)
+    .background(VectorTheme.rowBackground)
     .navigationTitle("Issues")
     .vectorInlineNavigationTitle()
     .toolbar {
@@ -1056,12 +1095,29 @@ private struct ProfileStatusToolbarMenu: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   let onOpenProfileStatusSettings: () -> Void
 
+  private var workspaceUser: VectorUser? {
+    guard let sessionUser = sessionController.user else {
+      return nil
+    }
+
+    return viewModel.workspaceOptions?.members.first { member in
+      if let userId = member.userId, let sessionUserId = sessionUser.id, userId == sessionUserId {
+        return true
+      }
+      if let email = member.email, let sessionEmail = sessionUser.email, email == sessionEmail {
+        return true
+      }
+      return false
+    }?.user
+  }
+
   private var toolbarUser: VectorUser {
     let user = sessionController.user
     return VectorUser(
       id: user?.id ?? user?.email ?? "current-user",
-      name: user?.displayName,
-      email: user?.email,
+      name: workspaceUser?.name ?? user?.displayName,
+      email: workspaceUser?.email ?? user?.email,
+      image: user?.image ?? workspaceUser?.image,
       status: viewModel.userStatus
     )
   }
@@ -1204,7 +1260,7 @@ struct IssueList: View {
               baseURL: viewModel.configuration.webBaseURL
             )
               .padding(.horizontal, 12)
-              .padding(.vertical, 8)
+              .padding(.vertical, 11)
               .contentShape(Rectangle())
           }
           .buttonStyle(.plain)
@@ -1351,7 +1407,7 @@ struct IssueTimeline: View {
                 baseURL: viewModel.configuration.webBaseURL
               )
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 11)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -1555,6 +1611,21 @@ struct TimelineIssueRow: View {
   }
 }
 
+struct IssueDetailScrollTarget: Equatable {
+  let entryID: String
+  let commentID: VectorID?
+
+  init(activity: VectorActivityItem) {
+    if let commentId = activity.details.commentId {
+      self.entryID = "comment:\(commentId)"
+      self.commentID = commentId
+    } else {
+      self.entryID = "activity:\(activity.id)"
+      self.commentID = nil
+    }
+  }
+}
+
 struct IssueDetailScreen: View {
   let issue: VectorIssueRow
   @ObservedObject var viewModel: VectorMobileViewModel
@@ -1569,13 +1640,22 @@ struct IssueDetailScreen: View {
   @State private var replyDrafts: [VectorID: String] = [:]
   @State private var pendingProperty: IssueDetailProperty?
   @State private var issueErrorMessage: String?
+  @State private var pendingScrollTarget: IssueDetailScrollTarget?
+  @State private var highlightedEntryID: String?
+  @State private var hasLoadedResolvedIssueSupport = false
   @FocusState private var focusedField: IssueDetailFocusField?
 
+  init(issue: VectorIssueRow, viewModel: VectorMobileViewModel, scrollTarget: IssueDetailScrollTarget? = nil) {
+    self.issue = issue
+    self._viewModel = ObservedObject(wrappedValue: viewModel)
+    self._pendingScrollTarget = State(initialValue: scrollTarget)
+  }
+
   private var displayIssue: VectorIssueRow {
-    if let selectedIssue = viewModel.selectedIssue, selectedIssue.id == issue.id {
+    if let selectedIssue = viewModel.selectedIssue, selectedIssue.id == issue.id || selectedIssue.key == issue.key {
       return selectedIssue
     }
-    return viewModel.issues.first { $0.id == issue.id } ?? issue
+    return viewModel.issues.first { $0.id == issue.id || $0.key == issue.key } ?? issue
   }
 
   private var canEditIssue: Bool {
@@ -1618,9 +1698,14 @@ struct IssueDetailScreen: View {
     }
   }
 
+  private var timelineEntryIDs: [String] {
+    timelineEntries.map(\.id)
+  }
+
   var body: some View {
-    ScrollView {
-      VStack(alignment: .leading, spacing: 18) {
+    ScrollViewReader { scrollProxy in
+      ScrollView {
+        VStack(alignment: .leading, spacing: 18) {
         VStack(alignment: .leading, spacing: 10) {
           Text(displayIssue.key)
             .font(.caption.monospaced())
@@ -1773,41 +1858,15 @@ struct IssueDetailScreen: View {
                   }
                 }
 
-                switch entry {
-                case let .comment(comment):
-                  IssueCommentCard(
-                    comment: comment,
-                    replies: repliesByParent[comment.id] ?? [],
-                    baseURL: viewModel.configuration.webBaseURL,
-                    replyDraft: Binding(
-                      get: { replyDrafts[comment.id, default: ""] },
-                      set: { replyDrafts[comment.id] = $0 }
-                    ),
-                    isReplying: activeReplyParentId == comment.id,
-                    isPostingReply: postingReplyParentId == comment.id,
-                    focusedField: $focusedField,
-                    onReplyTap: {
-                      withAnimation(.snappy(duration: 0.18)) {
-                        activeReplyParentId = comment.id
-                        focusedField = .replyComment(comment.id)
-                      }
-                    },
-                    onCancelReply: {
-                      withAnimation(.snappy(duration: 0.18)) {
-                        activeReplyParentId = nil
-                        replyDrafts[comment.id] = ""
-                      }
-                    },
-                    onSubmitReply: {
-                      postReply(parentId: comment.id)
-                    }
+                timelineEntryView(entry, isLast: index == timelineEntries.count - 1)
+                  .id(entry.id)
+                  .padding(.horizontal, highlightedEntryID == entry.id ? 8 : 0)
+                  .padding(.vertical, highlightedEntryID == entry.id ? 6 : 0)
+                  .background(
+                    highlightedEntryID == entry.id ? VectorTheme.accent.opacity(0.10) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                   )
-                case let .activity(activity):
-                  IssueActivityTimelineRow(
-                    activity: activity,
-                    isLast: index == timelineEntries.count - 1
-                  )
-                }
+                  .animation(.snappy(duration: 0.18), value: highlightedEntryID)
               }
             }
           }
@@ -1833,46 +1892,58 @@ struct IssueDetailScreen: View {
             .foregroundStyle(.red)
             .fixedSize(horizontal: false, vertical: true)
         }
-      }
-      .padding(.horizontal, 22)
-      .padding(.top, 22)
-      .padding(.bottom, 148)
-      .frame(maxWidth: .infinity, alignment: .leading)
-    }
-    .background(VectorTheme.rowBackground)
-    .navigationTitle(displayIssue.key)
-    .vectorInlineNavigationTitle()
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) {
-        Link(destination: viewModel.openWebURL(for: displayIssue)) {
-          Image(systemName: "safari")
         }
-        .accessibilityLabel("Open full issue on web")
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+        .padding(.bottom, 148)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
-      #if os(iOS)
-      ToolbarItemGroup(placement: .keyboard) {
-        if focusedField?.showsMarkdownToolbar == true {
-          MarkdownFormattingKeyboardToolbar(
-            onAction: { action in
-              applyMarkdownFormatting(action)
-            },
-            onDismiss: {
-              focusedField = nil
-            }
-          )
+      .background(VectorTheme.rowBackground)
+      .navigationTitle(displayIssue.key)
+      .vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .primaryAction) {
+          Link(destination: viewModel.openWebURL(for: displayIssue)) {
+            Image(systemName: "safari")
+          }
+          .accessibilityLabel("Open full issue on web")
         }
+        #if os(iOS)
+        ToolbarItemGroup(placement: .keyboard) {
+          if focusedField?.showsMarkdownToolbar == true {
+            MarkdownFormattingKeyboardToolbar(
+              onAction: { action in
+                applyMarkdownFormatting(action)
+              },
+              onDismiss: {
+                focusedField = nil
+              }
+            )
+          }
+        }
+        #endif
       }
-      #endif
-    }
-    .onAppear {
-      syncDraft(from: displayIssue)
-      viewModel.loadIssueSupport(issue: displayIssue)
-    }
-    .onChange(of: displayIssue) { _, nextIssue in
-      guard !hasDocumentChanges && !isEditingDescription else {
-        return
+      .onAppear {
+        syncDraft(from: displayIssue)
+        viewModel.loadIssueSupport(issue: displayIssue)
+        scrollToPendingTarget(with: scrollProxy)
       }
-      syncDraft(from: nextIssue)
+      .onChange(of: displayIssue) { _, nextIssue in
+        let isReplacingPlaceholder = nextIssue.id != issue.id && nextIssue.key == issue.key
+        if isReplacingPlaceholder && !hasLoadedResolvedIssueSupport {
+          hasLoadedResolvedIssueSupport = true
+          viewModel.loadIssueSupport(issue: nextIssue)
+          syncDraft(from: nextIssue)
+          return
+        }
+        guard !hasDocumentChanges && !isEditingDescription else {
+          return
+        }
+        syncDraft(from: nextIssue)
+      }
+      .onChange(of: timelineEntryIDs) {
+        scrollToPendingTarget(with: scrollProxy)
+      }
     }
     #if os(iOS)
     .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
@@ -1881,6 +1952,82 @@ struct IssueDetailScreen: View {
       }
     }
     #endif
+  }
+
+  @ViewBuilder
+  private func timelineEntryView(_ entry: IssueTimelineEntry, isLast: Bool) -> some View {
+    switch entry {
+    case let .comment(comment):
+      IssueCommentCard(
+        comment: comment,
+        replies: repliesByParent[comment.id] ?? [],
+        baseURL: viewModel.configuration.webBaseURL,
+        replyDraft: Binding(
+          get: { replyDrafts[comment.id, default: ""] },
+          set: { replyDrafts[comment.id] = $0 }
+        ),
+        isReplying: activeReplyParentId == comment.id,
+        isPostingReply: postingReplyParentId == comment.id,
+        focusedField: $focusedField,
+        onReplyTap: {
+          withAnimation(.snappy(duration: 0.18)) {
+            activeReplyParentId = comment.id
+            focusedField = .replyComment(comment.id)
+          }
+        },
+        onCancelReply: {
+          withAnimation(.snappy(duration: 0.18)) {
+            activeReplyParentId = nil
+            replyDrafts[comment.id] = ""
+          }
+        },
+        onSubmitReply: {
+          postReply(parentId: comment.id)
+        }
+      )
+    case let .activity(activity):
+      IssueActivityTimelineRow(
+        activity: activity,
+        isLast: isLast
+      )
+    }
+  }
+
+  private func scrollToPendingTarget(with proxy: ScrollViewProxy) {
+    guard let target = pendingScrollTarget, let entryID = resolvedTimelineEntryID(for: target) else {
+      return
+    }
+
+    withAnimation(.snappy(duration: 0.25)) {
+      proxy.scrollTo(entryID, anchor: .center)
+      highlightedEntryID = entryID
+    }
+    pendingScrollTarget = nil
+
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 1_600_000_000)
+      if highlightedEntryID == entryID {
+        highlightedEntryID = nil
+      }
+    }
+  }
+
+  private func resolvedTimelineEntryID(for target: IssueDetailScrollTarget) -> String? {
+    if timelineEntryIDs.contains(target.entryID) {
+      return target.entryID
+    }
+
+    if
+      let commentID = target.commentID,
+      let parentID = viewModel.comments.first(where: { $0.id == commentID })?.parentId
+    {
+      let parentEntryID = "comment:\(parentID)"
+      if timelineEntryIDs.contains(parentEntryID) {
+        return parentEntryID
+      }
+    }
+
+    return nil
   }
 
   private func syncDraft(from issue: VectorIssueRow) {
@@ -3100,7 +3247,7 @@ struct WorkspaceScreen: View {
 
       content
     }
-    .background(VectorTheme.groupedBackground)
+    .background(VectorTheme.rowBackground)
     .navigationTitle("Workspace")
     .vectorInlineNavigationTitle()
     .toolbar {
@@ -3166,6 +3313,8 @@ struct WorkspaceScreen: View {
           .listRowInsets(EdgeInsets())
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(VectorTheme.rowBackground)
       }
     case .projects:
       if filteredProjects.isEmpty {
@@ -3194,6 +3343,8 @@ struct WorkspaceScreen: View {
           .listRowInsets(EdgeInsets())
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(VectorTheme.rowBackground)
       }
     }
   }
@@ -3302,6 +3453,8 @@ struct ProjectDetailScreen: View {
         }
       }
       .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .background(VectorTheme.rowBackground)
     }
     .navigationTitle(project.key)
     .vectorInlineNavigationTitle()
@@ -3430,6 +3583,8 @@ struct TeamDetailScreen: View {
         }
       }
       .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .background(VectorTheme.rowBackground)
     }
     .navigationTitle(team.key)
     .vectorInlineNavigationTitle()
@@ -3461,7 +3616,7 @@ struct EntityHeader: View {
     }
     .padding()
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(VectorTheme.groupedBackground)
+    .background(VectorTheme.rowBackground)
   }
 }
 
@@ -3523,6 +3678,8 @@ struct MobileSettingsScreen: View {
       }
     }
     .navigationTitle("Settings")
+    .scrollContentBackground(.hidden)
+    .background(VectorTheme.rowBackground)
     .onAppear {
       viewModel.loadSettings()
       Task {
@@ -3623,6 +3780,8 @@ struct ProfileStatusSettingsScreen: View {
       }
     }
     .navigationTitle("Profile Status")
+    .scrollContentBackground(.hidden)
+    .background(VectorTheme.rowBackground)
     .onAppear {
       viewModel.loadSettings()
       syncDraft()
@@ -3752,6 +3911,8 @@ struct MobilePushNotificationsScreen: View {
       }
     }
     .navigationTitle("Push")
+    .scrollContentBackground(.hidden)
+    .background(VectorTheme.rowBackground)
     .onAppear {
       viewModel.loadSettings()
       Task {
