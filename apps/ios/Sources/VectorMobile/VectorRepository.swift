@@ -4,6 +4,10 @@ import Foundation
 
 struct VectorMutationResponse: Decodable {}
 
+private struct VectorAddCommentResponse: Decodable {
+  let commentId: VectorID
+}
+
 public enum VectorConvexFunctions {
   public static let getOrganizations = "users:getOrganizations"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
@@ -29,6 +33,8 @@ public enum VectorConvexFunctions {
   public static let listTeamsPage = "teams/queries:listPage"
   public static let getTeamByKey = "teams/queries:getByKey"
   public static let listDocumentsPage = "documents/queries:listPage"
+  public static let getDocumentById = "documents/queries:getById"
+  public static let updateDocument = "documents/mutations:update"
   public static let getWorkspaceOptions = "organizations/queries:getWorkspaceOptions"
   public static let getCurrentUserStatus = "status:getCurrentUserStatus"
   public static let setPresence = "status:setPresence"
@@ -139,6 +145,7 @@ public protocol VectorMobileRepository {
   func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
   func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error>
   func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error>
+  func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error>
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error>
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
@@ -156,13 +163,14 @@ public protocol VectorMobileRepository {
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
   func updateTitle(issueId: VectorID, title: String) async throws
   func updateDescription(issueId: VectorID, description: String?) async throws
+  func updateDocument(documentId: VectorID, title: String, content: String?) async throws
   func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws
   func changePriority(issueId: VectorID, priorityId: VectorID) async throws
   func updateAssignees(issueId: VectorID, assigneeIds: [VectorID]) async throws
   func changeProject(issueId: VectorID, projectId: VectorID?) async throws
   func changeTeam(issueId: VectorID, teamId: VectorID?) async throws
   func changeVisibility(issueId: VectorID, visibility: String) async throws
-  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws -> VectorID
   func createIssue(
     orgSlug: String,
     title: String,
@@ -269,6 +277,17 @@ public final class ConvexVectorRepository: VectorMobileRepository {
 
     return client
       .subscribe(to: VectorConvexFunctions.listDocumentsPage, with: args, yielding: VectorPaginatedPage<VectorDocument>.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getDocumentById,
+        with: ["documentId": documentId],
+        yielding: VectorDocument?.self
+      )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -493,7 +512,20 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     )
   }
 
-  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {
+  public func updateDocument(documentId: VectorID, title: String, content: String?) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.updateDocument,
+      with: [
+        "documentId": documentId,
+        "data": [
+          "title": title,
+          "content": content ?? "",
+        ] as [String: ConvexEncodable?],
+      ]
+    )
+  }
+
+  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws -> VectorID {
     var args: [String: ConvexEncodable?] = [
       "issueId": issueId,
       "body": body,
@@ -502,10 +534,11 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       args["parentId"] = parentId
     }
 
-    let _: VectorMutationResponse = try await client.mutation(
+    let response: VectorAddCommentResponse = try await client.mutation(
       VectorConvexFunctions.addComment,
       with: args
     )
+    return response.commentId
   }
 
   public func createIssue(
@@ -592,6 +625,12 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
     mockPage(VectorMockData.documents, pageSize: pageSize, cursor: cursor)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error> {
+    Just(VectorMockData.documents.first { $0.id == documentId })
       .setFailureType(to: Error.self)
       .eraseToAnyPublisher()
   }
@@ -695,6 +734,8 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func updateDescription(issueId: VectorID, description: String?) async throws {}
 
+  public func updateDocument(documentId: VectorID, title: String, content: String?) async throws {}
+
   public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
 
   public func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
@@ -707,7 +748,9 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
-  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws {}
+  public func addComment(issueId: VectorID, body: String, parentId: VectorID? = nil) async throws -> VectorID {
+    "mock-comment"
+  }
 
   public func createIssue(
     orgSlug: String,

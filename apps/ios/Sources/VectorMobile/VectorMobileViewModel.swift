@@ -23,6 +23,7 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var issueActivity: [VectorActivityItem] = []
   @Published public private(set) var inboxActivity: [VectorActivityItem] = []
   @Published public private(set) var selectedIssue: VectorIssueRow?
+  @Published public private(set) var selectedDocument: VectorDocument?
   @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
   @Published public private(set) var currentUser: VectorUser?
   @Published public private(set) var userStatus: VectorUserStatus?
@@ -75,9 +76,14 @@ public final class VectorMobileViewModel: ObservableObject {
   private var workspaceOptionsCancellable: AnyCancellable?
   private var issueSupportCancellables = Set<AnyCancellable>()
   private var activeIssueSupportId: VectorID?
+  private var activeIssueCollectionsId: VectorID?
+  private var documentDetailCancellable: AnyCancellable?
+  private var activeDocumentId: VectorID?
   private var settingsCancellables = Set<AnyCancellable>()
   private var isSettingsSubscribed = false
   private var authenticatedUser: VectorAuthenticatedUser?
+  private var subscribedComments: [VectorComment] = []
+  private var pendingComments: [VectorID: VectorComment] = [:]
   private var userStatusMutationSequence = 0
   private var optimisticUserStatusGuard: OptimisticUserStatusGuard?
 
@@ -216,6 +222,7 @@ public final class VectorMobileViewModel: ObservableObject {
 
     issueSupportCancellables.removeAll()
     activeIssueSupportId = issue.id
+    activeIssueCollectionsId = nil
     selectedIssue = issue
     comments = []
     assignments = []
@@ -230,19 +237,38 @@ public final class VectorMobileViewModel: ObservableObject {
           }
         },
         receiveValue: { [weak self] issue in
-          if let issue {
-            self?.selectedIssue = issue
-          }
+          guard let self, let issue else { return }
+          selectedIssue = issue
+          activeIssueSupportId = issue.id
+          subscribeIssueCollections(issue: issue)
         }
       )
       .store(in: &issueSupportCancellables)
+
+    if issue.id != issue.key {
+      subscribeIssueCollections(issue: issue)
+    }
+  }
+
+  private func subscribeIssueCollections(issue: VectorIssueRow) {
+    guard activeIssueCollectionsId != issue.id else {
+      return
+    }
+
+    activeIssueCollectionsId = issue.id
+    subscribedComments = []
+    pendingComments = [:]
+    comments = []
+    assignments = []
+    issueActivity = []
 
     repository.comments(issueId: issue.id)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { _ in },
         receiveValue: { [weak self] comments in
-          self?.comments = comments
+          self?.subscribedComments = comments
+          self?.applyCommentSnapshot()
         }
       )
       .store(in: &issueSupportCancellables)
@@ -266,6 +292,36 @@ public final class VectorMobileViewModel: ObservableObject {
         }
       )
       .store(in: &issueSupportCancellables)
+  }
+
+  public func loadDocument(_ document: VectorDocument) {
+    if activeDocumentId == document.id, documentDetailCancellable != nil {
+      if selectedDocument?.id != document.id {
+        selectedDocument = currentDocument(document.id) ?? document
+      }
+      return
+    }
+
+    documentDetailCancellable = nil
+    activeDocumentId = document.id
+    selectedDocument = currentDocument(document.id) ?? document
+
+    documentDetailCancellable = repository.document(documentId: document.id)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.errorMessage = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] document in
+          guard let self else { return }
+          if let document {
+            selectedDocument = document
+            updateDocumentCache(document)
+          }
+        }
+      )
   }
 
   public func loadSettings() {
@@ -642,6 +698,34 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
+  public func updateDocument(documentId: VectorID, title: String, content: String) async throws {
+    let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTitle.isEmpty else {
+      throw VectorMobileError.validation("Title is required.")
+    }
+
+    let previousDocuments = documents
+    let previousDocumentCache = documentCache
+    let previousDocumentPages = documentPages
+    let previousSelectedDocument = selectedDocument
+    let nextDocument = (selectedDocument ?? currentDocument(documentId))?.with(title: trimmedTitle, content: content)
+    if let nextDocument {
+      updateDocumentCache(nextDocument)
+      selectedDocument = nextDocument
+    }
+
+    do {
+      try await repository.updateDocument(documentId: documentId, title: trimmedTitle, content: content)
+    } catch {
+      documents = previousDocuments
+      documentCache = previousDocumentCache
+      documentPages = previousDocumentPages
+      selectedDocument = previousSelectedDocument
+      errorMessage = error.localizedDescription
+      throw error
+    }
+  }
+
   public func changeIssueWorkflowState(issueId: VectorID, state: VectorState) async throws {
     let previousIssues = issues
     let previousSelectedIssue = selectedIssue
@@ -776,23 +860,40 @@ public final class VectorMobileViewModel: ObservableObject {
       return
     }
 
-    let previousComments = comments
-    comments.append(
-      VectorComment(
-        id: "optimistic-\(UUID().uuidString)",
-        body: body,
-        author: currentUser,
-        parentId: parentId,
-        creationTime: Date().timeIntervalSince1970 * 1000
-      )
+    let optimisticId = "optimistic-\(UUID().uuidString)"
+    pendingComments[optimisticId] = VectorComment(
+      id: optimisticId,
+      body: body,
+      author: currentUser ?? optimisticAuthenticatedUser,
+      parentId: parentId,
+      creationTime: Date().timeIntervalSince1970 * 1000
     )
+    applyCommentSnapshot()
 
-    do {
-      try await repository.addComment(issueId: issueId, body: trimmedBody, parentId: parentId)
-    } catch {
-      comments = previousComments
-      errorMessage = error.localizedDescription
-      throw error
+    Task { @MainActor [weak self] in
+      guard let self else {
+        return
+      }
+
+      do {
+        let serverId = try await repository.addComment(issueId: issueId, body: trimmedBody, parentId: parentId)
+        guard selectedIssue?.id == issueId else {
+          pendingComments.removeValue(forKey: optimisticId)
+          return
+        }
+
+        let subscribedIds = Set(subscribedComments.map(\.id))
+        if subscribedIds.contains(serverId) {
+          pendingComments.removeValue(forKey: optimisticId)
+        } else if let pending = pendingComments.removeValue(forKey: optimisticId) {
+          pendingComments[serverId] = pending.withId(serverId)
+        }
+        applyCommentSnapshot()
+      } catch {
+        pendingComments.removeValue(forKey: optimisticId)
+        applyCommentSnapshot()
+        errorMessage = error.localizedDescription
+      }
     }
   }
 
@@ -1172,6 +1273,17 @@ public final class VectorMobileViewModel: ObservableObject {
     inboxActivity = inboxActivityCache
   }
 
+  private func applyCommentSnapshot() {
+    let subscribedIds = Set(subscribedComments.map(\.id))
+    pendingComments = pendingComments.filter { !subscribedIds.contains($0.key) }
+    comments = uniqueItems(
+      (subscribedComments + pendingComments.values).sorted { lhs, rhs in
+        lhs.creationTime < rhs.creationTime
+      },
+      id: \.id
+    )
+  }
+
   private func pageKey(_ cursor: String?) -> String {
     cursor ?? rootPageKey
   }
@@ -1210,6 +1322,10 @@ public final class VectorMobileViewModel: ObservableObject {
 
   private func currentIssue(_ issueId: VectorID) -> VectorIssueRow? {
     selectedIssue?.id == issueId ? selectedIssue : issues.first { $0.id == issueId }
+  }
+
+  private func currentDocument(_ documentId: VectorID) -> VectorDocument? {
+    selectedDocument?.id == documentId ? selectedDocument : documents.first { $0.id == documentId }
   }
 
   private func notificationPreference(for category: VectorNotificationCategory) -> VectorNotificationPreference {
@@ -1267,6 +1383,20 @@ public final class VectorMobileViewModel: ObservableObject {
     )
   }
 
+  private var optimisticAuthenticatedUser: VectorUser? {
+    guard let authenticatedUser else {
+      return nil
+    }
+
+    return VectorUser(
+      id: authenticatedUser.id ?? authenticatedUser.email ?? "current-user",
+      name: authenticatedUser.displayName,
+      email: authenticatedUser.email,
+      image: authenticatedUser.image,
+      status: userStatus
+    )
+  }
+
   private func updateIssue(_ issueId: VectorID, transform: (VectorIssueRow) -> VectorIssueRow) {
     issues = issues.map { issue in
       issue.id == issueId ? transform(issue) : issue
@@ -1275,10 +1405,54 @@ public final class VectorMobileViewModel: ObservableObject {
       self.selectedIssue = transform(selectedIssue)
     }
   }
+
+  private func updateDocumentCache(_ document: VectorDocument) {
+    documents = documents.map { existing in
+      existing.id == document.id ? document : existing
+    }
+    documentCache = documentCache.map { existing in
+      existing.id == document.id ? document : existing
+    }
+    for key in documentPages.keys {
+      documentPages[key] = documentPages[key]?.map { existing in
+        existing.id == document.id ? document : existing
+      }
+    }
+  }
 }
 
 private extension String {
   var nilIfEmpty: String? {
     isEmpty ? nil : self
+  }
+}
+
+private extension VectorDocument {
+  func with(title: String, content: String?) -> VectorDocument {
+    VectorDocument(
+      id: id,
+      title: title,
+      content: content,
+      icon: icon,
+      color: color,
+      team: team,
+      project: project,
+      author: author,
+      visibility: visibility,
+      creationTime: creationTime,
+      lastEditedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+}
+
+private extension VectorComment {
+  func withId(_ id: VectorID) -> VectorComment {
+    VectorComment(
+      id: id,
+      body: body,
+      author: author,
+      parentId: parentId,
+      creationTime: creationTime
+    )
   }
 }

@@ -6,10 +6,12 @@ enum VectorTheme {
   #if os(iOS)
   static let rowBackground = Color(.secondarySystemGroupedBackground)
   static let groupedBackground = Color(.systemGroupedBackground)
+  static let inputBackground = Color(.tertiarySystemGroupedBackground)
   static let border = Color(uiColor: .separator)
   #else
   static let rowBackground = Color(nsColor: .controlBackgroundColor)
   static let groupedBackground = Color(nsColor: .windowBackgroundColor)
+  static let inputBackground = Color(nsColor: .textBackgroundColor)
   static let border = Color(nsColor: .separatorColor)
   #endif
 

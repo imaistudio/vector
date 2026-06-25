@@ -18,6 +18,7 @@
 		8753FD4E77B24F33B2C9D480 /* VectorAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BE72140905845F1B33A1E85 /* VectorAuth.swift */; };
 		9483E5D78EBD68CD0EC19D2B /* VectorPushNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = B84FCFD4C29FF7D846F69C3F /* VectorPushNotifications.swift */; };
 		97FD1C6F2E227D10EBD57545 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 667BB9B58FA533FA0D76BCC6 /* Assets.xcassets */; };
+		988E4DD0F64F03B35A927724 /* VectorRichTextEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 993FBFFD246C667EA3A2E3A5 /* VectorRichTextEditor.swift */; };
 		CE7DB19068F9D3E387DAAB7B /* VectorMockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34DF9D1A97A8145CA3EA068D /* VectorMockData.swift */; };
 		F2108BAAF6DB22E3B31FB27A /* VectorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69584C0BF3804405EB697974 /* VectorApp.swift */; };
 		F37B48004EC6283F3705E2B2 /* ConvexMobile in Frameworks */ = {isa = PBXBuildFile; productRef = 43FABE4EAAC79EB06CF52AC2 /* ConvexMobile */; };
@@ -33,6 +34,7 @@
 		7BE72140905845F1B33A1E85 /* VectorAuth.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorAuth.swift; sourceTree = "<group>"; };
 		840C90867400EFDFCD805908 /* VectorTheme.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorTheme.swift; sourceTree = "<group>"; };
 		88FFA3CD89144F9542092013 /* Vector.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Vector.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		993FBFFD246C667EA3A2E3A5 /* VectorRichTextEditor.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorRichTextEditor.swift; sourceTree = "<group>"; };
 		AD860F95F5144A9FF3D8D54D /* VectorModels.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorModels.swift; sourceTree = "<group>"; };
 		B84FCFD4C29FF7D846F69C3F /* VectorPushNotifications.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorPushNotifications.swift; sourceTree = "<group>"; };
 		DC3DF8C3A0271059E02CC0E4 /* VectorRepository.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VectorRepository.swift; sourceTree = "<group>"; };
@@ -101,6 +103,7 @@
 				AD860F95F5144A9FF3D8D54D /* VectorModels.swift */,
 				DC3DF8C3A0271059E02CC0E4 /* VectorRepository.swift */,
 				3D7FA6C313334CC890491B17 /* VectorMarkdown.swift */,
+				993FBFFD246C667EA3A2E3A5 /* VectorRichTextEditor.swift */,
 				B84FCFD4C29FF7D846F69C3F /* VectorPushNotifications.swift */,
 				840C90867400EFDFCD805908 /* VectorTheme.swift */,
 			);
@@ -202,6 +205,7 @@
 				CE7DB19068F9D3E387DAAB7B /* VectorMockData.swift in Sources */,
 				06DC41386BBF01B7097D1E81 /* VectorModels.swift in Sources */,
 				7F4B89F1B106E747BAC7D3ED /* VectorRepository.swift in Sources */,
+				988E4DD0F64F03B35A927724 /* VectorRichTextEditor.swift in Sources */,
 				9483E5D78EBD68CD0EC19D2B /* VectorPushNotifications.swift in Sources */,
 				164C5D1CFD725EE7A4B46025 /* VectorTheme.swift in Sources */,
 				F2108BAAF6DB22E3B31FB27A /* VectorApp.swift in Sources */,
@@ -230,7 +234,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = studio.imai.vector;
@@ -384,7 +388,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = studio.imai.vector;

@@ -1,4 +1,8 @@
-import { mutation, type MutationCtx } from '../_generated/server';
+import {
+  internalMutation,
+  mutation,
+  type MutationCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import { v, ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -729,6 +733,36 @@ export const addComment = mutation({
       snapshot: snapshotForIssue(issue),
     });
 
+    await ctx.scheduler.runAfter(
+      0,
+      internal.issues.mutations.processCommentSideEffects,
+      {
+        issueId: issue._id,
+        commentId,
+        body: args.body,
+        parentId: args.parentId,
+        userId,
+      },
+    );
+
+    return { commentId } as const;
+  },
+});
+
+export const processCommentSideEffects = internalMutation({
+  args: {
+    issueId: v.id('issues'),
+    commentId: v.id('comments'),
+    body: v.string(),
+    parentId: v.optional(v.id('comments')),
+    userId: v.id('users'),
+  },
+  handler: async (ctx, args) => {
+    const issue = await ctx.db.get('issues', args.issueId);
+    if (!issue) {
+      return;
+    }
+
     const org = await ctx.db.get('organizations', issue.organizationId);
     if (org) {
       const assignees = await ctx.db
@@ -758,7 +792,7 @@ export const addComment = mutation({
       if (mentionedUsers.length > 0) {
         await createNotificationEvent(ctx, {
           type: 'issue_mentioned',
-          actorId: userId,
+          actorId: args.userId,
           organizationId: issue.organizationId,
           issueId: issue._id,
           projectId: issue.projectId,
@@ -782,7 +816,7 @@ export const addComment = mutation({
       if (commentRecipients.length > 0) {
         await createNotificationEvent(ctx, {
           type: 'issue_comment_on_assigned_issue',
-          actorId: userId,
+          actorId: args.userId,
           organizationId: issue.organizationId,
           issueId: issue._id,
           projectId: issue.projectId,
@@ -804,10 +838,10 @@ export const addComment = mutation({
     // Trigger agent if @Vector was mentioned
     if (hasAgentMention(args.body) && org) {
       // Create a placeholder "thinking" comment as a reply
-      const replyParentId = args.parentId ?? commentId;
+      const replyParentId = args.parentId ?? args.commentId;
       const agentCommentId = await ctx.db.insert('comments', {
         issueId: issue._id,
-        authorId: userId,
+        authorId: args.userId,
         body: '',
         deleted: false,
         parentId: replyParentId,
@@ -819,16 +853,14 @@ export const addComment = mutation({
         internal.ai.comment_agent.generateCommentResponse,
         {
           issueId: issue._id,
-          triggerCommentId: commentId,
+          triggerCommentId: args.commentId,
           parentCommentId: args.parentId,
           orgSlug: org.slug,
-          userId,
+          userId: args.userId,
           agentCommentId,
         },
       );
     }
-
-    return { commentId } as const;
   },
 });
 
