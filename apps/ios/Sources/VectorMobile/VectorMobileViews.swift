@@ -1335,11 +1335,13 @@ private struct ProfileStatusToolbarMenu: View {
           Button {
             viewModel.setPresence(presence)
           } label: {
-            Label(
-              presence.label,
-              systemImage: viewModel.userStatus?.presence == presence ? "checkmark.circle.fill" : presence.systemImage
+            ProfilePresenceMenuRow(
+              presence: presence,
+              isSelected: viewModel.userStatus?.presence == presence,
+              isPending: viewModel.pendingPresence == presence
             )
           }
+          .disabled(viewModel.pendingPresence == presence)
         }
       }
 
@@ -1355,6 +1357,65 @@ private struct ProfileStatusToolbarMenu: View {
     .onAppear {
       viewModel.loadSettings()
     }
+  }
+}
+
+private struct ProfilePresenceMenuRow: View {
+  let presence: VectorPresenceStatus
+  let isSelected: Bool
+  let isPending: Bool
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ProfilePresenceGlyph(presence: presence, isSelected: isSelected)
+
+      Text(labelText)
+
+      Spacer(minLength: 12)
+
+      if isPending {
+        ProgressView()
+          .controlSize(.small)
+      } else if isSelected {
+        Image(systemName: "checkmark")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(Color(vectorHex: presence.colorHex))
+      }
+    }
+  }
+
+  private var labelText: String {
+    if isPending {
+      return "\(presence.label) (updating)"
+    }
+    if isSelected {
+      return "\(presence.label) (current)"
+    }
+    return presence.label
+  }
+}
+
+private struct ProfilePresenceGlyph: View {
+  let presence: VectorPresenceStatus
+  let isSelected: Bool
+
+  private var color: Color {
+    Color(vectorHex: presence.colorHex)
+  }
+
+  var body: some View {
+    ZStack {
+      Circle()
+        .fill(color.opacity(isSelected ? 0.18 : 0.10))
+      Image(systemName: presence.systemImage)
+        .font(.system(size: 9, weight: .bold))
+        .foregroundStyle(color)
+    }
+    .frame(width: 20, height: 20)
+    .overlay(
+      Circle()
+        .stroke(color.opacity(isSelected ? 0.52 : 0.24), lineWidth: isSelected ? 1.1 : 0.8)
+    )
   }
 }
 
@@ -4460,25 +4521,24 @@ struct ProfileStatusSettingsScreen: View {
     List {
       Section("Presence") {
         ForEach(VectorPresenceStatus.selectableCases) { presence in
+          let isSelected = viewModel.userStatus?.presence == presence
           Button {
             viewModel.setPresence(presence)
           } label: {
-            HStack {
-              Label {
-                Text(presence.label)
-              } icon: {
-                Image(systemName: presence.systemImage)
-                  .foregroundStyle(Color(vectorHex: presence.colorHex))
-              }
-              Spacer()
-              if viewModel.userStatus?.presence == presence {
-                Image(systemName: "checkmark")
-                  .font(.caption.weight(.semibold))
-                  .foregroundStyle(VectorTheme.accent)
-              }
-            }
+            ProfilePresenceSettingsRow(
+              presence: presence,
+              isSelected: isSelected,
+              isPending: viewModel.pendingPresence == presence
+            )
           }
           .buttonStyle(.plain)
+          .contentShape(Rectangle())
+          .disabled(viewModel.pendingPresence == presence)
+          .listRowBackground(
+            isSelected
+              ? Color(vectorHex: presence.colorHex).opacity(0.12)
+              : VectorTheme.rowBackground
+          )
         }
       }
 
@@ -4506,8 +4566,17 @@ struct ProfileStatusSettingsScreen: View {
             clearsAt: clearAfter.clearsAt
           )
         } label: {
-          Label("Save custom status", systemImage: "checkmark.circle")
+          if viewModel.isUpdatingUserStatus && viewModel.pendingPresence == nil {
+            HStack {
+              ProgressView()
+                .controlSize(.small)
+              Text("Saving custom status")
+            }
+          } else {
+            Label("Save custom status", systemImage: "checkmark.circle")
+          }
         }
+        .disabled(viewModel.isUpdatingUserStatus)
 
         if (viewModel.userStatus?.customText?.isEmpty == false) || (viewModel.userStatus?.customEmoji?.isEmpty == false) {
           Button(role: .destructive) {
@@ -4516,8 +4585,17 @@ struct ProfileStatusSettingsScreen: View {
             clearAfter = .never
             viewModel.clearCustomStatus()
           } label: {
-            Label("Clear custom status", systemImage: "xmark.circle")
+            if viewModel.isUpdatingUserStatus && viewModel.pendingPresence == nil {
+              HStack {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Clearing custom status")
+              }
+            } else {
+              Label("Clear custom status", systemImage: "xmark.circle")
+            }
           }
+          .disabled(viewModel.isUpdatingUserStatus)
         }
       }
 
@@ -4555,6 +4633,40 @@ struct ProfileStatusSettingsScreen: View {
   private func syncDraft() {
     customText = viewModel.userStatus?.customText ?? ""
     customEmoji = viewModel.userStatus?.customEmoji ?? ""
+  }
+}
+
+private struct ProfilePresenceSettingsRow: View {
+  let presence: VectorPresenceStatus
+  let isSelected: Bool
+  let isPending: Bool
+
+  var body: some View {
+    HStack(spacing: 12) {
+      ProfilePresenceGlyph(presence: presence, isSelected: isSelected)
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(presence.label)
+          .font(.body.weight(isSelected ? .semibold : .regular))
+        if isSelected {
+          Text("Current status")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+
+      Spacer()
+
+      if isPending {
+        ProgressView()
+          .controlSize(.small)
+      } else if isSelected {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.body.weight(.semibold))
+          .foregroundStyle(Color(vectorHex: presence.colorHex))
+      }
+    }
+    .padding(.vertical, 3)
   }
 }
 
