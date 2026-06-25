@@ -461,6 +461,42 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testProfilePresenceIgnoresStaleSubscriptionWhileMutationIsPending() async {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+    let initialStatus = VectorUserStatus(presence: .online, customText: "Focused", customEmoji: "V")
+    let confirmedStatus = VectorUserStatus(presence: .dnd, customText: "Focused", customEmoji: "V")
+    var presenceContinuation: CheckedContinuation<Void, Error>?
+
+    repository.userStatusSubject.send(initialStatus)
+    await waitUntil {
+      viewModel.userStatus?.presence == .online
+    }
+
+    repository.setPresenceAction = { _ in
+      try await withCheckedThrowingContinuation { continuation in
+        presenceContinuation = continuation
+      }
+    }
+
+    viewModel.setPresence(.dnd)
+    XCTAssertEqual(viewModel.userStatus?.presence, .dnd)
+    XCTAssertEqual(viewModel.pendingPresence, .dnd)
+
+    repository.userStatusSubject.send(initialStatus)
+    await waitUntil {
+      viewModel.userStatus?.presence == .dnd
+    }
+
+    presenceContinuation?.resume()
+    repository.userStatusSubject.send(confirmedStatus)
+    await waitUntil {
+      viewModel.userStatus?.presence == .dnd && viewModel.pendingPresence == nil && !viewModel.isUpdatingUserStatus
+    }
+    XCTAssertEqual(repository.setPresenceCalls, [.dnd])
+  }
+
+  @MainActor
   func testViewModelLoadsAdditionalIssuePages() async throws {
     let repository = PagingVectorRepository()
     let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
@@ -602,6 +638,9 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var createdIssueTitles: [String] = []
   var changeTeamCalls: [(issueId: VectorID, teamId: VectorID?)] = []
   var changeTeamError: Error?
+  let userStatusSubject = CurrentValueSubject<VectorUserStatus?, Error>(nil)
+  var setPresenceCalls: [VectorPresenceStatus] = []
+  var setPresenceAction: ((VectorPresenceStatus) async throws -> Void)?
 
   func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
     issueListCalls[scope, default: 0] += 1
@@ -655,7 +694,7 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func userStatus() -> AnyPublisher<VectorUserStatus?, Error> {
     userStatusCalls += 1
-    return publisher(nil)
+    return userStatusSubject.eraseToAnyPublisher()
   }
 
   func notificationPreferences() -> AnyPublisher<[VectorNotificationPreference], Error> {
@@ -666,7 +705,12 @@ private final class CountingVectorRepository: VectorMobileRepository {
     publisher([])
   }
 
-  func setPresence(_ presence: VectorPresenceStatus) async throws {}
+  func setPresence(_ presence: VectorPresenceStatus) async throws {
+    setPresenceCalls.append(presence)
+    if let setPresenceAction {
+      try await setPresenceAction(presence)
+    }
+  }
 
   func setCustomStatus(text: String?, emoji: String?, clearsAt: Double?) async throws {}
 

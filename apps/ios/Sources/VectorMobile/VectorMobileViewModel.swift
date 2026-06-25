@@ -26,6 +26,8 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
   @Published public private(set) var currentUser: VectorUser?
   @Published public private(set) var userStatus: VectorUserStatus?
+  @Published public private(set) var pendingPresence: VectorPresenceStatus?
+  @Published public private(set) var isUpdatingUserStatus = false
   @Published public private(set) var notificationPreferences: [VectorNotificationPreference] = []
   @Published public private(set) var mobilePushTokens: [VectorMobilePushTokenRegistration] = []
   @Published public private(set) var isLoading = false
@@ -76,6 +78,19 @@ public final class VectorMobileViewModel: ObservableObject {
   private var settingsCancellables = Set<AnyCancellable>()
   private var isSettingsSubscribed = false
   private var authenticatedUser: VectorAuthenticatedUser?
+  private var userStatusMutationSequence = 0
+  private var optimisticUserStatusGuard: OptimisticUserStatusGuard?
+
+  private struct OptimisticUserStatusGuard {
+    enum ConfirmationMode {
+      case presence
+      case fullStatus
+    }
+
+    let token: Int
+    let status: VectorUserStatus
+    let confirmationMode: ConfirmationMode
+  }
 
   private struct PaginationState {
     var continueCursor: String?
@@ -272,8 +287,7 @@ public final class VectorMobileViewModel: ObservableObject {
           }
         },
         receiveValue: { [weak self] status in
-          self?.userStatus = status
-          self?.syncCurrentUser()
+          self?.applySubscribedUserStatus(status)
         }
       )
       .store(in: &settingsCancellables)
@@ -311,21 +325,28 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public func setPresence(_ presence: VectorPresenceStatus) {
     let previous = userStatus
-    userStatus = VectorUserStatus(
+    let optimisticStatus = VectorUserStatus(
       presence: presence,
       customText: previous?.customText,
       customEmoji: previous?.customEmoji,
       clearsAt: previous?.clearsAt,
       updatedAt: Date().timeIntervalSince1970 * 1000
     )
+    let token = beginOptimisticUserStatus(
+      optimisticStatus,
+      pendingPresence: presence,
+      confirmationMode: .presence
+    )
 
     Task {
       do {
         try await repository.setPresence(presence)
+        await MainActor.run {
+          self.finishUserStatusMutation(token: token)
+        }
       } catch {
         await MainActor.run {
-          self.userStatus = previous
-          self.settingsErrorMessage = error.localizedDescription
+          self.failUserStatusMutation(token: token, previous: previous, error: error)
         }
       }
     }
@@ -335,12 +356,17 @@ public final class VectorMobileViewModel: ObservableObject {
     let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
     let trimmedEmoji = emoji.trimmingCharacters(in: .whitespacesAndNewlines)
     let previous = userStatus
-    userStatus = VectorUserStatus(
+    let optimisticStatus = VectorUserStatus(
       presence: previous?.presence ?? .online,
       customText: trimmedText.isEmpty ? nil : trimmedText,
       customEmoji: trimmedEmoji.isEmpty ? nil : trimmedEmoji,
       clearsAt: clearsAt,
       updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+    let token = beginOptimisticUserStatus(
+      optimisticStatus,
+      pendingPresence: nil,
+      confirmationMode: .fullStatus
     )
 
     Task {
@@ -350,10 +376,12 @@ public final class VectorMobileViewModel: ObservableObject {
           emoji: trimmedEmoji.isEmpty ? nil : trimmedEmoji,
           clearsAt: clearsAt
         )
+        await MainActor.run {
+          self.finishUserStatusMutation(token: token)
+        }
       } catch {
         await MainActor.run {
-          self.userStatus = previous
-          self.settingsErrorMessage = error.localizedDescription
+          self.failUserStatusMutation(token: token, previous: previous, error: error)
         }
       }
     }
@@ -361,21 +389,118 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public func clearCustomStatus() {
     let previous = userStatus
-    userStatus = VectorUserStatus(
+    let optimisticStatus = VectorUserStatus(
       presence: previous?.presence ?? .online,
       updatedAt: Date().timeIntervalSince1970 * 1000
+    )
+    let token = beginOptimisticUserStatus(
+      optimisticStatus,
+      pendingPresence: nil,
+      confirmationMode: .fullStatus
     )
 
     Task {
       do {
         try await repository.clearCustomStatus()
+        await MainActor.run {
+          self.finishUserStatusMutation(token: token)
+        }
       } catch {
         await MainActor.run {
-          self.userStatus = previous
-          self.settingsErrorMessage = error.localizedDescription
+          self.failUserStatusMutation(token: token, previous: previous, error: error)
         }
       }
     }
+  }
+
+  private func beginOptimisticUserStatus(
+    _ status: VectorUserStatus,
+    pendingPresence: VectorPresenceStatus?,
+    confirmationMode: OptimisticUserStatusGuard.ConfirmationMode
+  ) -> Int {
+    userStatusMutationSequence += 1
+    let token = userStatusMutationSequence
+    optimisticUserStatusGuard = OptimisticUserStatusGuard(
+      token: token,
+      status: status,
+      confirmationMode: confirmationMode
+    )
+    self.pendingPresence = pendingPresence
+    isUpdatingUserStatus = true
+    applyDisplayedUserStatus(status)
+    return token
+  }
+
+  private func finishUserStatusMutation(token: Int) {
+    guard optimisticUserStatusGuard?.token == token else {
+      return
+    }
+
+    pendingPresence = nil
+    isUpdatingUserStatus = false
+
+    Task { [weak self] in
+      try? await Task.sleep(nanoseconds: 5_000_000_000)
+      await MainActor.run {
+        guard self?.optimisticUserStatusGuard?.token == token else {
+          return
+        }
+        self?.optimisticUserStatusGuard = nil
+      }
+    }
+  }
+
+  private func failUserStatusMutation(token: Int, previous: VectorUserStatus?, error: Error) {
+    guard optimisticUserStatusGuard?.token == token else {
+      return
+    }
+
+    optimisticUserStatusGuard = nil
+    pendingPresence = nil
+    isUpdatingUserStatus = false
+    applyDisplayedUserStatus(previous)
+    settingsErrorMessage = error.localizedDescription
+  }
+
+  private func applySubscribedUserStatus(_ status: VectorUserStatus?) {
+    if let guardedStatus = optimisticUserStatusGuard {
+      if userStatus(status, matches: guardedStatus) {
+        optimisticUserStatusGuard = nil
+        pendingPresence = nil
+        isUpdatingUserStatus = false
+      } else {
+        return
+      }
+    }
+
+    applyDisplayedUserStatus(status)
+  }
+
+  private func applyDisplayedUserStatus(_ status: VectorUserStatus?) {
+    if userStatus != status {
+      userStatus = status
+    }
+    syncCurrentUser()
+  }
+
+  private func userStatus(_ lhs: VectorUserStatus?, matches guardedStatus: OptimisticUserStatusGuard) -> Bool {
+    guard let lhs else {
+      return false
+    }
+
+    let rhs = guardedStatus.status
+    if guardedStatus.confirmationMode == .presence {
+      return lhs.presence == rhs.presence
+    }
+
+    return lhs.presence == rhs.presence
+      && normalizedStatusText(lhs.customText) == normalizedStatusText(rhs.customText)
+      && normalizedStatusText(lhs.customEmoji) == normalizedStatusText(rhs.customEmoji)
+      && lhs.clearsAt == rhs.clearsAt
+  }
+
+  private func normalizedStatusText(_ value: String?) -> String {
+    value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
   }
 
   public func setPushEnabled(for category: VectorNotificationCategory, isEnabled: Bool) {
