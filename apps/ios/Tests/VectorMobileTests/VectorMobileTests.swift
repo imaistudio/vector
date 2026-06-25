@@ -666,6 +666,10 @@ private final class CountingVectorRepository: VectorMobileRepository {
     return publisher(VectorPaginatedPage(page: VectorMockData.documents, isDone: true))
   }
 
+  func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error> {
+    publisher(VectorMockData.documents.first { $0.id == documentId })
+  }
+
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
     workspaceOptionsCalls += 1
     return publisher(VectorMockData.workspaceOptions)
@@ -728,6 +732,8 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func updateDescription(issueId: VectorID, description: String?) async throws {}
 
+  func updateDocument(documentId: VectorID, title: String, content: String?) async throws {}
+
   func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
 
   func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
@@ -745,7 +751,9 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
-  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws {}
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws -> VectorID {
+    "test-comment"
+  }
 
   func createIssue(
     orgSlug: String,
@@ -813,6 +821,10 @@ private final class PagingVectorRepository: VectorMobileRepository {
     return publisher(VectorPaginatedPage(page: VectorMockData.documents, isDone: true))
   }
 
+  func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error> {
+    publisher(VectorMockData.documents.first { $0.id == documentId })
+  }
+
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
     publisher(VectorMockData.workspaceOptions)
   }
@@ -873,6 +885,8 @@ private final class PagingVectorRepository: VectorMobileRepository {
 
   func updateDescription(issueId: VectorID, description: String?) async throws {}
 
+  func updateDocument(documentId: VectorID, title: String, content: String?) async throws {}
+
   func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {}
 
   func changePriority(issueId: VectorID, priorityId: VectorID) async throws {}
@@ -885,7 +899,9 @@ private final class PagingVectorRepository: VectorMobileRepository {
 
   func changeVisibility(issueId: VectorID, visibility: String) async throws {}
 
-  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws {}
+  func addComment(issueId: VectorID, body: String, parentId: VectorID?) async throws -> VectorID {
+    "test-comment"
+  }
 
   func createIssue(
     orgSlug: String,

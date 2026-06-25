@@ -1,7 +1,4 @@
 import SwiftUI
-#if os(iOS)
-import UIKit
-#endif
 
 public struct VectorMobileRootView: View {
   @StateObject private var sessionController: VectorMobileSessionController
@@ -145,13 +142,39 @@ private enum VectorMobileTab: String, CaseIterable, Identifiable {
 
 private struct VectorSessionRestoreScreen: View {
   var body: some View {
-    VStack(spacing: 18) {
-      VectorLogoMark(size: 72)
-      ProgressView()
-        .tint(VectorTheme.accent)
+    ZStack {
+      VectorAuthBackground()
+        .ignoresSafeArea()
+
+      VStack(spacing: 18) {
+        Image("VectorLogo")
+          .resizable()
+          .scaledToFit()
+          .frame(width: 62, height: 62)
+          .shadow(color: VectorTheme.accent.opacity(0.30), radius: 24, x: 0, y: 12)
+
+        VectorRestoreLoadingIndicator()
+      }
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(VectorTheme.rowBackground)
+  }
+}
+
+private struct VectorRestoreLoadingIndicator: View {
+  var body: some View {
+    TimelineView(.animation) { timeline in
+      let base = timeline.date.timeIntervalSinceReferenceDate
+      HStack(spacing: 4) {
+        ForEach(0..<4, id: \.self) { index in
+          let phase = sin((base * 4.4) + Double(index) * 0.72)
+          Capsule()
+            .fill(Color.white.opacity(0.34 + max(phase, 0) * 0.42))
+            .frame(width: 4, height: 8 + max(phase, 0) * 10)
+        }
+      }
+      .frame(height: 22)
+      .accessibilityLabel("Loading")
+    }
   }
 }
 
@@ -653,7 +676,7 @@ private struct InboxNotificationNavigationRow: View {
     }
 
     return VectorIssueRow(
-      id: key,
+      id: notification.issueId ?? key,
       key: key,
       title: notification.title,
       description: notification.body,
@@ -948,7 +971,7 @@ private struct InboxActivityRow: View {
   }
 
   private var activityText: Text {
-    Text(actorName).fontWeight(.semibold) + Text(" \(description)")
+    Text("\(Text(actorName).fontWeight(.semibold)) \(description)")
   }
 
   private var description: String {
@@ -2162,15 +2185,22 @@ struct IssueDetailScreen: View {
   @State private var isSavingDocument = false
   @State private var isPostingComment = false
   @State private var commentDraft = ""
+  @State private var descriptionFormatCommand: VectorRichTextCommand?
+  @State private var descriptionFormatState = VectorRichTextFormatState()
+  @State private var commentFormatCommand: VectorRichTextCommand?
+  @State private var commentFormatState = VectorRichTextFormatState()
   @State private var activeReplyParentId: VectorID?
   @State private var postingReplyParentId: VectorID?
   @State private var replyDrafts: [VectorID: String] = [:]
+  @State private var replyFormatCommands: [VectorID: VectorRichTextCommand] = [:]
+  @State private var replyFormatStates: [VectorID: VectorRichTextFormatState] = [:]
   @State private var pendingProperty: IssueDetailProperty?
   @State private var issueErrorMessage: String?
   @State private var pendingScrollTarget: IssueDetailScrollTarget?
   @State private var highlightedEntryID: String?
   @State private var hasLoadedResolvedIssueSupport = false
-  @FocusState private var focusedField: IssueDetailFocusField?
+  @State private var focusedField: IssueDetailFocusField?
+  @FocusState private var isTitleFocused: Bool
 
   init(issue: VectorIssueRow, viewModel: VectorMobileViewModel, scrollTarget: IssueDetailScrollTarget? = nil) {
     self.issue = issue
@@ -2203,6 +2233,19 @@ struct IssueDetailScreen: View {
   private var hasDocumentChanges: Bool {
     draftTitle.trimmingCharacters(in: .whitespacesAndNewlines) != displayIssue.title
       || draftDescription != (displayIssue.description ?? "")
+  }
+
+  private var activeFormatState: VectorRichTextFormatState {
+    switch focusedField {
+    case .description:
+      descriptionFormatState
+    case .mainComment:
+      commentFormatState
+    case let .replyComment(parentId):
+      replyFormatStates[parentId] ?? VectorRichTextFormatState()
+    case .title, nil:
+      VectorRichTextFormatState()
+    }
   }
 
   private var timelineEntries: [IssueTimelineEntry] {
@@ -2242,9 +2285,16 @@ struct IssueDetailScreen: View {
             TextField("Issue title", text: $draftTitle, axis: .vertical)
               .font(.system(size: 28, weight: .semibold))
               .textFieldStyle(.plain)
-              .focused($focusedField, equals: .title)
+              .focused($isTitleFocused)
               .submitLabel(.done)
               .onSubmit(saveDocumentChanges)
+              .onChange(of: isTitleFocused) { _, isFocused in
+                if isFocused {
+                  focusedField = .title
+                } else if focusedField == .title {
+                  focusedField = nil
+                }
+              }
           } else {
             Text(displayIssue.title)
               .font(.system(size: 28, weight: .semibold))
@@ -2311,12 +2361,19 @@ struct IssueDetailScreen: View {
                   .padding(.vertical, 8)
               }
 
-              TextEditor(text: $draftDescription)
-                .font(.body)
-                .lineSpacing(4)
-                .frame(minHeight: 220)
-                .scrollContentBackground(.hidden)
-                .focused($focusedField, equals: .description)
+              VectorRichTextEditor(
+                text: $draftDescription,
+                minHeight: 220,
+                fontSize: 17,
+                formatCommand: descriptionFormatCommand,
+                isFocused: focusedField == .description,
+                onFocusChange: { isFocused in
+                  focusedField = isFocused ? .description : nil
+                },
+                onFormatStateChange: { state in
+                  descriptionFormatState = state
+                }
+              )
             }
             .background(Color.clear)
           } else {
@@ -2406,6 +2463,10 @@ struct IssueDetailScreen: View {
             baseURL: viewModel.configuration.webBaseURL,
             focusTarget: .mainComment,
             focusedField: $focusedField,
+            formatCommand: commentFormatCommand,
+            onFormatStateChange: { state in
+              commentFormatState = state
+            },
             onSubmit: postComment
           )
           .onChange(of: focusedField) { _, focusedField in
@@ -2441,6 +2502,7 @@ struct IssueDetailScreen: View {
         ToolbarItemGroup(placement: .keyboard) {
           if focusedField?.showsMarkdownToolbar == true {
             MarkdownFormattingKeyboardToolbar(
+              formatState: activeFormatState,
               onAction: { action in
                 applyMarkdownFormatting(action)
               },
@@ -2474,13 +2536,6 @@ struct IssueDetailScreen: View {
         scrollToPendingTarget(with: scrollProxy)
       }
     }
-    #if os(iOS)
-    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-      if focusedField?.showsMarkdownToolbar == true {
-        focusedField = nil
-      }
-    }
-    #endif
   }
 
   @ViewBuilder
@@ -2499,6 +2554,10 @@ struct IssueDetailScreen: View {
         isReplying: activeReplyParentId == comment.id,
         isPostingReply: postingReplyParentId == comment.id,
         focusedField: $focusedField,
+        formatCommand: replyFormatCommands[comment.id],
+        onFormatStateChange: { state in
+          replyFormatStates[comment.id] = state
+        },
         onReplyTap: {
           withAnimation(.snappy(duration: 0.18)) {
             activeReplyParentId = comment.id
@@ -2606,6 +2665,7 @@ struct IssueDetailScreen: View {
         }
         isEditingDescription = false
         focusedField = nil
+        isTitleFocused = false
       } catch {
         issueErrorMessage = error.localizedDescription
       }
@@ -2628,6 +2688,7 @@ struct IssueDetailScreen: View {
     commentDraft = ""
     activeReplyParentId = nil
     focusedField = nil
+    isTitleFocused = false
     Task { @MainActor in
       do {
         try await viewModel.addIssueComment(issueId: displayIssue.id, body: body)
@@ -2654,6 +2715,7 @@ struct IssueDetailScreen: View {
     replyDrafts[parentId] = ""
     activeReplyParentId = nil
     focusedField = nil
+    isTitleFocused = false
     Task { @MainActor in
       do {
         try await viewModel.addIssueComment(issueId: displayIssue.id, body: body, parentId: parentId)
@@ -2691,11 +2753,11 @@ struct IssueDetailScreen: View {
   private func applyMarkdownFormatting(_ action: MarkdownFormatAction) {
     switch focusedField {
     case .description:
-      draftDescription = action.apply(to: draftDescription)
+      descriptionFormatCommand = VectorRichTextCommand(action: action)
     case .mainComment:
-      commentDraft = action.apply(to: commentDraft)
+      commentFormatCommand = VectorRichTextCommand(action: action)
     case let .replyComment(parentId):
-      replyDrafts[parentId, default: ""] = action.apply(to: replyDrafts[parentId, default: ""])
+      replyFormatCommands[parentId] = VectorRichTextCommand(action: action)
     case .title, nil:
       return
     }
@@ -2757,7 +2819,7 @@ private enum IssueTimelineEntry: Identifiable {
   }
 }
 
-private enum MarkdownFormatAction: String, CaseIterable, Identifiable {
+enum MarkdownFormatAction: String, CaseIterable, Identifiable {
   case bold
   case italic
   case heading
@@ -3120,11 +3182,21 @@ private struct IssueCommentComposer: View {
   var members: [VectorWorkspaceMember] = []
   var baseURL: URL?
   let focusTarget: IssueDetailFocusField
-  let focusedField: FocusState<IssueDetailFocusField?>.Binding
+  let focusedField: Binding<IssueDetailFocusField?>
+  var formatCommand: VectorRichTextCommand?
+  var onFormatStateChange: (VectorRichTextFormatState) -> Void = { _ in }
   let onSubmit: () -> Void
 
+  private var hasText: Bool {
+    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
   private var canSubmit: Bool {
-    !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isPosting
+    hasText && !isPosting
+  }
+
+  private var sendButtonIsActive: Bool {
+    hasText || isPosting
   }
 
   private var mentionQuery: String? {
@@ -3178,7 +3250,8 @@ private struct IssueCommentComposer: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
                 }
-                .padding(.horizontal, 9)
+                .padding(.leading, 5)
+                .padding(.trailing, 10)
                 .frame(height: 30)
                 .background(VectorTheme.groupedBackground, in: Capsule())
                 .vectorShadowRing(cornerRadius: 15)
@@ -3191,42 +3264,67 @@ private struct IssueCommentComposer: View {
         .transition(.opacity.combined(with: .move(edge: .top)))
       }
 
-      ZStack(alignment: .topLeading) {
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      VStack(alignment: .leading, spacing: 8) {
+        ZStack(alignment: .topLeading) {
           Text(placeholder)
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 9)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+            .opacity(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 1 : 0)
+            .allowsHitTesting(false)
+
+          VectorRichTextEditor(
+            text: $text,
+            minHeight: minHeight,
+            fontSize: 15,
+            formatCommand: formatCommand,
+            isFocused: focusedField.wrappedValue == focusTarget,
+            onFocusChange: { isFocused in
+              focusedField.wrappedValue = isFocused ? focusTarget : nil
+            },
+            onFormatStateChange: onFormatStateChange
+          )
+          .padding(.horizontal, 3)
+          .padding(.vertical, 1)
         }
 
-        TextEditor(text: $text)
-          .font(.subheadline)
-          .frame(minHeight: minHeight)
-          .scrollContentBackground(.hidden)
-          .focused(focusedField, equals: focusTarget)
-      }
-      .background(VectorTheme.groupedBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-      .vectorShadowRing(cornerRadius: 8)
+        HStack(alignment: .center, spacing: 8) {
+          Text("Use @ to mention")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .opacity(text.contains("@") ? 0 : 1)
 
-      HStack {
-        Spacer()
-        Button(action: onSubmit) {
-          HStack(spacing: 6) {
-            if isPosting {
-              ProgressView()
-                .controlSize(.small)
+          Spacer(minLength: 8)
+
+          Button(action: onSubmit) {
+            ZStack {
+              if isPosting {
+                ProgressView()
+                  .controlSize(.small)
+                  .tint(.white)
+              } else {
+                Image(systemName: "arrow.up")
+                  .font(.caption.weight(.bold))
+              }
             }
-            Text("Comment")
+            .frame(width: 30, height: 30)
+            .foregroundStyle(sendButtonIsActive ? Color.white : Color.secondary)
+            .background(
+              sendButtonIsActive ? VectorTheme.accent : Color.secondary.opacity(0.12),
+              in: Circle()
+            )
           }
-          .font(.caption.weight(.semibold))
-          .padding(.horizontal, 10)
-          .frame(height: 30)
-          .background(VectorTheme.accent.opacity(canSubmit ? 0.15 : 0.08), in: Capsule())
+          .buttonStyle(.plain)
+          .disabled(!canSubmit)
+          .accessibilityLabel("Comment")
         }
-        .buttonStyle(.plain)
-        .disabled(!canSubmit)
       }
+      .padding(.horizontal, 10)
+      .padding(.top, 8)
+      .padding(.bottom, 8)
+      .background(VectorTheme.inputBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .vectorShadowRing(cornerRadius: 12)
     }
   }
 
@@ -3282,18 +3380,22 @@ private struct IssueCommentComposer: View {
 }
 
 private struct MarkdownFormattingKeyboardToolbar: View {
+  var formatState = VectorRichTextFormatState()
   let onAction: (MarkdownFormatAction) -> Void
   let onDismiss: () -> Void
 
   var body: some View {
     HStack(spacing: 8) {
       ForEach(MarkdownFormatAction.allCases) { action in
+        let isActive = formatState.isActive(action)
         Button {
           onAction(action)
         } label: {
           Image(systemName: action.systemImage)
             .font(.system(size: 15, weight: .semibold))
             .frame(width: 30, height: 30)
+            .foregroundStyle(isActive ? Color.white : Color.secondary)
+            .background(isActive ? VectorTheme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(action.accessibilityLabel)
@@ -3311,7 +3413,6 @@ private struct MarkdownFormattingKeyboardToolbar: View {
       .buttonStyle(.plain)
       .accessibilityLabel("Dismiss keyboard")
     }
-    .foregroundStyle(.secondary)
   }
 }
 
@@ -3388,8 +3489,8 @@ private struct IssueActivityTimelineRow: View {
     activity.actor?.displayName ?? "Someone"
   }
 
-  private var activityText: Text {
-    Text(actorName).fontWeight(.semibold) + Text(" \(description)")
+	  private var activityText: Text {
+	    Text("\(Text(actorName).fontWeight(.semibold)) \(description)")
   }
 
   private var description: String {
@@ -3508,7 +3609,9 @@ private struct IssueCommentCard: View {
   @Binding var replyDraft: String
   let isReplying: Bool
   let isPostingReply: Bool
-  let focusedField: FocusState<IssueDetailFocusField?>.Binding
+  let focusedField: Binding<IssueDetailFocusField?>
+  let formatCommand: VectorRichTextCommand?
+  let onFormatStateChange: (VectorRichTextFormatState) -> Void
   let onReplyTap: () -> Void
   let onCancelReply: () -> Void
   let onSubmitReply: () -> Void
@@ -3536,6 +3639,8 @@ private struct IssueCommentCard: View {
             baseURL: baseURL,
             focusTarget: .replyComment(comment.id),
             focusedField: focusedField,
+            formatCommand: formatCommand,
+            onFormatStateChange: onFormatStateChange,
             onSubmit: onSubmitReply
           )
         }
@@ -4018,7 +4123,9 @@ struct WorkspaceScreen: View {
       } else {
         WorkspaceScrollList {
           ForEach(filteredDocuments) { document in
-            Link(destination: viewModel.openWebURL(for: document)) {
+            NavigationLink {
+              DocumentDetailScreen(document: document, viewModel: viewModel)
+            } label: {
               DocumentRow(document: document)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 11)
@@ -4107,10 +4214,333 @@ struct DocumentRow: View {
         .lineLimit(1)
       }
       Spacer()
-      Image(systemName: "safari")
+      Image(systemName: "chevron.right")
         .font(.caption)
         .foregroundStyle(.secondary)
     }
+  }
+}
+
+struct DocumentDetailScreen: View {
+  let document: VectorDocument
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var draftTitle = ""
+  @State private var draftContent = ""
+  @State private var isEditingContent = false
+  @State private var isSaving = false
+  @State private var documentErrorMessage: String?
+  @State private var contentFormatCommand: VectorRichTextCommand?
+  @State private var contentFormatState = VectorRichTextFormatState()
+  @State private var focusedField: DocumentDetailFocusField?
+  @FocusState private var isTitleFocused: Bool
+
+  private var displayDocument: VectorDocument {
+    if let selectedDocument = viewModel.selectedDocument, selectedDocument.id == document.id {
+      return selectedDocument
+    }
+    return viewModel.documents.first { $0.id == document.id } ?? document
+  }
+
+  private var normalizedContent: String {
+    VectorDocumentContentNormalizer.plainText(from: displayDocument.content ?? "")
+  }
+
+  private var hasChanges: Bool {
+    draftTitle.trimmingCharacters(in: .whitespacesAndNewlines) != displayDocument.title
+      || draftContent != normalizedContent
+  }
+
+  var body: some View {
+    ScrollView {
+      VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 10) {
+          Image(systemName: vectorSystemImage(for: displayDocument.icon))
+            .font(.system(size: 28, weight: .semibold))
+            .foregroundStyle(Color(vectorHex: displayDocument.color))
+            .frame(width: 44, height: 44)
+            .background(Color(vectorHex: displayDocument.color).opacity(0.12), in: Circle())
+
+          TextField("Document title", text: $draftTitle, axis: .vertical)
+            .font(.system(size: 30, weight: .semibold))
+            .textFieldStyle(.plain)
+            .focused($isTitleFocused)
+            .submitLabel(.done)
+            .onSubmit(saveChanges)
+            .onChange(of: isTitleFocused) { _, isFocused in
+              if isFocused {
+                focusedField = .title
+              } else if focusedField == .title {
+                focusedField = nil
+              }
+            }
+
+          HStack(spacing: 8) {
+            if let project = displayDocument.project {
+              Label(project.key, systemImage: vectorSystemImage(for: project.icon))
+            } else if let team = displayDocument.team {
+              Label(team.key, systemImage: vectorSystemImage(for: team.icon))
+            } else {
+              Label("Workspace", systemImage: "square.grid.2x2")
+            }
+            Text("Updated \(relativeTimestamp(displayDocument.updatedAt))")
+          }
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+        }
+
+        DocumentSection(title: "Document") {
+          if isEditingContent || draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ZStack(alignment: .topLeading) {
+              if draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Start writing")
+                  .font(.body)
+                  .foregroundStyle(.secondary)
+                  .padding(.horizontal, 4)
+                  .padding(.vertical, 8)
+              }
+
+              VectorRichTextEditor(
+                text: $draftContent,
+                minHeight: 360,
+                fontSize: 17,
+                formatCommand: contentFormatCommand,
+                isFocused: focusedField == .content,
+                onFocusChange: { isFocused in
+                  focusedField = isFocused ? .content : nil
+                },
+                onFormatStateChange: { state in
+                  contentFormatState = state
+                }
+              )
+            }
+          } else {
+            Button {
+              withAnimation(.snappy(duration: 0.18)) {
+                isEditingContent = true
+                focusedField = .content
+              }
+            } label: {
+              MarkdownDocumentView(markdown: draftContent)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+          }
+
+          HStack(spacing: 10) {
+            if !isEditingContent && !draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+              Button("Edit document") {
+                withAnimation(.snappy(duration: 0.18)) {
+                  isEditingContent = true
+                  focusedField = .content
+                }
+              }
+              .font(.caption.weight(.semibold))
+              .buttonStyle(.plain)
+              .foregroundStyle(VectorTheme.accent)
+            }
+
+            Spacer()
+
+            if isEditingContent || hasChanges {
+              Button(action: saveChanges) {
+                HStack(spacing: 6) {
+                  if isSaving {
+                    ProgressView()
+                      .controlSize(.small)
+                  }
+                  Text(hasChanges ? "Save changes" : "Done")
+                }
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(VectorTheme.accent.opacity(hasChanges ? 0.15 : 0.08), in: Capsule())
+              }
+              .buttonStyle(.plain)
+              .disabled(isSaving)
+            }
+          }
+        }
+
+        if let documentErrorMessage {
+          Label(documentErrorMessage, systemImage: "exclamationmark.triangle")
+            .font(.caption)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+      }
+      .padding(.horizontal, 22)
+      .padding(.top, 22)
+      .padding(.bottom, 140)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    .background(VectorTheme.rowBackground)
+    .navigationTitle(displayDocument.title)
+    .vectorInlineNavigationTitle()
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Link(destination: viewModel.openWebURL(for: displayDocument)) {
+          Image(systemName: "safari")
+        }
+        .accessibilityLabel("Open document on web")
+      }
+      #if os(iOS)
+      ToolbarItemGroup(placement: .keyboard) {
+        if focusedField == .content {
+          MarkdownFormattingKeyboardToolbar(
+            formatState: contentFormatState,
+            onAction: applyMarkdownFormatting,
+            onDismiss: {
+              focusedField = nil
+            }
+          )
+        }
+      }
+      #endif
+    }
+    .onAppear {
+      syncDraft(from: displayDocument)
+      viewModel.loadDocument(displayDocument)
+    }
+    .onChange(of: displayDocument) { _, nextDocument in
+      guard !hasChanges && !isEditingContent else {
+        return
+      }
+      syncDraft(from: nextDocument)
+    }
+	  }
+
+  private func syncDraft(from document: VectorDocument) {
+    draftTitle = document.title
+    draftContent = VectorDocumentContentNormalizer.plainText(from: document.content ?? "")
+  }
+
+  private func saveChanges() {
+    guard !isSaving else {
+      return
+    }
+
+    let title = draftTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !title.isEmpty else {
+      documentErrorMessage = "Title is required."
+      return
+    }
+
+    isSaving = true
+    documentErrorMessage = nil
+    Task { @MainActor in
+      do {
+        let storedContent = VectorDocumentContentNormalizer.html(fromPlainText: draftContent)
+        try await viewModel.updateDocument(documentId: displayDocument.id, title: title, content: storedContent)
+        draftTitle = title
+        isEditingContent = false
+        focusedField = nil
+        isTitleFocused = false
+      } catch {
+        documentErrorMessage = error.localizedDescription
+      }
+      isSaving = false
+    }
+  }
+
+  private func applyMarkdownFormatting(_ action: MarkdownFormatAction) {
+    focusedField = .content
+    contentFormatCommand = VectorRichTextCommand(action: action)
+  }
+}
+
+private enum DocumentDetailFocusField: Hashable {
+  case title
+  case content
+}
+
+private enum VectorDocumentContentNormalizer {
+  static func plainText(from content: String) -> String {
+    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.contains("<") && trimmed.contains(">") else {
+      return content
+    }
+
+    var output = trimmed
+      .replacingOccurrences(of: #"(?i)<br\s*/?>"#, with: "\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</p\s*>"#, with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</h1\s*>"#, with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</h2\s*>"#, with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</h3\s*>"#, with: "\n\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)<h1[^>]*>"#, with: "# ", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)<h2[^>]*>"#, with: "## ", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)<h3[^>]*>"#, with: "### ", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)<li[^>]*>"#, with: "- ", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</li\s*>"#, with: "\n", options: .regularExpression)
+      .replacingOccurrences(of: #"(?i)</div\s*>"#, with: "\n", options: .regularExpression)
+      .replacingOccurrences(of: #"<[^>]+>"#, with: "", options: .regularExpression)
+
+    output = output
+      .replacingOccurrences(of: "&nbsp;", with: " ")
+      .replacingOccurrences(of: "&amp;", with: "&")
+      .replacingOccurrences(of: "&lt;", with: "<")
+      .replacingOccurrences(of: "&gt;", with: ">")
+      .replacingOccurrences(of: "&quot;", with: "\"")
+      .replacingOccurrences(of: "&#39;", with: "'")
+      .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+
+    return output.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  static func html(fromPlainText text: String) -> String {
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      return ""
+    }
+
+    let lines = trimmed.components(separatedBy: .newlines)
+    var html: [String] = []
+    var listItems: [String] = []
+
+    func flushList() {
+      guard !listItems.isEmpty else { return }
+      html.append("<ul>\(listItems.map { "<li>\($0)</li>" }.joined())</ul>")
+      listItems.removeAll()
+    }
+
+    for rawLine in lines {
+      let line = rawLine.trimmingCharacters(in: .whitespaces)
+      if line.isEmpty {
+        flushList()
+        continue
+      }
+
+      if line.hasPrefix("### ") {
+        flushList()
+        html.append("<h3>\(escapeHTML(String(line.dropFirst(4))))</h3>")
+      } else if line.hasPrefix("## ") {
+        flushList()
+        html.append("<h2>\(escapeHTML(String(line.dropFirst(3))))</h2>")
+      } else if line.hasPrefix("# ") {
+        flushList()
+        html.append("<h1>\(escapeHTML(String(line.dropFirst(2))))</h1>")
+      } else if line.hasPrefix("- ") {
+        listItems.append(escapeHTML(String(line.dropFirst(2))))
+      } else if line.hasPrefix("> ") {
+        flushList()
+        html.append("<blockquote><p>\(escapeHTML(String(line.dropFirst(2))))</p></blockquote>")
+      } else {
+        flushList()
+        html.append("<p>\(escapeHTML(line))</p>")
+      }
+    }
+
+    flushList()
+    return html.joined()
+  }
+
+  private static func escapeHTML(_ value: String) -> String {
+    value
+      .replacingOccurrences(of: "&", with: "&amp;")
+      .replacingOccurrences(of: "<", with: "&lt;")
+      .replacingOccurrences(of: ">", with: "&gt;")
+      .replacingOccurrences(of: "\"", with: "&quot;")
+      .replacingOccurrences(of: "'", with: "&#39;")
   }
 }
 

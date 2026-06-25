@@ -6,7 +6,7 @@ let package = Package(
   name: "VectorMobile",
   defaultLocalization: "en",
   platforms: [
-    .iOS(.v17),
+    .iOS("26.0"),
     .macOS(.v14),
   ],
   products: [
@@ -33,4 +33,3 @@ let package = Package(
     ),
   ]
 )
-

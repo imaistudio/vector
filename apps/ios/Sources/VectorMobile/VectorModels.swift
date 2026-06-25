@@ -1363,6 +1363,9 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
   public let title: String
   public let body: String
   public let href: String?
+  public let issueId: VectorID?
+  public let projectId: VectorID?
+  public let teamId: VectorID?
   public let actorId: VectorID?
   public let actorName: String?
   public let actorImage: String?
@@ -1377,6 +1380,9 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     title: String,
     body: String,
     href: String? = nil,
+    issueId: VectorID? = nil,
+    projectId: VectorID? = nil,
+    teamId: VectorID? = nil,
     actorId: VectorID? = nil,
     actorName: String? = nil,
     actorImage: String? = nil,
@@ -1390,6 +1396,9 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     self.title = title
     self.body = body
     self.href = href
+    self.issueId = issueId
+    self.projectId = projectId
+    self.teamId = teamId
     self.actorId = actorId
     self.actorName = actorName
     self.actorImage = actorImage
@@ -1405,6 +1414,9 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     case title
     case body
     case href
+    case issueId
+    case projectId
+    case teamId
     case actorId
     case actorName
     case actorImage
@@ -1435,7 +1447,11 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
       return nil
     }
 
-    return parts[issuesIndex + 1]
+    let rawKey = parts[issuesIndex + 1]
+    let withoutFragment = rawKey.split(separator: "#", maxSplits: 1).first ?? Substring(rawKey)
+    let withoutQuery = withoutFragment.split(separator: "?", maxSplits: 1).first ?? withoutFragment
+    let key = String(withoutQuery).trimmingCharacters(in: .whitespacesAndNewlines)
+    return key.isEmpty ? nil : key
   }
 }
 

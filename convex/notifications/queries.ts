@@ -37,8 +37,17 @@ export const listInbox = query({
     // event so clicking always lands the user on the right surface.
     const enriched = await Promise.all(
       visible.map(async recipient => {
-        const href = await resolveNotificationHref(ctx, recipient);
-        return { ...recipient, href };
+        const event = await ctx.db.get('notificationEvents', recipient.eventId);
+        const href = event
+          ? await resolveNotificationHrefFromEvent(ctx, recipient, event)
+          : recipient.href;
+        return {
+          ...recipient,
+          href,
+          issueId: event?.issueId,
+          projectId: event?.projectId,
+          teamId: event?.teamId,
+        };
       }),
     );
 
@@ -49,13 +58,11 @@ export const listInbox = query({
   },
 });
 
-async function resolveNotificationHref(
+async function resolveNotificationHrefFromEvent(
   ctx: QueryCtx,
   recipient: Doc<'notificationRecipients'>,
+  event: Doc<'notificationEvents'>,
 ): Promise<string | undefined> {
-  const event = await ctx.db.get('notificationEvents', recipient.eventId);
-  if (!event) return recipient.href;
-
   const org = event.organizationId
     ? await ctx.db.get('organizations', event.organizationId)
     : null;
