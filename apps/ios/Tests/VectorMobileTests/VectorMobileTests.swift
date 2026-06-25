@@ -186,6 +186,20 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertNoThrow(try JSONDecoder().decode(VectorMutationResponse.self, from: scalarPayload))
   }
 
+  func testActivityDetailsDecodesCommentId() throws {
+    let payload = """
+      {
+        "commentId": "comment-1",
+        "commentPreview": "A useful mobile comment"
+      }
+      """.data(using: .utf8)!
+
+    let details = try JSONDecoder().decode(VectorActivityDetails.self, from: payload)
+
+    XCTAssertEqual(details.commentId, "comment-1")
+    XCTAssertEqual(details.commentPreview, "A useful mobile comment")
+  }
+
   func testUserDecodesProfileImageAliases() throws {
     let payload = """
       {

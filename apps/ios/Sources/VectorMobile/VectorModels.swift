@@ -69,12 +69,14 @@ public struct VectorAuthenticatedUser: Codable, Equatable, Sendable {
   public let email: String?
   public let name: String?
   public let username: String?
+  public let image: String?
 
-  public init(id: String? = nil, email: String? = nil, name: String? = nil, username: String? = nil) {
+  public init(id: String? = nil, email: String? = nil, name: String? = nil, username: String? = nil, image: String? = nil) {
     self.id = id
     self.email = email
     self.name = name
     self.username = username
+    self.image = image
   }
 
   public var displayName: String {
@@ -1126,6 +1128,7 @@ public struct VectorActivityDetails: Decodable, Equatable {
   public let fromLabel: String?
   public let toLabel: String?
   public let roleName: String?
+  public let commentId: VectorID?
   public let commentPreview: String?
   public let addedUserNames: [String]
   public let removedUserNames: [String]
@@ -1135,6 +1138,7 @@ public struct VectorActivityDetails: Decodable, Equatable {
     fromLabel: String? = nil,
     toLabel: String? = nil,
     roleName: String? = nil,
+    commentId: VectorID? = nil,
     commentPreview: String? = nil,
     addedUserNames: [String] = [],
     removedUserNames: [String] = []
@@ -1143,9 +1147,33 @@ public struct VectorActivityDetails: Decodable, Equatable {
     self.fromLabel = fromLabel
     self.toLabel = toLabel
     self.roleName = roleName
+    self.commentId = commentId
     self.commentPreview = commentPreview
     self.addedUserNames = addedUserNames
     self.removedUserNames = removedUserNames
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case field
+    case fromLabel
+    case toLabel
+    case roleName
+    case commentId
+    case commentPreview
+    case addedUserNames
+    case removedUserNames
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    self.field = try container.decodeIfPresent(String.self, forKey: .field)
+    self.fromLabel = try container.decodeIfPresent(String.self, forKey: .fromLabel)
+    self.toLabel = try container.decodeIfPresent(String.self, forKey: .toLabel)
+    self.roleName = try container.decodeIfPresent(String.self, forKey: .roleName)
+    self.commentId = try container.decodeIfPresent(VectorID.self, forKey: .commentId)
+    self.commentPreview = try container.decodeIfPresent(String.self, forKey: .commentPreview)
+    self.addedUserNames = try container.decodeIfPresent([String].self, forKey: .addedUserNames) ?? []
+    self.removedUserNames = try container.decodeIfPresent([String].self, forKey: .removedUserNames) ?? []
   }
 }
 

@@ -288,6 +288,7 @@ function mapActivityItem(
       fromLabel: event.details.fromLabel ?? null,
       toLabel: event.details.toLabel ?? null,
       roleName: event.details.roleName ?? null,
+      commentId: event.details.commentId ?? null,
       commentPreview: event.details.commentPreview ?? null,
       addedUserNames: event.details.addedUserNames ?? [],
       removedUserNames: event.details.removedUserNames ?? [],
