@@ -82,6 +82,33 @@ enum VectorMockData {
     ),
   ]
 
+  static let documents = [
+    VectorDocument(
+      id: "doc-mobile-plan",
+      title: "Mobile launch notes",
+      content: "Native review notes for the iOS app.",
+      icon: "file-text",
+      color: "#0ea5e9",
+      team: VectorTeamSummary(id: "team-product", name: "Product", key: "PROD", icon: "box", color: "#0ea5e9"),
+      project: VectorProjectSummary(id: "project-roadmap", name: "IMAI Roadmap", key: "ROADMAP", icon: "map", color: "#0ea5e9"),
+      author: raj,
+      creationTime: 1_774_580_000_000,
+      lastEditedAt: 1_774_590_000_000
+    ),
+    VectorDocument(
+      id: "doc-design",
+      title: "Design references",
+      content: "Reference notes for the Vector interface.",
+      icon: "palette",
+      color: "#ec4899",
+      team: VectorTeamSummary(id: "team-design", name: "Design", key: "DSGN", icon: "palette", color: "#ec4899"),
+      project: VectorProjectSummary(id: "project-agent", name: "Design Agent", key: "AGENT", icon: "sparkles", color: "#8b5cf6"),
+      author: maya,
+      creationTime: 1_774_520_000_000,
+      lastEditedAt: 1_774_540_000_000
+    ),
+  ]
+
   static let issues = [
     VectorIssueRow(
       id: "issue-5",
@@ -213,6 +240,33 @@ enum VectorMockData {
       actor: raj,
       target: VectorActivityTarget(type: "issue", id: "issue-5", key: "ROADMAP-5", name: "Advanced technical blueprint flow"),
       details: VectorActivityDetails(field: "workflow_state", fromLabel: "In Progress", toLabel: "Done"),
+      createdAt: 1_774_550_000_000
+    ),
+  ]
+
+  static let inboxNotifications = [
+    VectorInboxNotification(
+      id: "notification-comment",
+      category: .comments,
+      eventType: "issue_comment_on_assigned_issue",
+      title: "Maya commented on ROADMAP-5",
+      body: "For deeper editing, opening the web route is fine.",
+      href: "/demo/issues/ROADMAP-5",
+      actorId: maya.id,
+      actorName: maya.name,
+      actorImage: maya.image,
+      createdAt: 1_774_565_000_000
+    ),
+    VectorInboxNotification(
+      id: "notification-assignment",
+      category: .assignments,
+      eventType: "issue_assigned",
+      title: "Assigned to ROADMAP-6",
+      body: "Catalog data creation flow",
+      href: "/demo/issues/ROADMAP-6",
+      actorId: raj.id,
+      actorName: raj.name,
+      actorImage: raj.image,
       createdAt: 1_774_550_000_000
     ),
   ]

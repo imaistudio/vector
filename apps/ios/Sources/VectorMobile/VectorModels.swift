@@ -1011,6 +1011,112 @@ public struct VectorTeam: Decodable, Equatable, Identifiable {
   }
 }
 
+public struct VectorDocument: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let title: String
+  public let content: String?
+  public let icon: String?
+  public let color: String?
+  public let team: VectorTeamSummary?
+  public let project: VectorProjectSummary?
+  public let author: VectorUser?
+  public let visibility: String?
+  @ConvexFloat public var creationTime: Double
+  @OptionalConvexFloat private var lastEditedAtValue: Double?
+
+  public init(
+    id: VectorID,
+    title: String,
+    content: String? = nil,
+    icon: String? = nil,
+    color: String? = nil,
+    team: VectorTeamSummary? = nil,
+    project: VectorProjectSummary? = nil,
+    author: VectorUser? = nil,
+    visibility: String? = "organization",
+    creationTime: Double,
+    lastEditedAt: Double? = nil
+  ) {
+    self.id = id
+    self.title = title
+    self.content = content
+    self.icon = icon
+    self.color = color
+    self.team = team
+    self.project = project
+    self.author = author
+    self.visibility = visibility
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+    self._lastEditedAtValue = OptionalConvexFloat(wrappedValue: lastEditedAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case title
+    case content
+    case icon
+    case color
+    case team
+    case project
+    case author
+    case visibility
+    case creationTime = "_creationTime"
+    case lastEditedAtValue = "lastEditedAt"
+  }
+
+  public var updatedAt: Double {
+    lastEditedAtValue ?? creationTime
+  }
+}
+
+public struct VectorTeamSummary: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let key: String
+  public let icon: String?
+  public let color: String?
+
+  public init(id: VectorID, name: String, key: String, icon: String? = nil, color: String? = nil) {
+    self.id = id
+    self.name = name
+    self.key = key
+    self.icon = icon
+    self.color = color
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case key
+    case icon
+    case color
+  }
+}
+
+public struct VectorProjectSummary: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let key: String
+  public let icon: String?
+  public let color: String?
+
+  public init(id: VectorID, name: String, key: String, icon: String? = nil, color: String? = nil) {
+    self.id = id
+    self.name = name
+    self.key = key
+    self.icon = icon
+    self.color = color
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case key
+    case icon
+    case color
+  }
+}
+
 public struct VectorComment: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let body: String
@@ -1247,5 +1353,98 @@ public struct VectorOrgActivityPage: Decodable {
 
   public var isDone: Bool {
     nextCursor?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
+  }
+}
+
+public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let category: VectorNotificationCategory
+  public let eventType: String
+  public let title: String
+  public let body: String
+  public let href: String?
+  public let actorId: VectorID?
+  public let actorName: String?
+  public let actorImage: String?
+  public let isRead: Bool
+  public let isArchived: Bool
+  @ConvexFloat public var createdAt: Double
+
+  public init(
+    id: VectorID,
+    category: VectorNotificationCategory,
+    eventType: String,
+    title: String,
+    body: String,
+    href: String? = nil,
+    actorId: VectorID? = nil,
+    actorName: String? = nil,
+    actorImage: String? = nil,
+    isRead: Bool = false,
+    isArchived: Bool = false,
+    createdAt: Double
+  ) {
+    self.id = id
+    self.category = category
+    self.eventType = eventType
+    self.title = title
+    self.body = body
+    self.href = href
+    self.actorId = actorId
+    self.actorName = actorName
+    self.actorImage = actorImage
+    self.isRead = isRead
+    self.isArchived = isArchived
+    self._createdAt = ConvexFloat(wrappedValue: createdAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case category
+    case eventType
+    case title
+    case body
+    case href
+    case actorId
+    case actorName
+    case actorImage
+    case isRead
+    case isArchived
+    case createdAt
+  }
+
+  public var actor: VectorUser? {
+    guard actorId != nil || actorName != nil || actorImage != nil else {
+      return nil
+    }
+
+    return VectorUser(
+      id: actorId ?? actorName ?? id,
+      name: actorName,
+      image: actorImage
+    )
+  }
+
+  public var issueKey: String? {
+    guard let href else {
+      return nil
+    }
+
+    let parts = href.split(separator: "/").map(String.init)
+    guard let issuesIndex = parts.firstIndex(of: "issues"), parts.indices.contains(issuesIndex + 1) else {
+      return nil
+    }
+
+    return parts[issuesIndex + 1]
+  }
+}
+
+public struct VectorCreateIssueResult: Decodable, Equatable {
+  public let issueId: VectorID
+  public let key: String
+
+  public init(issueId: VectorID, key: String) {
+    self.issueId = issueId
+    self.key = key
   }
 }

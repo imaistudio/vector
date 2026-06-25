@@ -99,7 +99,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: Record<
     pushEnabled: true,
   },
   team_status_changes: {
-    inAppEnabled: false,
+    inAppEnabled: true,
     emailEnabled: false,
     pushEnabled: false,
   },
