@@ -7,7 +7,7 @@
  */
 
 import { ConvexHttpClient } from 'convex/browser';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../../convex/_generated/api.js';
 import type { Id, TableNames } from '../../../convex/_generated/dataModel';
 import { execFileSync, execSync } from 'child_process';
 import { TerminalPeerManager } from './terminal-peer';

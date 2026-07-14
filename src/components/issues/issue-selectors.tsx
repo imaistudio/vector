@@ -827,7 +827,7 @@ export function DateSelector({
               }
               setOpen(false);
             }}
-            initialFocus
+            autoFocus
           />
           {selectedDate && (
             <Button

@@ -10,17 +10,19 @@ import {
   ChevronsUpDown,
   FileText,
   FolderKanban,
-  Github,
   Globe,
   Inbox,
-  Instagram,
-  Linkedin,
   Plus,
   Trash2,
-  Twitter,
   X,
-  Youtube,
 } from 'lucide-react';
+import {
+  FaGithub as Github,
+  FaInstagram as Instagram,
+  FaLinkedin as Linkedin,
+  FaXTwitter as Twitter,
+  FaYoutube as Youtube,
+} from 'react-icons/fa6';
 import Image from 'next/image';
 import { toast } from 'sonner';
 import {

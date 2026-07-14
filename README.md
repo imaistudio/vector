@@ -159,7 +159,7 @@ Vector is under active development. The top-level docs in this repository reflec
 
 ### Requirements
 
-- Node.js `>=20.19.0`
+- Node.js `>=22.19.0`
 - `pnpm`
 - A local Convex dev deployment
 

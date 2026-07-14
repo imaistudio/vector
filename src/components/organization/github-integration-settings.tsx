@@ -5,11 +5,11 @@ import {
   Check,
   ChevronRight,
   Copy,
-  Github,
   RefreshCw,
   Shield,
   Webhook,
 } from 'lucide-react';
+import { FaGithub as Github } from 'react-icons/fa6';
 import { api, useCachedQuery, useMutation, useAction } from '@/lib/convex';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

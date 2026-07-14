@@ -22,7 +22,8 @@ import { BarsSpinner } from '@/components/bars-spinner';
 import { useFormSubmission } from '@/hooks/use-error-handling';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserAvatar } from '@/components/user-avatar';
-import { Github, Mail } from 'lucide-react';
+import { Mail } from 'lucide-react';
+import { FaGithub as Github } from 'react-icons/fa6';
 import { toast } from 'sonner';
 
 const profileFormSchema = z.object({

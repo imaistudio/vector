@@ -8,7 +8,7 @@ import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../../convex/_generated/api.js';
 import type { Id } from '../../../convex/_generated/dataModel';
 import type { Permission } from '../../../convex/_shared/permissions';
 import {
