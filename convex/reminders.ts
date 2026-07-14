@@ -6,7 +6,7 @@ import {
   type MutationCtx,
 } from './_generated/server';
 import type { Doc, Id } from './_generated/dataModel';
-import { canViewRequest } from './requests/lib';
+import { canEditRequest, canViewRequest } from './requests/lib';
 import {
   createNotificationEvent,
   getIssueHref,
@@ -32,6 +32,18 @@ function nextOccurrence(rule: Doc<'reminderRules'>, scheduledFor: number) {
       day;
   if (rule.cadence === 'weekdays') {
     while ([0, 6].includes(new Date(next).getUTCDay())) next += day;
+  }
+  return next;
+}
+
+function nextFutureOccurrence(
+  rule: Doc<'reminderRules'>,
+  scheduledFor: number,
+  now: number,
+) {
+  let next = nextOccurrence(rule, scheduledFor);
+  while (next !== null && next <= now) {
+    next = nextOccurrence(rule, next);
   }
   return next;
 }
@@ -181,18 +193,18 @@ export const create = mutation({
       if (
         !request ||
         request.organizationId !== organization._id ||
-        !(await canViewRequest(ctx, request))
+        !(await canEditRequest(ctx, request))
       )
         throw new ConvexError('REQUEST_NOT_FOUND');
     } else if (args.targetType === 'work' && args.workId) {
-      const work = await requireWork(ctx, args.workId, 'view');
+      const work = await requireWork(ctx, args.workId, 'edit');
       if (work.organizationId !== organization._id)
         throw new ConvexError('WORK_NOT_FOUND');
     } else if (args.targetType === 'task' && args.taskId) {
       const task = await ctx.db.get('tasks', args.taskId);
       if (!task || task.organizationId !== organization._id)
         throw new ConvexError('TASK_NOT_FOUND');
-      await requireWork(ctx, task.workId, 'view');
+      await requireWork(ctx, task.workId, 'edit');
     } else throw new ConvexError('REMINDER_TARGET_MISMATCH');
     if (args.recipientPolicies.length === 0)
       throw new ConvexError('RECIPIENT_POLICY_REQUIRED');
@@ -260,7 +272,7 @@ export const processDue = internalMutation({
         now - target.updatedAt < rule.inactivityHours * 60 * 60 * 1000
       ) {
         const next =
-          nextOccurrence(rule, rule.nextFireAt) ??
+          nextFutureOccurrence(rule, rule.nextFireAt, now) ??
           now + rule.inactivityHours * 60 * 60 * 1000;
         await ctx.db.patch('reminderRules', rule._id, {
           nextFireAt: next,
@@ -307,7 +319,7 @@ export const processDue = internalMutation({
           dedupeKey,
         });
       }
-      const next = nextOccurrence(rule, rule.nextFireAt);
+      const next = nextFutureOccurrence(rule, rule.nextFireAt, now);
       await ctx.db.patch('reminderRules', rule._id, {
         enabled: next !== null,
         nextFireAt: next ?? rule.nextFireAt,
