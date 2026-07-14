@@ -128,7 +128,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
       {team.issues.length > 0 ? (
         <div className='space-y-2'>
           <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-            Issues ({team.totalIssues})
+            Work ({team.totalIssues})
           </h2>
           <div className='rounded-lg border p-2'>
             <PublicListView
@@ -140,7 +140,7 @@ export function PublicTeamPage({ orgSlug, teamKey }: PublicTeamPageProps) {
         </div>
       ) : (
         <p className='text-muted-foreground py-8 text-center text-sm'>
-          No issues in this team.
+          No Work in this team.
         </p>
       )}
     </div>

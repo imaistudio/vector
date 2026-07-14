@@ -796,6 +796,7 @@ export const startIssueDeviceWorkSession = internalMutation({
       provider,
       title: liveActivityTitle,
       status: 'active',
+      originKind: 'agent',
       startedAt: now,
       lastEventAt: now,
     });
@@ -842,6 +843,9 @@ export const startIssueDeviceWorkSession = internalMutation({
         issueId: issue._id,
         issueKey: issue.key,
         issueTitle: issue.title,
+        workId: issue._id,
+        workKey: issue.key,
+        workTitle: issue.title,
         provider,
         workspacePath: selectedWorkspace.path,
         workspaceLabel: selectedWorkspace.label,
@@ -867,24 +871,6 @@ export const startIssueDeviceWorkSession = internalMutation({
         workspaceLabel: selectedWorkspace.label,
       },
     });
-
-    const currentState = issue.workflowStateId
-      ? await ctx.db.get('issueStates', issue.workflowStateId)
-      : null;
-    if (!currentState || ['backlog', 'todo'].includes(currentState.type)) {
-      const inProgressState = await ctx.db
-        .query('issueStates')
-        .withIndex('by_organization', q =>
-          q.eq('organizationId', issue.organizationId),
-        )
-        .filter(q => q.eq(q.field('type'), 'in_progress'))
-        .first();
-      if (inProgressState && issue.workflowStateId !== inProgressState._id) {
-        await ctx.db.patch('issues', issue._id, {
-          workflowStateId: inProgressState._id,
-        });
-      }
-    }
 
     return {
       status: 'started',
@@ -993,6 +979,7 @@ export const attachIssueToObservedDeviceSession = internalMutation({
       provider: selectedProcess.provider,
       title: selectedProcess.title,
       status: 'active',
+      originKind: 'agent',
       startedAt: now,
       lastEventAt: now,
     });
@@ -1037,24 +1024,6 @@ export const attachIssueToObservedDeviceSession = internalMutation({
         deviceName: selectedDevice.displayName,
       },
     });
-
-    const currentState = issue.workflowStateId
-      ? await ctx.db.get('issueStates', issue.workflowStateId)
-      : null;
-    if (!currentState || ['backlog', 'todo'].includes(currentState.type)) {
-      const inProgressState = await ctx.db
-        .query('issueStates')
-        .withIndex('by_organization', q =>
-          q.eq('organizationId', issue.organizationId),
-        )
-        .filter(q => q.eq(q.field('type'), 'in_progress'))
-        .first();
-      if (inProgressState && issue.workflowStateId !== inProgressState._id) {
-        await ctx.db.patch('issues', issue._id, {
-          workflowStateId: inProgressState._id,
-        });
-      }
-    }
 
     return {
       status: 'attached',

@@ -19,7 +19,8 @@ import {
 } from '@/components/ui/command';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import {
-  CheckSquare,
+  Inbox,
+  BriefcaseBusiness,
   FolderOpen,
   Users,
   LayoutDashboard,
@@ -233,7 +234,8 @@ export function CommandMenu() {
   const hasSearch = search.length >= 2;
   const hasResults =
     searchResults &&
-    (searchResults.issues.length > 0 ||
+    (searchResults.requests.length > 0 ||
+      searchResults.issues.length > 0 ||
       searchResults.projects.length > 0 ||
       searchResults.teams.length > 0 ||
       searchResults.documents.length > 0);
@@ -317,14 +319,35 @@ export function CommandMenu() {
               {/* Search results */}
               {hasSearch && hasResults && (
                 <>
+                  {searchResults.requests.length > 0 && (
+                    <CommandGroup heading='Requests'>
+                      {searchResults.requests.map(request => (
+                        <CommandItem
+                          key={request._id}
+                          value={`request-${request.key}-${request.title}-${request.expectedOutput}`}
+                          onSelect={() =>
+                            navigate(`/${orgSlug}/requests/${request.key}`)
+                          }
+                        >
+                          <Inbox className='text-muted-foreground size-4 shrink-0' />
+                          <span className='flex-1 truncate'>
+                            <span className='text-muted-foreground mr-1.5 text-xs'>
+                              {request.key}
+                            </span>
+                            {request.title}
+                          </span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
                   {searchResults.issues.length > 0 && (
-                    <CommandGroup heading='Issues'>
+                    <CommandGroup heading='Work'>
                       {searchResults.issues.map(issue => (
                         <CommandItem
                           key={issue._id}
                           value={`issue-${issue.key}-${issue.title}`}
                           onSelect={() =>
-                            navigate(`/${orgSlug}/issues/${issue.key}`)
+                            navigate(`/${orgSlug}/work/${issue.key}`)
                           }
                         >
                           {issue.stateIcon ? (
@@ -691,11 +714,18 @@ export function CommandMenu() {
               {/* Navigation */}
               <CommandGroup heading='Go to'>
                 <CommandItem
-                  value='go-issues'
-                  onSelect={() => navigate(`/${orgSlug}/issues`)}
+                  value='go-requests'
+                  onSelect={() => navigate(`/${orgSlug}/requests`)}
                 >
-                  <CheckSquare className='size-4 shrink-0' />
-                  <span>Issues</span>
+                  <Inbox className='size-4 shrink-0' />
+                  <span>Requests</span>
+                </CommandItem>
+                <CommandItem
+                  value='go-work'
+                  onSelect={() => navigate(`/${orgSlug}/work`)}
+                >
+                  <BriefcaseBusiness className='size-4 shrink-0' />
+                  <span>Work</span>
                 </CommandItem>
                 <CommandItem
                   value='go-projects'
@@ -798,18 +828,33 @@ export function CommandMenu() {
             <CommandGroup heading='Create new'>
               {canCreateIssue && (
                 <CommandItem
-                  value='create-issue'
+                  value='create-request'
                   onSelect={() => {
                     runCommand(() => {
                       window.dispatchEvent(
-                        new CustomEvent('command-menu:create-issue'),
+                        new CustomEvent('command-menu:create-request'),
                       );
                     });
                   }}
                 >
-                  <CheckSquare className='size-4 shrink-0' />
-                  <span>New Issue</span>
+                  <Inbox className='size-4 shrink-0' />
+                  <span>New Request</span>
                   <CommandShortcut>C</CommandShortcut>
+                </CommandItem>
+              )}
+              {canCreateIssue && (
+                <CommandItem
+                  value='create-work'
+                  onSelect={() =>
+                    runCommand(() =>
+                      window.dispatchEvent(
+                        new CustomEvent('command-menu:create-work'),
+                      ),
+                    )
+                  }
+                >
+                  <BriefcaseBusiness className='size-4 shrink-0' />
+                  <span>New Work</span>
                 </CommandItem>
               )}
               {canCreateProject && (

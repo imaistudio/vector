@@ -15,7 +15,7 @@ export function PlatformAdminSidebar() {
     <nav className='space-y-1 p-2 pt-0'>
       {firstOrganization && (
         <Link
-          href={`/${firstOrganization.slug}/issues`}
+          href={`/${firstOrganization.slug}/requests`}
           className='text-muted-foreground hover:text-foreground hover:bg-foreground/5 mb-2 flex h-8 items-center gap-2 rounded-md px-2 text-sm font-medium transition-colors'
         >
           <span className='truncate'>{firstOrganization.name}</span>

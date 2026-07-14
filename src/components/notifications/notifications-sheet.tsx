@@ -9,6 +9,8 @@ import { formatDistanceToNow } from 'date-fns';
 import {
   Bell,
   CheckCheck,
+  Check,
+  Clock3,
   ChevronRight,
   Mail,
   MessageSquare,
@@ -43,7 +45,7 @@ export function NotificationsSheet({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const [filter, setFilter] = useState<'all' | 'unread'>('unread');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'action'>('action');
   const { results, status, loadMore } = usePaginatedQuery(
     api.notifications.queries.listInbox,
     { filter },
@@ -51,6 +53,9 @@ export function NotificationsSheet({
   );
   const markRead = useMutation(api.notifications.mutations.markRead);
   const markAllRead = useMutation(api.notifications.mutations.markAllRead);
+  const setActionState = useMutation(
+    api.notifications.mutations.setActionState,
+  );
 
   const handleOpen = async (recipient: (typeof results)[number]) => {
     if (!recipient.isRead) {
@@ -97,10 +102,15 @@ export function NotificationsSheet({
 
           <Tabs
             value={filter}
-            onValueChange={value => setFilter(value as 'all' | 'unread')}
+            onValueChange={value =>
+              setFilter(value as 'all' | 'unread' | 'action')
+            }
             className='mt-3 gap-0'
           >
             <TabsList variant='line'>
+              <TabsTrigger value='action' className='text-xs'>
+                Needs action
+              </TabsTrigger>
               <TabsTrigger value='unread' className='text-xs'>
                 Unread
               </TabsTrigger>
@@ -133,21 +143,30 @@ export function NotificationsSheet({
             <div className='text-muted-foreground flex h-full items-center justify-center px-6 text-sm'>
               {filter === 'unread'
                 ? 'No unread notifications.'
-                : 'No notifications yet.'}
+                : filter === 'action'
+                  ? 'Nothing needs your attention.'
+                  : 'No notifications yet.'}
             </div>
           ) : (
             <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden'>
               {results.map(recipient => {
                 const Icon = getNotificationIcon(recipient.category);
                 return (
-                  <button
+                  <div
                     key={recipient._id}
-                    type='button'
+                    role='button'
+                    tabIndex={0}
                     className={cn(
                       'hover:bg-muted/40 flex w-full max-w-full min-w-0 items-start gap-3 px-3 py-2.5 text-left transition-colors',
                       !recipient.isRead && 'bg-primary/3',
                     )}
                     onClick={() => void handleOpen(recipient)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        void handleOpen(recipient);
+                      }
+                    }}
                   >
                     <div className='relative flex-shrink-0'>
                       <UserAvatar
@@ -181,9 +200,44 @@ export function NotificationsSheet({
                           addSuffix: true,
                         })}
                       </p>
+                      {recipient.actionState === 'needs_action' ? (
+                        <div className='mt-1.5 flex items-center gap-1'>
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='h-6 gap-1 px-1.5 text-[10px]'
+                            onClick={event => {
+                              event.stopPropagation();
+                              void setActionState({
+                                recipientId: recipient._id,
+                                actionState: 'done',
+                              });
+                            }}
+                          >
+                            <Check className='size-3' />
+                            Done
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            className='h-6 gap-1 px-1.5 text-[10px]'
+                            onClick={event => {
+                              event.stopPropagation();
+                              void setActionState({
+                                recipientId: recipient._id,
+                                actionState: 'snoozed',
+                                snoozedUntil: Date.now() + 24 * 60 * 60 * 1000,
+                              });
+                            }}
+                          >
+                            <Clock3 className='size-3' />
+                            Tomorrow
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                     <ChevronRight className='text-muted-foreground mt-1 size-3.5 flex-shrink-0' />
-                  </button>
+                  </div>
                 );
               })}
 

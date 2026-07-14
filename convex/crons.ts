@@ -24,4 +24,11 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  'deliver request and work reminders',
+  { minutes: 15 },
+  internal.reminders.processDue,
+  {},
+);
+
 export default crons;

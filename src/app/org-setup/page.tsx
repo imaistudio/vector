@@ -69,7 +69,7 @@ function PendingInvitesList() {
       await acceptInvite({ inviteId: inv._id });
       toast.success(`Joined ${inv.organization?.name ?? 'workspace'}`);
       if (inv.organization?.slug) {
-        router.push(`/${inv.organization.slug}/issues`);
+        router.push(`/${inv.organization.slug}/requests`);
         return;
       }
       router.push('/');

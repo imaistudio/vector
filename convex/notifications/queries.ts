@@ -11,7 +11,9 @@ import {
 
 export const listInbox = query({
   args: {
-    filter: v.optional(v.union(v.literal('all'), v.literal('unread'))),
+    filter: v.optional(
+      v.union(v.literal('all'), v.literal('unread'), v.literal('action')),
+    ),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -20,14 +22,28 @@ export const listInbox = query({
       throw new ConvexError('UNAUTHORIZED');
     }
 
-    const page = await ctx.db
-      .query('notificationRecipients')
-      .withIndex('by_user', q => q.eq('userId', userId))
-      .order('desc')
-      .paginate(args.paginationOpts);
+    const page =
+      args.filter === 'action'
+        ? await ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_action', q =>
+              q.eq('userId', userId).eq('actionState', 'needs_action'),
+            )
+            .order('desc')
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user', q => q.eq('userId', userId))
+            .order('desc')
+            .paginate(args.paginationOpts);
 
     const visible = page.page.filter(item => {
       if (item.isArchived) return false;
+      if (
+        item.actionState === 'snoozed' &&
+        (item.snoozedUntil ?? 0) > Date.now()
+      )
+        return false;
       if (args.filter === 'unread') return !item.isRead;
       return true;
     });
@@ -45,6 +61,8 @@ export const listInbox = query({
           ...recipient,
           href,
           issueId: event?.issueId,
+          requestId: event?.requestId,
+          taskId: event?.taskId,
           projectId: event?.projectId,
           teamId: event?.teamId,
         };
@@ -70,7 +88,12 @@ async function resolveNotificationHrefFromEvent(
 
   if (event.issueId && orgSlug) {
     const issue = await ctx.db.get('issues', event.issueId);
-    if (issue?.key) return `/${orgSlug}/issues/${issue.key}`;
+    if (issue?.key) return `/${orgSlug}/work/${issue.key}`;
+  }
+
+  if (event.requestId && orgSlug) {
+    const request = await ctx.db.get('requests', event.requestId);
+    if (request?.key) return `/${orgSlug}/requests/${request.key}`;
   }
 
   if (event.projectId && orgSlug) {

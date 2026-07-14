@@ -184,7 +184,7 @@ export function AssistantIssueCard({ issueKey }: { issueKey: string }) {
 
       <div className='min-w-0'>
         <Link
-          href={`/${orgSlug}/issues/${issue.key}`}
+          href={`/${orgSlug}/work/${issue.key}`}
           className='hover:text-primary block min-w-0 truncate text-sm font-medium transition-colors'
         >
           {issue.title}

@@ -113,7 +113,7 @@ const MentionListWrapper = forwardRef<
         id: issue._id,
         label: `${issue.key} ${issue.title}`,
         type: 'issue',
-        href: `/${orgSlug}/issues/${issue.key}`,
+        href: `/${orgSlug}/work/${issue.key}`,
         subtitle: issue.key,
         icon: issue.stateIcon ?? undefined,
         color: issue.stateColor ?? undefined,

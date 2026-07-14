@@ -59,7 +59,7 @@ export function OrgSetupForm() {
 
       if (result.orgId) {
         // Redirect to the new organization's issues page using slug
-        router.push(`/${formData.slug}/issues`);
+        router.push(`/${formData.slug}/requests`);
       } else {
         throw new Error('Failed to create organization');
       }

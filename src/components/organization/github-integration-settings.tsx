@@ -1,12 +1,16 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Check,
   ChevronRight,
   Copy,
+  ExternalLink,
+  GitPullRequest,
   RefreshCw,
   Shield,
+  SlidersHorizontal,
   Webhook,
 } from 'lucide-react';
 import { FaGithub as Github } from 'react-icons/fa6';
@@ -16,6 +20,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateHuman } from '@/lib/date';
 import { toast } from 'sonner';
@@ -54,16 +65,20 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
   const settings = useCachedQuery(api.github.queries.getOrgSettings, {
     orgSlug,
   });
+  const developmentInbox = useCachedQuery(
+    api.github.queries.listDevelopmentInbox,
+    {
+      orgSlug,
+    },
+  );
   const rotateWebhookSecret = useAction(api.github.actions.rotateWebhookSecret);
-  const setAutoLinkEnabled = useMutation(
-    api.github.mutations.setAutoLinkEnabled,
+  const setAutomationPolicies = useMutation(
+    api.github.mutations.setAutomationPolicies,
   );
 
   const [copiedField, setCopiedField] = useState<'url' | 'secret' | null>(null);
   const [revealedSecret, setRevealedSecret] = useState('');
   const [isRotatingSecret, setIsRotatingSecret] = useState(false);
-  const [optimisticAutoLinkEnabled, setOptimisticAutoLinkEnabled] =
-    useState(true);
 
   useEffect(() => {
     if (!copiedField) return;
@@ -72,10 +87,29 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
     return () => window.clearTimeout(timeout);
   }, [copiedField]);
 
-  useEffect(() => {
-    if (!settings) return;
-    setOptimisticAutoLinkEnabled(settings.integration?.autoLinkEnabled ?? true);
-  }, [settings]);
+  const serverPolicies = useMemo(
+    () => ({
+      keyLinkEnabled: settings?.effectiveAuth.keyLinkEnabled ?? true,
+      aiMatchEnabled: settings?.effectiveAuth.aiMatchEnabled ?? true,
+      unmatchedArtifactPolicy:
+        settings?.effectiveAuth.unmatchedArtifactPolicy ?? 'development_inbox',
+      stateAutomationPolicy:
+        settings?.effectiveAuth.stateAutomationPolicy ?? 'manual',
+      identityContributionPolicy:
+        settings?.effectiveAuth.identityContributionPolicy ?? 'contributors',
+      githubNotificationPolicy:
+        settings?.effectiveAuth.githubNotificationPolicy ?? 'action_only',
+    }),
+    [
+      settings?.effectiveAuth.aiMatchEnabled,
+      settings?.effectiveAuth.githubNotificationPolicy,
+      settings?.effectiveAuth.identityContributionPolicy,
+      settings?.effectiveAuth.keyLinkEnabled,
+      settings?.effectiveAuth.stateAutomationPolicy,
+      settings?.effectiveAuth.unmatchedArtifactPolicy,
+    ],
+  );
+  const [policies, setOptimisticPolicies] = useOptimisticValue(serverPolicies);
 
   const webhookUrl = useMemo(() => {
     const configuredBaseUrl =
@@ -123,20 +157,15 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
     }
   };
 
-  const handleAutoLinkChange = async (checked: boolean) => {
+  const updatePolicies = async (patch: Partial<typeof policies>) => {
     if (!settings?.canManage) return;
-
-    const previous = optimisticAutoLinkEnabled;
-    setOptimisticAutoLinkEnabled(checked);
+    const next = { ...policies, ...patch };
+    setOptimisticPolicies(next);
     try {
-      await setAutoLinkEnabled({
-        orgSlug,
-        enabled: checked,
-      });
+      await setAutomationPolicies({ orgSlug, ...next });
     } catch (error) {
       console.error(error);
-      setOptimisticAutoLinkEnabled(previous);
-      toast.error('Failed to update auto link setting');
+      toast.error('Failed to update GitHub automation policies');
     }
   };
 
@@ -312,29 +341,121 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
         <Separator />
 
         <IntegrationRow
-          icon={<Github className='text-muted-foreground size-4' />}
-          label='Auto link'
-          value='Automatically link incoming GitHub pull requests and GitHub issues to Vector issues.'
+          icon={<SlidersHorizontal className='text-muted-foreground size-4' />}
+          label='Linking and matching'
+          value='Choose how GitHub evidence finds existing Work.'
           meta={
-            <div className='text-muted-foreground text-xs leading-5'>
-              When a webhook payload already contains an issue key, Vector links
-              it directly. If no key is present, Vector uses the assistant model
-              as a fallback to choose the best matching issue.
+            <div className='mt-1 flex flex-wrap gap-3 text-xs'>
+              <label className='flex items-center gap-1.5'>
+                <Checkbox
+                  checked={policies.keyLinkEnabled}
+                  disabled={!settings.canManage}
+                  onCheckedChange={checked =>
+                    void updatePolicies({ keyLinkEnabled: checked === true })
+                  }
+                />
+                Key matching
+              </label>
+              <label className='flex items-center gap-1.5'>
+                <Checkbox
+                  checked={policies.aiMatchEnabled}
+                  disabled={!settings.canManage}
+                  onCheckedChange={checked =>
+                    void updatePolicies({ aiMatchEnabled: checked === true })
+                  }
+                />
+                AI suggestions
+              </label>
+              <label className='flex items-center gap-1.5'>
+                <Checkbox
+                  checked={
+                    policies.identityContributionPolicy === 'contributors'
+                  }
+                  disabled={!settings.canManage}
+                  onCheckedChange={checked =>
+                    void updatePolicies({
+                      identityContributionPolicy:
+                        checked === true ? 'contributors' : 'none',
+                    })
+                  }
+                />
+                Authors become contributors
+              </label>
             </div>
           }
           action={
-            <div className='flex items-center gap-2'>
-              <Checkbox
-                checked={optimisticAutoLinkEnabled}
-                disabled={!settings.canManage}
-                onCheckedChange={checked =>
-                  void handleAutoLinkChange(checked === true)
-                }
-              />
-              <span className='text-muted-foreground text-xs'>
-                {optimisticAutoLinkEnabled ? 'On' : 'Off'}
-              </span>
-            </div>
+            <Badge variant='outline' className='h-5 text-[10px]'>
+              {policies.keyLinkEnabled || policies.aiMatchEnabled
+                ? 'On'
+                : 'Off'}
+            </Badge>
+          }
+        />
+
+        <Separator />
+
+        <IntegrationRow
+          icon={<Github className='text-muted-foreground size-4' />}
+          label='Unmatched pull requests'
+          value='Pull requests are development evidence, not Work by default.'
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='outline' size='sm' className='h-7 text-xs'>
+                  {policies.unmatchedArtifactPolicy.replaceAll('_', ' ')}
+                  <ChevronRight className='size-3.5 rotate-90' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {(
+                  [
+                    'development_inbox',
+                    'create_request',
+                    'create_work',
+                    'ignore',
+                  ] as const
+                ).map(value => (
+                  <DropdownMenuItem
+                    key={value}
+                    onSelect={() =>
+                      void updatePolicies({ unmatchedArtifactPolicy: value })
+                    }
+                  >
+                    {value.replaceAll('_', ' ')}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+
+        <Separator />
+
+        <IntegrationRow
+          icon={<Check className='text-muted-foreground size-4' />}
+          label='State automation'
+          value='Merged or closed artifacts are evidence. Manual is the safest default.'
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant='outline' size='sm' className='h-7 text-xs'>
+                  {policies.stateAutomationPolicy}
+                  <ChevronRight className='size-3.5 rotate-90' />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align='end'>
+                {(['manual', 'evidence', 'github'] as const).map(value => (
+                  <DropdownMenuItem
+                    key={value}
+                    onSelect={() =>
+                      void updatePolicies({ stateAutomationPolicy: value })
+                    }
+                  >
+                    {value}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           }
         />
 
@@ -360,6 +481,74 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
           action={<ChevronRight className='text-muted-foreground size-4' />}
         />
       </div>
+
+      {(developmentInbox === undefined || developmentInbox.length > 0) && (
+        <div className='overflow-hidden rounded-xl border'>
+          <div className='flex items-start gap-3 border-b px-3 py-3'>
+            <div className='bg-muted flex size-8 items-center justify-center rounded-md'>
+              <GitPullRequest className='text-muted-foreground size-4' />
+            </div>
+            <div className='min-w-0 flex-1'>
+              <div className='text-sm font-medium'>Development inbox</div>
+              <p className='text-muted-foreground text-xs'>
+                Unmatched pull requests stay visible here until they are linked
+                to Work, turned into a Request by policy, or deliberately
+                ignored.
+              </p>
+            </div>
+            {developmentInbox && (
+              <Badge variant='outline' className='h-5 text-[10px]'>
+                {
+                  developmentInbox.filter(item => item.status === 'untriaged')
+                    .length
+                }{' '}
+                untriaged
+              </Badge>
+            )}
+          </div>
+          {developmentInbox === undefined ? (
+            <div className='space-y-2 p-3'>
+              <Skeleton className='h-8 w-full' />
+              <Skeleton className='h-8 w-full' />
+            </div>
+          ) : (
+            developmentInbox.slice(0, 20).map(item => {
+              const artifact = item.pullRequest ?? item.githubIssue;
+              if (!artifact) return null;
+              return (
+                <div
+                  key={item._id}
+                  className='hover:bg-muted/30 flex min-h-10 items-center gap-3 border-b px-3 last:border-b-0'
+                >
+                  <GitPullRequest className='text-muted-foreground size-3.5' />
+                  <span className='min-w-0 flex-1 truncate text-xs'>
+                    {artifact.title}
+                  </span>
+                  <Badge variant='outline' className='h-5 text-[10px]'>
+                    {item.status}
+                  </Badge>
+                  {item.createdRequest ? (
+                    <Link
+                      href={`/${orgSlug}/requests/${item.createdRequest.key}`}
+                      className='text-muted-foreground hover:text-foreground text-[11px]'
+                    >
+                      {item.createdRequest.key}
+                    </Link>
+                  ) : null}
+                  <Link
+                    href={artifact.url}
+                    target='_blank'
+                    rel='noreferrer'
+                    className='text-muted-foreground hover:text-foreground'
+                  >
+                    <ExternalLink className='size-3.5' />
+                  </Link>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </div>
   );
 }

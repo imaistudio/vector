@@ -17,6 +17,8 @@ import TableRow from '@tiptap/extension-table-row';
 import TableHeader from '@tiptap/extension-table-header';
 import TableCell from '@tiptap/extension-table-cell';
 import { Markdown } from '@tiptap/markdown';
+import TaskList from '@tiptap/extension-task-list';
+import TaskItem from '@tiptap/extension-task-item';
 import { DOMSerializer, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 import {
@@ -334,6 +336,10 @@ export function Editor({
         includeChildren: true,
       }),
       Markdown,
+      TaskList.configure({
+        HTMLAttributes: { class: 'task-list' },
+      }),
+      TaskItem.configure({ nested: true }),
       SlashCommands.configure({
         onRequestImage: enableImages ? (onRequestImage ?? null) : null,
         onInsertLocalImageFile: ({ file, alt, title }) => {

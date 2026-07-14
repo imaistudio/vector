@@ -266,13 +266,26 @@ function addEntityUrls(
   items: ListItem[],
   appUrl: string,
   orgSlug: string,
-  entityType: 'issues' | 'projects' | 'teams' | 'documents' | 'folders',
+  entityType:
+    | 'issues'
+    | 'work'
+    | 'requests'
+    | 'projects'
+    | 'teams'
+    | 'documents'
+    | 'folders',
 ): ListItem[] {
   return items.map(item => {
     let path: string;
     switch (entityType) {
       case 'issues':
         path = `/${orgSlug}/issues/${item.key}`;
+        break;
+      case 'work':
+        path = `/${orgSlug}/work/${item.key}`;
+        break;
+      case 'requests':
+        path = `/${orgSlug}/requests/${item.key}`;
         break;
       case 'projects':
         path = `/${orgSlug}/projects/${item.key}`;
@@ -705,6 +718,46 @@ async function resolveIssueId(
 ) {
   const issue = await runAction(client, cliApi.getIssue, { orgSlug, issueKey });
   return issue.id as Id<'issues'>;
+}
+
+async function resolveWork(
+  client: ConvexHttpClient,
+  orgSlug: string,
+  workKey: string,
+) {
+  const work = await runQuery(client, api.work.queries.getByKey, {
+    orgSlug,
+    workKey,
+  });
+  if (!work) throw new Error(`Work not found: ${workKey}`);
+  return work;
+}
+
+async function resolveRequest(
+  client: ConvexHttpClient,
+  orgSlug: string,
+  requestKey: string,
+) {
+  const request = await runQuery(client, api.requests.queries.getByKey, {
+    orgSlug,
+    requestKey,
+  });
+  if (!request) throw new Error(`Request not found: ${requestKey}`);
+  return request;
+}
+
+async function resolveTask(
+  client: ConvexHttpClient,
+  workId: Id<'issues'>,
+  taskNumber: string,
+) {
+  const number = requiredNumber(taskNumber, 'task number');
+  const tasks = await runQuery(client, api.tasks.queries.listByWork, {
+    workId,
+  });
+  const task = tasks.find(item => item.number === number);
+  if (!task) throw new Error(`Task not found: #${number}`);
+  return task;
 }
 
 async function resolveDocumentId(
@@ -2561,7 +2614,482 @@ projectCommand
     printOutput(result, runtime.json);
   });
 
-const issueCommand = program.command('issue').description('Issues');
+const requestCommand = program
+  .command('request')
+  .description('Request intake, routing, and review');
+
+requestCommand
+  .command('list [slug]')
+  .option('--scope <scope>', 'inbox, mine, requested, or all', 'inbox')
+  .option('--limit <n>', 'Number of requests', '50')
+  .action(async (slug, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const result = await runQuery(client, api.requests.queries.list, {
+      orgSlug,
+      scope: options.scope,
+      paginationOpts: buildPaginationOptions(options.limit),
+    });
+    printOutput(result.page, runtime.json);
+  });
+
+requestCommand
+  .command('get <requestKey>')
+  .action(async (requestKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const result = await resolveRequest(
+      client,
+      requireOrg(runtime),
+      requestKey,
+    );
+    printOutput(result, runtime.json);
+  });
+
+requestCommand
+  .command('create')
+  .requiredOption('--title <title>')
+  .requiredOption(
+    '--expected-output <output>',
+    'What should be true when this request is delivered',
+  )
+  .option('--description <description>')
+  .option('--review-guidance <guidance>')
+  .option('--recipients <members>', 'Comma-separated member names or emails')
+  .option('--project <projectKey>')
+  .option('--due-date <date>')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const recipientIds = await Promise.all(
+      parseList(options.recipients).map(member =>
+        resolveMemberId(client, orgSlug, member),
+      ),
+    );
+    const projectId = options.project
+      ? await resolveProjectId(client, orgSlug, options.project)
+      : undefined;
+    const result = await runMutation(client, api.requests.mutations.create, {
+      orgSlug,
+      data: {
+        title: options.title,
+        description: options.description,
+        expectedOutput: options.expectedOutput,
+        reviewGuidance: options.reviewGuidance,
+        recipientIds,
+        projectId,
+        dueDate: options.dueDate,
+      },
+    });
+    printOutput(result, runtime.json);
+  });
+
+requestCommand
+  .command('route <requestKey> <members>')
+  .description(
+    'Route to one or more comma-separated members without starting Work',
+  )
+  .action(async (requestKey, members, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const request = await resolveRequest(client, orgSlug, requestKey);
+    const recipientIds = await Promise.all(
+      parseList(members).map(member =>
+        resolveMemberId(client, orgSlug, member),
+      ),
+    );
+    const result = await runMutation(client, api.requests.mutations.route, {
+      requestId: request._id,
+      recipientIds,
+    });
+    printOutput(result, runtime.json);
+  });
+
+requestCommand
+  .command('claim <requestKey>')
+  .description(
+    'Accept responsibility for planning the request; does not Start Work',
+  )
+  .action(async (requestKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const request = await resolveRequest(
+      client,
+      requireOrg(runtime),
+      requestKey,
+    );
+    printOutput(
+      await runMutation(client, api.requests.mutations.claim, {
+        requestId: request._id,
+      }),
+      runtime.json,
+    );
+  });
+
+requestCommand
+  .command('link-work <requestKey> <workKey>')
+  .option('--relation <relation>', 'fulfills or contributes', 'fulfills')
+  .action(async (requestKey, workKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const [request, work] = await Promise.all([
+      resolveRequest(client, orgSlug, requestKey),
+      resolveWork(client, orgSlug, workKey),
+    ]);
+    printOutput(
+      await runMutation(client, api.requests.mutations.linkWork, {
+        requestId: request._id,
+        workId: work._id,
+        relation: options.relation,
+      }),
+      runtime.json,
+    );
+  });
+
+requestCommand
+  .command('request-changes <requestKey>')
+  .requiredOption('--note <note>')
+  .action(async (requestKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const request = await resolveRequest(
+      client,
+      requireOrg(runtime),
+      requestKey,
+    );
+    printOutput(
+      await runMutation(client, api.requests.mutations.requestChanges, {
+        requestId: request._id,
+        note: options.note,
+      }),
+      runtime.json,
+    );
+  });
+
+requestCommand
+  .command('complete <requestKey>')
+  .option('--note <note>')
+  .action(async (requestKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const request = await resolveRequest(
+      client,
+      requireOrg(runtime),
+      requestKey,
+    );
+    printOutput(
+      await runMutation(client, api.requests.mutations.complete, {
+        requestId: request._id,
+        note: options.note,
+      }),
+      runtime.json,
+    );
+  });
+
+const workCommand = program
+  .command('work')
+  .description('Outcome-focused Work and agent context');
+
+workCommand
+  .command('list [slug]')
+  .option('--scope <scope>', 'active, mine, attention, or all', 'active')
+  .option('--limit <n>', 'Number of Work records', '50')
+  .action(async (slug, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime, slug);
+    const result = await runQuery(client, api.work.queries.list, {
+      orgSlug,
+      scope: options.scope,
+      paginationOpts: buildPaginationOptions(options.limit),
+    });
+    printOutput(
+      addEntityUrls(result.page, runtime.appUrl, orgSlug, 'work'),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('get <workKey>')
+  .action(async (workKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    printOutput(
+      await resolveWork(client, requireOrg(runtime), workKey),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('create')
+  .requiredOption('--title <title>')
+  .option('--workpad <markdown>')
+  .option('--owner <member>')
+  .option('--request <requestKeys>', 'Comma-separated Request keys')
+  .option('--project <projectKey>')
+  .option('--due-date <date>')
+  .option('--effort <effort>', 'unknown, xs, s, m, or l', 'unknown')
+  .action(async (options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const ownerId = options.owner
+      ? await resolveMemberId(client, orgSlug, options.owner)
+      : undefined;
+    const projectId = options.project
+      ? await resolveProjectId(client, orgSlug, options.project)
+      : undefined;
+    const requests = await Promise.all(
+      parseList(options.request).map(key =>
+        resolveRequest(client, orgSlug, key),
+      ),
+    );
+    const result = await runMutation(client, api.work.mutations.create, {
+      orgSlug,
+      data: {
+        title: options.title,
+        description: options.workpad,
+        ownerId,
+        projectId,
+        dueDate: options.dueDate,
+        effort: options.effort,
+        requestIds: requests.map(request => request._id),
+      },
+    });
+    printOutput(result, runtime.json);
+  });
+
+workCommand
+  .command('start <workKey>')
+  .description(
+    'Explicitly begin Work; assignment or agent attachment never does this',
+  )
+  .action(async (workKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    printOutput(
+      await runMutation(client, api.work.mutations.start, { workId: work._id }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('status <workKey> <status>')
+  .description(
+    'Set planned, active, waiting, blocked, or canceled; active explicitly starts or resumes your ownership period',
+  )
+  .action(async (workKey, status, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    const result =
+      status === 'active'
+        ? await runMutation(client, api.work.mutations.start, {
+            workId: work._id,
+          })
+        : await runMutation(client, api.work.mutations.setStatus, {
+            workId: work._id,
+            status,
+          });
+    printOutput(result, runtime.json);
+  });
+
+workCommand
+  .command('context <workKey>')
+  .option('--task <number>', 'Limit context to one Task')
+  .action(async (workKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const work = await resolveWork(client, orgSlug, workKey);
+    const task = options.task
+      ? await resolveTask(client, work._id, options.task)
+      : undefined;
+    printOutput(
+      await runQuery(client, api.work.queries.getContext, {
+        orgSlug,
+        workKey,
+        taskId: task?._id,
+      }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('ready-for-review <workKey>')
+  .action(async (workKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    printOutput(
+      await runMutation(client, api.work.mutations.readyForReview, {
+        workId: work._id,
+      }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('complete <workKey>')
+  .action(async (workKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    printOutput(
+      await runMutation(client, api.work.mutations.complete, {
+        workId: work._id,
+      }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('handoff <workKey> <member>')
+  .option('--note <note>')
+  .requiredOption(
+    '--summary <summary>',
+    'What has been completed and where the next owner should resume',
+  )
+  .action(async (workKey, member, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const [work, toOwnerId] = await Promise.all([
+      resolveWork(client, orgSlug, workKey),
+      resolveMemberId(client, orgSlug, member),
+    ]);
+    printOutput(
+      await runMutation(client, api.work.mutations.proposeHandoff, {
+        workId: work._id,
+        toOwnerId,
+        note: options.note,
+        summary: options.summary,
+      }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('respond-handoff <handoffId>')
+  .requiredOption('--accept <true|false>')
+  .action(async (handoffId, options, command) => {
+    const { client, runtime } = await getClient(command);
+    printOutput(
+      await runMutation(client, api.work.mutations.respondToHandoff, {
+        handoffId,
+        accept: parseBoolean(options.accept, 'accept'),
+      }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('attention <workKey>')
+  .requiredOption('--title <title>')
+  .option('--details <details>')
+  .option('--task <number>')
+  .option(
+    '--execution <liveActivityId>',
+    'Attribute the attention request to a live agent execution',
+  )
+  .action(async (workKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    const task = options.task
+      ? await resolveTask(client, work._id, options.task)
+      : undefined;
+    printOutput(
+      await runMutation(client, api.work.mutations.raiseAttention, {
+        workId: work._id,
+        taskId: task?._id,
+        liveActivityId: options.execution as
+          Id<'issueLiveActivities'> | undefined,
+        title: options.title,
+        details: options.details,
+      }),
+      runtime.json,
+    );
+  });
+
+const taskCommand = program
+  .command('task')
+  .description('Tracked Tasks within Work');
+
+taskCommand
+  .command('list <workKey>')
+  .action(async (workKey, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    printOutput(
+      await runQuery(client, api.tasks.queries.listByWork, {
+        workId: work._id,
+      }),
+      runtime.json,
+    );
+  });
+
+taskCommand
+  .command('create <workKey>')
+  .requiredOption('--title <title>')
+  .option('--description <description>')
+  .option('--assignee <member>')
+  .option(
+    '--execution <liveActivityId>',
+    'Create as the attached agent execution, preserving attribution and Work policy',
+  )
+  .action(async (workKey, options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const work = await resolveWork(client, orgSlug, workKey);
+    const assigneeId = options.assignee
+      ? await resolveMemberId(client, orgSlug, options.assignee)
+      : undefined;
+    const result = options.execution
+      ? await runMutation(client, api.tasks.mutations.createFromExecution, {
+          workId: work._id,
+          liveActivityId: options.execution as Id<'issueLiveActivities'>,
+          title: options.title,
+          description: options.description,
+          assigneeId,
+        })
+      : await runMutation(client, api.tasks.mutations.create, {
+          workId: work._id,
+          title: options.title,
+          description: options.description,
+          assigneeId,
+        });
+    printOutput(result, runtime.json);
+  });
+
+taskCommand
+  .command('status <workKey> <taskNumber> <status>')
+  .description('Set todo, in_progress, waiting, blocked, done, or canceled')
+  .action(async (workKey, taskNumber, status, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    const task = await resolveTask(client, work._id, taskNumber);
+    printOutput(
+      await runMutation(client, api.tasks.mutations.setStatus, {
+        taskId: task._id,
+        status,
+      }),
+      runtime.json,
+    );
+  });
+
+taskCommand
+  .command('assign <workKey> <taskNumber> [member]')
+  .description('Assign a member, or omit member to clear the assignee')
+  .action(async (workKey, taskNumber, member, _options, command) => {
+    const { client, runtime } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const work = await resolveWork(client, orgSlug, workKey);
+    const [task, assigneeId] = await Promise.all([
+      resolveTask(client, work._id, taskNumber),
+      member
+        ? resolveMemberId(client, orgSlug, member)
+        : Promise.resolve(undefined),
+    ]);
+    printOutput(
+      await runMutation(client, api.tasks.mutations.assign, {
+        taskId: task._id,
+        assigneeId,
+      }),
+      runtime.json,
+    );
+  });
+
+const issueCommand = program
+  .command('issue')
+  .description('Legacy Issue compatibility (use request, work, and task)');
 
 issueCommand
   .command('list [slug]')

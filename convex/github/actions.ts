@@ -206,14 +206,20 @@ async function resolveAutoLinkIssueKeys(
   );
   const autoLinkEnabled =
     integrationResult.integration?.autoLinkEnabled ?? true;
+  const keyLinkEnabled =
+    integrationResult.integration?.keyLinkEnabled ?? autoLinkEnabled;
+  const aiMatchEnabled =
+    integrationResult.integration?.aiMatchEnabled ?? autoLinkEnabled;
 
   if (!autoLinkEnabled) {
     return [];
   }
 
-  if (args.initialIssueKeys.length > 0) {
+  if (keyLinkEnabled && args.initialIssueKeys.length > 0) {
     return args.initialIssueKeys;
   }
+
+  if (!aiMatchEnabled) return [];
 
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
     return [];

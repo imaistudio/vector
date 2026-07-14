@@ -819,7 +819,7 @@ export const startIssueDeviceWorkSession: Tool<
   unknown
 > = createTool({
   description:
-    'Start a new tmux-backed work session for an issue on the authenticated user\'s own bridge device. If provider is omitted, default to Codex. Use provider "vector_cli" for a manual shell session with no managed agent. If deviceId or workspaceId is omitted, this prefers the user\'s single online device and default delegated workspace when unambiguous. If the result returns status "needs_selection", ask one short clarifying question using the provided options.',
+    'Start a new tmux-backed agent execution attached to Work on the authenticated user\'s own bridge device. Attaching the execution does not start or change Work status. If provider is omitted, default to Codex. Use provider "vector_cli" for a manual shell session with no managed agent. If deviceId or workspaceId is omitted, this prefers the user\'s single online device and default delegated workspace when unambiguous. If the result returns status "needs_selection", ask one short clarifying question using the provided options.',
   inputSchema: z.object({
     issueKey: z
       .string()
@@ -865,7 +865,7 @@ export const attachIssueToObservedDeviceSession: Tool<
   unknown
 > = createTool({
   description:
-    'Attach an existing observed tmux, Codex, or Claude session from the authenticated user\'s own device to an issue, so future Vector messages go to that running work. If processId is omitted, this auto-selects only when there is a single clear attachable session. If the result returns status "needs_selection", ask one short clarifying question using the provided options.',
+    'Attach an existing observed tmux, Codex, or Claude session from the authenticated user\'s own device to Work, so future Vector messages go to that execution. Attachment does not start or change Work status. If processId is omitted, this auto-selects only when there is a single clear attachable session. If the result returns status "needs_selection", ask one short clarifying question using the provided options.',
   inputSchema: z.object({
     issueKey: z
       .string()

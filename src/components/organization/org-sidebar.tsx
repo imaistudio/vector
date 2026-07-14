@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   type LucideIcon,
-  CheckSquare,
+  Inbox,
+  BriefcaseBusiness,
   FileText,
   FolderOpen,
   Circle,
@@ -21,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
+import { CreateRequestDialog } from '@/components/requests/create-request-dialog';
 import { CreateTeamButton } from '@/components/teams/create-team-button';
 import { CreateProjectButton } from '@/components/projects/create-project-button';
 import { ScopedPermissionGate } from '@/hooks/use-permissions';
@@ -223,21 +224,33 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
 
   const navItems: NavItem[] = [
     {
-      label: 'My Issues',
-      href: `/${orgSlug}/issues`,
-      icon: CheckSquare,
+      label: 'Requests',
+      href: `/${orgSlug}/requests`,
+      icon: Inbox,
       createElement: (
         <ScopedPermissionGate
           scope={{ orgSlug }}
           permission={PERMISSIONS.ISSUE_CREATE}
         >
-          <CreateIssueDialog
+          <CreateRequestDialog
             orgSlug={orgSlug}
-            variant='default'
-            className='h-6 w-6 border-0 p-0 shadow-none'
+            trigger={
+              <Button
+                variant='outline'
+                size='sm'
+                className='h-6 w-6 border-0 p-0 shadow-none'
+              >
+                <Plus className='size-3.5' />
+              </Button>
+            }
           />
         </ScopedPermissionGate>
       ),
+    },
+    {
+      label: 'My Work',
+      href: `/${orgSlug}/work`,
+      icon: BriefcaseBusiness,
     },
   ];
 

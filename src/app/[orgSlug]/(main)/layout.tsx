@@ -24,9 +24,10 @@ import { CommandMenu } from '@/components/command-menu';
 import { CommandMenuActions } from '@/components/command-menu-actions';
 import {
   CheckSquare,
+  Inbox,
+  BriefcaseBusiness,
   FolderOpen,
   Users,
-  LayoutDashboard,
   Menu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -231,7 +232,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
       try {
         const result = await acceptPendingInvitation({ orgSlug });
         if (result.organizationSlug && result.organizationSlug !== orgSlug) {
-          router.replace(`/${result.organizationSlug}/issues`);
+          router.replace(`/${result.organizationSlug}/requests`);
         }
       } catch (error) {
         console.error('Failed to accept pending invitation', error);
@@ -440,10 +441,16 @@ export default function AppLayout({ children }: AppLayoutProps) {
               {/* Nav */}
               <nav className='flex h-12 items-stretch pb-[env(safe-area-inset-bottom)]'>
                 <BottomNavItem
-                  href={`/${orgSlug}/issues`}
-                  icon={CheckSquare}
-                  label='Issues'
-                  isActive={isActive(`/${orgSlug}/issues`)}
+                  href={`/${orgSlug}/requests`}
+                  icon={Inbox}
+                  label='Requests'
+                  isActive={isActive(`/${orgSlug}/requests`)}
+                />
+                <BottomNavItem
+                  href={`/${orgSlug}/work`}
+                  icon={BriefcaseBusiness}
+                  label='Work'
+                  isActive={isActive(`/${orgSlug}/work`)}
                 />
                 <BottomNavItem
                   href={`/${orgSlug}/projects`}
@@ -456,12 +463,6 @@ export default function AppLayout({ children }: AppLayoutProps) {
                   icon={Users}
                   label='Teams'
                   isActive={isActive(`/${orgSlug}/teams`)}
-                />
-                <BottomNavItem
-                  href={`/${orgSlug}/dashboard`}
-                  icon={LayoutDashboard}
-                  label='Dashboard'
-                  isActive={isActive(`/${orgSlug}/dashboard`)}
                 />
                 <button
                   onClick={() => setMobileOpen(true)}

@@ -905,13 +905,13 @@ export default function OrgSettingsPageClient({
           <div className='border-b px-3 py-2'>
             <div className='flex items-center gap-1.5 text-sm font-medium'>
               <Inbox className='size-3.5' />
-              Public issue submissions
+              Public request intake
             </div>
             <p className='text-muted-foreground mt-1 text-xs'>
               Let anyone on your public landing page submit a request. New
-              submissions land in the chosen project with visibility set to
-              public, and the configured view is linked on the landing page so
-              visitors can browse existing requests.
+              submissions become private workspace Requests with a required
+              expected output. The chosen project provides initial routing
+              context; it does not create or start Work.
             </p>
           </div>
 
@@ -937,7 +937,7 @@ export default function OrgSettingsPageClient({
                 <div className='text-sm font-medium'>Enable public form</div>
                 <p className='text-muted-foreground text-xs'>
                   Anyone visiting <span className='font-mono'>/{orgSlug}</span>{' '}
-                  can submit an issue without signing in. Pick a project below
+                  can submit a request without signing in. Pick a project below
                   first, then flip this on.
                 </p>
               </div>
@@ -966,9 +966,9 @@ export default function OrgSettingsPageClient({
                 </div>
               )}
               <p className='text-muted-foreground text-xs'>
-                Submitted issues inherit this project&apos;s team and key
-                prefix. Only the admins managing this project will be notified
-                on creation.
+                New Requests receive this project and team as routing context. A
+                recipient still decides whether to create new Work or attach the
+                Request to existing Work.
               </p>
               {isAdmin && projectOptions.length === 0 ? (
                 <p className='text-muted-foreground text-xs'>
@@ -978,9 +978,7 @@ export default function OrgSettingsPageClient({
             </div>
 
             <div className='space-y-2'>
-              <label className='text-sm font-medium'>
-                Public requests view
-              </label>
+              <label className='text-sm font-medium'>Public Work view</label>
               {isAdmin ? (
                 <PublicViewSelector
                   views={publicViews}
@@ -1002,8 +1000,9 @@ export default function OrgSettingsPageClient({
               )}
               <p className='text-muted-foreground text-xs'>
                 Optional. Link a public view (filter it to the target project)
-                from the landing page so visitors can see what has already been
-                requested. Must be a view with public visibility.
+                from the landing page so visitors can see outcomes that the
+                workspace deliberately publishes. Intake Requests themselves
+                remain private. Must be a view with public visibility.
               </p>
               {isAdmin && publicViews.length === 0 ? (
                 <p className='text-muted-foreground text-xs'>

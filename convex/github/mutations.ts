@@ -21,6 +21,8 @@ import {
 import { PERMISSIONS } from '../_shared/permissions';
 import { buildIssueSearchText } from '../issues/search';
 import { getNextAvailableIssueKey } from '../issues/keys';
+import { nextRequestKey, requestSearchText } from '../requests/lib';
+import { createNotificationEvent, getRequestHref } from '../notifications/lib';
 import {
   buildArtifactExternalKey,
   normalizeIssueKey,
@@ -46,6 +48,12 @@ async function getOrCreateIntegration(
     organizationId,
     provider: 'github',
     autoLinkEnabled: true,
+    keyLinkEnabled: true,
+    aiMatchEnabled: true,
+    unmatchedArtifactPolicy: 'development_inbox',
+    stateAutomationPolicy: 'manual',
+    identityContributionPolicy: 'contributors',
+    githubNotificationPolicy: 'action_only',
     connectionMode: 'webhook',
     updatedAt: Date.now(),
   });
@@ -208,8 +216,8 @@ async function queueIssueDescriptionRefreshForAssistantThreads(
     orgSlug: args.organization.slug,
     path:
       args.issue.key.trim().length > 0
-        ? `/${args.organization.slug}/issues/${args.issue.key}`
-        : `/${args.organization.slug}/issues`,
+        ? `/${args.organization.slug}/work/${args.issue.key}`
+        : `/${args.organization.slug}/work`,
     issueKey: args.issue.key,
     entityType: 'issue' as const,
     entityId: String(args.issue._id),
@@ -428,6 +436,14 @@ async function applyWorkflowAutomationForIssue(
 ) {
   const issue = await ctx.db.get('issues', issueId);
   if (!issue) return;
+  const integration = await ctx.db
+    .query('githubIntegrations')
+    .withIndex('by_org_provider', q =>
+      q.eq('organizationId', issue.organizationId).eq('provider', 'github'),
+    )
+    .first();
+  if ((integration?.stateAutomationPolicy ?? 'manual') !== 'github') return;
+  if (issue.kind === 'work' && issue.completionPolicy !== 'github') return;
 
   const links = await ctx.db
     .query('githubArtifactLinks')
@@ -460,6 +476,10 @@ async function applyWorkflowAutomationForIssue(
   if (!targetType) {
     return;
   }
+  // Agent attachment and GitHub activity never imply that a person has
+  // intentionally started Work. GitHub opt-in only handles terminal evidence.
+  if (issue.kind === 'work' && !['done', 'canceled'].includes(targetType))
+    return;
 
   const nextStateId = await getIssueStateIdByType(
     ctx,
@@ -483,6 +503,9 @@ async function applyWorkflowAutomationForIssue(
     targetType === 'done' || targetType === 'canceled' ? Date.now() : undefined;
   const issueNeedsPatch =
     issue.workflowStateId !== nextStateId ||
+    (issue.kind === 'work' &&
+      issue.workStatus !==
+        (targetType === 'done' ? 'completed' : 'canceled')) ||
     (targetType === 'done' || targetType === 'canceled'
       ? issue.closedAt === undefined
       : issue.closedAt !== undefined);
@@ -498,6 +521,14 @@ async function applyWorkflowAutomationForIssue(
     await ctx.db.patch('issues', issueId, {
       workflowStateId: nextStateId,
       closedAt: nextClosedAt,
+      workStatus:
+        issue.kind === 'work'
+          ? targetType === 'done'
+            ? 'completed'
+            : 'canceled'
+          : issue.workStatus,
+      lastMeaningfulActivityAt: Date.now(),
+      lastActivityEventType: 'github_state_automation',
     });
   }
 
@@ -533,6 +564,68 @@ async function applyWorkflowAutomationForIssue(
       snapshot: snapshotForIssue(issue),
     });
   }
+
+  if (issue.kind === 'work' && targetType === 'done') {
+    const links = await ctx.db
+      .query('requestWorkLinks')
+      .withIndex('by_work', query => query.eq('workId', issue._id))
+      .collect();
+    for (const link of links) {
+      const request = await ctx.db.get('requests', link.requestId);
+      if (
+        !request ||
+        ['completed', 'declined', 'duplicate'].includes(request.status)
+      )
+        continue;
+      const requestLinks = await ctx.db
+        .query('requestWorkLinks')
+        .withIndex('by_request', query => query.eq('requestId', request._id))
+        .collect();
+      const linkedWork = await Promise.all(
+        requestLinks.map(requestLink =>
+          ctx.db.get('issues', requestLink.workId),
+        ),
+      );
+      if (
+        !linkedWork.every(
+          work =>
+            work &&
+            ['ready_for_review', 'completed'].includes(work.workStatus ?? ''),
+        )
+      )
+        continue;
+      const now = Date.now();
+      await ctx.db.patch('requests', request._id, {
+        status: 'ready_for_review',
+        readyForReviewAt: now,
+        updatedAt: now,
+      });
+      const recipients = new Set<Id<'users'>>();
+      if (request.requesterId) recipients.add(request.requesterId);
+      if (request.createdBy) recipients.add(request.createdBy);
+      const organization = await ctx.db.get(
+        'organizations',
+        request.organizationId,
+      );
+      await createNotificationEvent(ctx, {
+        type: 'request_ready_for_review',
+        organizationId: request.organizationId,
+        requestId: request._id,
+        issueId: issue._id,
+        payload: {
+          requestKey: request.key,
+          requestTitle: request.title,
+          workKey: issue.key,
+          workTitle: issue.title,
+          href: organization
+            ? getRequestHref(organization.slug, request.key)
+            : undefined,
+        },
+        recipients: Array.from(recipients).map(userId => ({ userId })),
+        dedupeKey: `request-ready:github:${request._id}:${now}`,
+      });
+    }
+  }
 }
 
 async function autoAssignFromGitHubLogins(
@@ -546,6 +639,18 @@ async function autoAssignFromGitHubLogins(
   }>,
 ) {
   if (identities.length === 0) return;
+
+  const integration = await ctx.db
+    .query('githubIntegrations')
+    .withIndex('by_org_provider', q =>
+      q.eq('organizationId', organizationId).eq('provider', 'github'),
+    )
+    .first();
+  if (
+    (integration?.identityContributionPolicy ?? 'contributors') !==
+    'contributors'
+  )
+    return;
 
   const issue = await ctx.db.get('issues', issueId);
   if (!issue) return;
@@ -565,6 +670,23 @@ async function autoAssignFromGitHubLogins(
       identity,
     );
     if (!vectorUser) continue;
+
+    if (issue.kind === 'work') {
+      const contributor = await ctx.db
+        .query('workContributors')
+        .withIndex('by_work_user', q =>
+          q.eq('workId', issue._id).eq('userId', vectorUser._id),
+        )
+        .first();
+      if (!contributor) {
+        await ctx.db.insert('workContributors', {
+          workId: issue._id,
+          userId: vectorUser._id,
+          addedAt: Date.now(),
+        });
+      }
+      continue;
+    }
 
     // Check not already assigned
     const existingAssignment = existingAssignments.find(
@@ -730,9 +852,7 @@ async function syncArtifactLinksForIssues(args: {
   organizationId: Id<'organizations'>;
   artifactType: GitHubArtifactType;
   artifactId:
-    | Id<'githubPullRequests'>
-    | Id<'githubIssues'>
-    | Id<'githubCommits'>;
+    Id<'githubPullRequests'> | Id<'githubIssues'> | Id<'githubCommits'>;
   repoFullName: string;
   identifier: string | number;
   issueKeys: string[];
@@ -874,6 +994,20 @@ async function syncArtifactLinksForIssues(args: {
         artifactId as Id<'githubPullRequests'>,
       );
     }
+    if (targetIssueIds.length > 0) {
+      const inbox = await ctx.db
+        .query('githubDevelopmentInbox')
+        .withIndex('by_pull_request', query =>
+          query.eq('pullRequestId', artifactId as Id<'githubPullRequests'>),
+        )
+        .first();
+      if (inbox && inbox.status === 'untriaged') {
+        await ctx.db.patch('githubDevelopmentInbox', inbox._id, {
+          status: 'linked',
+          updatedAt: Date.now(),
+        });
+      }
+    }
   }
 
   if (artifactType === 'issue') {
@@ -977,6 +1111,47 @@ export const setAutoLinkEnabled = mutation({
     });
 
     return { success: true, actorId: userId } as const;
+  },
+});
+
+export const setAutomationPolicies = mutation({
+  args: {
+    orgSlug: v.string(),
+    keyLinkEnabled: v.boolean(),
+    aiMatchEnabled: v.boolean(),
+    unmatchedArtifactPolicy: v.union(
+      v.literal('development_inbox'),
+      v.literal('create_request'),
+      v.literal('create_work'),
+      v.literal('ignore'),
+    ),
+    stateAutomationPolicy: v.union(
+      v.literal('manual'),
+      v.literal('evidence'),
+      v.literal('github'),
+    ),
+    identityContributionPolicy: v.union(
+      v.literal('none'),
+      v.literal('contributors'),
+    ),
+    githubNotificationPolicy: v.union(
+      v.literal('action_only'),
+      v.literal('all'),
+      v.literal('none'),
+    ),
+  },
+  handler: async (ctx, args) => {
+    await requireAuthUser(ctx);
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    await requireOrgPermission(ctx, org._id, PERMISSIONS.ORG_MANAGE_SETTINGS);
+    const integration = await getOrCreateIntegration(ctx, org._id);
+    const { orgSlug: _orgSlug, ...policies } = args;
+    await ctx.db.patch('githubIntegrations', integration!._id, {
+      ...policies,
+      autoLinkEnabled: args.keyLinkEnabled || args.aiMatchEnabled,
+      updatedAt: Date.now(),
+    });
+    return { success: true } as const;
   },
 });
 
@@ -1331,6 +1506,7 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
       if (!link.active) continue;
       const issue = await ctx.db.get('issues', link.issueId);
       if (!issue || issue.organizationId !== args.organizationId) continue;
+      if (issue.kind === 'work') continue;
 
       const patch: Partial<Doc<'issues'>> = {};
       if (args.previousTitle && issue.title === args.previousTitle) {
@@ -1395,6 +1571,9 @@ export const applyPullRequestSummaryToIssue = internalMutation({
     if (!issue) {
       return { updated: false } as const;
     }
+    if (issue.kind === 'work') {
+      return { updated: false } as const;
+    }
 
     const description = mergeIssueDescriptionWithPullRequestSummary({
       currentDescription: issue.description,
@@ -1426,7 +1605,12 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
   },
   handler: async (ctx, args) => {
     const integration = await getOrCreateIntegration(ctx, args.organizationId);
-    if (integration?.autoLinkEnabled === false) {
+    const unmatchedPolicy =
+      integration?.unmatchedArtifactPolicy ?? 'development_inbox';
+    if (
+      integration?.autoLinkEnabled === false ||
+      unmatchedPolicy === 'ignore'
+    ) {
       return { created: false } as const;
     }
 
@@ -1454,11 +1638,6 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       throw new ConvexError('REPOSITORY_NOT_CONNECTED');
     }
 
-    const defaultState = await getDefaultAssignmentState(
-      ctx,
-      args.organizationId,
-    );
-
     const linkedUser = await resolveOrgMemberByGitHubIdentity(
       ctx,
       args.organizationId,
@@ -1466,6 +1645,66 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
         githubUserId: pullRequest.authorGitHubUserId ?? null,
         githubUsername: pullRequest.authorLogin ?? null,
       },
+    );
+
+    if (unmatchedPolicy !== 'create_work') {
+      const existingInbox = await ctx.db
+        .query('githubDevelopmentInbox')
+        .withIndex('by_pull_request', q =>
+          q.eq('pullRequestId', pullRequest._id),
+        )
+        .first();
+      let createdRequestId = existingInbox?.createdRequestId;
+      if (unmatchedPolicy === 'create_request' && !createdRequestId) {
+        const next = await nextRequestKey(ctx, organization);
+        const expectedOutput = `Review ${repository.fullName}#${pullRequest.number} and decide the delivered outcome.`;
+        createdRequestId = await ctx.db.insert('requests', {
+          organizationId: args.organizationId,
+          key: next.key,
+          sequenceNumber: next.sequenceNumber,
+          title:
+            pullRequest.title.trim() ||
+            `${repository.fullName}#${pullRequest.number}`,
+          description: pullRequest.body ?? undefined,
+          expectedOutput,
+          searchText: requestSearchText({
+            key: next.key,
+            title: pullRequest.title,
+            description: pullRequest.body ?? undefined,
+            expectedOutput,
+          }),
+          status: 'new',
+          source: 'github',
+          requesterId: linkedUser?._id,
+          requesterName: pullRequest.authorLogin,
+          visibility: 'organization',
+          createdBy: linkedUser?._id,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+      if (!existingInbox) {
+        await ctx.db.insert('githubDevelopmentInbox', {
+          organizationId: args.organizationId,
+          pullRequestId: pullRequest._id,
+          status: createdRequestId ? 'linked' : 'untriaged',
+          createdRequestId,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      } else if (createdRequestId && !existingInbox.createdRequestId) {
+        await ctx.db.patch('githubDevelopmentInbox', existingInbox._id, {
+          status: 'linked',
+          createdRequestId,
+          updatedAt: Date.now(),
+        });
+      }
+      return { created: false, inboxed: true, createdRequestId } as const;
+    }
+
+    const defaultState = await getDefaultAssignmentState(
+      ctx,
+      args.organizationId,
     );
 
     const nextIssueKey = await getNextAvailableIssueKey(ctx, {
@@ -1508,12 +1747,22 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       reporterId: linkedUser?._id,
       visibility: 'organization',
       createdBy: linkedUser?._id,
+      kind: 'work',
+      workStatus: 'planned',
+      effort: 'unknown',
+      completionPolicy: 'manual',
+      agentTaskCreationPolicy: 'allow',
+      creationSource: 'github',
+      ownerId: undefined,
+      updatedAt: Date.now(),
+      lastMeaningfulActivityAt: Date.now(),
+      lastActivityEventType: 'work_created',
     });
 
     if (defaultState) {
       await ctx.db.insert('issueAssignees', {
         issueId,
-        assigneeId: linkedUser?._id,
+        assigneeId: undefined,
         stateId: defaultState._id,
       });
     }
@@ -1523,8 +1772,8 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       await recordActivity(ctx, {
         scope: resolveIssueScope(createdIssue),
         actorId: linkedUser._id,
-        entityType: 'issue',
-        eventType: 'issue_created',
+        entityType: 'work',
+        eventType: 'work_created',
         snapshot: snapshotForIssue(createdIssue),
       });
     }

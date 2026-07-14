@@ -6,6 +6,12 @@ import XCTest
 final class VectorMobileTests: XCTestCase {
   func testFunctionNamesUseNestedConvexPathSyntax() {
     XCTAssertEqual(VectorConvexFunctions.getOrganizations, "users:getOrganizations")
+    XCTAssertEqual(VectorConvexFunctions.listRequestsPage, "requests/queries:list")
+    XCTAssertEqual(VectorConvexFunctions.getRequestByKey, "requests/queries:getByKey")
+    XCTAssertEqual(VectorConvexFunctions.listWorkPage, "work/queries:list")
+    XCTAssertEqual(VectorConvexFunctions.getWorkByKey, "work/queries:getByKey")
+    XCTAssertEqual(VectorConvexFunctions.startWork, "work/mutations:start")
+    XCTAssertEqual(VectorConvexFunctions.setTaskStatus, "tasks/mutations:setStatus")
     XCTAssertEqual(VectorConvexFunctions.listIssuesPage, "issues/queries:listIssuesPage")
     XCTAssertEqual(VectorConvexFunctions.getIssueByKey, "issues/queries:getByKey")
     XCTAssertEqual(VectorConvexFunctions.createIssue, "issues/mutations:create")
@@ -26,6 +32,39 @@ final class VectorMobileTests: XCTestCase {
   func testNotificationCategoryRawValuesMatchBackend() {
     XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.rawValue, "team_status_changes")
     XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.label, "Team status changes")
+    XCTAssertEqual(VectorNotificationCategory.requests.label, "Requests")
+    XCTAssertEqual(VectorNotificationCategory.handoffs.label, "Handoffs")
+    XCTAssertEqual(VectorNotificationCategory.reviews.label, "Reviews")
+    XCTAssertEqual(VectorNotificationCategory.attention.label, "Attention")
+    XCTAssertEqual(VectorNotificationCategory.reminders.label, "Reminders")
+    XCTAssertEqual(VectorNotificationCategory.github.label, "GitHub")
+  }
+
+  func testRequestAndWorkRowsDecodeNewConvexSurfaces() throws {
+    let requestPayload = #"{"_id":"request-1","key":"REQ-1","title":"Ship the flow","expectedOutput":"A reviewed release","status":"ready_for_review","linkedWorkCount":2,"recipientCount":1,"createdAt":1774560000000,"updatedAt":1774560300000}"#.data(using: .utf8)!
+    let workPayload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","taskProgress":{"done":3,"total":5},"activeExecutionCount":2,"openAttentionCount":1,"ownerStartedAt":1774560000000,"lastMeaningfulActivityAt":1774560300000,"_creationTime":1774550000000}"#.data(using: .utf8)!
+
+    let request = try JSONDecoder().decode(VectorRequestRow.self, from: requestPayload)
+    let work = try JSONDecoder().decode(VectorWorkRow.self, from: workPayload)
+
+    XCTAssertEqual(request.status, .readyForReview)
+    XCTAssertEqual(request.linkedWorkCount, 2)
+    XCTAssertEqual(work.workStatus, .active)
+    XCTAssertEqual(work.taskProgress.done, 3)
+    XCTAssertEqual(work.ownerStartedAt, 1_774_560_000_000)
+  }
+
+  func testNotificationDeepLinksRecognizeRequestAndWorkRoutes() throws {
+    let requestPayload = #"{"_id":"notification-1","category":"reviews","eventType":"request_ready_for_review","title":"Ready","body":"Review it","href":"/vector/requests/REQ-8","requestId":"request-8","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+    let workPayload = #"{"_id":"notification-2","category":"attention","eventType":"work_blocked","title":"Blocked","body":"Needs input","href":"/vector/work/VEC-9","issueId":"work-9","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+
+    let request = try JSONDecoder().decode(VectorInboxNotification.self, from: requestPayload)
+    let work = try JSONDecoder().decode(VectorInboxNotification.self, from: workPayload)
+
+    XCTAssertEqual(request.requestKey, "REQ-8")
+    XCTAssertEqual(request.requestId, "request-8")
+    XCTAssertEqual(work.workKey, "VEC-9")
+    XCTAssertEqual(work.issueId, "work-9")
   }
 
   func testAuthNormalizesAppURLLikeCLI() throws {

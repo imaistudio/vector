@@ -17,6 +17,7 @@ import type * as _shared_pagination from "../_shared/pagination.js";
 import type * as _shared_permissions from "../_shared/permissions.js";
 import type * as _shared_typeGuards from "../_shared/typeGuards.js";
 import type * as _shared_validation from "../_shared/validation.js";
+import type * as _shared_work from "../_shared/work.js";
 import type * as access from "../access.js";
 import type * as activities_lib from "../activities/lib.js";
 import type * as activities_queries from "../activities/queries.js";
@@ -78,14 +79,24 @@ import type * as platformAdmin_mutations from "../platformAdmin/mutations.js";
 import type * as platformAdmin_queries from "../platformAdmin/queries.js";
 import type * as projects_mutations from "../projects/mutations.js";
 import type * as projects_queries from "../projects/queries.js";
+import type * as reminders from "../reminders.js";
+import type * as requests_lib from "../requests/lib.js";
+import type * as requests_mutations from "../requests/mutations.js";
+import type * as requests_queries from "../requests/queries.js";
 import type * as roles_index from "../roles/index.js";
 import type * as search_queries from "../search/queries.js";
 import type * as status from "../status.js";
+import type * as tasks_mutations from "../tasks/mutations.js";
+import type * as tasks_queries from "../tasks/queries.js";
 import type * as teams_mutations from "../teams/mutations.js";
 import type * as teams_queries from "../teams/queries.js";
 import type * as users from "../users.js";
 import type * as views_mutations from "../views/mutations.js";
 import type * as views_queries from "../views/queries.js";
+import type * as work_lib from "../work/lib.js";
+import type * as work_mutations from "../work/mutations.js";
+import type * as work_queries from "../work/queries.js";
+import type * as workModelMigrations from "../workModelMigrations.js";
 
 import type {
   ApiFromModules,
@@ -103,6 +114,7 @@ declare const fullApi: ApiFromModules<{
   "_shared/permissions": typeof _shared_permissions;
   "_shared/typeGuards": typeof _shared_typeGuards;
   "_shared/validation": typeof _shared_validation;
+  "_shared/work": typeof _shared_work;
   access: typeof access;
   "activities/lib": typeof activities_lib;
   "activities/queries": typeof activities_queries;
@@ -164,14 +176,24 @@ declare const fullApi: ApiFromModules<{
   "platformAdmin/queries": typeof platformAdmin_queries;
   "projects/mutations": typeof projects_mutations;
   "projects/queries": typeof projects_queries;
+  reminders: typeof reminders;
+  "requests/lib": typeof requests_lib;
+  "requests/mutations": typeof requests_mutations;
+  "requests/queries": typeof requests_queries;
   "roles/index": typeof roles_index;
   "search/queries": typeof search_queries;
   status: typeof status;
+  "tasks/mutations": typeof tasks_mutations;
+  "tasks/queries": typeof tasks_queries;
   "teams/mutations": typeof teams_mutations;
   "teams/queries": typeof teams_queries;
   users: typeof users;
   "views/mutations": typeof views_mutations;
   "views/queries": typeof views_queries;
+  "work/lib": typeof work_lib;
+  "work/mutations": typeof work_mutations;
+  "work/queries": typeof work_queries;
+  workModelMigrations: typeof workModelMigrations;
 }>;
 
 /**
@@ -203,4 +225,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   agent: import("@convex-dev/agent/_generated/component.js").ComponentApi<"agent">;
   betterAuth: import("../betterAuth/_generated/component.js").ComponentApi<"betterAuth">;
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
 };

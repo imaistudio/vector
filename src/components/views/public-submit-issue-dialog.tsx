@@ -29,6 +29,7 @@ interface PublicSubmitIssueDialogProps {
 type FieldErrors = Partial<{
   title: string;
   description: string;
+  expectedOutput: string;
   name: string;
   email: string;
   form: string;
@@ -42,7 +43,7 @@ function mapServerError(message: string): FieldErrors {
   if (lower.includes('invalid_email')) {
     return { email: 'Enter a valid email address.' };
   }
-  if (lower.includes('public_submission_disabled')) {
+  if (lower.includes('public_requests_disabled')) {
     return { form: 'Public submissions are no longer enabled here.' };
   }
   if (lower.includes('public_submission_project_missing')) {
@@ -70,6 +71,7 @@ export function PublicSubmitIssueDialog({
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [expectedOutput, setExpectedOutput] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -77,14 +79,16 @@ export function PublicSubmitIssueDialog({
   const [errors, setErrors] = useState<FieldErrors>({});
   const titleId = useId();
   const descriptionId = useId();
+  const expectedOutputId = useId();
   const nameId = useId();
   const emailId = useId();
 
-  const submit = useMutation(api.issues.mutations.createPublicSubmission);
+  const submit = useMutation(api.requests.mutations.createPublic);
 
   const resetForm = () => {
     setTitle('');
     setDescription('');
+    setExpectedOutput('');
     setName('');
     setEmail('');
     setSubmittedKey(null);
@@ -110,6 +114,12 @@ export function PublicSubmitIssueDialog({
     }
     if (description.trim().length > 10_000) {
       next.description = 'Description is too long (10,000 characters max).';
+    }
+    if (!expectedOutput.trim()) {
+      next.expectedOutput = 'Describe the output you expect.';
+    } else if (expectedOutput.trim().length > 10_000) {
+      next.expectedOutput =
+        'Expected output is too long (10,000 characters max).';
     }
     if (name.trim().length > 120) {
       next.name = 'Name is too long (120 characters max).';
@@ -138,10 +148,11 @@ export function PublicSubmitIssueDialog({
         orgSlug,
         title: title.trim(),
         description: description.trim() || undefined,
-        submitterName: name.trim() || undefined,
-        submitterEmail: email.trim() || undefined,
+        expectedOutput: expectedOutput.trim(),
+        requesterName: name.trim(),
+        requesterEmail: email.trim(),
       });
-      setSubmittedKey(result.key);
+      setSubmittedKey(result.requestKey);
       toast.success('Request submitted');
     } catch (error) {
       const message =
@@ -265,6 +276,43 @@ export function PublicSubmitIssueDialog({
               </div>
               {errors.title ? (
                 <p className='text-destructive text-[11px]'>{errors.title}</p>
+              ) : null}
+            </div>
+
+            <div className='space-y-1'>
+              <label htmlFor={expectedOutputId} className='sr-only'>
+                Expected output
+              </label>
+              <div className='relative'>
+                <Textarea
+                  id={expectedOutputId}
+                  value={expectedOutput}
+                  onChange={event => {
+                    setExpectedOutput(event.target.value);
+                    if (errors.expectedOutput)
+                      setErrors(prev => ({
+                        ...prev,
+                        expectedOutput: undefined,
+                      }));
+                  }}
+                  placeholder='What should be true when this request is delivered?'
+                  className={cn(
+                    'min-h-[96px] resize-none pb-8 text-base md:text-sm',
+                    errors.expectedOutput &&
+                      'border-destructive focus-visible:ring-destructive/30',
+                  )}
+                  aria-invalid={errors.expectedOutput ? true : undefined}
+                  maxLength={10_000}
+                  disabled={isSubmitting}
+                />
+                <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+                  Expected output <span className='text-destructive'>*</span>
+                </span>
+              </div>
+              {errors.expectedOutput ? (
+                <p className='text-destructive text-[11px]'>
+                  {errors.expectedOutput}
+                </p>
               ) : null}
             </div>
 

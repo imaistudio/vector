@@ -11,6 +11,8 @@ export interface ActivityScope {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
+  taskId?: Id<'tasks'>;
   documentId?: Id<'documents'>;
   viewId?: Id<'views'>;
 }
@@ -24,6 +26,8 @@ export interface ActivityWrite {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
+  taskId?: Id<'tasks'>;
   documentId?: Id<'documents'>;
   viewId?: Id<'views'>;
   subjectUserId?: Id<'users'>;
@@ -36,6 +40,8 @@ export interface ActivityWrite {
       | Id<'teams'>
       | Id<'projects'>
       | Id<'issues'>
+      | Id<'requests'>
+      | Id<'tasks'>
       | Id<'projectStatuses'>
       | Id<'issueStates'>
       | Id<'issuePriorities'>;
@@ -47,6 +53,8 @@ export interface ActivityWrite {
       | Id<'teams'>
       | Id<'projects'>
       | Id<'issues'>
+      | Id<'requests'>
+      | Id<'tasks'>
       | Id<'projectStatuses'>
       | Id<'issueStates'>
       | Id<'issuePriorities'>;
@@ -363,6 +371,8 @@ export async function recordActivity(
     teamId: event.teamId,
     projectId: event.projectId,
     issueId: event.issueId,
+    requestId: event.requestId,
+    taskId: event.taskId,
     documentId: event.documentId,
     viewId: event.viewId,
   };
@@ -379,6 +389,8 @@ export async function recordActivity(
     teamId: scope.teamId,
     projectId: scope.projectId,
     issueId: scope.issueId,
+    requestId: scope.requestId,
+    taskId: scope.taskId,
     documentId: scope.documentId,
     viewId: scope.viewId,
     subjectUserId: event.subjectUserId,

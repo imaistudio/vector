@@ -184,6 +184,12 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
   case comments
   case workSessions = "work_sessions"
   case teamStatusChanges = "team_status_changes"
+  case requests
+  case handoffs
+  case reviews
+  case attention
+  case reminders
+  case github
 
   public var id: String { rawValue }
 
@@ -195,6 +201,12 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
     case .comments: "Comments"
     case .workSessions: "Work sessions"
     case .teamStatusChanges: "Team status changes"
+    case .requests: "Requests"
+    case .handoffs: "Handoffs"
+    case .reviews: "Reviews"
+    case .attention: "Attention"
+    case .reminders: "Reminders"
+    case .github: "GitHub"
     }
   }
 }
@@ -1364,6 +1376,8 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
   public let body: String
   public let href: String?
   public let issueId: VectorID?
+  public let requestId: VectorID?
+  public let taskId: VectorID?
   public let projectId: VectorID?
   public let teamId: VectorID?
   public let actorId: VectorID?
@@ -1381,6 +1395,8 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     body: String,
     href: String? = nil,
     issueId: VectorID? = nil,
+    requestId: VectorID? = nil,
+    taskId: VectorID? = nil,
     projectId: VectorID? = nil,
     teamId: VectorID? = nil,
     actorId: VectorID? = nil,
@@ -1397,6 +1413,8 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     self.body = body
     self.href = href
     self.issueId = issueId
+    self.requestId = requestId
+    self.taskId = taskId
     self.projectId = projectId
     self.teamId = teamId
     self.actorId = actorId
@@ -1415,6 +1433,8 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
     case body
     case href
     case issueId
+    case requestId
+    case taskId
     case projectId
     case teamId
     case actorId
@@ -1438,16 +1458,28 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
   }
 
   public var issueKey: String? {
+    workKey
+  }
+
+  public var workKey: String? {
+    pathKey(after: "work") ?? pathKey(after: "issues")
+  }
+
+  public var requestKey: String? {
+    pathKey(after: "requests")
+  }
+
+  private func pathKey(after segment: String) -> String? {
     guard let href else {
       return nil
     }
 
     let parts = href.split(separator: "/").map(String.init)
-    guard let issuesIndex = parts.firstIndex(of: "issues"), parts.indices.contains(issuesIndex + 1) else {
+    guard let segmentIndex = parts.firstIndex(of: segment), parts.indices.contains(segmentIndex + 1) else {
       return nil
     }
 
-    let rawKey = parts[issuesIndex + 1]
+    let rawKey = parts[segmentIndex + 1]
     let withoutFragment = rawKey.split(separator: "#", maxSplits: 1).first ?? Substring(rawKey)
     let withoutQuery = withoutFragment.split(separator: "?", maxSplits: 1).first ?? withoutFragment
     let key = String(withoutQuery).trimmingCharacters(in: .whitespacesAndNewlines)

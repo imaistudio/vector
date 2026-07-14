@@ -492,6 +492,7 @@ async function createWorkSessionForLiveActivity(
   args: {
     organizationId: Id<'organizations'>;
     issueId: Id<'issues'>;
+    taskId?: Id<'tasks'>;
     liveActivityId: Id<'issueLiveActivities'>;
     deviceId: Id<'agentDevices'>;
     ownerUserId: Id<'users'>;
@@ -519,6 +520,7 @@ async function createWorkSessionForLiveActivity(
   return ctx.db.insert('workSessions', {
     organizationId: args.organizationId,
     issueId: args.issueId,
+    taskId: args.taskId,
     liveActivityId: args.liveActivityId,
     deviceId: args.deviceId,
     workspaceId: args.workspaceId,
@@ -550,6 +552,7 @@ async function enqueueDelegatedLaunchCommand(
   ctx: MutationCtx,
   args: {
     issue: Doc<'issues'>;
+    task?: Doc<'tasks'>;
     deviceId: Id<'agentDevices'>;
     workspace: Doc<'deviceWorkspaces'>;
     delegatedRunId: Id<'delegatedRuns'>;
@@ -577,6 +580,12 @@ async function enqueueDelegatedLaunchCommand(
       issueKey: args.issue.key,
       issueTitle: args.issue.title,
       issueDescription: args.issue.description,
+      workId: args.issue._id,
+      workKey: args.issue.key,
+      workTitle: args.issue.title,
+      taskId: args.task?._id,
+      taskNumber: args.task?.number,
+      taskTitle: args.task?.title,
       issueContext,
       provider: args.provider,
       model: args.model,
@@ -609,6 +618,13 @@ async function buildDelegatedIssueContext(
     labelAssignments,
     assignees,
     recentComments,
+    requestLinks,
+    tasks,
+    ownership,
+    handoffs,
+    attention,
+    development,
+    executions,
   ] = await Promise.all([
     ctx.db.get('organizations', issue.organizationId),
     issue.teamId ? ctx.db.get('teams', issue.teamId) : null,
@@ -633,6 +649,40 @@ async function buildDelegatedIssueContext(
       )
       .order('desc')
       .take(8),
+    ctx.db
+      .query('requestWorkLinks')
+      .withIndex('by_work', q => q.eq('workId', issue._id))
+      .take(20),
+    ctx.db
+      .query('tasks')
+      .withIndex('by_work_position', q => q.eq('workId', issue._id))
+      .take(100),
+    ctx.db
+      .query('workOwnershipPeriods')
+      .withIndex('by_work', q => q.eq('workId', issue._id))
+      .order('desc')
+      .take(10),
+    ctx.db
+      .query('workHandoffs')
+      .withIndex('by_work', q => q.eq('workId', issue._id))
+      .order('desc')
+      .take(10),
+    ctx.db
+      .query('workAttentionRequests')
+      .withIndex('by_work', q => q.eq('workId', issue._id))
+      .order('desc')
+      .take(20),
+    ctx.db
+      .query('githubArtifactLinks')
+      .withIndex('by_issue_active', q =>
+        q.eq('issueId', issue._id).eq('active', true),
+      )
+      .take(50),
+    ctx.db
+      .query('issueLiveActivities')
+      .withIndex('by_issue', q => q.eq('issueId', issue._id))
+      .order('desc')
+      .take(20),
   ]);
 
   const [labels, assigneeNames, comments] = await Promise.all([
@@ -667,8 +717,61 @@ async function buildDelegatedIssueContext(
         }),
     ),
   ]);
+  const linkedRequests = (
+    await Promise.all(
+      requestLinks.map(link => ctx.db.get('requests', link.requestId)),
+    )
+  ).filter(Boolean);
 
   return {
+    schemaVersion: 1,
+    work: {
+      id: issue._id,
+      key: issue.key,
+      title: issue.title,
+      outcome: issue.title,
+      workpad: issue.description,
+      status: issue.workStatus,
+      ownerId: issue.ownerId,
+      effort: issue.effort,
+      completionPolicy: issue.completionPolicy,
+      agentTaskCreationPolicy: issue.agentTaskCreationPolicy,
+    },
+    requests: linkedRequests
+      .map(request =>
+        request
+          ? {
+              id: request._id,
+              key: request.key,
+              title: request.title,
+              description: request.description,
+              expectedOutput: request.expectedOutput,
+              reviewGuidance: request.reviewGuidance,
+              status: request.status,
+            }
+          : null,
+      )
+      .filter(Boolean),
+    tasks: tasks.map(task => ({
+      id: task._id,
+      number: task.number,
+      title: task.title,
+      description: task.description,
+      status: task.status,
+      assigneeId: task.assigneeId,
+    })),
+    ownership,
+    handoffs,
+    blockers: tasks.filter(task => task.status === 'blocked'),
+    attention: attention.filter(item => item.status === 'open'),
+    development,
+    executions: executions.map(execution => ({
+      id: execution._id,
+      taskId: execution.taskId,
+      provider: execution.provider,
+      status: execution.status,
+      latestSummary: execution.latestSummary,
+    })),
     organization: org ? { name: org.name, slug: org.slug } : null,
     team: team ? { key: team.key, name: team.name } : null,
     project: project
@@ -691,62 +794,11 @@ async function buildDelegatedIssueContext(
   };
 }
 
-/**
- * Auto-transition an issue to "in_progress" when a live activity starts,
- * but only if the issue is currently in a pre-progress state (backlog/todo).
- */
-async function autoTransitionToInProgress(
-  ctx: MutationCtx,
-  issue: Doc<'issues'>,
-  actorId: Id<'users'>,
-) {
-  const currentState = issue.workflowStateId
-    ? await ctx.db.get('issueStates', issue.workflowStateId)
-    : null;
-
-  // Only transition from backlog or todo (or if no state is set)
-  if (
-    currentState &&
-    currentState.type !== 'backlog' &&
-    currentState.type !== 'todo'
-  ) {
-    return;
-  }
-
-  const inProgressState = await ctx.db
-    .query('issueStates')
-    .withIndex('by_org_type', q =>
-      q.eq('organizationId', issue.organizationId).eq('type', 'in_progress'),
-    )
-    .first();
-
-  if (!inProgressState) return;
-  if (issue.workflowStateId === inProgressState._id) return;
-
-  await ctx.db.patch('issues', issue._id, {
-    workflowStateId: inProgressState._id,
-  });
-
-  await recordActivity(ctx, {
-    actorId,
-    entityType: 'issue',
-    eventType: 'issue_workflow_state_changed',
-    scope: resolveIssueScope(issue),
-    snapshot: snapshotForIssue(issue),
-    details: {
-      field: 'workflow_state',
-      fromId: issue.workflowStateId,
-      fromLabel: currentState?.name,
-      toId: inProgressState._id,
-      toLabel: inProgressState.name,
-    },
-  });
-}
-
 /** Attach a process to an issue as a live activity. */
 export const attachLiveActivity = mutation({
   args: {
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     deviceId: v.id('agentDevices'),
     processId: v.optional(v.id('agentProcesses')),
     provider: agentProviderValidator,
@@ -758,6 +810,9 @@ export const attachLiveActivity = mutation({
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
     if (!(await canViewIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
+    const task = args.taskId ? await ctx.db.get('tasks', args.taskId) : null;
+    if (args.taskId && (!task || task.workId !== issue._id))
+      throw new ConvexError('TASK_NOT_IN_WORK');
 
     const device = await ctx.db.get('agentDevices', args.deviceId);
     if (!device || device.userId !== userId) {
@@ -782,6 +837,7 @@ export const attachLiveActivity = mutation({
     const liveActivityId = await ctx.db.insert('issueLiveActivities', {
       organizationId: issue.organizationId,
       issueId: args.issueId,
+      taskId: args.taskId,
       deviceId: args.deviceId,
       processId: args.processId,
       ownerUserId: userId,
@@ -790,11 +846,13 @@ export const attachLiveActivity = mutation({
       status: 'active',
       startedAt: now,
       lastEventAt: now,
+      originKind: 'agent',
     });
 
     const workSessionId = await createWorkSessionForLiveActivity(ctx, {
       organizationId: issue.organizationId,
       issueId: args.issueId,
+      taskId: args.taskId,
       liveActivityId,
       deviceId: args.deviceId,
       ownerUserId: userId,
@@ -831,9 +889,6 @@ export const attachLiveActivity = mutation({
         deviceName: device.displayName,
       },
     });
-
-    // Auto-transition issue to "In Progress"
-    await autoTransitionToInProgress(ctx, issue, userId);
 
     return liveActivityId;
   },
@@ -1711,6 +1766,7 @@ export const sendCommand = mutation({
 export const delegateIssue = mutation({
   args: {
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     deviceId: v.id('agentDevices'),
     workspaceId: v.id('deviceWorkspaces'),
     provider: v.optional(agentProviderValidator),
@@ -1727,6 +1783,9 @@ export const delegateIssue = mutation({
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
     if (!(await canViewIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
+    const task = args.taskId ? await ctx.db.get('tasks', args.taskId) : null;
+    if (args.taskId && (!task || task.workId !== issue._id))
+      throw new ConvexError('TASK_NOT_IN_WORK');
 
     const device = await ctx.db.get('agentDevices', args.deviceId);
     if (!device || device.userId !== userId) {
@@ -1759,6 +1818,7 @@ export const delegateIssue = mutation({
     const liveActivityId = await ctx.db.insert('issueLiveActivities', {
       organizationId: issue.organizationId,
       issueId: args.issueId,
+      taskId: args.taskId,
       deviceId: args.deviceId,
       ownerUserId: userId,
       provider: liveActivityProvider,
@@ -1766,11 +1826,13 @@ export const delegateIssue = mutation({
       status: 'active',
       startedAt: now,
       lastEventAt: now,
+      originKind: 'agent',
     });
 
     const workSessionId = await createWorkSessionForLiveActivity(ctx, {
       organizationId: issue.organizationId,
       issueId: args.issueId,
+      taskId: args.taskId,
       liveActivityId,
       deviceId: args.deviceId,
       ownerUserId: userId,
@@ -1795,6 +1857,7 @@ export const delegateIssue = mutation({
     const runId = await ctx.db.insert('delegatedRuns', {
       organizationId: issue.organizationId,
       issueId: args.issueId,
+      taskId: args.taskId,
       liveActivityId,
       deviceId: args.deviceId,
       workspaceId: args.workspaceId,
@@ -1808,6 +1871,7 @@ export const delegateIssue = mutation({
     // Enqueue launch command to the device
     await enqueueDelegatedLaunchCommand(ctx, {
       issue,
+      task: task ?? undefined,
       deviceId: args.deviceId,
       workspace,
       delegatedRunId: runId,
@@ -1839,9 +1903,6 @@ export const delegateIssue = mutation({
         workspaceLabel: workspace.label,
       },
     });
-
-    // Auto-transition issue to "In Progress"
-    await autoTransitionToInProgress(ctx, issue, userId);
 
     return { liveActivityId, delegatedRunId: runId };
   },
