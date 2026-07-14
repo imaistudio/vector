@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+  import UIKit
+#endif
 
 public struct VectorMobileRootView: View {
   @StateObject private var sessionController: VectorMobileSessionController
@@ -347,9 +350,7 @@ private struct VectorNativeLoginForm: View {
     VStack(spacing: 0) {
       VectorLoginFormRow(title: "Instance", text: $appURLString, prompt: "imai.tech", keyboard: .url)
       VectorLoginSeparator()
-      VectorLoginFormRow(title: "Account", text: $identifier, prompt: "you@example.com", keyboard: .email)
-      VectorLoginSeparator()
-      VectorLoginPasswordRow(text: $password, onSubmit: onSubmit)
+      VectorCredentialFields(identifier: $identifier, password: $password, onSubmit: onSubmit)
     }
     .background(
       Color(red: 0.08, green: 0.09, blue: 0.12).opacity(0.82),
@@ -396,28 +397,179 @@ private struct VectorLoginFormRow: View {
   }
 }
 
-private struct VectorLoginPasswordRow: View {
-  @Binding var text: String
+private struct VectorCredentialFields: View {
+  @Binding var identifier: String
+  @Binding var password: String
   let onSubmit: () -> Void
 
   var body: some View {
-    HStack(spacing: 12) {
-      Text("Password")
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(.white.opacity(0.92))
-        .frame(width: 84, alignment: .leading)
-      SecureField("", text: $text, prompt: Text("Required").foregroundStyle(.white.opacity(0.34)))
-        .textContentType(.password)
-        .submitLabel(.go)
-        .onSubmit(onSubmit)
-        .font(.subheadline)
-        .foregroundStyle(.white)
-        .tint(VectorTheme.accent)
-    }
-    .padding(.horizontal, 14)
-    .frame(height: 46)
+    #if os(iOS)
+      VectorCredentialFieldsRepresentable(
+        identifier: $identifier,
+        password: $password,
+        onSubmit: onSubmit
+      )
+      .frame(height: 92)
+    #else
+      VStack(spacing: 0) {
+        VectorLoginFormRow(title: "Account", text: $identifier, prompt: "you@example.com", keyboard: .email)
+        VectorLoginSeparator()
+        SecureField("Password", text: $password)
+          .onSubmit(onSubmit)
+          .padding(.horizontal, 14)
+          .frame(height: 46)
+      }
+    #endif
   }
 }
+
+#if os(iOS)
+  private struct VectorCredentialFieldsRepresentable: UIViewRepresentable {
+    @Binding var identifier: String
+    @Binding var password: String
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+      Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> CredentialView {
+      let view = CredentialView()
+      view.accountField.delegate = context.coordinator
+      view.passwordField.delegate = context.coordinator
+      view.accountField.addTarget(context.coordinator, action: #selector(Coordinator.accountChanged), for: .editingChanged)
+      view.passwordField.addTarget(context.coordinator, action: #selector(Coordinator.passwordChanged), for: .editingChanged)
+      context.coordinator.view = view
+      return view
+    }
+
+    func updateUIView(_ view: CredentialView, context: Context) {
+      context.coordinator.parent = self
+
+      // AutoFill updates both fields as one transaction. Do not write an older SwiftUI
+      // value back between the two UIKit editing events while either field is active.
+      guard !view.accountField.isFirstResponder, !view.passwordField.isFirstResponder else {
+        return
+      }
+      if view.accountField.text != identifier {
+        view.accountField.text = identifier
+      }
+      if view.passwordField.text != password {
+        view.passwordField.text = password
+      }
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+      var parent: VectorCredentialFieldsRepresentable
+      weak var view: CredentialView?
+
+      init(parent: VectorCredentialFieldsRepresentable) {
+        self.parent = parent
+      }
+
+      @objc func accountChanged(_ sender: UITextField) {
+        parent.identifier = sender.text ?? ""
+      }
+
+      @objc func passwordChanged(_ sender: UITextField) {
+        parent.password = sender.text ?? ""
+      }
+
+      func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        guard let view else {
+          return true
+        }
+        if textField === view.accountField {
+          view.passwordField.becomeFirstResponder()
+        } else {
+          textField.resignFirstResponder()
+          parent.onSubmit()
+        }
+        return true
+      }
+    }
+
+    final class CredentialView: UIView {
+      let accountField = UITextField()
+      let passwordField = UITextField()
+
+      override init(frame: CGRect) {
+        super.init(frame: frame)
+        configureField(accountField, placeholder: "you@example.com")
+        accountField.textContentType = .username
+        accountField.keyboardType = .emailAddress
+        accountField.returnKeyType = .next
+
+        configureField(passwordField, placeholder: "Required")
+        passwordField.textContentType = .password
+        passwordField.isSecureTextEntry = true
+        passwordField.returnKeyType = .go
+
+        let separator = UIView()
+        separator.backgroundColor = UIColor.white.withAlphaComponent(0.10)
+
+        let accountRow = makeRow(title: "Account", field: accountField)
+        let passwordRow = makeRow(title: "Password", field: passwordField)
+        [accountRow, separator, passwordRow].forEach(addSubview)
+        [accountRow, separator, passwordRow].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+
+        NSLayoutConstraint.activate([
+          accountRow.topAnchor.constraint(equalTo: topAnchor),
+          accountRow.leadingAnchor.constraint(equalTo: leadingAnchor),
+          accountRow.trailingAnchor.constraint(equalTo: trailingAnchor),
+          accountRow.heightAnchor.constraint(equalToConstant: 46),
+          separator.topAnchor.constraint(equalTo: accountRow.bottomAnchor),
+          separator.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 108),
+          separator.trailingAnchor.constraint(equalTo: trailingAnchor),
+          separator.heightAnchor.constraint(equalToConstant: 0.5),
+          passwordRow.topAnchor.constraint(equalTo: separator.bottomAnchor),
+          passwordRow.leadingAnchor.constraint(equalTo: leadingAnchor),
+          passwordRow.trailingAnchor.constraint(equalTo: trailingAnchor),
+          passwordRow.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+      }
+
+      @available(*, unavailable)
+      required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+      }
+
+      private func configureField(_ field: UITextField, placeholder: String) {
+        field.font = .preferredFont(forTextStyle: .subheadline)
+        field.adjustsFontForContentSizeCategory = true
+        field.textColor = .white
+        field.tintColor = UIColor(VectorTheme.accent)
+        field.autocapitalizationType = .none
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.attributedPlaceholder = NSAttributedString(
+          string: placeholder,
+          attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.34)]
+        )
+      }
+
+      private func makeRow(title: String, field: UITextField) -> UIView {
+        let label = UILabel()
+        label.text = title
+        label.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(
+          for: .systemFont(ofSize: 15, weight: .medium)
+        )
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = UIColor.white.withAlphaComponent(0.92)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.widthAnchor.constraint(equalToConstant: 84).isActive = true
+
+        let stack = UIStackView(arrangedSubviews: [label, field])
+        stack.axis = .horizontal
+        stack.spacing = 12
+        stack.alignment = .fill
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.layoutMargins = UIEdgeInsets(top: 0, left: 14, bottom: 0, right: 14)
+        return stack
+      }
+    }
+  }
+#endif
 
 private enum VectorSetupKeyboard {
   case url
