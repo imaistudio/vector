@@ -4,7 +4,7 @@ This guide walks through the current local development workflow for Vector.
 
 ## Prerequisites
 
-- Node.js `>=20.19.0`
+- Node.js `>=22.19.0`
 - `pnpm`
 - A local Convex development deployment
 

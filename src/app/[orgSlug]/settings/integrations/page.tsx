@@ -1,6 +1,7 @@
 'use client';
 
-import { Blocks, Github, ChevronRight } from 'lucide-react';
+import { Blocks, ChevronRight } from 'lucide-react';
+import { FaGithub as Github } from 'react-icons/fa6';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api, useCachedQuery } from '@/lib/convex';

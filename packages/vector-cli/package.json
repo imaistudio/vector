@@ -21,7 +21,7 @@
     "issues"
   ],
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=22.19.0"
   },
   "bin": {
     "vcli": "dist/index.js"
@@ -36,17 +36,17 @@
     "build": "node scripts/build-menubar-app.js && tsup --config tsup.config.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.79",
-    "@clack/prompts": "^1.1.0",
-    "commander": "^14.0.3",
-    "convex": "^1.33.1",
-    "dotenv": "^16.4.5",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.209",
+    "@anthropic-ai/sdk": "^0.111.0",
+    "@clack/prompts": "^1.7.0",
+    "commander": "^15.0.0",
+    "convex": "^1.42.1",
+    "dotenv": "^17.4.2",
     "localtunnel": "^2.0.2",
-    "node-datachannel": "^0.32.1",
+    "node-datachannel": "^0.32.3",
     "node-pty": "1.2.0-beta.12",
     "tunnelmole": "^2.4.0",
-    "werift": "^0.22.9",
-    "ws": "^8.19.0"
+    "ws": "^8.21.1"
   },
   "publishConfig": {
     "access": "public",

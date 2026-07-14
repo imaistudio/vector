@@ -27,7 +27,7 @@ vcli --help
 
 ## Requirements
 
-- Node.js `>=20.19.0`
+- Node.js `>=22.19.0`
 - A running Vector app
 - Access to the app's Convex deployment
 

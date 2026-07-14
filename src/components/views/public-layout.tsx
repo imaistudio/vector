@@ -3,14 +3,14 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { api, useCachedQuery } from '@/lib/convex';
+import { Globe } from 'lucide-react';
 import {
-  Github,
-  Globe,
-  Instagram,
-  Linkedin,
-  Twitter,
-  Youtube,
-} from 'lucide-react';
+  FaGithub as Github,
+  FaInstagram as Instagram,
+  FaLinkedin as Linkedin,
+  FaXTwitter as Twitter,
+  FaYoutube as Youtube,
+} from 'react-icons/fa6';
 import Markdown from 'react-markdown';
 import { buttonVariants } from '@/components/ui/button';
 import { useBranding } from '@/hooks/use-branding';

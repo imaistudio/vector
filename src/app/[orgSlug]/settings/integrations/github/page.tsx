@@ -1,6 +1,6 @@
 'use client';
 
-import { Github } from 'lucide-react';
+import { FaGithub as Github } from 'react-icons/fa6';
 import { GitHubIntegrationSettings } from '@/components/organization/github-integration-settings';
 import { api, useCachedQuery } from '@/lib/convex';
 import { useParams } from 'next/navigation';

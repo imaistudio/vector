@@ -15,7 +15,7 @@
 import { createServer, type Server } from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { ConvexClient } from 'convex/browser';
-import { api } from '../../../convex/_generated/api';
+import { api } from '../../../convex/_generated/api.js';
 import type { Id } from '../../../convex/_generated/dataModel';
 import * as pty from 'node-pty';
 import { existsSync } from 'fs';

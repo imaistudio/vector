@@ -246,7 +246,6 @@ function DueDateFilterButton({
               });
               setOpen(false);
             }}
-            initialFocus={false}
             className='[--cell-size:--spacing(7)]'
           />
           {isActive ? (
