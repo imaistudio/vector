@@ -63,6 +63,39 @@ final class VectorMobileTests: XCTestCase {
     }
   }
 
+  func testAuthErrorsUseReadableMessages() {
+    XCTAssertEqual(
+      VectorAuthClient.authenticationErrorMessage(
+        statusCode: 401,
+        data: Data(#"{"message":"Unauthorized"}"#.utf8),
+        unauthorizedMessage: "The account or password is incorrect."
+      ),
+      "The account or password is incorrect."
+    )
+    XCTAssertEqual(
+      VectorAuthClient.authenticationErrorMessage(
+        statusCode: 400,
+        data: Data(#"{"message":"Email address is not valid."}"#.utf8)
+      ),
+      "Email address is not valid."
+    )
+    XCTAssertEqual(
+      VectorAuthClient.authenticationErrorMessage(statusCode: 429, data: Data()),
+      "Too many sign-in attempts. Wait a moment and try again."
+    )
+    XCTAssertEqual(
+      VectorAuthClient.authenticationErrorMessage(
+        statusCode: 500,
+        data: Data(#"{"message":"Internal database details"}"#.utf8)
+      ),
+      "This Vector instance is temporarily unavailable. Try again shortly."
+    )
+    XCTAssertEqual(
+      VectorAuthClient.authenticationErrorMessage(statusCode: 401, data: Data()),
+      "Your session is no longer valid. Sign in again."
+    )
+  }
+
   func testIssueRowDecodesConvexNumberFields() throws {
     let payload = """
       {

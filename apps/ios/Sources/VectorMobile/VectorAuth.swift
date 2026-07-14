@@ -184,7 +184,7 @@ public final class VectorAuthClient: @unchecked Sendable {
 
     do {
       let (data, response) = try await transport.data(for: request)
-      try validate(response: response)
+      try validate(data: data, response: response)
 
       let raw = try JSONDecoder().decode(RawAppConfig.self, from: data)
       guard
@@ -209,14 +209,14 @@ public final class VectorAuthClient: @unchecked Sendable {
 
   public func fetchAuthSession(session: VectorStoredSession) async throws -> (session: VectorStoredSession, user: VectorAuthenticatedUser?) {
     let (data, response, nextSession) = try await authRequest(session: session, path: "/api/auth/get-session", method: "GET")
-    try validate(response: response)
+    try validate(data: data, response: response)
     let authState = try JSONDecoder().decode(AuthSessionResponse.self, from: data)
     return (nextSession, authState.user)
   }
 
   public func fetchConvexToken(session: VectorStoredSession) async throws -> (session: VectorStoredSession, token: String) {
     let (data, response, nextSession) = try await authRequest(session: session, path: "/api/auth/convex/token", method: "GET")
-    try validate(response: response)
+    try validate(data: data, response: response)
     let tokenResponse = try JSONDecoder().decode(ConvexTokenResponse.self, from: data)
     guard let token = tokenResponse.token, !token.isEmpty else {
       throw VectorAuthError.requestFailed("Missing Convex token.")
@@ -225,8 +225,8 @@ public final class VectorAuthClient: @unchecked Sendable {
   }
 
   public func logout(session: VectorStoredSession) async throws {
-    let (_, response, _) = try await authRequest(session: session, path: "/api/auth/sign-out", method: "POST", body: Data("{}".utf8))
-    try validate(response: response)
+    let (data, response, _) = try await authRequest(session: session, path: "/api/auth/sign-out", method: "POST", body: Data("{}".utf8))
+    try validate(data: data, response: response)
   }
 
   public static func normalizeAppURL(_ raw: String) throws -> URL {
@@ -282,8 +282,12 @@ public final class VectorAuthClient: @unchecked Sendable {
       ? ["email": trimmedIdentifier, "password": password]
       : ["username": trimmedIdentifier, "password": password]
     let body = try JSONEncoder().encode(bodyObject)
-    let (_, response, nextSession) = try await authRequest(session: session, path: path, method: "POST", body: body)
-    try validate(response: response)
+    let (data, response, nextSession) = try await authRequest(session: session, path: path, method: "POST", body: body)
+    try validate(
+      data: data,
+      response: response,
+      unauthorizedMessage: "The account or password is incorrect."
+    )
     return nextSession
   }
 
@@ -310,13 +314,56 @@ public final class VectorAuthClient: @unchecked Sendable {
     return (data, response, nextSession)
   }
 
-  private func validate(response: URLResponse) throws {
+  private func validate(data: Data, response: URLResponse, unauthorizedMessage: String? = nil) throws {
     guard let httpResponse = response as? HTTPURLResponse else {
       throw VectorAuthError.requestFailed("Invalid server response.")
     }
     guard (200..<300).contains(httpResponse.statusCode) else {
-      throw VectorAuthError.requestFailed("Request failed with HTTP \(httpResponse.statusCode).")
+      throw VectorAuthError.requestFailed(
+        Self.authenticationErrorMessage(
+          statusCode: httpResponse.statusCode,
+          data: data,
+          unauthorizedMessage: unauthorizedMessage
+        )
+      )
     }
+  }
+
+  public static func authenticationErrorMessage(
+    statusCode: Int,
+    data: Data,
+    unauthorizedMessage: String? = nil
+  ) -> String {
+    if statusCode == 401 {
+      return unauthorizedMessage ?? "Your session is no longer valid. Sign in again."
+    }
+    if statusCode == 429 {
+      return "Too many sign-in attempts. Wait a moment and try again."
+    }
+    if statusCode >= 500 {
+      return "This Vector instance is temporarily unavailable. Try again shortly."
+    }
+
+    if
+      (400..<500).contains(statusCode),
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let message = (object["message"] as? String) ?? (object["error"] as? String),
+      let readableMessage = readableServerMessage(message)
+    {
+      return readableMessage
+    }
+    return "The request could not be completed. Check your details and try again."
+  }
+
+  private static func readableServerMessage(_ message: String) -> String? {
+    let flattened = message
+      .components(separatedBy: .newlines)
+      .joined(separator: " ")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !flattened.isEmpty else {
+      return nil
+    }
+    return String(flattened.prefix(180))
   }
 
   private static func originURL(from url: URL) -> URL? {
