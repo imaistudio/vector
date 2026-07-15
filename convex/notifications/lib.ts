@@ -350,7 +350,10 @@ export async function createNotificationEvent(
           )
           .first()
       : null;
-    const inAppEnabled = preference?.inAppEnabled ?? Boolean(recipient.userId);
+    const inAppEnabled = recipient.userId
+      ? (preference?.inAppEnabled ??
+        getDefaultPreference(category).inAppEnabled)
+      : false;
     const recipientId = await ctx.db.insert('notificationRecipients', {
       eventId,
       userId: recipient.userId,

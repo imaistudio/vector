@@ -43,6 +43,11 @@ function mapServerError(message: string): FieldErrors {
   if (lower.includes('invalid_email')) {
     return { email: 'Enter a valid email address.' };
   }
+  if (lower.includes('public_request_rate_limited')) {
+    return {
+      form: 'Too many requests were submitted. Please try again later.',
+    };
+  }
   if (lower.includes('public_requests_disabled')) {
     return { form: 'Public submissions are no longer enabled here.' };
   }

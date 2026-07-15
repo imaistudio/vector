@@ -9,10 +9,7 @@ import {
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { createNotificationEvent } from '../notifications/lib';
 import { PERMISSIONS, requirePermission } from '../permissions/utils';
-import {
-  requestSourceValidator,
-  requestWorkRelationValidator,
-} from '../_shared/work';
+import { requestWorkRelationValidator } from '../_shared/work';
 import {
   assertOrganizationUser,
   requireUser,
@@ -260,10 +257,7 @@ async function reconcileRequestAfterWorkLink(
           : undefined,
       },
       recipients: Array.from(recipients).map(userId => ({ userId })),
-      dedupeKey: `request-ready:${request._id}:${fulfilling
-        .map(link => link.workId)
-        .sort()
-        .join(',')}`,
+      dedupeKey: `request-ready:${request._id}:${request.updatedAt}`,
     });
     return;
   }
@@ -288,7 +282,6 @@ export const create = mutation({
       description: v.optional(v.string()),
       expectedOutput: v.string(),
       reviewGuidance: v.optional(v.string()),
-      source: v.optional(requestSourceValidator),
       recipientIds: v.optional(v.array(v.id('users'))),
       routedTeamId: v.optional(v.id('teams')),
       priorityId: v.optional(v.id('issuePriorities')),
@@ -305,7 +298,7 @@ export const create = mutation({
     const result = await insertRequest(ctx, {
       organizationId: organization._id,
       ...args.data,
-      source: args.data.source ?? 'workspace',
+      source: 'workspace',
       requesterId: userId,
       createdBy: userId,
       visibility: args.data.visibility ?? 'organization',
@@ -345,6 +338,8 @@ export const createPublic = mutation({
     const project = organization.publicIssueProjectId
       ? await ctx.db.get('projects', organization.publicIssueProjectId)
       : null;
+    if (organization.publicIssueProjectId && !project)
+      throw new ConvexError('PUBLIC_SUBMISSION_PROJECT_MISSING');
     const requesterName = args.requesterName.trim();
     const requesterEmail = args.requesterEmail.trim().toLowerCase();
     if (requesterName.length > 120 || requesterEmail.length > 320)
@@ -556,6 +551,7 @@ export const requestChanges = mutation({
       status: 'changes_requested',
       focusRank: requestFocusRank('changes_requested'),
       latestReviewNote: note,
+      readyForReviewAt: undefined,
       reviewedAt: Date.now(),
       reviewedBy: userId,
       updatedAt: Date.now(),

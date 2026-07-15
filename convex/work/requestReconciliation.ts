@@ -58,7 +58,9 @@ export async function reopenLinkedRequestsAfterCancellation(
       )
     ).filter((item): item is Doc<'issues'> => item !== null);
     const hasOtherDeliveryInProgress = otherFulfillingWork.some(item =>
-      ['active', 'waiting', 'blocked'].includes(item.workStatus ?? ''),
+      ['active', 'waiting', 'blocked', 'ready_for_review'].includes(
+        item.workStatus ?? '',
+      ),
     );
     const nextStatus = hasOtherDeliveryInProgress ? 'in_delivery' : 'planned';
     await ctx.db.patch('requests', request._id, {

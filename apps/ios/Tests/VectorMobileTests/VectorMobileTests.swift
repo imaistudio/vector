@@ -123,6 +123,32 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertTrue(cookies[1].hasPrefix("token=def"))
   }
 
+  func testAuthProviderPrefersFreshSessionOverStaleStoredSession() async throws {
+    let appURL = URL(string: "https://vector.example.com")!
+    let convexURL = URL(string: "https://example.convex.cloud")!
+    let stale = VectorStoredSession(
+      appURL: appURL,
+      convexURL: convexURL,
+      cookies: ["session": "stale"]
+    )
+    let fresh = VectorStoredSession(
+      appURL: appURL,
+      convexURL: convexURL,
+      cookies: ["session": "fresh"]
+    )
+    let store = InMemorySessionStore(session: stale)
+    let provider = VectorBetterAuthProvider(
+      session: fresh,
+      authClient: VectorAuthClient(transport: FreshSessionAuthTransport()),
+      sessionStore: store
+    )
+
+    let result = try await provider.loginFromCache { _ in }
+
+    XCTAssertEqual(result.token, "convex-token")
+    XCTAssertEqual(store.session?.cookies["session"], "fresh")
+  }
+
   func testAppConfigFallsBackToLocalConvexForLocalDevelopment() async throws {
     let client = VectorAuthClient(transport: FailingAuthTransport())
     let config = try await client.fetchAppConfig(appURL: URL(string: "http://localhost:3000")!)
@@ -733,6 +759,43 @@ final class VectorMobileTests: XCTestCase {
 private struct FailingAuthTransport: VectorAuthTransport {
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     throw URLError(.notConnectedToInternet)
+  }
+}
+
+private struct FreshSessionAuthTransport: VectorAuthTransport {
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    let isFresh = request.value(forHTTPHeaderField: "Cookie")?.contains("session=fresh") == true
+    let statusCode = isFresh ? 200 : 401
+    let data = isFresh
+      ? Data(#"{"token":"convex-token"}"#.utf8)
+      : Data(#"{"message":"Unauthorized"}"#.utf8)
+    let response = HTTPURLResponse(
+      url: request.url!,
+      statusCode: statusCode,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    return (data, response)
+  }
+}
+
+private final class InMemorySessionStore: VectorSessionStore, @unchecked Sendable {
+  var session: VectorStoredSession?
+
+  init(session: VectorStoredSession?) {
+    self.session = session
+  }
+
+  func load() throws -> VectorStoredSession? {
+    session
+  }
+
+  func save(_ session: VectorStoredSession) throws {
+    self.session = session
+  }
+
+  func clear() throws {
+    session = nil
   }
 }
 

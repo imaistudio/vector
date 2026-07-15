@@ -410,11 +410,20 @@ public final class VectorAuthClient: @unchecked Sendable {
     }
 
     var nextCookies = session.cookies
-    let rawHeaders = httpResponse.allHeaderFields.compactMap { key, value -> String? in
+    var rawHeaders = httpResponse.allHeaderFields.flatMap { key, value -> [String] in
       guard String(describing: key).lowercased() == "set-cookie" else {
-        return nil
+        return []
       }
-      return value as? String
+      if let values = value as? [String] {
+        return values
+      }
+      if let value = value as? String {
+        return [value]
+      }
+      return []
+    }
+    if rawHeaders.isEmpty, let combinedHeader = httpResponse.value(forHTTPHeaderField: "Set-Cookie") {
+      rawHeaders = [combinedHeader]
     }
 
     for rawHeader in rawHeaders {
@@ -478,8 +487,7 @@ public final class VectorBetterAuthProvider: AuthProvider {
   }
 
   public func loginFromCache(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> VectorBetterAuthData {
-    let currentSession = (try? sessionStore.load()) ?? session
-    let result = try await authClient.fetchConvexToken(session: currentSession)
+    let result = try await authClient.fetchConvexToken(session: session)
     session = result.session
     try? sessionStore.save(result.session)
     onIdToken(result.token)
