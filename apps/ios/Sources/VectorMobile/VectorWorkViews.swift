@@ -164,22 +164,26 @@ struct MobileRequestDetailScreen: View {
             }
           }
 
-          Section {
-            if detail.owner == nil && detail.status.isClaimable {
-              Button("Take request") {
-                Task { _ = await viewModel.claimRequest(detail.id) }
+          if (detail.owner == nil && detail.status.isClaimable) || detail.canEdit {
+            Section {
+              if detail.owner == nil && detail.status.isClaimable {
+                Button("Take request") {
+                  Task { _ = await viewModel.claimRequest(detail.id) }
+                }
+              }
+              if detail.canEdit
+                && (detail.status == .readyForReview || detail.status == .changesRequested)
+              {
+                Button("Approve and complete") {
+                  Task { _ = await viewModel.completeRequest(detail.id) }
+                }
+                .foregroundStyle(.green)
+                Button("Request changes") { isRequestingChanges = true }
+                  .foregroundStyle(.orange)
               }
             }
-            if detail.status == .readyForReview || detail.status == .changesRequested {
-              Button("Approve and complete") {
-                Task { _ = await viewModel.completeRequest(detail.id) }
-              }
-              .foregroundStyle(.green)
-              Button("Request changes") { isRequestingChanges = true }
-                .foregroundStyle(.orange)
-            }
+            .disabled(viewModel.pendingWorkModelActions.contains { $0.contains(detail.id) })
           }
-          .disabled(viewModel.pendingWorkModelActions.contains { $0.contains(detail.id) })
         }
         .listStyle(.plain)
       } else if let error = viewModel.selectedRequestError {
@@ -385,27 +389,29 @@ struct MobileWorkDetailScreen: View {
               LabeledContent("Current owner started", value: relativeWorkModelTimestamp(startedAt))
             }
 
-            if detail.workStatus == .active || detail.workStatus == .waiting || detail.workStatus == .blocked {
-              Picker("State", selection: Binding(
-                get: { detail.workStatus },
-                set: { status in Task { _ = await viewModel.setWorkStatus(detail.id, status: status) } }
-              )) {
-                Text("Active").tag(VectorWorkStatus.active)
-                Text("Waiting").tag(VectorWorkStatus.waiting)
-                Text("Blocked").tag(VectorWorkStatus.blocked)
+            if detail.canEdit {
+              if detail.workStatus == .active || detail.workStatus == .waiting || detail.workStatus == .blocked {
+                Picker("State", selection: Binding(
+                  get: { detail.workStatus },
+                  set: { status in Task { _ = await viewModel.setWorkStatus(detail.id, status: status) } }
+                )) {
+                  Text("Active").tag(VectorWorkStatus.active)
+                  Text("Waiting").tag(VectorWorkStatus.waiting)
+                  Text("Blocked").tag(VectorWorkStatus.blocked)
+                }
               }
-            }
-            if detail.ownerStartedAt != nil && [.active, .waiting, .blocked].contains(detail.workStatus) {
-              Button("Raise for human review") {
-                Task { _ = await viewModel.readyWorkForReview(detail.id) }
+              if detail.ownerStartedAt != nil && [.active, .waiting, .blocked].contains(detail.workStatus) {
+                Button("Raise for human review") {
+                  Task { _ = await viewModel.readyWorkForReview(detail.id) }
+                }
+                .foregroundStyle(.purple)
               }
-              .foregroundStyle(.purple)
-            }
-            if detail.workStatus == .readyForReview {
-              Button("Mark Work complete") {
-                Task { _ = await viewModel.completeWork(detail.id) }
+              if detail.workStatus == .readyForReview {
+                Button("Mark Work complete") {
+                  Task { _ = await viewModel.completeWork(detail.id) }
+                }
+                .foregroundStyle(.green)
               }
-              .foregroundStyle(.green)
             }
           }
           .disabled(viewModel.pendingWorkModelActions.contains { $0.contains(detail.id) })
@@ -455,7 +461,10 @@ struct MobileWorkDetailScreen: View {
                     .foregroundStyle(.tertiary)
                   }
                 }
-                .disabled(viewModel.pendingWorkModelActions.contains("task:\(task.id):status"))
+                .disabled(
+                  task.canUpdateStatus != true ||
+                    viewModel.pendingWorkModelActions.contains("task:\(task.id):status")
+                )
               }
             }
           }
@@ -539,7 +548,7 @@ struct MobileWorkDetailScreen: View {
   }
 
   private func canStart(_ detail: VectorWorkDetail) -> Bool {
-    detail.owner == nil || detail.owner?.id == viewModel.currentUser?.id
+    detail.canEdit && (detail.owner == nil || detail.owner?.id == viewModel.currentUser?.id)
   }
 }
 

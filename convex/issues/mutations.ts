@@ -294,6 +294,8 @@ export const create = mutation({
       focusRank: isTopLevelWork
         ? workFocusRank(workStatus, 'unknown')
         : undefined,
+      taskTotal: isTopLevelWork ? 0 : undefined,
+      taskDone: isTopLevelWork ? 0 : undefined,
       ownerId,
       effort: isTopLevelWork ? 'unknown' : undefined,
       completionPolicy: isTopLevelWork ? 'manual' : undefined,

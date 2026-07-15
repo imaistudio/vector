@@ -69,8 +69,17 @@ export const listInbox = query({
 
     // Archived and read state are handled by indexes. Active snoozes are
     // time-based, so keep advancing the database cursor until this visible
-    // page is full or the underlying result set is exhausted.
-    while (visible.length < args.paginationOpts.numItems && !page.isDone) {
+    // page is full or the underlying result set is exhausted. Bound the scan
+    // so a large snoozed backlog cannot turn one subscription into an
+    // unbounded chain of reads; the returned cursor lets the client continue.
+    const maxVisibilityFetchAttempts = 5;
+    let visibilityFetchAttempts = 0;
+    while (
+      visible.length < args.paginationOpts.numItems &&
+      !page.isDone &&
+      visibilityFetchAttempts < maxVisibilityFetchAttempts
+    ) {
+      visibilityFetchAttempts += 1;
       page = await fetchPage({
         ...args.paginationOpts,
         cursor: page.continueCursor,

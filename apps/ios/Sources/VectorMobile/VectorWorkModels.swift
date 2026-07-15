@@ -436,8 +436,9 @@ public struct VectorWorkTask: Decodable, Equatable, Identifiable {
   public let status: VectorTaskStatus
   public let assignee: VectorUser?
   public let dueDate: String?
+  public let canUpdateStatus: Bool?
 
-  public init(id: VectorID, number: Double, title: String, status: VectorTaskStatus, description: String? = nil, assignee: VectorUser? = nil, dueDate: String? = nil) {
+  public init(id: VectorID, number: Double, title: String, status: VectorTaskStatus, description: String? = nil, assignee: VectorUser? = nil, dueDate: String? = nil, canUpdateStatus: Bool? = true) {
     self.id = id
     self._number = ConvexFloat(wrappedValue: number)
     self.title = title
@@ -445,6 +446,7 @@ public struct VectorWorkTask: Decodable, Equatable, Identifiable {
     self.status = status
     self.assignee = assignee
     self.dueDate = dueDate
+    self.canUpdateStatus = canUpdateStatus
   }
 
   private enum CodingKeys: String, CodingKey {
@@ -455,6 +457,7 @@ public struct VectorWorkTask: Decodable, Equatable, Identifiable {
     case status
     case assignee
     case dueDate
+    case canUpdateStatus
   }
 }
 

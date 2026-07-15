@@ -705,30 +705,13 @@ public final class VectorMobileSessionController: ObservableObject {
       yielding: [VectorOrganization].self
     )
 
-    let subscriptionTask = Task { () throws -> [VectorOrganization] in
-      var latest: [VectorOrganization] = []
-      for try await organizations in publisher.values {
-        latest = organizations
-        if !organizations.isEmpty {
-          return organizations
-        }
-      }
-      return latest
-    }
-
-    return try await withThrowingTaskGroup(of: [VectorOrganization].self) { group in
-      group.addTask {
-        try await subscriptionTask.value
-      }
-      group.addTask {
-        try await Task.sleep(nanoseconds: 5_000_000_000)
-        return []
-      }
-
-      let organizations = try await group.next() ?? []
-      subscriptionTask.cancel()
-      group.cancelAll()
+    // The first subscription value is authoritative, including an empty
+    // membership list. Do not race it against a fixed timeout: a slow network
+    // must leave session restoration pending instead of impersonating a valid
+    // "no workspaces" response and bouncing the user to sign-in.
+    for try await organizations in publisher.values {
       return organizations
     }
+    throw VectorAuthError.requestFailed("Unable to load your Vector workspaces.")
   }
 }

@@ -613,6 +613,10 @@ export default defineSchema({
     kind: v.optional(workKindValidator),
     workStatus: v.optional(workStatusValidator),
     focusRank: v.optional(v.number()),
+    // Maintained by Task mutations so paginated Work lists can render
+    // progress without reading every Task for every row.
+    taskTotal: v.optional(v.number()),
+    taskDone: v.optional(v.number()),
     ownerId: v.optional(v.id('users')),
     effort: v.optional(workEffortValidator),
     completionPolicy: v.optional(workCompletionPolicyValidator),

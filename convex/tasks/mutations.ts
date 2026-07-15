@@ -68,7 +68,21 @@ async function insertTask(
     createdAt: now,
     updatedAt: now,
   });
+  let taskTotal = input.work.taskTotal;
+  let taskDone = input.work.taskDone;
+  if (taskTotal === undefined || taskDone === undefined) {
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_work', q => q.eq('workId', input.work._id))
+      .collect();
+    taskTotal = tasks.length;
+    taskDone = tasks.filter(task => task.status === 'done').length;
+  } else {
+    taskTotal += 1;
+  }
   await touchMeaningfulWork(ctx, input.work._id, {
+    taskTotal,
+    taskDone,
     lastActivityEventType: 'task_created',
   });
   await recordActivity(ctx, {
@@ -174,6 +188,8 @@ export const createFromExecution = mutation({
       liveActivityId: execution._id,
       agentProcessId: execution.processId,
     });
+    const task = await ctx.db.get('tasks', taskId);
+    if (task) await notifyAssignee(ctx, work, task, actorId, 'task_assigned');
     return { taskId };
   },
 });
@@ -222,6 +238,9 @@ export const setStatus = mutation({
     if (task.assigneeId !== actorId && !(await canEditIssue(ctx, work)))
       throw new ConvexError('FORBIDDEN');
     const now = Date.now();
+    const wasDone = task.status === 'done';
+    const willBeDone = args.status === 'done';
+    const doneDelta = wasDone === willBeDone ? 0 : willBeDone ? 1 : -1;
     await ctx.db.patch('tasks', task._id, {
       status: args.status,
       startedAt:
@@ -231,7 +250,21 @@ export const setStatus = mutation({
       completedAt: args.status === 'done' ? now : undefined,
       updatedAt: now,
     });
+    let taskTotal = work.taskTotal;
+    let taskDone = work.taskDone;
+    if (taskTotal === undefined || taskDone === undefined) {
+      const tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_work', q => q.eq('workId', work._id))
+        .collect();
+      taskTotal = tasks.length;
+      taskDone = tasks.filter(candidate => candidate.status === 'done').length;
+    } else {
+      taskDone = Math.max(0, taskDone + doneDelta);
+    }
     await touchMeaningfulWork(ctx, work._id, {
+      taskTotal,
+      taskDone,
       lastActivityEventType: 'task_status_changed',
     });
     await recordActivity(ctx, {

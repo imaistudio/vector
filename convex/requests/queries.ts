@@ -151,8 +151,7 @@ export const getByKey = query({
       )
       .first();
     if (!request) return null;
-    if (!(await canViewRequest(ctx, request)))
-      throw new ConvexError('FORBIDDEN');
+    if (!(await canViewRequest(ctx, request))) return null;
     const [requester, owner, recipientRows, workLinks] = await Promise.all([
       userSummary(ctx, request.requesterId),
       userSummary(ctx, request.ownerId),

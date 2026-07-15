@@ -111,6 +111,13 @@ export const setActionState = mutation({
     if (args.actionState === 'snoozed' && !args.snoozedUntil) {
       throw new ConvexError('SNOOZE_TIME_REQUIRED');
     }
+    if (
+      args.actionState === 'snoozed' &&
+      args.snoozedUntil !== undefined &&
+      args.snoozedUntil <= Date.now()
+    ) {
+      throw new ConvexError('SNOOZE_TIME_MUST_BE_IN_FUTURE');
+    }
     await ctx.db.patch('notificationRecipients', recipient._id, {
       actionState: args.actionState,
       snoozedUntil:

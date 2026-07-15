@@ -397,8 +397,8 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
 
         <IntegrationRow
           icon={<Github className='text-muted-foreground size-4' />}
-          label='Unmatched pull requests'
-          value='Pull requests are development evidence, not Work by default.'
+          label='Unmatched artifacts'
+          value='Pull requests and GitHub issues are development evidence, not Work by default.'
           action={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -502,9 +502,9 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
             <div className='min-w-0 flex-1'>
               <div className='text-sm font-medium'>Development inbox</div>
               <p className='text-muted-foreground text-xs'>
-                Unmatched pull requests stay visible here until they are linked
-                to Work, turned into a Request by policy, or deliberately
-                ignored.
+                Unmatched pull requests and GitHub issues stay visible here
+                until they are linked to Work, turned into a Request by policy,
+                or deliberately ignored.
               </p>
             </div>
             {developmentInbox && (

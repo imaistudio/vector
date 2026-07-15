@@ -177,6 +177,21 @@ export const backfillRequestFocusRank = migrations.define({
   }),
 });
 
+export const backfillWorkTaskCounts = migrations.define({
+  table: 'issues',
+  migrateOne: async (ctx, issue) => {
+    if (issue.kind !== 'work') return {};
+    const tasks = await ctx.db
+      .query('tasks')
+      .withIndex('by_work', q => q.eq('workId', issue._id))
+      .collect();
+    return {
+      taskTotal: tasks.length,
+      taskDone: tasks.filter(task => task.status === 'done').length,
+    };
+  },
+});
+
 export const migrateCommentsToTasks = migrations.define({
   table: 'comments',
   migrateOne: async (ctx, comment) => {

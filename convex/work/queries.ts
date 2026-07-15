@@ -73,41 +73,35 @@ export const list = query({
 
       const rows = await Promise.all(
         visible.map(async work => {
-          const [owner, state, tasks, activities, attention] =
-            await Promise.all([
-              userSummary(ctx, work.ownerId),
-              work.workflowStateId
-                ? ctx.db.get('issueStates', work.workflowStateId)
-                : null,
-              ctx.db
-                .query('tasks')
-                .withIndex('by_work', q => q.eq('workId', work._id))
-                .take(500),
-              Promise.all(
-                (['active', 'waiting_for_input', 'paused'] as const).map(
-                  status =>
-                    ctx.db
-                      .query('issueLiveActivities')
-                      .withIndex('by_issue_status', q =>
-                        q.eq('issueId', work._id).eq('status', status),
-                      )
-                      .take(100),
-                ),
-              ).then(groups => groups.flat()),
-              ctx.db
-                .query('workAttentionRequests')
-                .withIndex('by_work_status', q =>
-                  q.eq('workId', work._id).eq('status', 'open'),
-                )
-                .take(100),
-            ]);
+          const [owner, state, activities, attention] = await Promise.all([
+            userSummary(ctx, work.ownerId),
+            work.workflowStateId
+              ? ctx.db.get('issueStates', work.workflowStateId)
+              : null,
+            Promise.all(
+              (['active', 'waiting_for_input', 'paused'] as const).map(status =>
+                ctx.db
+                  .query('issueLiveActivities')
+                  .withIndex('by_issue_status', q =>
+                    q.eq('issueId', work._id).eq('status', status),
+                  )
+                  .take(20),
+              ),
+            ).then(groups => groups.flat()),
+            ctx.db
+              .query('workAttentionRequests')
+              .withIndex('by_work_status', q =>
+                q.eq('workId', work._id).eq('status', 'open'),
+              )
+              .take(20),
+          ]);
           return {
             ...work,
             workStatus: work.workStatus ?? statusFromLegacyState(state),
             owner,
             taskProgress: {
-              done: tasks.filter(task => task.status === 'done').length,
-              total: tasks.length,
+              done: work.taskDone ?? 0,
+              total: work.taskTotal ?? 0,
             },
             activeExecutionCount: activities.filter(activity =>
               ['active', 'waiting_for_input', 'paused'].includes(
@@ -137,7 +131,13 @@ export const list = query({
 
     let page = await fetchPage(args.paginationOpts);
     const filtered = await enrich(page.page);
-    while (filtered.length < args.paginationOpts.numItems && !page.isDone) {
+    let refillAttempts = 0;
+    while (
+      filtered.length < args.paginationOpts.numItems &&
+      !page.isDone &&
+      refillAttempts < 5
+    ) {
+      refillAttempts += 1;
       page = await fetchPage({
         ...args.paginationOpts,
         cursor: page.continueCursor,

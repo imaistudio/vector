@@ -132,7 +132,9 @@ private struct AuthenticatedVectorMobileView: View {
       pushCoordinator.consumePendingNotificationHref()
       return
     }
-    if pendingNotificationTarget(for: trimmedHref) != nil {
+    if let target = pendingNotificationTarget(for: trimmedHref),
+       target.orgSlug == viewModel.configuration.orgSlug
+    {
       selectedTab = .inbox
       notificationHrefToOpen = trimmedHref
     } else {
@@ -151,19 +153,25 @@ private struct AuthenticatedVectorMobileView: View {
 }
 
 private enum PendingNotificationTarget {
-  case request(String)
-  case work(String)
+  case request(orgSlug: String, key: String)
+  case work(orgSlug: String, key: String)
+
+  var orgSlug: String {
+    switch self {
+    case let .request(orgSlug, _), let .work(orgSlug, _): orgSlug
+    }
+  }
 }
 
 private func pendingNotificationTarget(for href: String?) -> PendingNotificationTarget? {
   guard let href, !href.isEmpty else { return nil }
   let path = URL(string: href)?.path ?? href
   let parts = path.split(separator: "/").map(String.init)
-  if let index = parts.firstIndex(of: "requests"), parts.indices.contains(index + 1) {
-    return .request(parts[index + 1])
+  if let index = parts.firstIndex(of: "requests"), index > 0, parts.indices.contains(index + 1) {
+    return .request(orgSlug: parts[index - 1], key: parts[index + 1])
   }
-  if let index = parts.firstIndex(of: "work"), parts.indices.contains(index + 1) {
-    return .work(parts[index + 1])
+  if let index = parts.firstIndex(of: "work"), index > 0, parts.indices.contains(index + 1) {
+    return .work(orgSlug: parts[index - 1], key: parts[index + 1])
   }
   return nil
 }
@@ -880,9 +888,9 @@ struct InboxScreen: View {
   @ViewBuilder
   private var notificationDestination: some View {
     switch pendingNotificationTarget(for: notificationHrefToOpen) {
-    case let .request(key):
+    case let .request(_, key):
       MobileRequestDetailScreen(request: requestTarget(key), viewModel: viewModel)
-    case let .work(key):
+    case let .work(_, key):
       MobileWorkDetailScreen(work: workTarget(key), viewModel: viewModel)
     case nil:
       EmptyView()

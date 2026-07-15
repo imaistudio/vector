@@ -490,6 +490,7 @@ async function applyTaskScopedWorkflowAutomation(
     ),
   );
   let changed = false;
+  let doneDelta = 0;
   for (const taskId of taskIds) {
     const task = await ctx.db.get('tasks', taskId);
     if (!task || task.workId !== work._id) continue;
@@ -551,6 +552,8 @@ async function applyTaskScopedWorkflowAutomation(
       completedAt: nextStatus === 'done' ? now : undefined,
       updatedAt: now,
     });
+    if (task.status !== 'done' && nextStatus === 'done') doneDelta += 1;
+    if (task.status === 'done' && nextStatus !== 'done') doneDelta -= 1;
     changed = true;
     const actorId = work.createdBy ?? work.reporterId;
     if (actorId) {
@@ -570,10 +573,24 @@ async function applyTaskScopedWorkflowAutomation(
     }
   }
   if (changed) {
+    let taskTotal = work.taskTotal;
+    let taskDone = work.taskDone;
+    if (taskTotal === undefined || taskDone === undefined) {
+      const tasks = await ctx.db
+        .query('tasks')
+        .withIndex('by_work', q => q.eq('workId', work._id))
+        .collect();
+      taskTotal = tasks.length;
+      taskDone = tasks.filter(task => task.status === 'done').length;
+    } else {
+      taskDone = Math.max(0, taskDone + doneDelta);
+    }
     await ctx.db.patch('issues', work._id, {
       updatedAt: Date.now(),
       lastMeaningfulActivityAt: Date.now(),
       lastActivityEventType: 'github_task_state_automation',
+      taskTotal,
+      taskDone,
     });
   }
 }
@@ -849,10 +866,7 @@ async function applyWorkflowAutomationForIssue(
             : undefined,
         },
         recipients: Array.from(recipients).map(userId => ({ userId })),
-        dedupeKey: `request-ready:${request._id}:${fulfillingLinks
-          .map(link => link.workId)
-          .sort()
-          .join(',')}`,
+        dedupeKey: `request-ready:${request._id}:${now}`,
       });
     }
   }
@@ -1767,7 +1781,11 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
       ctx.db.get('organizations', args.organizationId),
       ctx.db.get('githubPullRequests', args.pullRequestId),
     ]);
-    if (!organization || !pullRequest) {
+    if (
+      !organization ||
+      !pullRequest ||
+      pullRequest.organizationId !== args.organizationId
+    ) {
       throw new ConvexError('PULL_REQUEST_NOT_FOUND');
     }
     const links = await ctx.db
@@ -1907,7 +1925,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       'githubRepositories',
       pullRequest.repositoryId,
     );
-    if (!repository) {
+    if (!repository || repository.organizationId !== args.organizationId) {
       throw new ConvexError('REPOSITORY_NOT_CONNECTED');
     }
 
@@ -2046,6 +2064,8 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       kind: 'work',
       workStatus: 'planned',
       focusRank: workFocusRank('planned', 'unknown'),
+      taskTotal: 0,
+      taskDone: 0,
       effort: 'unknown',
       completionPolicy: 'manual',
       agentTaskCreationPolicy: 'allow',
@@ -2137,7 +2157,11 @@ export const triageUnmatchedGitHubIssue = internalMutation({
       ctx.db.get('organizations', args.organizationId),
       ctx.db.get('githubIssues', args.githubIssueId),
     ]);
-    if (!organization || !githubIssue) {
+    if (
+      !organization ||
+      !githubIssue ||
+      githubIssue.organizationId !== args.organizationId
+    ) {
       throw new ConvexError('GITHUB_ISSUE_NOT_FOUND');
     }
     if (githubIssue.state !== 'open') {
@@ -2148,7 +2172,7 @@ export const triageUnmatchedGitHubIssue = internalMutation({
       'githubRepositories',
       githubIssue.repositoryId,
     );
-    if (!repository) {
+    if (!repository || repository.organizationId !== args.organizationId) {
       throw new ConvexError('REPOSITORY_NOT_CONNECTED');
     }
 
@@ -2280,6 +2304,8 @@ export const triageUnmatchedGitHubIssue = internalMutation({
       kind: 'work',
       workStatus: 'planned',
       focusRank: workFocusRank('planned', 'unknown'),
+      taskTotal: 0,
+      taskDone: 0,
       effort: 'unknown',
       completionPolicy: 'manual',
       agentTaskCreationPolicy: 'allow',
