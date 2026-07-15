@@ -30,6 +30,11 @@ on:
         required: true
         type: boolean
         default: false
+      verify_testflight_build:
+        description: 'Optional existing TestFlight build number to verify without uploading another build.'
+        required: false
+        type: string
+        default: ''
       workspace_path:
         description: 'Optional .xcworkspace path, if the app uses a workspace.'
         required: false
@@ -278,6 +283,16 @@ jobs:
             --p8-file-path "$api_key_path" \
             --output-format normal
 
+      - name: Wait for TestFlight processing
+        if: inputs.upload_testflight
+        env:
+          APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
+          TESTFLIGHT_BUILD_NUMBER: ${{ github.run_number }}
+        run: node scripts/verify-testflight-build.mjs
+
       - name: Job summary
         run: |
           {
@@ -290,3 +305,22 @@ jobs:
             echo "- Export method: \`$IOS_EXPORT_METHOD\`"
             echo "- TestFlight upload: \`${{ inputs.upload_testflight }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  verify-testflight:
+    name: Verify TestFlight
+    if: github.event_name == 'workflow_dispatch' && inputs.verify_testflight_build != ''
+    runs-on: ubuntu-latest
+
+    env:
+      APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
+      TESTFLIGHT_BUILD_NUMBER: ${{ inputs.verify_testflight_build }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Wait for TestFlight processing
+        run: node scripts/verify-testflight-build.mjs
