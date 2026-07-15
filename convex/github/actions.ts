@@ -771,6 +771,7 @@ async function linkArtifactToIssueRecord(
       organizationId: args.organizationId,
       repository,
       payload: artifactResult.payload,
+      processUnmatched: false,
     });
     if (!githubIssueId) {
       throw new ConvexError('INVALID_GITHUB_ISSUE');
@@ -972,6 +973,7 @@ async function persistGitHubIssuePayload(
     organizationId: Id<'organizations'>;
     repository: any;
     payload: any;
+    processUnmatched?: boolean;
   },
 ) {
   if (args.payload.pull_request) {
@@ -1038,6 +1040,16 @@ async function persistGitHubIssuePayload(
     issueKeys: autoLinkResolution.issueKeys,
     preserveExistingWhenEmpty: !autoLinkResolution.resolutionAvailable,
   });
+
+  if (args.processUnmatched !== false) {
+    await ctx.runMutation(
+      internal.github.mutations.triageUnmatchedGitHubIssue,
+      {
+        organizationId: args.organizationId,
+        githubIssueId,
+      },
+    );
+  }
 
   return githubIssueId;
 }

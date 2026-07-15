@@ -204,7 +204,9 @@ public final class VectorMobileViewModel: ObservableObject {
           }
         },
         receiveValue: { [weak self] detail in
-          self?.selectedRequestError = nil
+          self?.selectedRequestError = detail == nil
+            ? "This request was not found or you no longer have access."
+            : nil
           self?.selectedRequest = detail
         }
       )
@@ -223,7 +225,9 @@ public final class VectorMobileViewModel: ObservableObject {
           }
         },
         receiveValue: { [weak self] detail in
-          self?.selectedWorkError = nil
+          self?.selectedWorkError = detail == nil
+            ? "This work was not found or you no longer have access."
+            : nil
           self?.selectedWork = detail
         }
       )

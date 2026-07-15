@@ -149,6 +149,29 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(store.session?.cookies["session"], "fresh")
   }
 
+  @MainActor
+  func testRestoredSessionFallsBackWhenStoredWorkspaceWasRemoved() throws {
+    let organizations = [
+      VectorOrganization(id: "org-1", name: "Current", slug: "current"),
+      VectorOrganization(id: "org-2", name: "Second", slug: "second"),
+    ]
+
+    let restored = try VectorMobileSessionController.selectOrganization(
+      from: organizations,
+      requestedOrgSlug: "removed",
+      allowFallback: true
+    )
+
+    XCTAssertEqual(restored.slug, "current")
+    XCTAssertThrowsError(
+      try VectorMobileSessionController.selectOrganization(
+        from: organizations,
+        requestedOrgSlug: "removed",
+        allowFallback: false
+      )
+    )
+  }
+
   func testAppConfigFallsBackToLocalConvexForLocalDevelopment() async throws {
     let client = VectorAuthClient(transport: FailingAuthTransport())
     let config = try await client.fetchAppConfig(appURL: URL(string: "http://localhost:3000")!)
@@ -595,6 +618,37 @@ final class VectorMobileTests: XCTestCase {
     viewModel.refresh()
     XCTAssertEqual(repository.projectListCalls[.all, default: 0], 1)
     XCTAssertEqual(repository.teamListCalls[.all, default: 0], 1)
+  }
+
+  @MainActor
+  func testMissingRequestAndWorkDetailsStopShowingSkeletons() async {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+    let request = VectorRequestRow(
+      id: "request-missing",
+      key: "REQ-404",
+      title: "Missing request",
+      expectedOutput: "Nothing",
+      status: .new,
+      createdAt: 1,
+      updatedAt: 1
+    )
+    let work = VectorWorkRow(
+      id: "work-missing",
+      key: "WORK-404",
+      title: "Missing work",
+      workStatus: .planned,
+      creationTime: 1
+    )
+
+    viewModel.loadRequest(request)
+    viewModel.loadWork(work)
+
+    await waitUntil {
+      viewModel.selectedRequestError != nil && viewModel.selectedWorkError != nil
+    }
+    XCTAssertNil(viewModel.selectedRequest)
+    XCTAssertNil(viewModel.selectedWork)
   }
 
   @MainActor

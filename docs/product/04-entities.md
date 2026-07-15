@@ -54,7 +54,7 @@ Core semantics:
 - Work states are planned, active, waiting, blocked, ready for review, completed, and canceled.
 - Work focus lists use an indexed rank so blocked and review-ready outcomes surface before ordinary active Work, then larger effort and longer-stale activity surface first instead of being buried by newer small changes.
 - Agent execution status is separate from aggregate Work status.
-- GitHub artifacts are evidence by default and update Work state only under explicit workspace and per-Work policies.
+- GitHub artifacts are evidence by default. Workspace policy may keep evidence manual, notify the owner when terminal evidence needs review, or update state when the individual Work also opts into GitHub completion.
 
 Use Work for the focused outcome context that humans and agents need to execute, hand off, and review delivery.
 

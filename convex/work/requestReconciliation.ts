@@ -131,11 +131,11 @@ export async function maybeRaiseLinkedRequestsForReview(
         href: org ? `/${org.slug}/requests/${request.key}` : undefined,
       },
       recipients: Array.from(recipients).map(userId => ({ userId })),
-      dedupeKey: `request-ready:${request._id}:${linkedWork
-        .map(item => item?._id)
-        .filter(Boolean)
-        .sort()
-        .join(',')}`,
+      // A request can return to delivery after changes are requested and then
+      // become ready again with the same set of Work. Include the transition
+      // timestamp so each review cycle creates one notification while retries
+      // within the same cycle remain idempotent.
+      dedupeKey: `request-ready:${request._id}:${now}`,
     });
   }
 }

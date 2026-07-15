@@ -812,16 +812,17 @@ The first implementation uses the following concrete answers. Items explicitly m
 
 ### GitHub
 
-- Unmatched pull requests go to a Development inbox by default. Workspace policy may instead create a Request, create planned Work, or ignore them.
+- Unmatched pull requests and GitHub issues go to a Development inbox by default. Workspace policy may instead create a Request, create planned Work, or ignore them. A durable inbox record makes every automatic creation policy idempotent even if an automatic artifact link is later removed or suppressed.
 - Key matching and AI matching are independent policies. Manual artifact linking always remains available.
 - GitHub authors become Work contributors by default, never Work owners, and do not start Work.
 - Pull request text does not overwrite a Work title or workpad.
-- Repository state is evidence by default. GitHub may complete/cancel Work only when both the workspace state-automation policy and the individual Work completion policy opt into GitHub control.
+- Repository state is evidence by default. The workspace can keep it manual, notify the accountable owner when terminal evidence needs review, or allow GitHub to update state. GitHub may complete/cancel Work only when both the workspace state-automation policy and the individual Work completion policy opt into GitHub control.
 - GitHub never starts Work. When opted-in terminal evidence completes all Work linked to a Request, that Request becomes Ready for human review.
 - Artifacts attach primarily to Work. Task-level artifact links are represented in the schema and can be expanded in a later UI pass.
 - A successful key/AI resolution with no match removes stale automatic links. A disabled, unavailable, or failed resolver preserves existing links so a temporary integration outage cannot silently detach evidence.
 - Task-scoped development evidence updates only that Task. It never completes the parent Work or raises its Requests for review; only Work-scoped evidence may drive GitHub-controlled Work completion.
-- Reconciliation and any open-pull-request webhook action apply the unmatched-artifact policy idempotently, so installing GitHub after a PR opened or missing its original webhook does not hide that work. Dismissed inbox items remain dismissed.
+- Manual suppression is scoped to the exact Work-level or Task-level attachment that was removed, so hiding evidence from one Task does not hide it from its siblings or parent Work.
+- Reconciliation and webhook ingestion apply the unmatched-artifact policy idempotently to open pull requests and GitHub issues, so installing GitHub after an artifact opened or missing its original webhook does not hide that work. Dismissed inbox items remain dismissed.
 
 ### Naming and migration
 

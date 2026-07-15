@@ -541,7 +541,11 @@ public final class VectorMobileSessionController: ObservableObject {
         phase = .signedOut
         return
       }
-      try await activate(session: session, requestedOrgSlug: session.orgSlug)
+      try await activate(
+        session: session,
+        requestedOrgSlug: session.orgSlug,
+        allowWorkspaceFallback: true
+      )
     } catch {
       errorMessage = nil
       phase = .signedOut
@@ -634,7 +638,11 @@ public final class VectorMobileSessionController: ObservableObject {
     }
   }
 
-  private func activate(session: VectorStoredSession, requestedOrgSlug: String?) async throws {
+  private func activate(
+    session: VectorStoredSession,
+    requestedOrgSlug: String?,
+    allowWorkspaceFallback: Bool = false
+  ) async throws {
     let provider = VectorBetterAuthProvider(session: session, authClient: authClient, sessionStore: sessionStore)
     let client = ConvexClientWithAuth<VectorBetterAuthData>(
       deploymentUrl: session.convexURL.absoluteString,
@@ -644,19 +652,11 @@ public final class VectorMobileSessionController: ObservableObject {
     let authResult = await client.loginFromCache()
     let authData = try authResult.get()
     let orgs = try await fetchOrganizations(client: client)
-    guard !orgs.isEmpty else {
-      throw VectorAuthError.noWorkspaceMembership
-    }
-
-    let selectedOrg: VectorOrganization
-    if let requested = requestedOrgSlug?.trimmingCharacters(in: .whitespacesAndNewlines), !requested.isEmpty {
-      guard let match = orgs.first(where: { $0.slug == requested }) else {
-        throw VectorAuthError.workspaceNotFound(requested)
-      }
-      selectedOrg = match
-    } else {
-      selectedOrg = orgs[0]
-    }
+    let selectedOrg = try Self.selectOrganization(
+      from: orgs,
+      requestedOrgSlug: requestedOrgSlug,
+      allowFallback: allowWorkspaceFallback
+    )
 
     var savedSession = authData.session
     savedSession.orgSlug = selectedOrg.slug
@@ -674,6 +674,29 @@ public final class VectorMobileSessionController: ObservableObject {
     isDemoMode = false
     errorMessage = nil
     phase = .signedIn
+  }
+
+  static func selectOrganization(
+    from organizations: [VectorOrganization],
+    requestedOrgSlug: String?,
+    allowFallback: Bool
+  ) throws -> VectorOrganization {
+    guard let first = organizations.first else {
+      throw VectorAuthError.noWorkspaceMembership
+    }
+    guard
+      let requested = requestedOrgSlug?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !requested.isEmpty
+    else {
+      return first
+    }
+    if let match = organizations.first(where: { $0.slug == requested }) {
+      return match
+    }
+    if allowFallback {
+      return first
+    }
+    throw VectorAuthError.workspaceNotFound(requested)
   }
 
   private func fetchOrganizations(client: ConvexClient) async throws -> [VectorOrganization] {

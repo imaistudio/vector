@@ -440,7 +440,7 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
         <IntegrationRow
           icon={<Check className='text-muted-foreground size-4' />}
           label='State automation'
-          value='Merged or closed artifacts are evidence. Manual is the safest default.'
+          value='Evidence asks the owner to review terminal GitHub activity. GitHub can complete opted-in Work.'
           action={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

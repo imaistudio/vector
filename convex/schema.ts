@@ -1141,6 +1141,12 @@ export default defineSchema({
   })
     .index('by_issue', ['issueId'])
     .index('by_issue_external', ['issueId', 'artifactType', 'externalKey'])
+    .index('by_issue_task_external', [
+      'issueId',
+      'taskId',
+      'artifactType',
+      'externalKey',
+    ])
     .index('by_task', ['taskId'])
     .index('by_organization', ['organizationId']),
 
@@ -1171,6 +1177,7 @@ export default defineSchema({
     ),
     suggestedIssueIds: v.optional(v.array(v.id('issues'))),
     createdRequestId: v.optional(v.id('requests')),
+    createdWorkId: v.optional(v.id('issues')),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

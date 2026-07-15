@@ -357,6 +357,101 @@ export const setEnabled = mutation({
   },
 });
 
+export const processRule = internalMutation({
+  args: {
+    reminderRuleId: v.id('reminderRules'),
+    scheduledFor: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const rule = await ctx.db.get('reminderRules', args.reminderRuleId);
+    // A delayed or duplicated scheduler job must not fire a newer occurrence.
+    if (
+      !rule ||
+      !rule.enabled ||
+      rule.nextFireAt !== args.scheduledFor ||
+      rule.nextFireAt > now
+    ) {
+      return { processed: false } as const;
+    }
+
+    const target = await targetContext(ctx, rule);
+    if (!target || target.completed) {
+      await ctx.db.patch('reminderRules', rule._id, {
+        enabled: false,
+        updatedAt: now,
+      });
+      return { processed: true, disabled: true } as const;
+    }
+
+    if (
+      rule.inactivityHours &&
+      now - target.updatedAt < rule.inactivityHours * 60 * 60 * 1000
+    ) {
+      const next =
+        nextFutureOccurrence(rule, rule.nextFireAt, now) ??
+        Math.max(
+          now + 1,
+          target.updatedAt + rule.inactivityHours * 60 * 60 * 1000,
+        );
+      await ctx.db.patch('reminderRules', rule._id, {
+        nextFireAt: next,
+        updatedAt: now,
+      });
+      return { processed: true, deferred: true } as const;
+    }
+
+    const dedupeKey = `reminder:${rule._id}:${rule.nextFireAt}`;
+    const prior = await ctx.db
+      .query('reminderOccurrences')
+      .withIndex('by_dedupe_key', q => q.eq('dedupeKey', dedupeKey))
+      .first();
+    if (!prior) {
+      const recipients = await resolveRecipients(ctx, rule, target);
+      const org = await ctx.db.get('organizations', rule.organizationId);
+      const href =
+        target.request && org
+          ? getRequestHref(org.slug, target.request.key)
+          : target.work && org
+            ? getIssueHref(org.slug, target.work.key)
+            : undefined;
+      await createNotificationEvent(ctx, {
+        type: 'reminder_due',
+        organizationId: rule.organizationId,
+        requestId: target.request?._id,
+        issueId: target.work?._id,
+        taskId: target.task?._id,
+        payload: {
+          requestKey: target.request?.key,
+          requestTitle: target.request?.title,
+          workKey: target.work?.key,
+          workTitle: target.work?.title,
+          taskTitle: target.task?.title,
+          href,
+        },
+        recipients: recipients.map(userId => ({ userId })),
+        dedupeKey,
+      });
+      await ctx.db.insert('reminderOccurrences', {
+        reminderRuleId: rule._id,
+        scheduledFor: rule.nextFireAt,
+        firedAt: now,
+        recipientUserIds: recipients,
+        dedupeKey,
+      });
+    }
+
+    const next = nextFutureOccurrence(rule, rule.nextFireAt, now);
+    await ctx.db.patch('reminderRules', rule._id, {
+      enabled: next !== null,
+      nextFireAt: next ?? rule.nextFireAt,
+      lastFiredAt: now,
+      updatedAt: now,
+    });
+    return { processed: true, notified: !prior } as const;
+  },
+});
+
 export const processDue = internalMutation({
   args: {},
   handler: async ctx => {
@@ -368,80 +463,17 @@ export const processDue = internalMutation({
       )
       .take(50);
     for (const rule of rules) {
-      const target = await targetContext(ctx, rule);
-      if (!target || target.completed) {
-        await ctx.db.patch('reminderRules', rule._id, {
-          enabled: false,
-          updatedAt: now,
-        });
-        continue;
-      }
-      if (
-        rule.inactivityHours &&
-        now - target.updatedAt < rule.inactivityHours * 60 * 60 * 1000
-      ) {
-        const next =
-          nextFutureOccurrence(rule, rule.nextFireAt, now) ??
-          Math.max(
-            now + 1,
-            target.updatedAt + rule.inactivityHours * 60 * 60 * 1000,
-          );
-        await ctx.db.patch('reminderRules', rule._id, {
-          nextFireAt: next,
-          updatedAt: now,
-        });
-        continue;
-      }
-      const dedupeKey = `reminder:${rule._id}:${rule.nextFireAt}`;
-      const prior = await ctx.db
-        .query('reminderOccurrences')
-        .withIndex('by_dedupe_key', q => q.eq('dedupeKey', dedupeKey))
-        .first();
-      if (!prior) {
-        const recipients = await resolveRecipients(ctx, rule, target);
-        const org = await ctx.db.get('organizations', rule.organizationId);
-        const href =
-          target.request && org
-            ? getRequestHref(org.slug, target.request.key)
-            : target.work && org
-              ? getIssueHref(org.slug, target.work.key)
-              : undefined;
-        await createNotificationEvent(ctx, {
-          type: 'reminder_due',
-          organizationId: rule.organizationId,
-          requestId: target.request?._id,
-          issueId: target.work?._id,
-          taskId: target.task?._id,
-          payload: {
-            requestKey: target.request?.key,
-            requestTitle: target.request?.title,
-            workKey: target.work?.key,
-            workTitle: target.work?.title,
-            taskTitle: target.task?.title,
-            href,
-          },
-          recipients: recipients.map(userId => ({ userId })),
-          dedupeKey,
-        });
-        await ctx.db.insert('reminderOccurrences', {
-          reminderRuleId: rule._id,
-          scheduledFor: rule.nextFireAt,
-          firedAt: now,
-          recipientUserIds: recipients,
-          dedupeKey,
-        });
-      }
-      const next = nextFutureOccurrence(rule, rule.nextFireAt, now);
-      await ctx.db.patch('reminderRules', rule._id, {
-        enabled: next !== null,
-        nextFireAt: next ?? rule.nextFireAt,
-        lastFiredAt: now,
-        updatedAt: now,
+      // Each rule runs in its own transaction. A malformed target or a
+      // notification delivery failure can be retried without rolling back the
+      // other due reminders in this batch.
+      await ctx.scheduler.runAfter(0, internal.reminders.processRule, {
+        reminderRuleId: rule._id,
+        scheduledFor: rule.nextFireAt,
       });
     }
     if (rules.length === 50) {
-      await ctx.scheduler.runAfter(0, internal.reminders.processDue, {});
+      await ctx.scheduler.runAfter(1_000, internal.reminders.processDue, {});
     }
-    return { processed: rules.length };
+    return { scheduled: rules.length };
   },
 });

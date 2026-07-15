@@ -26,7 +26,6 @@ export async function canViewRequest(
   ctx: QueryCtx | MutationCtx,
   request: Doc<'requests'>,
 ) {
-  if (request.visibility === 'public') return true;
   const userId = await getAuthUserId(ctx);
   if (!userId) return false;
   if (
