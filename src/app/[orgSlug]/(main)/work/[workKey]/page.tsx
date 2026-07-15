@@ -470,21 +470,21 @@ function HandoffDialog({
 function WorkSkeleton() {
   return (
     <div>
-      <div className='flex h-12 items-center gap-3 border-b px-4'>
+      <div className='flex h-10 items-center gap-2 border-b px-3'>
         <Skeleton className='size-7' />
-        <Skeleton className='h-4 w-20' />
-        <Skeleton className='h-4 max-w-md flex-1' />
+        <Skeleton className='h-3 w-16' />
+        <Skeleton className='h-3 max-w-md flex-1' />
       </div>
-      <div className='grid lg:grid-cols-[minmax(0,1fr)_280px]'>
-        <div className='space-y-8 p-6'>
-          <Skeleton className='h-20 w-full' />
-          <Skeleton className='h-72 w-full' />
-          <Skeleton className='h-48 w-full' />
+      <div className='grid lg:grid-cols-[minmax(0,1fr)_260px]'>
+        <div className='space-y-4 p-4'>
+          <Skeleton className='h-16 w-full' />
+          <Skeleton className='h-28 w-full' />
+          <Skeleton className='h-32 w-full' />
         </div>
-        <div className='hidden space-y-3 border-l p-4 lg:block'>
-          <Skeleton className='h-8 w-full' />
-          <Skeleton className='h-8 w-full' />
-          <Skeleton className='h-24 w-full' />
+        <div className='hidden space-y-2 border-l p-3 lg:block'>
+          <Skeleton className='h-7 w-full' />
+          <Skeleton className='h-7 w-full' />
+          <Skeleton className='h-20 w-full' />
         </div>
       </div>
     </div>
@@ -595,7 +595,7 @@ export default function WorkDetailPage() {
 
   return (
     <div className='min-h-full'>
-      <header className='bg-background/95 sticky top-0 z-20 flex min-h-12 items-center gap-2 border-b px-3 backdrop-blur'>
+      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-2 border-b px-3 backdrop-blur'>
         <Link
           href={`/${orgSlug}/work`}
           aria-label='Back to Work'
@@ -769,11 +769,11 @@ export default function WorkDetailPage() {
         </div>
       )}
 
-      <div className='grid lg:grid-cols-[minmax(0,1fr)_280px]'>
-        <main className='min-w-0 px-5 py-5 md:px-8'>
+      <div className='grid lg:grid-cols-[minmax(0,1fr)_260px]'>
+        <main className='min-w-0 px-4 py-4 md:px-5'>
           {work.linkedRequests.length > 0 && (
-            <section className='mb-6 rounded-md border'>
-              <div className='text-muted-foreground flex h-8 items-center border-b px-3 text-[10px] font-medium tracking-wider uppercase'>
+            <section className='mb-4 rounded-md border'>
+              <div className='text-muted-foreground flex h-7 items-center border-b px-2.5 text-[10px] font-medium tracking-wider uppercase'>
                 Linked requests
               </div>
               {work.linkedRequests.map(
@@ -782,19 +782,17 @@ export default function WorkDetailPage() {
                     <div key={request._id} className='border-b last:border-b-0'>
                       <Link
                         href={`/${orgSlug}/requests/${request.key}`}
-                        className='hover:bg-muted/30 flex items-start gap-3 px-3 py-2.5'
+                        className='hover:bg-muted/30 flex min-h-9 items-center gap-2 px-2.5 py-1.5'
                       >
-                        <span className='text-muted-foreground pt-0.5 font-mono text-[10px]'>
+                        <span className='text-muted-foreground font-mono text-[10px]'>
                           {request.key}
                         </span>
-                        <div className='min-w-0 flex-1'>
-                          <div className='truncate text-xs font-medium'>
-                            {request.title}
-                          </div>
-                          <div className='text-muted-foreground mt-0.5 line-clamp-2 text-[11px]'>
-                            {request.expectedOutput}
-                          </div>
+                        <div className='min-w-0 flex-1 truncate text-xs font-medium'>
+                          {request.title}
                         </div>
+                        <span className='text-muted-foreground hidden max-w-[42%] min-w-0 flex-1 truncate text-[11px] xl:block'>
+                          {request.expectedOutput}
+                        </span>
                         <ChevronDown className='text-muted-foreground size-3.5 -rotate-90' />
                       </Link>
                       {request.status === 'changes_requested' &&
@@ -814,8 +812,8 @@ export default function WorkDetailPage() {
             </section>
           )}
 
-          <section className='mb-7'>
-            <div className='mb-2 flex items-center justify-between'>
+          <section className='mb-4'>
+            <div className='mb-1.5 flex items-center justify-between'>
               <h2 className='text-muted-foreground text-[10px] font-medium tracking-wider uppercase'>
                 Workpad
               </h2>
@@ -830,13 +828,13 @@ export default function WorkDetailPage() {
               mode='full'
               disabled={!work.canEdit}
               borderless
-              className='notion-editor document-prose'
+              className='notion-editor document-prose [&_.tiptap]:min-h-28 [&_.tiptap]:text-[13px] [&_.tiptap]:leading-5'
               placeholder="Type notes or press '/' for commands. Use - [ ] for a checklist."
             />
           </section>
 
-          <section className='mb-7'>
-            <div className='mb-2 flex items-center gap-2'>
+          <section className='mb-4'>
+            <div className='mb-1.5 flex items-center gap-2'>
               <ListChecks className='size-3.5' />
               <h2 className='text-xs font-semibold'>Tasks</h2>
               <span className='text-muted-foreground text-[10px]'>
@@ -850,7 +848,7 @@ export default function WorkDetailPage() {
                   key={task._id}
                   id={`task-${task._id}`}
                   className={cn(
-                    'group flex min-h-9 scroll-m-20 items-center gap-2 border-b px-2 transition-colors last:border-b-0',
+                    'group flex min-h-8 scroll-m-20 items-center gap-2 border-b px-2 transition-colors last:border-b-0',
                     focusedTaskId === String(task._id) &&
                       'bg-primary/7 ring-primary/20 ring-1 ring-inset',
                   )}
@@ -884,7 +882,7 @@ export default function WorkDetailPage() {
                 </div>
               ))}
               {work.canEdit && (
-                <div className='flex h-9 items-center gap-2 px-2'>
+                <div className='flex h-8 items-center gap-2 px-2'>
                   <Plus className='text-muted-foreground size-4' />
                   <Input
                     value={newTask}
@@ -907,8 +905,8 @@ export default function WorkDetailPage() {
             </div>
           </section>
 
-          <section className='mb-7'>
-            <div className='mb-2 flex items-center gap-2'>
+          <section className='mb-4'>
+            <div className='mb-1.5 flex items-center gap-2'>
               <Bot className='size-3.5' />
               <h2 className='text-xs font-semibold'>Executions</h2>
               <span className='text-muted-foreground text-[10px]'>
@@ -916,7 +914,7 @@ export default function WorkDetailPage() {
               </span>
             </div>
             {work.executions.length === 0 ? (
-              <div className='text-muted-foreground rounded-md border border-dashed p-4 text-center text-xs'>
+              <div className='text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs'>
                 No agent executions attached yet. Starting an execution will not
                 change the Work state.
               </div>
@@ -925,7 +923,7 @@ export default function WorkDetailPage() {
                 {work.executions.slice(0, 12).map(execution => (
                   <div
                     key={execution._id}
-                    className='flex min-h-10 items-center gap-2 border-b px-3 last:border-b-0'
+                    className='flex min-h-8 items-center gap-2 border-b px-2.5 last:border-b-0'
                   >
                     <span
                       className={cn(
@@ -957,7 +955,7 @@ export default function WorkDetailPage() {
             issueKey={work.key}
           />
 
-          <section className='mt-7 border-t pt-6'>
+          <section className='mt-4 border-t pt-4'>
             <IssueCommentsSection
               orgSlug={orgSlug}
               issueId={work._id}
@@ -975,8 +973,8 @@ export default function WorkDetailPage() {
           </section>
         </main>
 
-        <aside className='border-t px-4 py-4 lg:border-t-0 lg:border-l'>
-          <div className='space-y-4 lg:sticky lg:top-16'>
+        <aside className='border-t p-3 lg:border-t-0 lg:border-l'>
+          <div className='space-y-3 lg:sticky lg:top-12'>
             <div>
               <div className='text-muted-foreground mb-1.5 text-[10px] font-medium tracking-wider uppercase'>
                 Accountability
@@ -1000,19 +998,17 @@ export default function WorkDetailPage() {
                 </span>
               </div>
               {work.canEdit && (
-                <div className='mt-2'>
+                <div className='mt-1.5 flex flex-wrap items-center gap-1.5'>
                   <HandoffDialog
                     orgSlug={orgSlug}
                     workId={work._id}
                     ownerName={ownerName}
                   />
+                  <ReminderDialog orgSlug={orgSlug} workId={work._id} />
                 </div>
               )}
             </div>
-            {work.canEdit && (
-              <ReminderDialog orgSlug={orgSlug} workId={work._id} />
-            )}
-            <div className='grid grid-cols-2 gap-x-3 gap-y-1 text-xs lg:grid-cols-1'>
+            <div className='grid grid-cols-2 gap-x-3 gap-y-0.5 text-xs lg:grid-cols-1'>
               <WorkPropertySelector
                 orgSlug={orgSlug}
                 label='Effort'
@@ -1073,7 +1069,7 @@ export default function WorkDetailPage() {
                 }
               />
             </div>
-            <p className='text-muted-foreground text-[11px] leading-4'>
+            <p className='text-muted-foreground text-[10px] leading-3.5'>
               GitHub artifacts are evidence by default. Select GitHub completion
               only when this Work should opt into repository-driven state
               changes.

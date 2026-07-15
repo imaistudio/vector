@@ -43,12 +43,12 @@ function WorkRowsSkeleton() {
   return (
     <div>
       {Array.from({ length: 8 }).map((_, index) => (
-        <div key={index} className='flex h-11 items-center gap-3 border-b px-4'>
-          <Skeleton className='size-2.5 rounded-full' />
-          <Skeleton className='h-3 w-16' />
+        <div key={index} className='flex h-9 items-center gap-2 border-b px-3'>
+          <Skeleton className='size-2 rounded-full' />
+          <Skeleton className='h-3 w-14' />
           <Skeleton className='h-3 max-w-80 flex-1' />
           <Skeleton className='h-5 w-20 rounded-full' />
-          <Skeleton className='size-6 rounded-full' />
+          <Skeleton className='size-5 rounded-full' />
         </div>
       ))}
     </div>
@@ -67,7 +67,7 @@ export default function WorkPage() {
 
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-12 shrink-0 items-center justify-between border-b px-4'>
+      <header className='flex h-10 shrink-0 items-center justify-between border-b px-3'>
         <div className='flex items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Work</h1>
           <span className='text-muted-foreground text-xs'>
@@ -76,7 +76,7 @@ export default function WorkPage() {
         </div>
         <CreateWorkDialog orgSlug={orgSlug} />
       </header>
-      <div className='flex h-10 shrink-0 items-center gap-1 border-b px-3'>
+      <div className='flex h-9 shrink-0 items-center gap-1 border-b px-2'>
         {scopes.map(item => (
           <Button
             key={item.value}
@@ -110,15 +110,15 @@ export default function WorkPage() {
               <Link
                 key={work._id}
                 href={`/${orgSlug}/work/${work.key}`}
-                className='hover:bg-muted/35 group flex min-h-11 items-center gap-3 border-b px-4 text-sm transition-colors'
+                className='hover:bg-muted/35 group flex min-h-9 items-center gap-2 border-b px-3 text-xs transition-colors'
               >
                 <span
                   className={cn(
-                    'size-2.5 shrink-0 rounded-full',
+                    'size-2 shrink-0 rounded-full',
                     statusTone[work.workStatus] ?? 'bg-muted-foreground/40',
                   )}
                 />
-                <span className='text-muted-foreground w-20 shrink-0 font-mono text-[11px]'>
+                <span className='text-muted-foreground w-18 shrink-0 font-mono text-[10px]'>
                   {work.key}
                 </span>
                 <span className='min-w-0 flex-1 truncate font-medium'>
@@ -175,7 +175,7 @@ export default function WorkPage() {
                     {work.dueDate}
                   </span>
                 )}
-                <span className='flex w-24 shrink-0 items-center justify-end gap-1.5 text-xs'>
+                <span className='flex w-24 shrink-0 items-center justify-end gap-1.5 text-[11px]'>
                   {work.owner ? (
                     <>
                       <span className='truncate'>

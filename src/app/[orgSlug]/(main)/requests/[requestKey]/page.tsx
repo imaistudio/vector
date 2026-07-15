@@ -357,14 +357,14 @@ export default function RequestDetailPage() {
   if (request === undefined)
     return (
       <div>
-        <div className='flex h-12 items-center gap-3 border-b px-4'>
+        <div className='flex h-10 items-center gap-2 border-b px-3'>
           <Skeleton className='size-7' />
-          <Skeleton className='h-4 w-20' />
-          <Skeleton className='h-4 max-w-sm flex-1' />
+          <Skeleton className='h-3 w-16' />
+          <Skeleton className='h-3 max-w-sm flex-1' />
         </div>
-        <div className='mx-auto max-w-4xl space-y-6 p-6'>
-          <Skeleton className='h-36 w-full' />
-          <Skeleton className='h-52 w-full' />
+        <div className='space-y-4 p-4'>
+          <Skeleton className='h-20 w-full' />
+          <Skeleton className='h-28 w-full' />
         </div>
       </div>
     );
@@ -382,7 +382,7 @@ export default function RequestDetailPage() {
   );
   return (
     <div className='min-h-full'>
-      <header className='bg-background/95 sticky top-0 z-20 flex min-h-12 items-center gap-2 border-b px-3 backdrop-blur'>
+      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-2 border-b px-3 backdrop-blur'>
         <Link
           href={`/${orgSlug}/requests`}
           aria-label='Back to Requests'
@@ -431,26 +431,26 @@ export default function RequestDetailPage() {
             </Button>
           )}
       </header>
-      <div className='mx-auto grid max-w-5xl lg:grid-cols-[minmax(0,1fr)_250px]'>
-        <main className='min-w-0 space-y-7 px-5 py-6 md:px-8'>
+      <div className='grid lg:grid-cols-[minmax(0,1fr)_240px]'>
+        <main className='min-w-0 space-y-4 px-4 py-4 md:px-5'>
           <section>
-            <div className='text-muted-foreground mb-2 text-[10px] font-medium tracking-wider uppercase'>
+            <div className='text-muted-foreground mb-1.5 text-[10px] font-medium tracking-wider uppercase'>
               Request context
             </div>
-            <p className='text-sm leading-6 whitespace-pre-wrap'>
+            <p className='text-xs leading-5 whitespace-pre-wrap'>
               {request.description || 'No additional context was provided.'}
             </p>
           </section>
-          <section className='bg-muted/35 rounded-md border p-4'>
-            <div className='mb-2 flex items-center gap-2'>
-              <CircleDot className='size-4' />
+          <section className='bg-muted/25 rounded-md border p-3'>
+            <div className='mb-1.5 flex items-center gap-2'>
+              <CircleDot className='size-3.5' />
               <h2 className='text-xs font-semibold'>Expected output</h2>
             </div>
-            <p className='text-sm leading-6 whitespace-pre-wrap'>
+            <p className='text-xs leading-5 whitespace-pre-wrap'>
               {request.expectedOutput}
             </p>
             {request.reviewGuidance && (
-              <div className='text-muted-foreground mt-3 border-t pt-3 text-xs'>
+              <div className='text-muted-foreground mt-2 border-t pt-2 text-[11px] leading-4'>
                 <span className='text-foreground font-medium'>
                   Review guidance:
                 </span>{' '}
@@ -463,11 +463,13 @@ export default function RequestDetailPage() {
               <div className='text-[10px] font-medium tracking-wider text-amber-600 uppercase'>
                 Latest review
               </div>
-              <p className='mt-1 text-sm'>{request.latestReviewNote}</p>
+              <p className='mt-1 text-xs leading-5'>
+                {request.latestReviewNote}
+              </p>
             </section>
           )}
           <section>
-            <div className='mb-2 flex items-center justify-between gap-3'>
+            <div className='mb-1.5 flex items-center justify-between gap-3'>
               <div className='flex items-center gap-2'>
                 <Network className='size-3.5' />
                 <h2 className='text-xs font-semibold'>
@@ -494,7 +496,7 @@ export default function RequestDetailPage() {
               </div>
             </div>
             {request.linkedWork.length === 0 ? (
-              <div className='text-muted-foreground rounded-md border border-dashed p-5 text-center text-xs'>
+              <div className='text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs'>
                 No Work is attached yet. The recipient can create a new outcome
                 or attach this Request to existing Work.
               </div>
@@ -506,7 +508,7 @@ export default function RequestDetailPage() {
                       <Link
                         key={work._id}
                         href={`/${orgSlug}/work/${work.key}`}
-                        className='hover:bg-muted/35 flex min-h-11 items-center gap-3 border-b px-3 last:border-b-0'
+                        className='hover:bg-muted/35 flex min-h-9 items-center gap-2 border-b px-2.5 last:border-b-0'
                       >
                         <span className='text-muted-foreground font-mono text-[10px]'>
                           {work.key}
@@ -527,7 +529,7 @@ export default function RequestDetailPage() {
           {['ready_for_review', 'changes_requested'].includes(
             request.status,
           ) && (
-            <section className='flex items-center justify-between gap-4 rounded-md border border-violet-500/25 bg-violet-500/5 p-3'>
+            <section className='flex items-center justify-between gap-3 rounded-md border border-violet-500/25 bg-violet-500/5 p-2.5'>
               <div>
                 <div className='flex items-center gap-1.5 text-xs font-medium'>
                   <CheckCircle2 className='size-4 text-violet-500' />
@@ -554,8 +556,8 @@ export default function RequestDetailPage() {
             </section>
           )}
         </main>
-        <aside className='border-t p-4 lg:border-t-0 lg:border-l'>
-          <div className='space-y-4 lg:sticky lg:top-16'>
+        <aside className='border-t p-3 lg:border-t-0 lg:border-l'>
+          <div className='space-y-3 lg:sticky lg:top-12'>
             <div>
               <div className='text-muted-foreground mb-1.5 text-[10px] font-medium tracking-wider uppercase'>
                 Requester
@@ -603,7 +605,7 @@ export default function RequestDetailPage() {
             {request.canEdit && (
               <ReminderDialog orgSlug={orgSlug} requestId={request._id} />
             )}
-            <div className='grid gap-2 text-xs'>
+            <div className='grid gap-1 text-xs'>
               <div className='flex justify-between gap-2'>
                 <span className='text-muted-foreground'>Source</span>
                 <span>{request.source}</span>

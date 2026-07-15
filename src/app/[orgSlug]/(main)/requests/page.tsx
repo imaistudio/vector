@@ -48,7 +48,7 @@ export default function RequestsPage() {
   );
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-12 shrink-0 items-center justify-between border-b px-4'>
+      <header className='flex h-10 shrink-0 items-center justify-between border-b px-3'>
         <div className='flex items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Requests</h1>
           <span className='text-muted-foreground text-xs'>
@@ -57,7 +57,7 @@ export default function RequestsPage() {
         </div>
         <CreateRequestDialog orgSlug={orgSlug} />
       </header>
-      <div className='flex h-10 items-center gap-1 overflow-x-auto border-b px-3'>
+      <div className='flex h-9 items-center gap-1 overflow-x-auto border-b px-2'>
         {scopes.map(item => (
           <Button
             key={item.value}
@@ -78,7 +78,7 @@ export default function RequestsPage() {
           {Array.from({ length: 8 }).map((_, index) => (
             <div
               key={index}
-              className='flex h-12 items-center gap-3 border-b px-4'
+              className='flex h-10 items-center gap-2 border-b px-3'
             >
               <Skeleton className='size-3 rounded-full' />
               <Skeleton className='h-3 w-16' />
@@ -119,11 +119,11 @@ export default function RequestsPage() {
               <Link
                 key={request._id}
                 href={`/${orgSlug}/requests/${request.key}`}
-                className='hover:bg-muted/35 flex min-h-12 items-center gap-3 border-b px-4 transition-colors'
+                className='hover:bg-muted/35 flex min-h-10 items-center gap-2 border-b px-3 py-1 transition-colors'
               >
                 <CircleDot
                   className={cn(
-                    'size-3.5 shrink-0',
+                    'size-3 shrink-0',
                     request.status === 'ready_for_review'
                       ? 'text-violet-500'
                       : request.status === 'changes_requested'
@@ -133,11 +133,11 @@ export default function RequestsPage() {
                           : 'text-muted-foreground',
                   )}
                 />
-                <span className='text-muted-foreground w-16 shrink-0 font-mono text-[11px]'>
+                <span className='text-muted-foreground w-14 shrink-0 font-mono text-[10px]'>
                   {request.key}
                 </span>
                 <div className='min-w-0 flex-1'>
-                  <div className='truncate text-sm font-medium'>
+                  <div className='truncate text-xs font-medium'>
                     {request.title}
                   </div>
                   <div className='text-muted-foreground truncate text-[11px]'>
