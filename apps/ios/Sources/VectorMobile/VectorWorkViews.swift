@@ -107,6 +107,7 @@ struct MobileRequestDetailScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @State private var changesNote = ""
   @State private var isRequestingChanges = false
+  @State private var isCreatingWork = false
 
   var body: some View {
     Group {
@@ -141,6 +142,15 @@ struct MobileRequestDetailScreen: View {
             LabeledContent("Requester", value: detail.requester?.displayName ?? "Unknown")
             if detail.recipients.count > 1 {
               LabeledContent("Recipients", value: detail.recipients.compactMap(\.user?.displayName).joined(separator: ", "))
+            }
+          }
+
+
+          if detail.canEdit {
+            Section {
+              Button { isCreatingWork = true } label: {
+                Label("Create linked Work", systemImage: "scope")
+              }
             }
           }
 
@@ -197,6 +207,14 @@ struct MobileRequestDetailScreen: View {
     .navigationTitle(request.key)
     .vectorInlineNavigationTitle()
     .task { viewModel.loadRequest(request) }
+    .sheet(isPresented: $isCreatingWork) {
+      MobileCreateWorkSheet(
+        viewModel: viewModel,
+        isPresented: $isCreatingWork,
+        defaultTitle: request.title,
+        requestId: request.id
+      )
+    }
     .alert("Request changes", isPresented: $isRequestingChanges) {
       TextField("What needs to change?", text: $changesNote, axis: .vertical)
       Button("Cancel", role: .cancel) {}
@@ -266,6 +284,7 @@ private struct MobileCreateRequestSheet: View {
 struct MobileWorkScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @State private var searchText = ""
+  @State private var isCreating = false
 
   private var filteredWork: [VectorWorkRow] {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -307,6 +326,74 @@ struct MobileWorkScreen: View {
       .padding(.vertical, 8)
       .background(.bar)
       .onChange(of: viewModel.workScope) { _, _ in viewModel.refreshWork() }
+    }
+    .toolbar {
+      ToolbarItem(placement: .primaryAction) {
+        Button { isCreating = true } label: { Image(systemName: "plus") }
+          .accessibilityLabel("Create Work")
+      }
+    }
+    .sheet(isPresented: $isCreating) {
+      MobileCreateWorkSheet(viewModel: viewModel, isPresented: $isCreating)
+    }
+  }
+}
+
+private struct MobileCreateWorkSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @Binding var isPresented: Bool
+  var defaultTitle = ""
+  var requestId: VectorID?
+  @State private var title: String
+  @State private var context = ""
+  @State private var ownerId: VectorID?
+
+  init(viewModel: VectorMobileViewModel, isPresented: Binding<Bool>, defaultTitle: String = "", requestId: VectorID? = nil) {
+    self.viewModel = viewModel
+    _isPresented = isPresented
+    self.defaultTitle = defaultTitle
+    self.requestId = requestId
+    _title = State(initialValue: defaultTitle)
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Outcome") {
+          TextField("What outcome will this Work deliver?", text: $title)
+          TextField("Notes, approach, or context", text: $context, axis: .vertical).lineLimit(3...10)
+        }
+        Section("Ownership") {
+          Picker("Owner", selection: $ownerId) {
+            Text("Unassigned").tag(nil as VectorID?)
+            ForEach(viewModel.workspaceOptions?.members ?? []) { member in
+              if let userId = member.userId ?? member.user?.id {
+                Text(member.displayName).tag(userId as VectorID?)
+              }
+            }
+          }
+          Text("Work stays planned until its owner explicitly starts it.").font(.caption).foregroundStyle(.secondary)
+        }
+      }
+      .navigationTitle(requestId == nil ? "New Work" : "Linked Work")
+      .vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Create") {
+            Task {
+              let created = await viewModel.createWork(
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                description: context.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                ownerId: ownerId,
+                requestIds: requestId.map { [$0] }
+              )
+              if created { isPresented = false }
+            }
+          }
+          .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.pendingWorkModelActions.contains("create-work"))
+        }
+      }
     }
   }
 }
@@ -355,6 +442,9 @@ private struct MobileWorkRow: View {
 struct MobileWorkDetailScreen: View {
   let work: VectorWorkRow
   @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var isCreatingTask = false
+  @State private var isHandingOff = false
+  @State private var isRaisingAttention = false
 
   var body: some View {
     Group {
@@ -439,6 +529,9 @@ struct MobileWorkDetailScreen: View {
           }
 
           Section("Tasks") {
+            if detail.canEdit {
+              Button { isCreatingTask = true } label: { Label("Add Task", systemImage: "plus") }
+            }
             if detail.tasks.isEmpty {
               Text("No Tasks yet").foregroundStyle(.secondary)
             } else {
@@ -477,6 +570,13 @@ struct MobileWorkDetailScreen: View {
                 Label(attention.prompt, systemImage: "exclamationmark.bubble")
                   .foregroundStyle(.orange)
               }
+            }
+          }
+
+          if detail.canEdit {
+            Section("Coordination") {
+              Button { isHandingOff = true } label: { Label("Hand off Work", systemImage: "person.2") }
+              Button { isRaisingAttention = true } label: { Label("Ask for attention", systemImage: "exclamationmark.bubble") }
             }
           }
 
@@ -546,10 +646,110 @@ struct MobileWorkDetailScreen: View {
     .navigationTitle(work.key)
     .vectorInlineNavigationTitle()
     .task { viewModel.loadWork(work) }
+    .sheet(isPresented: $isCreatingTask) {
+      MobileCreateTaskSheet(viewModel: viewModel, workId: work.id, isPresented: $isCreatingTask)
+    }
+    .sheet(isPresented: $isHandingOff) {
+      MobileHandoffSheet(viewModel: viewModel, workId: work.id, isPresented: $isHandingOff)
+    }
+    .sheet(isPresented: $isRaisingAttention) {
+      MobileAttentionSheet(viewModel: viewModel, workId: work.id, isPresented: $isRaisingAttention)
+    }
   }
 
   private func canStart(_ detail: VectorWorkDetail) -> Bool {
     detail.canEdit && (detail.owner == nil || detail.owner?.id == viewModel.currentUser?.id)
+  }
+}
+
+private struct MobileCreateTaskSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  let workId: VectorID
+  @Binding var isPresented: Bool
+  @State private var title = ""
+  @State private var assigneeId: VectorID?
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        TextField("Task", text: $title)
+        Picker("Assignee", selection: $assigneeId) {
+          Text("Unassigned").tag(nil as VectorID?)
+          ForEach(viewModel.workspaceOptions?.members ?? []) { member in
+            if let userId = member.userId ?? member.user?.id { Text(member.displayName).tag(userId as VectorID?) }
+          }
+        }
+      }
+      .navigationTitle("New Task").vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Create") { Task { if await viewModel.createTask(workId, title: title, assigneeId: assigneeId) { isPresented = false } } }
+            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
+  }
+}
+
+private struct MobileHandoffSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  let workId: VectorID
+  @Binding var isPresented: Bool
+  @State private var recipientId: VectorID?
+  @State private var summary = ""
+  @State private var note = ""
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Picker("New owner", selection: $recipientId) {
+          Text("Choose a person").tag(nil as VectorID?)
+          ForEach(viewModel.workspaceOptions?.members ?? []) { member in
+            if let userId = member.userId ?? member.user?.id { Text(member.displayName).tag(userId as VectorID?) }
+          }
+        }
+        TextField("What has been done so far?", text: $summary, axis: .vertical).lineLimit(3...8)
+        TextField("Optional note", text: $note, axis: .vertical).lineLimit(2...6)
+        Text("You remain accountable until the new owner accepts.").font(.caption).foregroundStyle(.secondary)
+      }
+      .navigationTitle("Hand off Work").vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Send") {
+            guard let recipientId else { return }
+            Task { if await viewModel.proposeHandoff(workId, toOwnerId: recipientId, summary: summary, note: note.nilIfEmpty) { isPresented = false } }
+          }
+          .disabled(recipientId == nil || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
+  }
+}
+
+private struct MobileAttentionSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  let workId: VectorID
+  @Binding var isPresented: Bool
+  @State private var title = ""
+  @State private var details = ""
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        TextField("What needs human attention?", text: $title)
+        TextField("Details or decision needed", text: $details, axis: .vertical).lineLimit(3...8)
+      }
+      .navigationTitle("Ask for attention").vectorInlineNavigationTitle()
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Raise") { Task { if await viewModel.raiseAttention(workId, title: title, details: details.nilIfEmpty) { isPresented = false } } }
+            .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+      }
+    }
   }
 }
 

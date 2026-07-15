@@ -26,11 +26,13 @@ export function TeamPicker({
   value,
   onChange,
   placeholder = 'Route to team',
+  disabled = false,
 }: {
   orgSlug: string;
   value?: Id<'teams'>;
   onChange: (value?: Id<'teams'>) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const workspace = useCachedQuery(
@@ -45,6 +47,7 @@ export function TeamPicker({
           type='button'
           variant='outline'
           size='sm'
+          disabled={disabled}
           className='h-7 max-w-52 justify-between gap-2 px-2 text-xs font-normal'
         >
           <span className='flex min-w-0 items-center gap-1.5'>

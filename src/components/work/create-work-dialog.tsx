@@ -9,11 +9,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+import { BarsSpinner } from '@/components/bars-spinner';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
@@ -92,70 +91,76 @@ export function CreateWorkDialog({
           </Button>
         )}
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className='max-w-lg p-0'>
-        <ResponsiveDialogHeader className='border-b px-4 py-3'>
-          <ResponsiveDialogTitle className='text-sm'>
-            Create Work
-          </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className='text-xs'>
-            Create an outcome container. The owner starts it intentionally when
-            ready.
-          </ResponsiveDialogDescription>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Create Work</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <form onSubmit={submit} className='space-y-4 p-4'>
-          <div className='space-y-1.5'>
-            <Label htmlFor='work-title' className='text-xs'>
-              Outcome
-            </Label>
+        <form onSubmit={submit} className='space-y-2'>
+          <div className='relative'>
             <Input
               id='work-title'
               value={title}
               onChange={event => setTitle(event.target.value)}
               placeholder='What outcome will this Work deliver?'
-              className='h-8 text-sm'
+              className='h-9 pr-24 text-base'
               autoFocus
+              disabled={submitting}
             />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Outcome
+            </span>
           </div>
-          <div className='space-y-1.5'>
-            <Label htmlFor='workpad' className='text-xs'>
-              Initial workpad
-            </Label>
-            <Textarea
-              id='workpad'
-              value={workpad}
-              onChange={event => setWorkpad(event.target.value)}
-              placeholder='Notes, early approach, or context'
-              className='min-h-24 resize-y text-sm'
-            />
-          </div>
-          <div className='flex items-center justify-between gap-3 border-t pt-3'>
+
+          <div className='flex items-center gap-2'>
             <MemberPicker
               orgSlug={orgSlug}
               value={owners}
               onChange={setOwners}
               placeholder='No owner yet'
+              disabled={submitting}
             />
-            <div className='flex items-center gap-2'>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='h-7 text-xs'
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type='submit'
-                size='sm'
-                className='h-7 text-xs'
-                disabled={submitting || !title.trim()}
-              >
-                Create Work
-              </Button>
-            </div>
+            <span className='text-muted-foreground ml-auto text-xs'>
+              Created as planned · start intentionally
+            </span>
+          </div>
+
+          <div className='relative'>
+            <Textarea
+              id='workpad'
+              value={workpad}
+              onChange={event => setWorkpad(event.target.value)}
+              placeholder='Notes, early approach, or context'
+              className='min-h-32 resize-none pr-28 pb-8 text-sm'
+              disabled={submitting}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Initial workpad
+            </span>
           </div>
         </form>
+
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            disabled={submitting}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type='button'
+            size='sm'
+            disabled={submitting || !title.trim()}
+            onClick={submit}
+          >
+            {submitting ? <BarsSpinner size={14} /> : 'Create Work'}
+          </Button>
+        </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

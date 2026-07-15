@@ -6,6 +6,15 @@ public struct VectorCreateRequestResult: Decodable, Equatable {
   public let requestKey: String
 }
 
+public struct VectorCreateWorkResult: Decodable, Equatable {
+  public let workId: VectorID
+  public let workKey: String
+}
+
+public struct VectorCreateTaskResult: Decodable, Equatable {
+  public let taskId: VectorID
+}
+
 public enum VectorRequestScope: String, CaseIterable, Identifiable, Sendable {
   case inbox
   case mine

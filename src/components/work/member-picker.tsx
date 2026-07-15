@@ -27,12 +27,14 @@ export function MemberPicker({
   onChange,
   multiple = false,
   placeholder = 'Select person',
+  disabled = false,
 }: {
   orgSlug: string;
   value: Id<'users'>[];
   onChange: (value: Id<'users'>[]) => void;
   multiple?: boolean;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const members = useCachedQuery(api.organizations.queries.listMembers, {
@@ -58,6 +60,7 @@ export function MemberPicker({
           type='button'
           variant='outline'
           size='sm'
+          disabled={disabled}
           className='h-7 max-w-52 justify-between gap-2 px-2 text-xs font-normal'
         >
           <span className='flex min-w-0 items-center gap-1.5'>

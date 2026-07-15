@@ -18,11 +18,15 @@ public enum VectorConvexFunctions {
   public static let completeRequest = "requests/mutations:complete"
   public static let listWorkPage = "work/queries:list"
   public static let getWorkByKey = "work/queries:getByKey"
+  public static let createWork = "work/mutations:create"
   public static let startWork = "work/mutations:start"
   public static let setWorkStatus = "work/mutations:setStatus"
   public static let readyWorkForReview = "work/mutations:readyForReview"
   public static let completeWork = "work/mutations:complete"
   public static let respondToWorkHandoff = "work/mutations:respondToHandoff"
+  public static let proposeWorkHandoff = "work/mutations:proposeHandoff"
+  public static let raiseWorkAttention = "work/mutations:raiseAttention"
+  public static let createTask = "tasks/mutations:create"
   public static let setTaskStatus = "tasks/mutations:setStatus"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
   public static let getIssueByKey = "issues/queries:getByKey"
@@ -183,11 +187,15 @@ public protocol VectorMobileRepository {
   func claimRequest(requestId: VectorID) async throws
   func requestChanges(requestId: VectorID, note: String) async throws
   func completeRequest(requestId: VectorID) async throws
+  func createWork(orgSlug: String, title: String, description: String?, ownerId: VectorID?, requestIds: [VectorID]?) async throws -> VectorCreateWorkResult
   func startWork(workId: VectorID) async throws
   func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws
   func readyWorkForReview(workId: VectorID) async throws
   func completeWork(workId: VectorID) async throws
   func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws
+  func proposeWorkHandoff(workId: VectorID, toOwnerId: VectorID, summary: String, note: String?) async throws
+  func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws
+  func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult
   func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws
   func updateTitle(issueId: VectorID, title: String) async throws
   func updateDescription(issueId: VectorID, description: String?) async throws
@@ -259,11 +267,15 @@ public extension VectorMobileRepository {
   func claimRequest(requestId: VectorID) async throws {}
   func requestChanges(requestId: VectorID, note: String) async throws {}
   func completeRequest(requestId: VectorID) async throws {}
+  func createWork(orgSlug: String, title: String, description: String?, ownerId: VectorID?, requestIds: [VectorID]?) async throws -> VectorCreateWorkResult { VectorCreateWorkResult(workId: "work", workKey: "WORK-1") }
   func startWork(workId: VectorID) async throws {}
   func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws {}
   func readyWorkForReview(workId: VectorID) async throws {}
   func completeWork(workId: VectorID) async throws {}
   func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws {}
+  func proposeWorkHandoff(workId: VectorID, toOwnerId: VectorID, summary: String, note: String?) async throws {}
+  func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws {}
+  func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult { VectorCreateTaskResult(taskId: "task") }
   func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {}
 }
 
@@ -629,6 +641,23 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     )
   }
 
+  public func createWork(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    ownerId: VectorID?,
+    requestIds: [VectorID]?
+  ) async throws -> VectorCreateWorkResult {
+    var data: [String: ConvexEncodable?] = ["title": title]
+    if let description { data["description"] = description }
+    if let ownerId { data["ownerId"] = ownerId }
+    if let requestIds { data["requestIds"] = requestIds.map { $0 as ConvexEncodable? } }
+    return try await client.mutation(
+      VectorConvexFunctions.createWork,
+      with: ["orgSlug": orgSlug, "data": data]
+    )
+  }
+
   public func startWork(workId: VectorID) async throws {
     let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.startWork,
@@ -662,6 +691,28 @@ public final class ConvexVectorRepository: VectorMobileRepository {
       VectorConvexFunctions.respondToWorkHandoff,
       with: ["handoffId": handoffId, "accept": accept]
     )
+  }
+
+  public func proposeWorkHandoff(workId: VectorID, toOwnerId: VectorID, summary: String, note: String?) async throws {
+    var args: [String: ConvexEncodable?] = [
+      "workId": workId,
+      "toOwnerId": toOwnerId,
+      "summary": summary,
+    ]
+    if let note { args["note"] = note }
+    let _: VectorMutationResponse = try await client.mutation(VectorConvexFunctions.proposeWorkHandoff, with: args)
+  }
+
+  public func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws {
+    var args: [String: ConvexEncodable?] = ["workId": workId, "title": title]
+    if let details { args["details"] = details }
+    let _: VectorMutationResponse = try await client.mutation(VectorConvexFunctions.raiseWorkAttention, with: args)
+  }
+
+  public func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult {
+    var args: [String: ConvexEncodable?] = ["workId": workId, "title": title]
+    if let assigneeId { args["assigneeId"] = assigneeId }
+    return try await client.mutation(VectorConvexFunctions.createTask, with: args)
   }
 
   public func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {
@@ -1107,6 +1158,10 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func completeRequest(requestId: VectorID) async throws {}
 
+  public func createWork(orgSlug: String, title: String, description: String?, ownerId: VectorID?, requestIds: [VectorID]?) async throws -> VectorCreateWorkResult {
+    VectorCreateWorkResult(workId: "work-created", workKey: "WORK-20")
+  }
+
   public func startWork(workId: VectorID) async throws {}
 
   public func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws {}
@@ -1116,6 +1171,14 @@ public final class MockVectorRepository: VectorMobileRepository {
   public func completeWork(workId: VectorID) async throws {}
 
   public func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws {}
+
+  public func proposeWorkHandoff(workId: VectorID, toOwnerId: VectorID, summary: String, note: String?) async throws {}
+
+  public func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws {}
+
+  public func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult {
+    VectorCreateTaskResult(taskId: "task-created")
+  }
 
   public func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {}
 

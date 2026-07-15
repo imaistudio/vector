@@ -19,18 +19,20 @@ This skill is for answering questions like:
 
 Do not rely on stale command memory. Before giving a detailed answer, verify the current branch's CLI surface from:
 
-- `src/cli/index.ts`
-- `src/cli/auth.ts`
-- `src/cli/session.ts`
-- `src/cli/index.test.ts`
-- `src/cli/auth.test.ts`
+- `packages/vector-cli/src/index.ts`
+- `packages/vector-cli/src/auth.ts`
+- `packages/vector-cli/src/session.ts`
+- `packages/vector-cli/src/index.test.ts`
+- `packages/vector-cli/src/auth.test.ts`
 
 Prefer checking the real help output:
 
 ```bash
-pnpm exec tsx src/cli/index.ts --help
-pnpm exec tsx src/cli/index.ts auth --help
-pnpm exec tsx src/cli/index.ts issue --help
+pnpm exec tsx packages/vector-cli/src/index.ts --help
+pnpm exec tsx packages/vector-cli/src/index.ts auth --help
+pnpm exec tsx packages/vector-cli/src/index.ts request --help
+pnpm exec tsx packages/vector-cli/src/index.ts work --help
+pnpm exec tsx packages/vector-cli/src/index.ts task --help
 ```
 
 If the user is using the installed binary instead of the repo entrypoint, mirror the same examples with:
@@ -42,7 +44,7 @@ vcli auth --help
 
 Use whichever form matches the user's setup:
 
-- Repo-local examples: `pnpm exec tsx src/cli/index.ts ...`
+- Repo-local examples: `pnpm exec tsx packages/vector-cli/src/index.ts ...`
 - Installed binary examples: `vcli ...`
 - Installed package name: `@rehpic/vcli`
 
@@ -170,9 +172,12 @@ Mention command groups in practical terms instead of listing them with no contex
 
 ### Core Entities
 
+- `request` — define an expected output, route or claim it, link it to Work, and close the requester review loop
+- `work` — hold one or more requests, start intentionally, publish context, pause/block, raise review, and hand off ownership
+- `task` — track the concrete steps inside Work, including agent-attributed creation and status updates
 - `team`
 - `project`
-- `issue`
+- `issue` — legacy compatibility; prefer Request, Work, and Task for new workflows
 - `document`
 - `folder`
 
@@ -192,7 +197,10 @@ vcli org create --name "Acme" --slug acme
 vcli org use acme
 vcli team create --key eng --name "Engineering"
 vcli project create --key api --name "API" --team eng
-vcli issue create --title "Ship CLI" --project api --team eng
+vcli request create --title "Ship CLI" --expected-output "A reviewed CLI release"
+vcli work create --title "Ship CLI" --request REQ-1
+vcli work start WORK-1
+vcli task create WORK-1 --title "Implement command surface"
 ```
 
 ### 2. Invite Another User

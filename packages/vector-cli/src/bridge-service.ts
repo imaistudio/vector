@@ -1492,10 +1492,10 @@ function buildLaunchPrompt(
   issueContext?: unknown,
   initialPrompt?: string,
 ): string {
-  const lines = [`You are working on issue ${issueKey}: ${issueTitle}`];
+  const lines = [`You are working on Vector Work ${issueKey}: ${issueTitle}`];
 
   if (issueDescription?.trim()) {
-    lines.push('', 'Issue description:', issueDescription.trim());
+    lines.push('', 'Work description:', issueDescription.trim());
   }
 
   const contextLines = formatIssueContext(issueContext);
@@ -1510,9 +1510,9 @@ function buildLaunchPrompt(
   lines.push(
     '',
     `The repository is at ${workspacePath}.`,
-    'Do exactly and only what the issue describes — nothing more, nothing less.',
+    'Do exactly and only what this Work and its linked Requests describe — nothing more, nothing less.',
     'If anything is unclear or ambiguous, ask clarifying questions before making changes.',
-    'Do not refactor, clean up, or "improve" code that is not part of the issue scope.',
+    'Do not refactor, clean up, or "improve" code that is not part of the Work scope.',
   );
 
   return lines.join('\n');
