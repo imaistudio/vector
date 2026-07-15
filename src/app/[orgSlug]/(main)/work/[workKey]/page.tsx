@@ -49,7 +49,6 @@ import { PermissionAwareSelector } from '@/components/ui/permission-aware';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
@@ -59,6 +58,7 @@ import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
 import { IssueCommentsSection } from '@/components/comments/comments-section';
 import { UserAvatar } from '@/components/user-avatar';
+import { BarsSpinner } from '@/components/bars-spinner';
 
 const taskStatuses = [
   { value: 'todo', label: 'Todo', icon: Circle },
@@ -400,67 +400,84 @@ function HandoffDialog({
           Handoff
         </Button>
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className='max-w-md p-0'>
-        <ResponsiveDialogHeader className='border-b px-4 py-3'>
-          <ResponsiveDialogTitle className='text-sm'>
-            Propose handoff
-          </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className='text-xs'>
-            {ownerName ?? 'The current owner'} remains accountable until the
-            recipient accepts. Their execution period starts only when they
-            explicitly start Work.
-          </ResponsiveDialogDescription>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Propose handoff</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <div className='space-y-3 p-4'>
-          <MemberPicker orgSlug={orgSlug} value={people} onChange={setPeople} />
-          <Textarea
-            value={summary}
-            onChange={event => setSummary(event.target.value)}
-            placeholder='Summarize what is complete, what remains, and where to resume.'
-            className='min-h-24 text-sm'
-          />
-          <Input
-            value={note}
-            onChange={event => setNote(event.target.value)}
-            placeholder='Optional private handoff note'
-            className='h-8 text-sm'
-          />
-          <div className='flex justify-end gap-2'>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-7 text-xs'
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size='sm'
-              className='h-7 text-xs'
-              disabled={submitting || !people[0] || !summary.trim()}
-              onClick={() => {
-                const person = people[0];
-                if (!person || submitting) return;
-                setSubmitting(true);
-                void propose({
-                  workId,
-                  toOwnerId: person,
-                  summary,
-                  note: note || undefined,
-                })
-                  .then(() => {
-                    toast.success('Handoff proposed');
-                    setOpen(false);
-                    setSummary('');
-                    setNote('');
-                  })
-                  .catch(() => toast.error('Could not propose handoff'))
-                  .finally(() => setSubmitting(false));
-              }}
-            >
-              Propose
-            </Button>
+        <form className='space-y-2'>
+          <div className='flex items-center gap-2'>
+            <MemberPicker
+              orgSlug={orgSlug}
+              value={people}
+              onChange={setPeople}
+              disabled={submitting}
+            />
+            <span className='text-muted-foreground ml-auto text-xs'>
+              {ownerName ?? 'Current owner'} remains accountable until accepted
+            </span>
           </div>
+          <div className='relative'>
+            <Textarea
+              value={summary}
+              onChange={event => setSummary(event.target.value)}
+              placeholder='What is complete, what remains, and where should they resume?'
+              className='min-h-24 resize-none pr-28 pb-8 text-sm'
+              disabled={submitting}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Handoff summary
+            </span>
+          </div>
+          <div className='relative'>
+            <Input
+              value={note}
+              onChange={event => setNote(event.target.value)}
+              placeholder='Optional private note'
+              className='h-9 pr-28 text-sm'
+              disabled={submitting}
+            />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Private note
+            </span>
+          </div>
+        </form>
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            disabled={submitting}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size='sm'
+            disabled={submitting || !people[0] || !summary.trim()}
+            onClick={() => {
+              const person = people[0];
+              if (!person || submitting) return;
+              setSubmitting(true);
+              void propose({
+                workId,
+                toOwnerId: person,
+                summary,
+                note: note || undefined,
+              })
+                .then(() => {
+                  toast.success('Handoff proposed');
+                  setOpen(false);
+                  setSummary('');
+                  setNote('');
+                })
+                .catch(() => toast.error('Could not propose handoff'))
+                .finally(() => setSubmitting(false));
+            }}
+          >
+            {submitting ? <BarsSpinner size={14} /> : 'Propose handoff'}
+          </Button>
         </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
@@ -595,7 +612,7 @@ export default function WorkDetailPage() {
 
   return (
     <div className='min-h-full'>
-      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-2 border-b px-3 backdrop-blur'>
+      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-1.5 border-b pr-1.5 pl-1 backdrop-blur'>
         <Link
           href={`/${orgSlug}/work`}
           aria-label='Back to Work'
