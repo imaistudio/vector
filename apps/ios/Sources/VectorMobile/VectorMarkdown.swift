@@ -51,7 +51,13 @@ public enum VectorMarkdownParser {
       flushQuote()
     }
 
-    for rawLine in markdown.components(separatedBy: .newlines) {
+    let visibleMarkdown = markdown.replacingOccurrences(
+      of: "<!--[\\s\\S]*?-->",
+      with: "",
+      options: .regularExpression
+    )
+
+    for rawLine in visibleMarkdown.components(separatedBy: .newlines) {
       let line = rawLine.trimmingCharacters(in: .whitespaces)
 
       if line.hasPrefix("```") {

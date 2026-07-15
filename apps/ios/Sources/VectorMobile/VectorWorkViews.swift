@@ -369,7 +369,8 @@ struct MobileWorkDetailScreen: View {
               }
               Text(detail.title).font(.title3.weight(.semibold))
               if let description = detail.description, !description.isEmpty {
-                Text(description).font(.subheadline).foregroundStyle(.secondary).textSelection(.enabled)
+                MarkdownDocumentView(markdown: description)
+                  .textSelection(.enabled)
               }
             }
             .padding(.vertical, 4)

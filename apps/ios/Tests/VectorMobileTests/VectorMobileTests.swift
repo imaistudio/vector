@@ -403,6 +403,25 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(blocks[3], .codeBlock("Text(\"Vector\")"))
   }
 
+  func testMarkdownParserHidesHTMLCommentMarkers() {
+    let blocks = VectorMarkdownParser.parse(
+      """
+      <!-- vector-github-pr-summary:start -->
+
+      ## GitHub PR Summary
+
+      Four pull requests are merged.
+
+      <!-- vector-github-pr-summary:end -->
+      """
+    )
+
+    XCTAssertEqual(blocks, [
+      .heading(level: 2, text: "GitHub PR Summary"),
+      .paragraph("Four pull requests are merged."),
+    ])
+  }
+
   func testIssueRowFallsBackToCreationTimeWhenUpdatedAtIsMissing() throws {
     let payload = """
       {

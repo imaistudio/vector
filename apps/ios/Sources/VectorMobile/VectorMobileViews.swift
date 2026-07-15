@@ -4129,7 +4129,7 @@ private struct DocumentSection<Content: View>: View {
   }
 }
 
-private struct MarkdownDocumentView: View {
+struct MarkdownDocumentView: View {
   let markdown: String
 
   private var blocks: [VectorMarkdownBlock] {
