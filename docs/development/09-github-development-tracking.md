@@ -565,12 +565,14 @@ Expected result:
 2. In the issue `Development` section, click `Suppress`.
 3. Re-deliver the webhook or wait for reconciliation.
 4. Manually link another artifact, click `Unlink`, and re-deliver its webhook.
+5. Link one artifact to two Work items, unlink it from only one, and re-deliver its webhook.
 
 Expected result:
 
 - both artifacts stay unlinked
 - neither comes back or creates unmatched Work/Requests on the next sync
 - manually linking either artifact again reverses its durable unlink decision
+- a partially unlinked artifact remains `linked` while its other attachment is active, and the suppression applies only to the Work/Task scope that was removed
 
 ### Test 7: Refresh and stale data
 

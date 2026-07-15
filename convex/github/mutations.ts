@@ -2694,6 +2694,22 @@ export const unlinkArtifact = mutation({
     }
 
     if (link.pullRequestId || link.githubIssueId) {
+      const siblingLinks = link.pullRequestId
+        ? await ctx.db
+            .query('githubArtifactLinks')
+            .withIndex('by_pr', q => q.eq('pullRequestId', link.pullRequestId))
+            .collect()
+        : await ctx.db
+            .query('githubArtifactLinks')
+            .withIndex('by_gh_issue', q =>
+              q.eq('githubIssueId', link.githubIssueId),
+            )
+            .collect();
+      const inboxStatus = siblingLinks.some(
+        sibling => sibling._id !== link._id && sibling.active,
+      )
+        ? 'linked'
+        : 'dismissed';
       const inbox = link.pullRequestId
         ? await ctx.db
             .query('githubDevelopmentInbox')
@@ -2709,7 +2725,7 @@ export const unlinkArtifact = mutation({
             .first();
       if (inbox) {
         await ctx.db.patch('githubDevelopmentInbox', inbox._id, {
-          status: 'dismissed',
+          status: inboxStatus,
           updatedAt: Date.now(),
         });
       } else {
@@ -2717,7 +2733,7 @@ export const unlinkArtifact = mutation({
           organizationId: issue.organizationId,
           pullRequestId: link.pullRequestId,
           githubIssueId: link.githubIssueId,
-          status: 'dismissed',
+          status: inboxStatus,
           createdAt: Date.now(),
           updatedAt: Date.now(),
         });
