@@ -131,6 +131,9 @@ export const list = query({
 
     const page = await fetchPage(args.paginationOpts);
     const filtered = await enrich(page.page);
+    // The database index already orders the complete result set by focusRank
+    // and meaningful activity. This local sort only normalizes legacy rows
+    // while the focus-rank backfill finishes; it does not establish page order.
     const statusRank: Record<string, number> = {
       blocked: 0,
       ready_for_review: 1,

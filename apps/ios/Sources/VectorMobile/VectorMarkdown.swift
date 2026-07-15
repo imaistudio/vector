@@ -19,6 +19,7 @@ public enum VectorMarkdownParser {
     var quoteLines: [String] = []
     var codeLines: [String] = []
     var isInsideCodeFence = false
+    var isInsideHTMLComment = false
 
     func flushParagraph() {
       guard !paragraphLines.isEmpty else { return }
@@ -51,13 +52,30 @@ public enum VectorMarkdownParser {
       flushQuote()
     }
 
-    let visibleMarkdown = markdown.replacingOccurrences(
-      of: "<!--[\\s\\S]*?-->",
-      with: "",
-      options: .regularExpression
-    )
+    for sourceLine in markdown.components(separatedBy: .newlines) {
+      var rawLine = sourceLine
+      if !isInsideCodeFence {
+        var visibleSegments: [String] = []
+        while !rawLine.isEmpty {
+          if isInsideHTMLComment {
+            guard let end = rawLine.range(of: "-->") else {
+              rawLine = ""
+              break
+            }
+            rawLine = String(rawLine[end.upperBound...])
+            isInsideHTMLComment = false
+          } else if let start = rawLine.range(of: "<!--") {
+            visibleSegments.append(String(rawLine[..<start.lowerBound]))
+            rawLine = String(rawLine[start.upperBound...])
+            isInsideHTMLComment = true
+          } else {
+            visibleSegments.append(rawLine)
+            rawLine = ""
+          }
+        }
+        rawLine = visibleSegments.joined()
+      }
 
-    for rawLine in visibleMarkdown.components(separatedBy: .newlines) {
       let line = rawLine.trimmingCharacters(in: .whitespaces)
 
       if line.hasPrefix("```") {

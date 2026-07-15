@@ -422,6 +422,21 @@ final class VectorMobileTests: XCTestCase {
     ])
   }
 
+  func testMarkdownParserPreservesHTMLInsideCodeFences() {
+    let blocks = VectorMarkdownParser.parse(
+      """
+      ```html
+      <!-- Keep this example -->
+      <section>Visible code</section>
+      ```
+      """
+    )
+
+    XCTAssertEqual(blocks, [
+      .codeBlock("<!-- Keep this example -->\n<section>Visible code</section>"),
+    ])
+  }
+
   func testIssueRowFallsBackToCreationTimeWhenUpdatedAtIsMissing() throws {
     let payload = """
       {
