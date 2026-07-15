@@ -6,6 +6,12 @@ import XCTest
 final class VectorMobileTests: XCTestCase {
   func testFunctionNamesUseNestedConvexPathSyntax() {
     XCTAssertEqual(VectorConvexFunctions.getOrganizations, "users:getOrganizations")
+    XCTAssertEqual(VectorConvexFunctions.listRequestsPage, "requests/queries:list")
+    XCTAssertEqual(VectorConvexFunctions.getRequestByKey, "requests/queries:getByKey")
+    XCTAssertEqual(VectorConvexFunctions.listWorkPage, "work/queries:list")
+    XCTAssertEqual(VectorConvexFunctions.getWorkByKey, "work/queries:getByKey")
+    XCTAssertEqual(VectorConvexFunctions.startWork, "work/mutations:start")
+    XCTAssertEqual(VectorConvexFunctions.setTaskStatus, "tasks/mutations:setStatus")
     XCTAssertEqual(VectorConvexFunctions.listIssuesPage, "issues/queries:listIssuesPage")
     XCTAssertEqual(VectorConvexFunctions.getIssueByKey, "issues/queries:getByKey")
     XCTAssertEqual(VectorConvexFunctions.createIssue, "issues/mutations:create")
@@ -26,6 +32,78 @@ final class VectorMobileTests: XCTestCase {
   func testNotificationCategoryRawValuesMatchBackend() {
     XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.rawValue, "team_status_changes")
     XCTAssertEqual(VectorNotificationCategory.teamStatusChanges.label, "Team status changes")
+    XCTAssertEqual(VectorNotificationCategory.requests.label, "Requests")
+    XCTAssertEqual(VectorNotificationCategory.handoffs.label, "Handoffs")
+    XCTAssertEqual(VectorNotificationCategory.reviews.label, "Reviews")
+    XCTAssertEqual(VectorNotificationCategory.attention.label, "Attention")
+    XCTAssertEqual(VectorNotificationCategory.reminders.label, "Reminders")
+    XCTAssertEqual(VectorNotificationCategory.github.label, "GitHub")
+  }
+
+  func testRequestAndWorkRowsDecodeNewConvexSurfaces() throws {
+    let requestPayload = #"{"_id":"request-1","key":"REQ-1","title":"Ship the flow","expectedOutput":"A reviewed release","status":"ready_for_review","linkedWorkCount":2,"recipientCount":1,"createdAt":1774560000000,"updatedAt":1774560300000}"#.data(using: .utf8)!
+    let workPayload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","taskProgress":{"done":3,"total":5},"activeExecutionCount":2,"openAttentionCount":1,"ownerStartedAt":1774560000000,"lastMeaningfulActivityAt":1774560300000,"_creationTime":1774550000000}"#.data(using: .utf8)!
+
+    let request = try JSONDecoder().decode(VectorRequestRow.self, from: requestPayload)
+    let work = try JSONDecoder().decode(VectorWorkRow.self, from: workPayload)
+
+    XCTAssertEqual(request.status, .readyForReview)
+    XCTAssertEqual(request.linkedWorkCount, 2)
+    XCTAssertEqual(work.workStatus, .active)
+    XCTAssertEqual(work.taskProgress.done, 3)
+    XCTAssertEqual(work.ownerStartedAt, 1_774_560_000_000)
+  }
+
+  func testUnknownWorkModelStatusesRemainDecodable() throws {
+    let decoder = JSONDecoder()
+
+    XCTAssertEqual(
+      try decoder.decode(VectorRequestStatus.self, from: Data(#""queued""#.utf8)),
+      .unknown
+    )
+    XCTAssertEqual(
+      try decoder.decode(VectorWorkStatus.self, from: Data(#""paused_by_policy""#.utf8)),
+      .unknown
+    )
+    XCTAssertEqual(
+      try decoder.decode(VectorTaskStatus.self, from: Data(#""skipped""#.utf8)),
+      .unknown
+    )
+    XCTAssertEqual(
+      try decoder.decode(VectorNotificationCategory.self, from: Data(#""new_backend_category""#.utf8)),
+      .unknown
+    )
+    XCTAssertFalse(VectorNotificationCategory.allCases.contains(.unknown))
+  }
+
+  func testWorkDetailDecodesExecutionHandoffAttentionAndWaitingTask() throws {
+    let payload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","linkedRequests":[],"tasks":[{"_id":"task-1","number":1,"title":"Wait for review","status":"waiting"}],"ownershipPeriods":[],"handoffs":[{"_id":"handoff-1","status":"pending","fromOwner":null,"toOwner":null,"isRecipient":true,"createdAt":1774560000000}],"attention":[{"_id":"attention-1","title":"Choose a rollout path","details":"Blue or green?","status":"open","createdAt":1774560100000}],"executions":[{"_id":"execution-1","provider":"codex","status":"waiting_for_input","latestSummary":"Needs a decision"}],"canEdit":true,"_creationTime":1774550000000}"#.data(using: .utf8)!
+
+    let work = try JSONDecoder().decode(VectorWorkDetail.self, from: payload)
+
+    XCTAssertEqual(work.tasks.first?.status, .waiting)
+    XCTAssertNil(work.handoffs.first?.summary)
+    XCTAssertEqual(work.handoffs.first?.initiatedAt, 1_774_560_000_000)
+    XCTAssertEqual(work.attention.first?.prompt, "Choose a rollout path")
+    XCTAssertEqual(work.attention.first?.requestedAt, 1_774_560_100_000)
+    XCTAssertNil(work.executions.first?.title)
+  }
+
+  func testNotificationDeepLinksRecognizeRequestAndWorkRoutes() throws {
+    let requestPayload = #"{"_id":"notification-1","category":"reviews","eventType":"request_ready_for_review","title":"Ready","body":"Review it","href":"/vector/requests/REQ-8","requestId":"request-8","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+    let workPayload = #"{"_id":"notification-2","category":"attention","eventType":"work_blocked","title":"Blocked","body":"Needs input","href":"/vector/work/VEC-9","issueId":"work-9","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+    let legacyPayload = #"{"_id":"notification-3","category":"attention","eventType":"work_blocked","title":"Legacy","body":"Open safely","href":"/vector/issues/VEC-10","issueId":"legacy-10","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+
+    let request = try JSONDecoder().decode(VectorInboxNotification.self, from: requestPayload)
+    let work = try JSONDecoder().decode(VectorInboxNotification.self, from: workPayload)
+    let legacy = try JSONDecoder().decode(VectorInboxNotification.self, from: legacyPayload)
+
+    XCTAssertEqual(request.requestKey, "REQ-8")
+    XCTAssertEqual(request.requestId, "request-8")
+    XCTAssertEqual(work.workKey, "VEC-9")
+    XCTAssertEqual(work.issueId, "work-9")
+    XCTAssertNil(legacy.workKey)
+    XCTAssertEqual(legacy.issueKey, "VEC-10")
   }
 
   func testAuthNormalizesAppURLLikeCLI() throws {
@@ -43,6 +121,55 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(cookies.count, 2)
     XCTAssertTrue(cookies[0].contains("Expires=Wed, 24 Jun 2026"))
     XCTAssertTrue(cookies[1].hasPrefix("token=def"))
+  }
+
+  func testAuthProviderPrefersFreshSessionOverStaleStoredSession() async throws {
+    let appURL = URL(string: "https://vector.example.com")!
+    let convexURL = URL(string: "https://example.convex.cloud")!
+    let stale = VectorStoredSession(
+      appURL: appURL,
+      convexURL: convexURL,
+      cookies: ["session": "stale"]
+    )
+    let fresh = VectorStoredSession(
+      appURL: appURL,
+      convexURL: convexURL,
+      cookies: ["session": "fresh"]
+    )
+    let store = InMemorySessionStore(session: stale)
+    let provider = VectorBetterAuthProvider(
+      session: fresh,
+      authClient: VectorAuthClient(transport: FreshSessionAuthTransport()),
+      sessionStore: store
+    )
+
+    let result = try await provider.loginFromCache { _ in }
+
+    XCTAssertEqual(result.token, "convex-token")
+    XCTAssertEqual(store.session?.cookies["session"], "fresh")
+  }
+
+  @MainActor
+  func testRestoredSessionFallsBackWhenStoredWorkspaceWasRemoved() throws {
+    let organizations = [
+      VectorOrganization(id: "org-1", name: "Current", slug: "current"),
+      VectorOrganization(id: "org-2", name: "Second", slug: "second"),
+    ]
+
+    let restored = try VectorMobileSessionController.selectOrganization(
+      from: organizations,
+      requestedOrgSlug: "removed",
+      allowFallback: true
+    )
+
+    XCTAssertEqual(restored.slug, "current")
+    XCTAssertThrowsError(
+      try VectorMobileSessionController.selectOrganization(
+        from: organizations,
+        requestedOrgSlug: "removed",
+        allowFallback: false
+      )
+    )
   }
 
   func testAppConfigFallsBackToLocalConvexForLocalDevelopment() async throws {
@@ -276,6 +403,40 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(blocks[3], .codeBlock("Text(\"Vector\")"))
   }
 
+  func testMarkdownParserHidesHTMLCommentMarkers() {
+    let blocks = VectorMarkdownParser.parse(
+      """
+      <!-- vector-github-pr-summary:start -->
+
+      ## GitHub PR Summary
+
+      Four pull requests are merged.
+
+      <!-- vector-github-pr-summary:end -->
+      """
+    )
+
+    XCTAssertEqual(blocks, [
+      .heading(level: 2, text: "GitHub PR Summary"),
+      .paragraph("Four pull requests are merged."),
+    ])
+  }
+
+  func testMarkdownParserPreservesHTMLInsideCodeFences() {
+    let blocks = VectorMarkdownParser.parse(
+      """
+      ```html
+      <!-- Keep this example -->
+      <section>Visible code</section>
+      ```
+      """
+    )
+
+    XCTAssertEqual(blocks, [
+      .codeBlock("<!-- Keep this example -->\n<section>Visible code</section>"),
+    ])
+  }
+
   func testIssueRowFallsBackToCreationTimeWhenUpdatedAtIsMissing() throws {
     let payload = """
       {
@@ -494,6 +655,37 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testMissingRequestAndWorkDetailsStopShowingSkeletons() async {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+    let request = VectorRequestRow(
+      id: "request-missing",
+      key: "REQ-404",
+      title: "Missing request",
+      expectedOutput: "Nothing",
+      status: .new,
+      createdAt: 1,
+      updatedAt: 1
+    )
+    let work = VectorWorkRow(
+      id: "work-missing",
+      key: "WORK-404",
+      title: "Missing work",
+      workStatus: .planned,
+      creationTime: 1
+    )
+
+    viewModel.loadRequest(request)
+    viewModel.loadWork(work)
+
+    await waitUntil {
+      viewModel.selectedRequestError != nil && viewModel.selectedWorkError != nil
+    }
+    XCTAssertNil(viewModel.selectedRequest)
+    XCTAssertNil(viewModel.selectedWork)
+  }
+
+  @MainActor
   func testProfilePresenceIgnoresStaleSubscriptionWhileMutationIsPending() async {
     let repository = CountingVectorRepository()
     let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
@@ -655,6 +847,43 @@ final class VectorMobileTests: XCTestCase {
 private struct FailingAuthTransport: VectorAuthTransport {
   func data(for request: URLRequest) async throws -> (Data, URLResponse) {
     throw URLError(.notConnectedToInternet)
+  }
+}
+
+private struct FreshSessionAuthTransport: VectorAuthTransport {
+  func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+    let isFresh = request.value(forHTTPHeaderField: "Cookie")?.contains("session=fresh") == true
+    let statusCode = isFresh ? 200 : 401
+    let data = isFresh
+      ? Data(#"{"token":"convex-token"}"#.utf8)
+      : Data(#"{"message":"Unauthorized"}"#.utf8)
+    let response = HTTPURLResponse(
+      url: request.url!,
+      statusCode: statusCode,
+      httpVersion: nil,
+      headerFields: nil
+    )!
+    return (data, response)
+  }
+}
+
+private final class InMemorySessionStore: VectorSessionStore, @unchecked Sendable {
+  var session: VectorStoredSession?
+
+  init(session: VectorStoredSession?) {
+    self.session = session
+  }
+
+  func load() throws -> VectorStoredSession? {
+    session
+  }
+
+  func save(_ session: VectorStoredSession) throws {
+    self.session = session
+  }
+
+  func clear() throws {
+    session = nil
   }
 }
 

@@ -38,7 +38,7 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
       <div className='flex min-h-[60vh] flex-col items-center justify-center gap-2'>
         <Lock className='text-muted-foreground size-10 opacity-30' />
         <p className='text-muted-foreground text-sm'>
-          This issue is not available or is private.
+          This Work is not available or is private.
         </p>
       </div>
     );
@@ -150,11 +150,11 @@ export function PublicIssuePage({ orgSlug, issueKey }: PublicIssuePageProps) {
         </div>
       )}
 
-      {/* Sub-issues */}
+      {/* Legacy Tasks */}
       {issue.subIssues.length > 0 && (
         <div className='space-y-2'>
           <h2 className='text-muted-foreground text-xs font-medium tracking-wider uppercase'>
-            Sub-issues
+            Tasks
           </h2>
           <div className='divide-border w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-md border'>
             {issue.subIssues.map(child => (

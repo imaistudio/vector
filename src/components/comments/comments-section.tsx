@@ -676,6 +676,52 @@ function renderActivityDescription(item: ActivityFeedItem) {
       return `created sub-issue ${details.toLabel ?? item.target.key ?? ''}`;
     case 'issue_comment_added':
       return null;
+    case 'request_created':
+      return 'created the Request';
+    case 'request_routed':
+      return 'updated Request routing';
+    case 'request_claimed':
+      return 'took responsibility for the Request';
+    case 'request_linked_to_work':
+      return 'linked the Request to Work';
+    case 'request_ready_for_review':
+      return 'raised the Request for review';
+    case 'request_changes_requested':
+      return 'requested changes';
+    case 'request_completed':
+      return 'accepted and completed the Request';
+    case 'work_created':
+      return 'created the Work';
+    case 'work_started':
+      return 'started the Work';
+    case 'work_ready_for_review':
+      return 'raised the Work for review';
+    case 'work_completed':
+      return 'completed the Work';
+    case 'work_owner_changed':
+      return `transferred accountability to ${details.toLabel ?? 'a new owner'}`;
+    case 'work_contributor_added':
+      return `added ${details.toLabel ?? 'a contributor'}`;
+    case 'work_contributor_removed':
+      return `removed ${details.fromLabel ?? 'a contributor'}`;
+    case 'work_handoff_proposed':
+      return 'proposed a Work handoff';
+    case 'work_handoff_accepted':
+      return 'accepted the Work handoff';
+    case 'work_handoff_declined':
+      return 'declined the Work handoff';
+    case 'work_attention_requested':
+      return 'requested human attention';
+    case 'work_attention_resolved':
+      return 'resolved the attention request';
+    case 'task_created':
+      return `created Task ${details.toLabel ?? ''}`.trim();
+    case 'task_updated':
+      return 'updated a Task';
+    case 'task_status_changed':
+      return `moved a Task from ${details.fromLabel ?? '—'} to ${details.toLabel ?? '—'}`;
+    case 'task_assignee_changed':
+      return `assigned a Task to ${details.toLabel ?? 'nobody'}`;
     default:
       return `updated ${item.target.key ?? 'issue'}`;
   }
@@ -869,10 +915,7 @@ export function DocumentCommentsSection({
 // ─── Shared Feed Renderer ───────────────────────────────────────────────────
 
 type ActivityStatus =
-  | 'LoadingFirstPage'
-  | 'LoadingMore'
-  | 'CanLoadMore'
-  | 'Exhausted';
+  'LoadingFirstPage' | 'LoadingMore' | 'CanLoadMore' | 'Exhausted';
 
 function CommentsAndActivityFeed({
   comments,

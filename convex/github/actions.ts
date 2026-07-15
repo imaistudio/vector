@@ -206,17 +206,27 @@ async function resolveAutoLinkIssueKeys(
   );
   const autoLinkEnabled =
     integrationResult.integration?.autoLinkEnabled ?? true;
+  const keyLinkEnabled =
+    integrationResult.integration?.keyLinkEnabled ?? autoLinkEnabled;
+  const aiMatchEnabled =
+    integrationResult.integration?.aiMatchEnabled ?? autoLinkEnabled;
 
   if (!autoLinkEnabled) {
-    return [];
+    return { issueKeys: [], resolutionAvailable: false } as const;
   }
 
-  if (args.initialIssueKeys.length > 0) {
-    return args.initialIssueKeys;
+  if (keyLinkEnabled && args.initialIssueKeys.length > 0) {
+    return {
+      issueKeys: args.initialIssueKeys,
+      resolutionAvailable: true,
+    } as const;
   }
+
+  if (!aiMatchEnabled)
+    return { issueKeys: [], resolutionAvailable: true } as const;
 
   if (!process.env.OPENROUTER_API_KEY?.trim()) {
-    return [];
+    return { issueKeys: [], resolutionAvailable: false } as const;
   }
 
   // Clean branch name: "feature/add-user-auth" → "add user auth"
@@ -285,12 +295,12 @@ async function resolveAutoLinkIssueKeys(
   const candidates = Array.from(candidateMap.values()).slice(0, 12);
 
   if (candidates.length === 0) {
-    return [];
+    return { issueKeys: [], resolutionAvailable: true } as const;
   }
 
   const assistantModel = await resolveConfiguredAssistantModel(ctx);
   if (!assistantModel) {
-    return [];
+    return { issueKeys: [], resolutionAvailable: false } as const;
   }
 
   try {
@@ -360,14 +370,15 @@ async function resolveAutoLinkIssueKeys(
         new Set(result.object.issueKeys.map(normalizeIssueKey)),
       ).filter(issueKey => candidateKeys.has(issueKey));
       if (selectedKeys.length > 0) {
-        return selectedKeys;
+        return { issueKeys: selectedKeys, resolutionAvailable: true } as const;
       }
     }
   } catch (error) {
     console.error('[github.autoLink] model fallback failed', error);
+    return { issueKeys: [], resolutionAvailable: false } as const;
   }
 
-  return [];
+  return { issueKeys: [], resolutionAvailable: true } as const;
 }
 
 function buildFallbackPullRequestSummaryMarkdown(args: {
@@ -760,6 +771,7 @@ async function linkArtifactToIssueRecord(
       organizationId: args.organizationId,
       repository,
       payload: artifactResult.payload,
+      processUnmatched: false,
     });
     if (!githubIssueId) {
       throw new ConvexError('INVALID_GITHUB_ISSUE');
@@ -917,7 +929,7 @@ async function persistPullRequestPayload(
     args.payload.body,
     args.payload.head?.ref,
   );
-  const resolvedIssueKeys = await resolveAutoLinkIssueKeys(ctx, {
+  const autoLinkResolution = await resolveAutoLinkIssueKeys(ctx, {
     organizationId: args.organizationId,
     artifactType: 'pull_request',
     repoFullName: args.repository.fullName,
@@ -932,7 +944,8 @@ async function persistPullRequestPayload(
     pullRequestId,
     repoFullName: args.repository.fullName,
     number: args.payload.number,
-    issueKeys: resolvedIssueKeys,
+    issueKeys: autoLinkResolution.issueKeys,
+    preserveExistingWhenEmpty: !autoLinkResolution.resolutionAvailable,
   });
 
   if (
@@ -960,6 +973,7 @@ async function persistGitHubIssuePayload(
     organizationId: Id<'organizations'>;
     repository: any;
     payload: any;
+    processUnmatched?: boolean;
   },
 ) {
   if (args.payload.pull_request) {
@@ -1009,7 +1023,7 @@ async function persistGitHubIssuePayload(
     args.payload.title,
     args.payload.body,
   );
-  const resolvedIssueKeys = await resolveAutoLinkIssueKeys(ctx, {
+  const autoLinkResolution = await resolveAutoLinkIssueKeys(ctx, {
     organizationId: args.organizationId,
     artifactType: 'issue',
     repoFullName: args.repository.fullName,
@@ -1023,8 +1037,19 @@ async function persistGitHubIssuePayload(
     githubIssueId,
     repoFullName: args.repository.fullName,
     number: args.payload.number,
-    issueKeys: resolvedIssueKeys,
+    issueKeys: autoLinkResolution.issueKeys,
+    preserveExistingWhenEmpty: !autoLinkResolution.resolutionAvailable,
   });
+
+  if (args.processUnmatched !== false) {
+    await ctx.runMutation(
+      internal.github.mutations.triageUnmatchedGitHubIssue,
+      {
+        organizationId: args.organizationId,
+        githubIssueId,
+      },
+    );
+  }
 
   return githubIssueId;
 }
@@ -1448,15 +1473,13 @@ export const processWebhook = internalAction({
           repository: ensuredRepository,
           payload: payload.pull_request,
         });
-        if (payload.action === 'opened') {
-          await ctx.runMutation(
-            internal.github.mutations.createIssueFromPullRequestIfNeeded,
-            {
-              organizationId: integration.organizationId,
-              pullRequestId,
-            },
-          );
-        }
+        await ctx.runMutation(
+          internal.github.mutations.createIssueFromPullRequestIfNeeded,
+          {
+            organizationId: integration.organizationId,
+            pullRequestId,
+          },
+        );
         return { success: true } as const;
       }
 
@@ -1643,15 +1666,13 @@ export const processWebhook = internalAction({
         repository: ensuredRepository,
         payload: payload.pull_request,
       });
-      if (payload.action === 'opened') {
-        await ctx.runMutation(
-          internal.github.mutations.createIssueFromPullRequestIfNeeded,
-          {
-            organizationId,
-            pullRequestId,
-          },
-        );
-      }
+      await ctx.runMutation(
+        internal.github.mutations.createIssueFromPullRequestIfNeeded,
+        {
+          organizationId,
+          pullRequestId,
+        },
+      );
       return { success: true } as const;
     }
 
@@ -1748,11 +1769,18 @@ export const reconcileRecentArtifacts = internalAction({
               ]);
 
               for (const pr of pullRequests) {
-                await persistPullRequestPayload(ctx, {
+                const pullRequestId = await persistPullRequestPayload(ctx, {
                   organizationId: repository.organizationId,
                   repository,
                   payload: pr,
                 });
+                await ctx.runMutation(
+                  internal.github.mutations.createIssueFromPullRequestIfNeeded,
+                  {
+                    organizationId: repository.organizationId,
+                    pullRequestId,
+                  },
+                );
               }
 
               for (const ghIssue of githubIssues) {

@@ -75,9 +75,8 @@ export function selectWorkflowTypeFromPullRequests(
   if (states.some(state => state === 'merged')) {
     return 'done';
   }
-  if (states.some(state => state === 'closed')) {
-    return 'canceled';
-  }
+  // A closed-but-unmerged PR is ambiguous (superseded, split, or abandoned),
+  // so it is evidence needing attention rather than terminal Work evidence.
   return null;
 }
 

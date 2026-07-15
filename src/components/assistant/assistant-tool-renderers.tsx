@@ -335,7 +335,7 @@ function entityIcon(display: string) {
 function entityHref(display: string, orgSlug: string, item: DisplayEntity) {
   switch (display) {
     case 'issues':
-      return `/${orgSlug}/issues/${item.key}`;
+      return `/${orgSlug}/work/${item.key}`;
     case 'projects':
       return `/${orgSlug}/projects/${item.key}`;
     case 'teams':

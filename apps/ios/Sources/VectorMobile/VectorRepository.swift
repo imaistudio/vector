@@ -10,6 +10,20 @@ private struct VectorAddCommentResponse: Decodable {
 
 public enum VectorConvexFunctions {
   public static let getOrganizations = "users:getOrganizations"
+  public static let listRequestsPage = "requests/queries:list"
+  public static let getRequestByKey = "requests/queries:getByKey"
+  public static let createRequest = "requests/mutations:create"
+  public static let claimRequest = "requests/mutations:claim"
+  public static let requestChanges = "requests/mutations:requestChanges"
+  public static let completeRequest = "requests/mutations:complete"
+  public static let listWorkPage = "work/queries:list"
+  public static let getWorkByKey = "work/queries:getByKey"
+  public static let startWork = "work/mutations:start"
+  public static let setWorkStatus = "work/mutations:setStatus"
+  public static let readyWorkForReview = "work/mutations:readyForReview"
+  public static let completeWork = "work/mutations:complete"
+  public static let respondToWorkHandoff = "work/mutations:respondToHandoff"
+  public static let setTaskStatus = "tasks/mutations:setStatus"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
   public static let getIssueByKey = "issues/queries:getByKey"
   public static let listComments = "issues/queries:listComments"
@@ -140,6 +154,10 @@ public enum VectorIssueLayoutMode: String, CaseIterable, Identifiable {
 
 @MainActor
 public protocol VectorMobileRepository {
+  func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error>
+  func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error>
+  func workPage(orgSlug: String, scope: VectorWorkScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error>
+  func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error>
   func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error>
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
   func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
@@ -161,6 +179,16 @@ public protocol VectorMobileRepository {
   func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws
   func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult
+  func claimRequest(requestId: VectorID) async throws
+  func requestChanges(requestId: VectorID, note: String) async throws
+  func completeRequest(requestId: VectorID) async throws
+  func startWork(workId: VectorID) async throws
+  func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws
+  func readyWorkForReview(workId: VectorID) async throws
+  func completeWork(workId: VectorID) async throws
+  func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws
+  func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws
   func updateTitle(issueId: VectorID, title: String) async throws
   func updateDescription(issueId: VectorID, description: String?) async throws
   func updateDocument(documentId: VectorID, title: String, content: String?) async throws
@@ -183,6 +211,62 @@ public protocol VectorMobileRepository {
   ) async throws -> VectorCreateIssueResult
 }
 
+public extension VectorMobileRepository {
+  func requestsPage(
+    orgSlug: String,
+    scope: VectorRequestScope,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
+    Just(VectorPaginatedPage<VectorRequestRow>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error> {
+    Just<VectorRequestDetail?>(nil)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func workPage(
+    orgSlug: String,
+    scope: VectorWorkScope,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error> {
+    Just(VectorPaginatedPage<VectorWorkRow>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error> {
+    Just<VectorWorkDetail?>(nil)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func createRequest(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    expectedOutput: String,
+    reviewGuidance: String?
+  ) async throws -> VectorCreateRequestResult {
+    throw VectorMobileError.validation("Request creation is unavailable in this repository.")
+  }
+
+  func claimRequest(requestId: VectorID) async throws {}
+  func requestChanges(requestId: VectorID, note: String) async throws {}
+  func completeRequest(requestId: VectorID) async throws {}
+  func startWork(workId: VectorID) async throws {}
+  func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws {}
+  func readyWorkForReview(workId: VectorID) async throws {}
+  func completeWork(workId: VectorID) async throws {}
+  func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws {}
+  func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {}
+}
+
 @MainActor
 public final class ConvexVectorRepository: VectorMobileRepository {
   // ConvexClient is owned by the app process and the SDK exposes async/thread-safe entry points.
@@ -194,6 +278,62 @@ public final class ConvexVectorRepository: VectorMobileRepository {
 
   public convenience init(configuration: VectorMobileConfiguration) {
     self.init(client: ConvexClient(deploymentUrl: configuration.convexDeploymentURL.absoluteString))
+  }
+
+  public func requestsPage(
+    orgSlug: String,
+    scope: VectorRequestScope = .inbox,
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": scope.rawValue,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+    return client
+      .subscribe(to: VectorConvexFunctions.listRequestsPage, with: args, yielding: VectorPaginatedPage<VectorRequestRow>.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getRequestByKey,
+        with: ["orgSlug": orgSlug, "requestKey": key],
+        yielding: VectorRequestDetail?.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func workPage(
+    orgSlug: String,
+    scope: VectorWorkScope = .active,
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": scope.rawValue,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+    return client
+      .subscribe(to: VectorConvexFunctions.listWorkPage, with: args, yielding: VectorPaginatedPage<VectorWorkRow>.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getWorkByKey,
+        with: ["orgSlug": orgSlug, "workKey": key],
+        yielding: VectorWorkDetail?.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
   }
 
   public func issuesPage(
@@ -447,6 +587,90 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     )
   }
 
+  public func createRequest(
+    orgSlug: String,
+    title: String,
+    description: String?,
+    expectedOutput: String,
+    reviewGuidance: String?
+  ) async throws -> VectorCreateRequestResult {
+    var data: [String: ConvexEncodable?] = [
+      "title": title,
+      "expectedOutput": expectedOutput,
+      "source": "workspace",
+      "visibility": "organization",
+    ]
+    if let description { data["description"] = description }
+    if let reviewGuidance { data["reviewGuidance"] = reviewGuidance }
+    return try await client.mutation(
+      VectorConvexFunctions.createRequest,
+      with: ["orgSlug": orgSlug, "data": data]
+    )
+  }
+
+  public func claimRequest(requestId: VectorID) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.claimRequest,
+      with: ["requestId": requestId]
+    )
+  }
+
+  public func requestChanges(requestId: VectorID, note: String) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.requestChanges,
+      with: ["requestId": requestId, "note": note]
+    )
+  }
+
+  public func completeRequest(requestId: VectorID) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.completeRequest,
+      with: ["requestId": requestId]
+    )
+  }
+
+  public func startWork(workId: VectorID) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.startWork,
+      with: ["workId": workId]
+    )
+  }
+
+  public func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.setWorkStatus,
+      with: ["workId": workId, "status": status.rawValue]
+    )
+  }
+
+  public func readyWorkForReview(workId: VectorID) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.readyWorkForReview,
+      with: ["workId": workId]
+    )
+  }
+
+  public func completeWork(workId: VectorID) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.completeWork,
+      with: ["workId": workId]
+    )
+  }
+
+  public func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.respondToWorkHandoff,
+      with: ["handoffId": handoffId, "accept": accept]
+    )
+  }
+
+  public func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {
+    let _: VectorMutationResponse = try await client.mutation(
+      VectorConvexFunctions.setTaskStatus,
+      with: ["taskId": taskId, "status": status.rawValue]
+    )
+  }
+
   public func changeWorkflowState(issueId: VectorID, stateId: VectorID) async throws {
     let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.changeWorkflowState,
@@ -584,6 +808,143 @@ public final class ConvexVectorRepository: VectorMobileRepository {
 public final class MockVectorRepository: VectorMobileRepository {
   public init() {}
 
+  public func requestsPage(
+    orgSlug: String,
+    scope: VectorRequestScope,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
+    let now = Date().timeIntervalSince1970 * 1000
+    let requests = [
+      VectorRequestRow(
+        id: "request-1",
+        key: "REQ-18",
+        title: "Make agent handoffs legible",
+        expectedOutput: "A reviewed handoff flow with preserved context and ownership history.",
+        status: .readyForReview,
+        description: "The requester should be able to see what changed and who owns the next step.",
+        owner: VectorUser(id: "user-1", name: "Raj"),
+        requester: VectorUser(id: "user-2", name: "Maya"),
+        linkedWorkCount: 2,
+        recipientCount: 1,
+        createdAt: now - 172_800_000,
+        updatedAt: now - 3_600_000
+      ),
+      VectorRequestRow(
+        id: "request-2",
+        key: "REQ-19",
+        title: "Tighten mobile notification controls",
+        expectedOutput: "Push preferences and actionable review notifications on iOS.",
+        status: .routed,
+        owner: VectorUser(id: "user-1", name: "Raj"),
+        linkedWorkCount: 0,
+        recipientCount: 1,
+        createdAt: now - 86_400_000,
+        updatedAt: now - 7_200_000
+      ),
+    ]
+    return mockPage(requests, pageSize: pageSize, cursor: cursor)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error> {
+    let now = Date().timeIntervalSince1970 * 1000
+    let detail = VectorRequestDetail(
+      id: key == "REQ-19" ? "request-2" : "request-1",
+      key: key,
+      title: key == "REQ-19" ? "Tighten mobile notification controls" : "Make agent handoffs legible",
+      expectedOutput: key == "REQ-19" ? "Push preferences and actionable review notifications on iOS." : "A reviewed handoff flow with preserved context and ownership history.",
+      status: key == "REQ-19" ? .routed : .readyForReview,
+      description: "Keep the surface compact, but make the next human decision unmistakable.",
+      reviewGuidance: "Verify the previous owner’s context and the current owner’s start boundary.",
+      owner: VectorUser(id: "user-1", name: "Raj"),
+      requester: VectorUser(id: "user-2", name: "Maya"),
+      linkedWork: [VectorLinkedWork(id: "work-1", key: "VEC-42", title: "Request → Work mobile companion", workStatus: .active, relation: "fulfills")],
+      createdAt: now - 172_800_000,
+      updatedAt: now - 3_600_000
+    )
+    return Just<VectorRequestDetail?>(detail)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func workPage(
+    orgSlug: String,
+    scope: VectorWorkScope,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error> {
+    let now = Date().timeIntervalSince1970 * 1000
+    let work = [
+      VectorWorkRow(
+        id: "work-1",
+        key: "VEC-42",
+        title: "Request → Work mobile companion",
+        workStatus: .active,
+        owner: VectorUser(id: "user-1", name: "Raj"),
+        ownerId: "user-1",
+        effort: "l",
+        taskProgress: .init(done: 3, total: 7),
+        activeExecutionCount: 2,
+        ownerStartedAt: now - 10_800_000,
+        lastMeaningfulActivityAt: now - 300_000,
+        creationTime: now - 259_200_000
+      ),
+      VectorWorkRow(
+        id: "work-2",
+        key: "VEC-37",
+        title: "Review notification delivery policy",
+        workStatus: .blocked,
+        owner: VectorUser(id: "user-1", name: "Raj"),
+        ownerId: "user-1",
+        effort: "m",
+        taskProgress: .init(done: 1, total: 4),
+        openAttentionCount: 1,
+        lastMeaningfulActivityAt: now - 86_400_000,
+        creationTime: now - 604_800_000
+      ),
+    ]
+    return mockPage(work, pageSize: pageSize, cursor: cursor)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  public func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error> {
+    let now = Date().timeIntervalSince1970 * 1000
+    let owner = VectorUser(id: "user-1", name: "Raj")
+    let detail = VectorWorkDetail(
+      id: key == "VEC-37" ? "work-2" : "work-1",
+      key: key,
+      title: key == "VEC-37" ? "Review notification delivery policy" : "Request → Work mobile companion",
+      workStatus: key == "VEC-37" ? .blocked : .active,
+      description: "Track the focused execution without losing the Requests, Tasks, agent progress, or ownership history around it.",
+      owner: owner,
+      ownerId: owner.id,
+      effort: key == "VEC-37" ? "m" : "l",
+      linkedRequests: [VectorLinkedRequest(id: "request-1", key: "REQ-18", title: "Make agent handoffs legible", expectedOutput: "A reviewed handoff flow with preserved context.", status: .readyForReview, relation: "fulfills")],
+      tasks: [
+        VectorWorkTask(id: "task-1", number: 1, title: "Model explicit owner start", status: .done, assignee: owner),
+        VectorWorkTask(id: "task-2", number: 2, title: "Validate notification routing", status: .inProgress, assignee: owner),
+        VectorWorkTask(id: "task-3", number: 3, title: "Exercise Simulator flow", status: .todo, assignee: owner),
+      ],
+      ownershipPeriods: [
+        VectorWorkOwnershipPeriod(id: "ownership-1", owner: owner, summary: "Accepted after the routing pass.", startedAt: now - 14_400_000, executionStartedAt: now - 10_800_000),
+        VectorWorkOwnershipPeriod(id: "ownership-0", owner: VectorUser(id: "user-2", name: "Maya"), summary: "Established the first mobile direction.", startedAt: now - 259_200_000, executionStartedAt: now - 250_000_000, endedAt: now - 14_400_000),
+      ],
+      attention: key == "VEC-37" ? [VectorWorkAttention(id: "attention-1", prompt: "Choose whether reminders should escalate after two misses.", details: "A human decision is required before continuing.", status: "open", requestedAt: now - 3_600_000)] : [],
+      executions: [
+        VectorWorkExecution(id: "execution-1", title: "Building native Work flow", provider: "codex", status: "active", latestSummary: "Compiling and checking the iOS surface in Simulator."),
+        VectorWorkExecution(id: "execution-2", title: "Reviewing notification policy", provider: "claude_code", status: "waiting_for_input", latestSummary: "Waiting for the reminder escalation decision."),
+      ],
+      ownerStartedAt: now - 10_800_000,
+      creationTime: now - 604_800_000
+    )
+    return Just<VectorWorkDetail?>(detail)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   public func issuesPage(
     orgSlug: String,
     scope: VectorIssueScope,
@@ -707,6 +1068,12 @@ public final class MockVectorRepository: VectorMobileRepository {
       VectorNotificationPreference(category: .comments, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
       VectorNotificationPreference(category: .workSessions, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
       VectorNotificationPreference(category: .teamStatusChanges, inAppEnabled: true, emailEnabled: false, pushEnabled: false),
+      VectorNotificationPreference(category: .requests, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
+      VectorNotificationPreference(category: .handoffs, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
+      VectorNotificationPreference(category: .reviews, inAppEnabled: true, emailEnabled: true, pushEnabled: true),
+      VectorNotificationPreference(category: .attention, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
+      VectorNotificationPreference(category: .reminders, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
+      VectorNotificationPreference(category: .github, inAppEnabled: true, emailEnabled: false, pushEnabled: true),
     ])
     .setFailureType(to: Error.self)
     .eraseToAnyPublisher()
@@ -729,6 +1096,28 @@ public final class MockVectorRepository: VectorMobileRepository {
   public func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
 
   public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
+
+  public func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult {
+    VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")
+  }
+
+  public func claimRequest(requestId: VectorID) async throws {}
+
+  public func requestChanges(requestId: VectorID, note: String) async throws {}
+
+  public func completeRequest(requestId: VectorID) async throws {}
+
+  public func startWork(workId: VectorID) async throws {}
+
+  public func setWorkStatus(workId: VectorID, status: VectorWorkStatus) async throws {}
+
+  public func readyWorkForReview(workId: VectorID) async throws {}
+
+  public func completeWork(workId: VectorID) async throws {}
+
+  public func respondToWorkHandoff(handoffId: VectorID, accept: Bool) async throws {}
+
+  public func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {}
 
   public func updateTitle(issueId: VectorID, title: String) async throws {}
 

@@ -37,6 +37,27 @@ import {
 } from './_shared/agentBridge';
 import { PERMISSION_VALUES, SYSTEM_ROLE_KEYS } from './_shared/permissions';
 import {
+  actorOriginKindValidator,
+  agentTaskCreationPolicyValidator,
+  notificationActionStateValidator,
+  reminderCadenceValidator,
+  reminderRecipientPolicyValidator,
+  reminderTargetTypeValidator,
+  requestRecipientRoleValidator,
+  requestSourceValidator,
+  requestStatusValidator,
+  requestWorkRelationValidator,
+  taskCreationSourceValidator,
+  taskStatusValidator,
+  workAttentionStatusValidator,
+  workCompletionPolicyValidator,
+  workCreationSourceValidator,
+  workEffortValidator,
+  workHandoffStatusValidator,
+  workKindValidator,
+  workStatusValidator,
+} from './_shared/work';
+import {
   notificationCategoryValidator,
   notificationChannelValidator,
   notificationDeliveryStatusValidator,
@@ -208,6 +229,24 @@ export default defineSchema({
     publicIssueProjectId: v.optional(v.id('projects')),
     publicIssueViewId: v.optional(v.id('views')),
   }).index('by_slug', ['slug']),
+
+  organizationSequences: defineTable({
+    organizationId: v.id('organizations'),
+    namespace: v.union(v.literal('request')),
+    value: v.number(),
+    updatedAt: v.number(),
+  }).index('by_org_namespace', ['organizationId', 'namespace']),
+
+  // Fixed-window quotas for the anonymous Request intake endpoint. Keeping
+  // these counters in Convex makes the public mutation safe even when it is
+  // called directly instead of through the web form.
+  publicRequestRateLimits: defineTable({
+    organizationId: v.id('organizations'),
+    scope: v.string(),
+    windowStartedAt: v.number(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index('by_org_scope', ['organizationId', 'scope']),
 
   // Organization members (equivalent to Drizzle 'member' table)
   members: defineTable({
@@ -566,7 +605,33 @@ export default defineSchema({
     createdBy: v.optional(v.id('users')), // Made optional for backwards compatibility with existing data
     parentIssueId: v.optional(v.id('issues')),
     updatedAt: v.optional(v.number()),
+    lastMeaningfulActivityAt: v.optional(v.number()),
     lastActivityEventType: v.optional(v.string()),
+    // Product-facing Work model. Kept optional during the issue -> Work
+    // compatibility migration. Legacy child issues become Task aliases after
+    // their data is copied into the dedicated tasks table.
+    kind: v.optional(workKindValidator),
+    workStatus: v.optional(workStatusValidator),
+    focusRank: v.optional(v.number()),
+    // Maintained by Task mutations so paginated Work lists can render
+    // progress without reading every Task for every row.
+    taskTotal: v.optional(v.number()),
+    taskDone: v.optional(v.number()),
+    ownerId: v.optional(v.id('users')),
+    effort: v.optional(workEffortValidator),
+    completionPolicy: v.optional(workCompletionPolicyValidator),
+    agentTaskCreationPolicy: v.optional(agentTaskCreationPolicyValidator),
+    startedAt: v.optional(v.number()),
+    startedBy: v.optional(v.id('users')),
+    // Overall Work start is preserved above. These fields are reset at every
+    // accepted handoff so each owner must intentionally begin their own turn.
+    ownerStartedAt: v.optional(v.number()),
+    ownerStartedBy: v.optional(v.id('users')),
+    readyForReviewAt: v.optional(v.number()),
+    creationSource: v.optional(workCreationSourceValidator),
+    createdByAgentProvider: v.optional(agentProviderValidator),
+    createdByAgentProcessId: v.optional(v.id('agentProcesses')),
+    createdByLiveActivityId: v.optional(v.id('issueLiveActivities')),
   })
     .index('by_organization', ['organizationId'])
     .index('by_key', ['key'])
@@ -589,6 +654,23 @@ export default defineSchema({
     .index('by_org_visibility', ['organizationId', 'visibility'])
     .index('by_created_by', ['createdBy'])
     .index('by_parent', ['parentIssueId'])
+    .index('by_org_kind', ['organizationId', 'kind'])
+    .index('by_org_kind_focus_activity', [
+      'organizationId',
+      'kind',
+      'focusRank',
+      'lastMeaningfulActivityAt',
+    ])
+    .index('by_org_work_status', ['organizationId', 'workStatus'])
+    .index('by_org_owner', ['organizationId', 'ownerId'])
+    .index('by_org_kind_owner', ['organizationId', 'kind', 'ownerId'])
+    .index('by_org_kind_owner_focus_activity', [
+      'organizationId',
+      'kind',
+      'ownerId',
+      'focusRank',
+      'lastMeaningfulActivityAt',
+    ])
     .searchIndex('search_title', {
       searchField: 'title',
       filterFields: ['organizationId'],
@@ -610,9 +692,189 @@ export default defineSchema({
     .index('by_state', ['stateId'])
     .index('by_issue_assignee', ['issueId', 'assigneeId']),
 
+  // Requests are intake and review envelopes. They intentionally live outside
+  // the Work workflow so routing/acceptance never implies execution started.
+  requests: defineTable({
+    organizationId: v.id('organizations'),
+    key: v.string(),
+    sequenceNumber: v.number(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    expectedOutput: v.string(),
+    reviewGuidance: v.optional(v.string()),
+    searchText: v.optional(v.string()),
+    status: requestStatusValidator,
+    // Stable lifecycle priority used by paginated Request lists. Lower values
+    // surface human review and change requests before routine intake.
+    focusRank: v.optional(v.number()),
+    source: requestSourceValidator,
+    requesterId: v.optional(v.id('users')),
+    requesterName: v.optional(v.string()),
+    requesterEmail: v.optional(v.string()),
+    routedTeamId: v.optional(v.id('teams')),
+    ownerId: v.optional(v.id('users')),
+    priorityId: v.optional(v.id('issuePriorities')),
+    projectId: v.optional(v.id('projects')),
+    dueDate: v.optional(v.string()),
+    visibility: v.union(
+      v.literal('private'),
+      v.literal('organization'),
+      v.literal('public'),
+    ),
+    createdBy: v.optional(v.id('users')),
+    readyForReviewAt: v.optional(v.number()),
+    latestReviewNote: v.optional(v.string()),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.id('users')),
+    completedAt: v.optional(v.number()),
+    completedBy: v.optional(v.id('users')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_org_key', ['organizationId', 'key'])
+    .index('by_org_status', ['organizationId', 'status'])
+    .index('by_org_focus_created', ['organizationId', 'focusRank', 'createdAt'])
+    .index('by_org_owner', ['organizationId', 'ownerId'])
+    .index('by_org_owner_focus_created', [
+      'organizationId',
+      'ownerId',
+      'focusRank',
+      'createdAt',
+    ])
+    .index('by_routed_team', ['routedTeamId'])
+    .index('by_requester', ['requesterId'])
+    .index('by_org_requester', ['organizationId', 'requesterId'])
+    .index('by_org_requester_focus_created', [
+      'organizationId',
+      'requesterId',
+      'focusRank',
+      'createdAt',
+    ])
+    .index('by_created_by', ['createdBy'])
+    .searchIndex('search_text', {
+      searchField: 'searchText',
+      filterFields: ['organizationId', 'status'],
+    }),
+
+  requestRecipients: defineTable({
+    requestId: v.id('requests'),
+    userId: v.id('users'),
+    role: requestRecipientRoleValidator,
+    assignedBy: v.optional(v.id('users')),
+    assignedAt: v.number(),
+  })
+    .index('by_request', ['requestId'])
+    .index('by_user', ['userId'])
+    .index('by_request_user', ['requestId', 'userId']),
+
+  requestWorkLinks: defineTable({
+    requestId: v.id('requests'),
+    workId: v.id('issues'),
+    relation: requestWorkRelationValidator,
+    createdBy: v.optional(v.id('users')),
+    createdAt: v.number(),
+  })
+    .index('by_request', ['requestId'])
+    .index('by_work', ['workId'])
+    .index('by_request_work', ['requestId', 'workId']),
+
+  tasks: defineTable({
+    organizationId: v.id('organizations'),
+    workId: v.id('issues'),
+    number: v.number(),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: taskStatusValidator,
+    assigneeId: v.optional(v.id('users')),
+    dueDate: v.optional(v.string()),
+    position: v.number(),
+    createdBy: v.optional(v.id('users')),
+    creationSource: taskCreationSourceValidator,
+    createdByAgentProvider: v.optional(agentProviderValidator),
+    createdByAgentProcessId: v.optional(v.id('agentProcesses')),
+    createdByLiveActivityId: v.optional(v.id('issueLiveActivities')),
+    legacyIssueId: v.optional(v.id('issues')),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_work', ['workId'])
+    .index('by_work_position', ['workId', 'position'])
+    .index('by_work_number', ['workId', 'number'])
+    .index('by_assignee', ['assigneeId'])
+    .index('by_assignee_status', ['assigneeId', 'status'])
+    .index('by_legacy_issue', ['legacyIssueId']),
+
+  workContributors: defineTable({
+    workId: v.id('issues'),
+    userId: v.id('users'),
+    addedBy: v.optional(v.id('users')),
+    addedAt: v.number(),
+  })
+    .index('by_work', ['workId'])
+    .index('by_user', ['userId'])
+    .index('by_work_user', ['workId', 'userId']),
+
+  workOwnershipPeriods: defineTable({
+    workId: v.id('issues'),
+    ownerId: v.id('users'),
+    startedBy: v.id('users'),
+    startedAt: v.number(),
+    executionStartedAt: v.optional(v.number()),
+    executionStartedBy: v.optional(v.id('users')),
+    endedBy: v.optional(v.id('users')),
+    endedAt: v.optional(v.number()),
+    handoffId: v.optional(v.id('workHandoffs')),
+    summary: v.optional(v.string()),
+  })
+    .index('by_work', ['workId'])
+    .index('by_owner', ['ownerId'])
+    .index('by_work_owner', ['workId', 'ownerId']),
+
+  workHandoffs: defineTable({
+    workId: v.id('issues'),
+    fromOwnerId: v.id('users'),
+    toOwnerId: v.id('users'),
+    initiatedBy: v.id('users'),
+    status: workHandoffStatusValidator,
+    note: v.optional(v.string()),
+    summary: v.optional(v.string()),
+    createdAt: v.number(),
+    respondedAt: v.optional(v.number()),
+    respondedBy: v.optional(v.id('users')),
+  })
+    .index('by_work', ['workId'])
+    .index('by_to_owner', ['toOwnerId'])
+    .index('by_to_owner_status', ['toOwnerId', 'status'])
+    .index('by_work_status', ['workId', 'status']),
+
+  workAttentionRequests: defineTable({
+    organizationId: v.id('organizations'),
+    workId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
+    liveActivityId: v.optional(v.id('issueLiveActivities')),
+    raisedByUserId: v.id('users'),
+    agentProvider: v.optional(agentProviderValidator),
+    title: v.string(),
+    details: v.optional(v.string()),
+    status: workAttentionStatusValidator,
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.id('users')),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_work', ['workId'])
+    .index('by_work_status', ['workId', 'status'])
+    .index('by_task', ['taskId'])
+    .index('by_status', ['status']),
+
   // Issue activity (equivalent to Drizzle 'issueActivity' table)
   issueActivities: defineTable({
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     actorId: v.id('users'),
     type: v.union(
       v.literal('status_changed'),
@@ -627,6 +889,7 @@ export default defineSchema({
     payload: v.optional(v.record(v.string(), v.any())), // JSON payload
   })
     .index('by_issue', ['issueId'])
+    .index('by_task', ['taskId'])
     .index('by_actor', ['actorId'])
     .index('by_type', ['type'])
     .index('by_issue_type', ['issueId', 'type']),
@@ -634,6 +897,8 @@ export default defineSchema({
   // Comments — polymorphic: either issueId or documentId is set
   comments: defineTable({
     issueId: v.optional(v.id('issues')),
+    requestId: v.optional(v.id('requests')),
+    taskId: v.optional(v.id('tasks')),
     documentId: v.optional(v.id('documents')),
     authorId: v.id('users'),
     body: v.string(),
@@ -651,6 +916,8 @@ export default defineSchema({
     generationStatus: v.optional(commentGenerationStatusValidator),
   })
     .index('by_issue', ['issueId'])
+    .index('by_request', ['requestId'])
+    .index('by_task', ['taskId'])
     .index('by_document', ['documentId'])
     .index('by_author', ['authorId'])
     .index('by_issue_deleted', ['issueId', 'deleted'])
@@ -677,6 +944,25 @@ export default defineSchema({
     organizationId: v.id('organizations'),
     provider: v.literal('github'),
     autoLinkEnabled: v.optional(v.boolean()),
+    keyLinkEnabled: v.optional(v.boolean()),
+    aiMatchEnabled: v.optional(v.boolean()),
+    unmatchedArtifactPolicy: v.optional(
+      v.union(
+        v.literal('development_inbox'),
+        v.literal('create_request'),
+        v.literal('create_work'),
+        v.literal('ignore'),
+      ),
+    ),
+    stateAutomationPolicy: v.optional(
+      v.union(v.literal('manual'), v.literal('evidence'), v.literal('github')),
+    ),
+    identityContributionPolicy: v.optional(
+      v.union(v.literal('none'), v.literal('contributors')),
+    ),
+    githubNotificationPolicy: v.optional(
+      v.union(v.literal('action_only'), v.literal('all'), v.literal('none')),
+    ),
     connectionMode: v.union(
       v.literal('webhook'),
       v.literal('app'),
@@ -815,6 +1101,7 @@ export default defineSchema({
   githubArtifactLinks: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     artifactType: v.union(
       v.literal('pull_request'),
       v.literal('issue'),
@@ -837,6 +1124,7 @@ export default defineSchema({
     .index('by_organization', ['organizationId'])
     .index('by_issue', ['issueId'])
     .index('by_issue_active', ['issueId', 'active'])
+    .index('by_task', ['taskId'])
     .index('by_pr', ['pullRequestId'])
     .index('by_gh_issue', ['githubIssueId'])
     .index('by_commit', ['commitId']),
@@ -844,6 +1132,7 @@ export default defineSchema({
   githubArtifactSuppressions: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     artifactType: v.union(
       v.literal('pull_request'),
       v.literal('issue'),
@@ -856,6 +1145,13 @@ export default defineSchema({
   })
     .index('by_issue', ['issueId'])
     .index('by_issue_external', ['issueId', 'artifactType', 'externalKey'])
+    .index('by_issue_task_external', [
+      'issueId',
+      'taskId',
+      'artifactType',
+      'externalKey',
+    ])
+    .index('by_task', ['taskId'])
     .index('by_organization', ['organizationId']),
 
   githubSyncCursors: defineTable({
@@ -873,6 +1169,26 @@ export default defineSchema({
     .index('by_repository', ['repositoryId'])
     .index('by_repo_type', ['repositoryId', 'cursorType'])
     .index('by_organization', ['organizationId']),
+
+  githubDevelopmentInbox: defineTable({
+    organizationId: v.id('organizations'),
+    pullRequestId: v.optional(v.id('githubPullRequests')),
+    githubIssueId: v.optional(v.id('githubIssues')),
+    status: v.union(
+      v.literal('untriaged'),
+      v.literal('linked'),
+      v.literal('dismissed'),
+    ),
+    suggestedIssueIds: v.optional(v.array(v.id('issues'))),
+    createdRequestId: v.optional(v.id('requests')),
+    createdWorkId: v.optional(v.id('issues')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_org_status', ['organizationId', 'status'])
+    .index('by_pull_request', ['pullRequestId'])
+    .index('by_github_issue', ['githubIssueId']),
 
   documentFolders: defineTable({
     organizationId: v.id('organizations'),
@@ -999,6 +1315,8 @@ export default defineSchema({
     teamId: v.optional(v.id('teams')),
     projectId: v.optional(v.id('projects')),
     issueId: v.optional(v.id('issues')),
+    requestId: v.optional(v.id('requests')),
+    taskId: v.optional(v.id('tasks')),
     documentId: v.optional(v.id('documents')),
     viewId: v.optional(v.id('views')),
     entityType: activityEntityTypeValidator,
@@ -1020,6 +1338,8 @@ export default defineSchema({
     .index('by_team', ['teamId'])
     .index('by_project', ['projectId'])
     .index('by_issue', ['issueId'])
+    .index('by_request', ['requestId'])
+    .index('by_task', ['taskId'])
     .index('by_actor', ['actorId'])
     .index('by_document', ['documentId'])
     .index('by_view', ['viewId']),
@@ -1030,6 +1350,8 @@ export default defineSchema({
     organizationId: v.optional(v.id('organizations')),
     actorId: v.optional(v.id('users')),
     issueId: v.optional(v.id('issues')),
+    requestId: v.optional(v.id('requests')),
+    taskId: v.optional(v.id('tasks')),
     projectId: v.optional(v.id('projects')),
     teamId: v.optional(v.id('teams')),
     invitationId: v.optional(v.id('invitations')),
@@ -1041,6 +1363,8 @@ export default defineSchema({
     .index('by_category', ['category'])
     .index('by_organization', ['organizationId'])
     .index('by_issue', ['issueId'])
+    .index('by_request', ['requestId'])
+    .index('by_task', ['taskId'])
     .index('by_actor', ['actorId'])
     .index('by_dedupe_key', ['dedupeKey']),
 
@@ -1061,12 +1385,17 @@ export default defineSchema({
     readAt: v.optional(v.number()),
     isArchived: v.boolean(),
     archivedAt: v.optional(v.number()),
+    actionState: v.optional(notificationActionStateValidator),
+    snoozedUntil: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index('by_event', ['eventId'])
     .index('by_user', ['userId'])
     .index('by_user_read', ['userId', 'isRead'])
+    .index('by_user_read_archived', ['userId', 'isRead', 'isArchived'])
     .index('by_user_archived', ['userId', 'isArchived'])
+    .index('by_user_action', ['userId', 'actionState'])
+    .index('by_user_action_archived', ['userId', 'actionState', 'isArchived'])
     .index('by_email', ['email']),
 
   notificationPreferences: defineTable({
@@ -1094,6 +1423,41 @@ export default defineSchema({
     .index('by_event', ['eventId'])
     .index('by_recipient', ['recipientId'])
     .index('by_recipient_channel', ['recipientId', 'channel']),
+
+  reminderRules: defineTable({
+    organizationId: v.id('organizations'),
+    targetType: reminderTargetTypeValidator,
+    requestId: v.optional(v.id('requests')),
+    workId: v.optional(v.id('issues')),
+    taskId: v.optional(v.id('tasks')),
+    recipientPolicies: v.array(reminderRecipientPolicyValidator),
+    cadence: reminderCadenceValidator,
+    intervalDays: v.optional(v.number()),
+    localTime: v.string(),
+    timezone: v.string(),
+    inactivityHours: v.optional(v.number()),
+    enabled: v.boolean(),
+    nextFireAt: v.number(),
+    lastFiredAt: v.optional(v.number()),
+    createdBy: v.id('users'),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_organization', ['organizationId'])
+    .index('by_enabled_next_fire', ['enabled', 'nextFireAt'])
+    .index('by_request', ['requestId'])
+    .index('by_work', ['workId'])
+    .index('by_task', ['taskId']),
+
+  reminderOccurrences: defineTable({
+    reminderRuleId: v.id('reminderRules'),
+    scheduledFor: v.number(),
+    firedAt: v.number(),
+    recipientUserIds: v.array(v.id('users')),
+    dedupeKey: v.string(),
+  })
+    .index('by_rule', ['reminderRuleId'])
+    .index('by_dedupe_key', ['dedupeKey']),
 
   // Tracks entities (users, teams, projects, issues) mentioned inside documents.
   // Synced automatically when document content is saved.
@@ -1281,6 +1645,7 @@ export default defineSchema({
   delegatedRuns: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     liveActivityId: v.id('issueLiveActivities'),
     deviceId: v.id('agentDevices'),
     workspaceId: v.id('deviceWorkspaces'),
@@ -1305,6 +1670,7 @@ export default defineSchema({
   workSessions: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     liveActivityId: v.optional(v.id('issueLiveActivities')),
     deviceId: v.id('agentDevices'),
     workspaceId: v.optional(v.id('deviceWorkspaces')),
@@ -1386,6 +1752,7 @@ export default defineSchema({
   issueLiveActivities: defineTable({
     organizationId: v.id('organizations'),
     issueId: v.id('issues'),
+    taskId: v.optional(v.id('tasks')),
     deviceId: v.id('agentDevices'),
     workSessionId: v.optional(v.id('workSessions')),
     processId: v.optional(v.id('agentProcesses')),
@@ -1398,10 +1765,14 @@ export default defineSchema({
     lastEventAt: v.number(),
     endedAt: v.optional(v.number()),
     finalCommentId: v.optional(v.id('comments')),
+    originKind: v.optional(actorOriginKindValidator),
+    clientKind: v.optional(v.string()),
+    clientVersion: v.optional(v.string()),
   })
     .index('by_organization', ['organizationId'])
     .index('by_issue', ['issueId'])
     .index('by_issue_status', ['issueId', 'status'])
+    .index('by_task', ['taskId'])
     .index('by_device', ['deviceId'])
     .index('by_owner', ['ownerUserId'])
     .index('by_process', ['processId']),

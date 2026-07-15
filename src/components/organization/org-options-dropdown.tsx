@@ -42,7 +42,7 @@ export function OrgOptionsDropdown({
 
   const handleOrgSwitch = (orgSlug: string) => {
     if (orgSlug !== currentOrgSlug) {
-      window.location.href = `/${orgSlug}/issues`;
+      window.location.href = `/${orgSlug}/requests`;
     }
     setIsOpen(false);
   };

@@ -1209,6 +1209,9 @@ export const getIssueListSummary = query({
     );
 
     const visibleIssues = candidateIssues
+      .filter(
+        issue => issue.kind === 'work' || (!issue.kind && !issue.parentIssueId),
+      )
       .filter(issue =>
         canUserViewIssueFromAccess(access, issue, {
           scopedProjectId: scopedProjectVisible
@@ -1310,6 +1313,12 @@ export const listIssuesPage = query({
       await filterIssuesByWorkflowStateType(
         ctx,
         candidateIssues.filter(issue => {
+          if (!(
+            issue.kind === 'work' ||
+            (!issue.kind && !issue.parentIssueId)
+          )) {
+            return false;
+          }
           if (
             !matchesIssueListFilters(issue, {
               projectId: projectId ?? undefined,
@@ -1951,6 +1960,9 @@ export const listIssues = query({
         )
       : null;
     const visibleIssues = candidateIssues
+      .filter(
+        issue => issue.kind === 'work' || (!issue.kind && !issue.parentIssueId),
+      )
       .filter(issue =>
         canUserViewIssueFromAccess(access, issue, {
           scopedProjectId: scopedProjectVisible

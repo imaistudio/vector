@@ -13,6 +13,11 @@ type NotificationPayload = {
   organizationName?: string;
   issueKey?: string;
   issueTitle?: string;
+  requestKey?: string;
+  requestTitle?: string;
+  workKey?: string;
+  workTitle?: string;
+  taskTitle?: string;
   commentPreview?: string;
   inviterName?: string;
   roleLabel?: string;
@@ -33,12 +38,18 @@ export type NotificationEventWrite = {
   actorId?: Id<'users'>;
   organizationId?: Id<'organizations'>;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
+  taskId?: Id<'tasks'>;
   projectId?: Id<'projects'>;
   teamId?: Id<'teams'>;
   invitationId?: Id<'invitations'>;
   payload: NotificationPayload;
   recipients: NotificationRecipientInput[];
   dedupeKey?: string;
+  // Agent executions are authenticated as their supervising human. Explicit
+  // attention must still page that same human instead of looking like a
+  // redundant human self-notification.
+  allowActorRecipient?: boolean;
 };
 
 export type NotificationPreferenceValue = {
@@ -126,6 +137,115 @@ export function buildNotificationCopy(
         href: payload.href,
       };
     }
+    case 'request_routed':
+      return {
+        title: payload.requestKey
+          ? `Request ${payload.requestKey} routed to you`
+          : 'A request was routed to you',
+        body: payload.requestTitle ?? 'A request is waiting for your decision.',
+        href: payload.href,
+      };
+    case 'request_routing_needed':
+      return {
+        title: payload.requestKey
+          ? `Request ${payload.requestKey} needs routing`
+          : 'A request needs routing',
+        body: payload.requestTitle ?? 'Choose who should receive this request.',
+        href: payload.href,
+      };
+    case 'request_ready_for_review':
+    case 'work_ready_for_review':
+      return {
+        title: `${payload.requestKey ?? payload.workKey ?? 'Work'} is ready for review`,
+        body:
+          payload.requestTitle ??
+          payload.workTitle ??
+          'Review the delivered result.',
+        href: payload.href,
+      };
+    case 'request_changes_requested':
+      return {
+        title: `Changes requested on ${payload.requestKey ?? 'a request'}`,
+        body: payload.requestTitle ?? 'The requester left review feedback.',
+        href: payload.href,
+      };
+    case 'request_completed':
+      return {
+        title: `${payload.requestKey ?? 'Request'} completed`,
+        body: payload.requestTitle ?? 'The requested outcome was accepted.',
+        href: payload.href,
+      };
+    case 'work_completed':
+      return {
+        title: `${payload.workKey ?? 'Work'} completed`,
+        body: payload.workTitle ?? 'The outcome was marked complete.',
+        href: payload.href,
+      };
+    case 'work_handoff_proposed':
+      return {
+        title: `Handoff proposed for ${payload.workKey ?? 'work'}`,
+        body:
+          payload.workTitle ??
+          'Review the context and accept ownership when ready.',
+        href: payload.href,
+      };
+    case 'work_handoff_accepted':
+      return {
+        title: `Handoff accepted for ${payload.workKey ?? 'work'}`,
+        body: payload.workTitle ?? 'Ownership has changed.',
+        href: payload.href,
+      };
+    case 'work_handoff_declined':
+      return {
+        title: `Handoff declined for ${payload.workKey ?? 'work'}`,
+        body: payload.workTitle ?? 'The current owner remains accountable.',
+        href: payload.href,
+      };
+    case 'task_assigned':
+    case 'task_transferred':
+      return {
+        title: `Task assigned in ${payload.workKey ?? 'work'}`,
+        body: payload.taskTitle ?? 'A task needs your attention.',
+        href: payload.href,
+      };
+    case 'agent_attention_requested':
+      return {
+        title: `Agent needs attention on ${payload.workKey ?? 'work'}`,
+        body:
+          payload.taskTitle ??
+          payload.workTitle ??
+          'Open the active execution to respond.',
+        href: payload.href,
+      };
+    case 'agent_attention_resolved':
+      return {
+        title: `Attention resolved on ${payload.workKey ?? 'work'}`,
+        body: payload.workTitle ?? 'The execution can continue.',
+        href: payload.href,
+      };
+    case 'work_blocked':
+      return {
+        title: `${payload.workKey ?? 'Work'} is blocked`,
+        body: payload.workTitle ?? 'A blocker needs attention.',
+        href: payload.href,
+      };
+    case 'github_action_required':
+      return {
+        title: `GitHub action needed on ${payload.workKey ?? 'work'}`,
+        body:
+          payload.workTitle ?? 'A linked development artifact needs attention.',
+        href: payload.href,
+      };
+    case 'reminder_due':
+      return {
+        title: `Reminder: ${payload.requestKey ?? payload.workKey ?? payload.taskTitle ?? 'work needs attention'}`,
+        body:
+          payload.requestTitle ??
+          payload.workTitle ??
+          payload.taskTitle ??
+          'This responsibility is still open.',
+        href: payload.href,
+      };
   }
 }
 
@@ -166,6 +286,13 @@ export async function createNotificationEvent(
   ctx: MutationCtx,
   input: NotificationEventWrite,
 ) {
+  if (input.dedupeKey) {
+    const existing = await ctx.db
+      .query('notificationEvents')
+      .withIndex('by_dedupe_key', q => q.eq('dedupeKey', input.dedupeKey))
+      .first();
+    if (existing) return existing._id;
+  }
   const category = categoryForEvent(input.type);
   const eventId = await ctx.db.insert('notificationEvents', {
     type: input.type,
@@ -173,6 +300,8 @@ export async function createNotificationEvent(
     organizationId: input.organizationId,
     actorId: input.actorId,
     issueId: input.issueId,
+    requestId: input.requestId,
+    taskId: input.taskId,
     projectId: input.projectId,
     teamId: input.teamId,
     invitationId: input.invitationId,
@@ -189,7 +318,8 @@ export async function createNotificationEvent(
     if (
       recipient.userId &&
       input.actorId &&
-      recipient.userId === input.actorId
+      recipient.userId === input.actorId &&
+      !input.allowActorRecipient
     ) {
       continue;
     }
@@ -212,6 +342,18 @@ export async function createNotificationEvent(
   }
 
   for (const recipient of uniqueRecipients.values()) {
+    const preference = recipient.userId
+      ? await ctx.db
+          .query('notificationPreferences')
+          .withIndex('by_user_category', q =>
+            q.eq('userId', recipient.userId!).eq('category', category),
+          )
+          .first()
+      : null;
+    const inAppEnabled = recipient.userId
+      ? (preference?.inAppEnabled ??
+        getDefaultPreference(category).inAppEnabled)
+      : false;
     const recipientId = await ctx.db.insert('notificationRecipients', {
       eventId,
       userId: recipient.userId,
@@ -230,7 +372,9 @@ export async function createNotificationEvent(
         input.payload.inviterName,
       actorImage: actor?.image,
       isRead: false,
-      isArchived: false,
+      isArchived: !inAppEnabled,
+      archivedAt: inAppEnabled ? undefined : Date.now(),
+      actionState: actionStateForEvent(input.type),
       createdAt: Date.now(),
     });
 
@@ -245,7 +389,33 @@ export async function createNotificationEvent(
 }
 
 export function getIssueHref(orgSlug: string, issueKey: string) {
-  return `/${orgSlug}/issues/${issueKey}`;
+  return `/${orgSlug}/work/${issueKey}`;
+}
+
+export function getRequestHref(orgSlug: string, requestKey: string) {
+  return `/${orgSlug}/requests/${requestKey}`;
+}
+
+function actionStateForEvent(
+  type: NotificationEventType,
+): 'needs_action' | 'update' {
+  switch (type) {
+    case 'request_routed':
+    case 'request_routing_needed':
+    case 'request_ready_for_review':
+    case 'work_ready_for_review':
+    case 'request_changes_requested':
+    case 'work_handoff_proposed':
+    case 'task_assigned':
+    case 'task_transferred':
+    case 'agent_attention_requested':
+    case 'work_blocked':
+    case 'github_action_required':
+    case 'reminder_due':
+      return 'needs_action';
+    default:
+      return 'update';
+  }
 }
 
 function normalizeMentionToken(value: string) {

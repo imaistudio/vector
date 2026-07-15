@@ -117,10 +117,12 @@ function getFallbackPageTitle(pathname: string | null) {
 
   if (!second) return formatSegment(first);
 
+  if (second === 'requests') return third ? formatSegment(third) : 'Requests';
+  if (second === 'work') return third ? formatSegment(third) : 'Work';
+
   if (second === 'issues') {
-    if (third)
-      return third === 'public' ? 'Public issue' : formatSegment(third);
-    return 'Issues';
+    if (third) return third === 'public' ? 'Public Work' : formatSegment(third);
+    return 'Work';
   }
   if (second === 'projects') {
     if (third)
@@ -177,6 +179,8 @@ function shouldUseFallbackTitle(pathname: string | null) {
   if (!second) return false;
   if (second === 'dashboard') return true;
   if (second === 'settings') return true;
+  if (second === 'requests') return !third;
+  if (second === 'work') return !third;
   if (second === 'issues') return !third;
   if (second === 'projects') return !third;
   if (second === 'teams') return !third;

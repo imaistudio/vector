@@ -13,6 +13,15 @@ public enum VectorMobileError: LocalizedError {
 
 @MainActor
 public final class VectorMobileViewModel: ObservableObject {
+  @Published public private(set) var requests: [VectorRequestRow] = []
+  @Published public private(set) var work: [VectorWorkRow] = []
+  @Published public private(set) var selectedRequest: VectorRequestDetail?
+  @Published public private(set) var selectedWork: VectorWorkDetail?
+  @Published public private(set) var selectedRequestError: String?
+  @Published public private(set) var selectedWorkError: String?
+  @Published public private(set) var isLoadingRequests = false
+  @Published public private(set) var isLoadingWork = false
+  @Published public private(set) var pendingWorkModelActions: Set<String> = []
   @Published public private(set) var issues: [VectorIssueRow] = []
   @Published public private(set) var projects: [VectorProject] = []
   @Published public private(set) var teams: [VectorTeam] = []
@@ -35,6 +44,8 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var errorMessage: String?
   @Published public private(set) var settingsErrorMessage: String?
   @Published public var issueScope: VectorIssueScope = .mine
+  @Published public var requestScope: VectorRequestScope = .inbox
+  @Published public var workScope: VectorWorkScope = .active
   @Published public var projectScope: VectorProjectScope = .mine
   @Published public var issueLayoutMode: VectorIssueLayoutMode = .list
 
@@ -68,6 +79,10 @@ public final class VectorMobileViewModel: ObservableObject {
   private var inboxActivityPagination = PaginationState()
   // Loaded pages stay subscribed so cached tabs remain live when users switch back.
   private var issueListCancellables: [VectorIssueScope: [String: AnyCancellable]] = [:]
+  private var requestListCancellable: AnyCancellable?
+  private var workListCancellable: AnyCancellable?
+  private var requestDetailCancellable: AnyCancellable?
+  private var workDetailCancellable: AnyCancellable?
   private var projectListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var teamListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var documentListCancellables: [String: AnyCancellable] = [:]
@@ -115,6 +130,8 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public func refresh() {
     errorMessage = nil
+    refreshRequests()
+    refreshWork()
     subscribeToIssuesIfNeeded(scope: issueScope)
     subscribeToProjectsIfNeeded(scope: projectScope)
     subscribeToTeamsIfNeeded(scope: projectScope)
@@ -122,6 +139,185 @@ public final class VectorMobileViewModel: ObservableObject {
     subscribeToInboxNotificationsIfNeeded()
     subscribeToWorkspaceOptionsIfNeeded()
     loadSettings()
+  }
+
+  public func refreshRequests() {
+    requestListCancellable?.cancel()
+    isLoadingRequests = true
+    requestListCancellable = repository.requestsPage(
+      orgSlug: configuration.orgSlug,
+      scope: requestScope,
+      pageSize: pageSize,
+      cursor: nil
+    )
+    .receive(on: DispatchQueue.main)
+    .sink(
+      receiveCompletion: { [weak self] completion in
+        guard let self else { return }
+        isLoadingRequests = false
+        if case let .failure(error) = completion {
+          errorMessage = error.localizedDescription
+        }
+      },
+      receiveValue: { [weak self] page in
+        self?.requests = page.page
+        self?.isLoadingRequests = false
+      }
+    )
+  }
+
+  public func refreshWork() {
+    workListCancellable?.cancel()
+    isLoadingWork = true
+    workListCancellable = repository.workPage(
+      orgSlug: configuration.orgSlug,
+      scope: workScope,
+      pageSize: pageSize,
+      cursor: nil
+    )
+    .receive(on: DispatchQueue.main)
+    .sink(
+      receiveCompletion: { [weak self] completion in
+        guard let self else { return }
+        isLoadingWork = false
+        if case let .failure(error) = completion {
+          errorMessage = error.localizedDescription
+        }
+      },
+      receiveValue: { [weak self] page in
+        self?.work = page.page
+        self?.isLoadingWork = false
+      }
+    )
+  }
+
+  public func loadRequest(_ row: VectorRequestRow) {
+    requestDetailCancellable?.cancel()
+    selectedRequest = nil
+    selectedRequestError = nil
+    requestDetailCancellable = repository.request(orgSlug: configuration.orgSlug, key: row.key)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.selectedRequestError = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] detail in
+          self?.selectedRequestError = detail == nil
+            ? "This request was not found or you no longer have access."
+            : nil
+          self?.selectedRequest = detail
+        }
+      )
+  }
+
+  public func loadWork(_ row: VectorWorkRow) {
+    workDetailCancellable?.cancel()
+    selectedWork = nil
+    selectedWorkError = nil
+    workDetailCancellable = repository.work(orgSlug: configuration.orgSlug, key: row.key)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.selectedWorkError = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] detail in
+          self?.selectedWorkError = detail == nil
+            ? "This work was not found or you no longer have access."
+            : nil
+          self?.selectedWork = detail
+        }
+      )
+  }
+
+  public func createRequest(
+    title: String,
+    description: String?,
+    expectedOutput: String,
+    reviewGuidance: String?
+  ) async -> Bool {
+    await performWorkModelAction(id: "create-request") {
+      _ = try await self.repository.createRequest(
+        orgSlug: self.configuration.orgSlug,
+        title: title,
+        description: description,
+        expectedOutput: expectedOutput,
+        reviewGuidance: reviewGuidance
+      )
+    }
+  }
+
+  public func claimRequest(_ requestId: VectorID) async -> Bool {
+    await performWorkModelAction(id: "request:\(requestId):claim") {
+      try await self.repository.claimRequest(requestId: requestId)
+    }
+  }
+
+  public func completeRequest(_ requestId: VectorID) async -> Bool {
+    await performWorkModelAction(id: "request:\(requestId):complete") {
+      try await self.repository.completeRequest(requestId: requestId)
+    }
+  }
+
+  public func requestChanges(_ requestId: VectorID, note: String) async -> Bool {
+    await performWorkModelAction(id: "request:\(requestId):changes") {
+      try await self.repository.requestChanges(requestId: requestId, note: note)
+    }
+  }
+
+  public func startWork(_ workId: VectorID) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):start") {
+      try await self.repository.startWork(workId: workId)
+    }
+  }
+
+  public func setWorkStatus(_ workId: VectorID, status: VectorWorkStatus) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):status") {
+      try await self.repository.setWorkStatus(workId: workId, status: status)
+    }
+  }
+
+  public func readyWorkForReview(_ workId: VectorID) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):review") {
+      try await self.repository.readyWorkForReview(workId: workId)
+    }
+  }
+
+  public func completeWork(_ workId: VectorID) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):complete") {
+      try await self.repository.completeWork(workId: workId)
+    }
+  }
+
+  public func respondToHandoff(_ handoffId: VectorID, accept: Bool) async -> Bool {
+    await performWorkModelAction(id: "handoff:\(handoffId)") {
+      try await self.repository.respondToWorkHandoff(handoffId: handoffId, accept: accept)
+    }
+  }
+
+  public func setTaskStatus(_ taskId: VectorID, status: VectorTaskStatus) async -> Bool {
+    await performWorkModelAction(id: "task:\(taskId):status") {
+      try await self.repository.setTaskStatus(taskId: taskId, status: status)
+    }
+  }
+
+  private func performWorkModelAction(
+    id: String,
+    operation: () async throws -> Void
+  ) async -> Bool {
+    guard !pendingWorkModelActions.contains(id) else { return false }
+    pendingWorkModelActions.insert(id)
+    defer { pendingWorkModelActions.remove(id) }
+    do {
+      try await operation()
+      return true
+    } catch {
+      errorMessage = error.localizedDescription
+      return false
+    }
   }
 
   public func setAuthenticatedUser(_ user: VectorAuthenticatedUser?) {
@@ -1346,11 +1542,13 @@ public final class VectorMobileViewModel: ObservableObject {
     switch category {
     case .invites:
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: true, pushEnabled: false)
-    case .assignments, .mentions:
+    case .assignments, .mentions, .requests, .handoffs, .reviews:
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: true, pushEnabled: true)
-    case .comments, .workSessions:
+    case .comments, .workSessions, .attention, .reminders, .github:
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: true)
     case .teamStatusChanges:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: false)
+    case .unknown:
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: false)
     }
   }

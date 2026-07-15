@@ -1,7 +1,9 @@
 import { mutation, internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { ConvexError, v } from 'convex/values';
 import { getAuthUserId } from '../authUtils';
 import { notificationCategoryValidator } from './shared';
+import { notificationActionStateValidator } from '../_shared/work';
 
 export const markRead = mutation({
   args: {
@@ -87,6 +89,73 @@ export const archive = mutation({
     });
 
     return { success: true } as const;
+  },
+});
+
+export const setActionState = mutation({
+  args: {
+    recipientId: v.id('notificationRecipients'),
+    actionState: notificationActionStateValidator,
+    snoozedUntil: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('UNAUTHORIZED');
+    const recipient = await ctx.db.get(
+      'notificationRecipients',
+      args.recipientId,
+    );
+    if (!recipient || recipient.userId !== userId) {
+      throw new ConvexError('NOT_FOUND');
+    }
+    if (args.actionState === 'snoozed' && !args.snoozedUntil) {
+      throw new ConvexError('SNOOZE_TIME_REQUIRED');
+    }
+    if (
+      args.actionState === 'snoozed' &&
+      args.snoozedUntil !== undefined &&
+      args.snoozedUntil <= Date.now()
+    ) {
+      throw new ConvexError('SNOOZE_TIME_MUST_BE_IN_FUTURE');
+    }
+    await ctx.db.patch('notificationRecipients', recipient._id, {
+      actionState: args.actionState,
+      snoozedUntil:
+        args.actionState === 'snoozed' ? args.snoozedUntil : undefined,
+      isRead: args.actionState === 'done' ? true : recipient.isRead,
+      readAt:
+        args.actionState === 'done'
+          ? (recipient.readAt ?? Date.now())
+          : recipient.readAt,
+    });
+    if (args.actionState === 'snoozed' && args.snoozedUntil) {
+      await ctx.scheduler.runAt(
+        args.snoozedUntil,
+        internal.notifications.mutations.restoreSnoozedAction,
+        { recipientId: recipient._id },
+      );
+    }
+    return { success: true } as const;
+  },
+});
+
+export const restoreSnoozedAction = internalMutation({
+  args: { recipientId: v.id('notificationRecipients') },
+  handler: async (ctx, args) => {
+    const recipient = await ctx.db.get(
+      'notificationRecipients',
+      args.recipientId,
+    );
+    if (
+      !recipient ||
+      recipient.actionState !== 'snoozed' ||
+      (recipient.snoozedUntil ?? Number.POSITIVE_INFINITY) > Date.now()
+    )
+      return;
+    await ctx.db.patch('notificationRecipients', recipient._id, {
+      actionState: 'needs_action',
+      snoozedUntil: undefined,
+    });
   },
 });
 

@@ -410,11 +410,20 @@ public final class VectorAuthClient: @unchecked Sendable {
     }
 
     var nextCookies = session.cookies
-    let rawHeaders = httpResponse.allHeaderFields.compactMap { key, value -> String? in
+    var rawHeaders = httpResponse.allHeaderFields.flatMap { key, value -> [String] in
       guard String(describing: key).lowercased() == "set-cookie" else {
-        return nil
+        return []
       }
-      return value as? String
+      if let values = value as? [String] {
+        return values
+      }
+      if let value = value as? String {
+        return [value]
+      }
+      return []
+    }
+    if rawHeaders.isEmpty, let combinedHeader = httpResponse.value(forHTTPHeaderField: "Set-Cookie") {
+      rawHeaders = [combinedHeader]
     }
 
     for rawHeader in rawHeaders {
@@ -478,8 +487,7 @@ public final class VectorBetterAuthProvider: AuthProvider {
   }
 
   public func loginFromCache(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> VectorBetterAuthData {
-    let currentSession = (try? sessionStore.load()) ?? session
-    let result = try await authClient.fetchConvexToken(session: currentSession)
+    let result = try await authClient.fetchConvexToken(session: session)
     session = result.session
     try? sessionStore.save(result.session)
     onIdToken(result.token)
@@ -533,7 +541,11 @@ public final class VectorMobileSessionController: ObservableObject {
         phase = .signedOut
         return
       }
-      try await activate(session: session, requestedOrgSlug: session.orgSlug)
+      try await activate(
+        session: session,
+        requestedOrgSlug: session.orgSlug,
+        allowWorkspaceFallback: true
+      )
     } catch {
       errorMessage = nil
       phase = .signedOut
@@ -626,7 +638,11 @@ public final class VectorMobileSessionController: ObservableObject {
     }
   }
 
-  private func activate(session: VectorStoredSession, requestedOrgSlug: String?) async throws {
+  private func activate(
+    session: VectorStoredSession,
+    requestedOrgSlug: String?,
+    allowWorkspaceFallback: Bool = false
+  ) async throws {
     let provider = VectorBetterAuthProvider(session: session, authClient: authClient, sessionStore: sessionStore)
     let client = ConvexClientWithAuth<VectorBetterAuthData>(
       deploymentUrl: session.convexURL.absoluteString,
@@ -636,19 +652,11 @@ public final class VectorMobileSessionController: ObservableObject {
     let authResult = await client.loginFromCache()
     let authData = try authResult.get()
     let orgs = try await fetchOrganizations(client: client)
-    guard !orgs.isEmpty else {
-      throw VectorAuthError.noWorkspaceMembership
-    }
-
-    let selectedOrg: VectorOrganization
-    if let requested = requestedOrgSlug?.trimmingCharacters(in: .whitespacesAndNewlines), !requested.isEmpty {
-      guard let match = orgs.first(where: { $0.slug == requested }) else {
-        throw VectorAuthError.workspaceNotFound(requested)
-      }
-      selectedOrg = match
-    } else {
-      selectedOrg = orgs[0]
-    }
+    let selectedOrg = try Self.selectOrganization(
+      from: orgs,
+      requestedOrgSlug: requestedOrgSlug,
+      allowFallback: allowWorkspaceFallback
+    )
 
     var savedSession = authData.session
     savedSession.orgSlug = selectedOrg.slug
@@ -668,36 +676,42 @@ public final class VectorMobileSessionController: ObservableObject {
     phase = .signedIn
   }
 
+  static func selectOrganization(
+    from organizations: [VectorOrganization],
+    requestedOrgSlug: String?,
+    allowFallback: Bool
+  ) throws -> VectorOrganization {
+    guard let first = organizations.first else {
+      throw VectorAuthError.noWorkspaceMembership
+    }
+    guard
+      let requested = requestedOrgSlug?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !requested.isEmpty
+    else {
+      return first
+    }
+    if let match = organizations.first(where: { $0.slug == requested }) {
+      return match
+    }
+    if allowFallback {
+      return first
+    }
+    throw VectorAuthError.workspaceNotFound(requested)
+  }
+
   private func fetchOrganizations(client: ConvexClient) async throws -> [VectorOrganization] {
     let publisher = client.subscribe(
       to: VectorConvexFunctions.getOrganizations,
       yielding: [VectorOrganization].self
     )
 
-    let subscriptionTask = Task { () throws -> [VectorOrganization] in
-      var latest: [VectorOrganization] = []
-      for try await organizations in publisher.values {
-        latest = organizations
-        if !organizations.isEmpty {
-          return organizations
-        }
-      }
-      return latest
-    }
-
-    return try await withThrowingTaskGroup(of: [VectorOrganization].self) { group in
-      group.addTask {
-        try await subscriptionTask.value
-      }
-      group.addTask {
-        try await Task.sleep(nanoseconds: 5_000_000_000)
-        return []
-      }
-
-      let organizations = try await group.next() ?? []
-      subscriptionTask.cancel()
-      group.cancelAll()
+    // The first subscription value is authoritative, including an empty
+    // membership list. Do not race it against a fixed timeout: a slow network
+    // must leave session restoration pending instead of impersonating a valid
+    // "no workspaces" response and bouncing the user to sign-in.
+    for try await organizations in publisher.values {
       return organizations
     }
+    throw VectorAuthError.requestFailed("Unable to load your Vector workspaces.")
   }
 }

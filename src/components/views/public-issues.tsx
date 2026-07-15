@@ -185,7 +185,7 @@ export function PublicKanbanView({
   if (groups.length === 0) {
     return (
       <div className='border-border text-muted-foreground rounded-lg border border-dashed py-16 text-center text-sm'>
-        No issues to show.
+        No Work to show.
       </div>
     );
   }
@@ -219,7 +219,7 @@ export function PublicKanbanView({
             <div className='w-full max-w-full min-w-0 space-y-1.5 overflow-x-hidden'>
               {group.items.length === 0 ? (
                 <div className='border-border text-muted-foreground rounded-md border border-dashed py-6 text-center text-xs'>
-                  No issues
+                  No Work
                 </div>
               ) : (
                 group.items.map(issue => (

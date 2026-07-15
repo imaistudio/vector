@@ -63,6 +63,7 @@ public final class VectorPushNotificationCoordinator: NSObject, VectorPushNotifi
   @Published public private(set) var authorizationStatus: VectorPushAuthorizationStatus = .unknown
   @Published public private(set) var deviceToken: VectorPushDeviceToken?
   @Published public private(set) var registrationError: String?
+  @Published public private(set) var pendingNotificationHref: String?
 
   private override init() {
     super.init()
@@ -119,11 +120,26 @@ public final class VectorPushNotificationCoordinator: NSObject, VectorPushNotifi
     registrationError = nil
   }
 
+  public func consumePendingNotificationHref() {
+    pendingNotificationHref = nil
+  }
+
   public nonisolated func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification
   ) async -> UNNotificationPresentationOptions {
     [.banner, .list, .sound]
+  }
+
+  public nonisolated func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse
+  ) async {
+    let href = (response.notification.request.content.userInfo["href"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    await MainActor.run {
+      pendingNotificationHref = href?.isEmpty == false ? href : nil
+    }
   }
 
   private static var apnsEnvironment: String {

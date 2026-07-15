@@ -11,7 +11,9 @@ import {
 
 export const listInbox = query({
   args: {
-    filter: v.optional(v.union(v.literal('all'), v.literal('unread'))),
+    filter: v.optional(
+      v.union(v.literal('all'), v.literal('unread'), v.literal('action')),
+    ),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -20,17 +22,71 @@ export const listInbox = query({
       throw new ConvexError('UNAUTHORIZED');
     }
 
-    const page = await ctx.db
-      .query('notificationRecipients')
-      .withIndex('by_user', q => q.eq('userId', userId))
-      .order('desc')
-      .paginate(args.paginationOpts);
+    const fetchPage = (paginationOpts: typeof args.paginationOpts) => {
+      if (args.filter === 'action') {
+        return ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_action_archived', q =>
+            q
+              .eq('userId', userId)
+              .eq('actionState', 'needs_action')
+              .eq('isArchived', false),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
 
-    const visible = page.page.filter(item => {
-      if (item.isArchived) return false;
-      if (args.filter === 'unread') return !item.isRead;
+      if (args.filter === 'unread') {
+        return ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_read_archived', q =>
+            q.eq('userId', userId).eq('isRead', false).eq('isArchived', false),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
+
+      return ctx.db
+        .query('notificationRecipients')
+        .withIndex('by_user_archived', q =>
+          q.eq('userId', userId).eq('isArchived', false),
+        )
+        .order('desc')
+        .paginate(paginationOpts);
+    };
+
+    const isVisible = (item: Doc<'notificationRecipients'>) => {
+      if (
+        item.actionState === 'snoozed' &&
+        (item.snoozedUntil ?? 0) > Date.now()
+      )
+        return false;
       return true;
-    });
+    };
+
+    let page = await fetchPage(args.paginationOpts);
+    const visible = page.page.filter(isVisible);
+
+    // Archived and read state are handled by indexes. Active snoozes are
+    // time-based, so keep advancing the database cursor until this visible
+    // page is full or the underlying result set is exhausted. Bound the scan
+    // so a large snoozed backlog cannot turn one subscription into an
+    // unbounded chain of reads; the returned cursor lets the client continue.
+    const maxVisibilityFetchAttempts = 5;
+    let visibilityFetchAttempts = 0;
+    while (
+      visible.length < args.paginationOpts.numItems &&
+      !page.isDone &&
+      visibilityFetchAttempts < maxVisibilityFetchAttempts
+    ) {
+      visibilityFetchAttempts += 1;
+      page = await fetchPage({
+        ...args.paginationOpts,
+        cursor: page.continueCursor,
+        numItems: args.paginationOpts.numItems - visible.length,
+      });
+      visible.push(...page.page.filter(isVisible));
+    }
 
     // Resolve a fresh deep link for each notification. Stored hrefs from
     // older recipients can be stale or missing — recompute from the parent
@@ -45,6 +101,8 @@ export const listInbox = query({
           ...recipient,
           href,
           issueId: event?.issueId,
+          requestId: event?.requestId,
+          taskId: event?.taskId,
           projectId: event?.projectId,
           teamId: event?.teamId,
         };
@@ -68,9 +126,14 @@ async function resolveNotificationHrefFromEvent(
     : null;
   const orgSlug = org?.slug;
 
+  if (event.requestId && orgSlug) {
+    const request = await ctx.db.get('requests', event.requestId);
+    if (request?.key) return `/${orgSlug}/requests/${request.key}`;
+  }
+
   if (event.issueId && orgSlug) {
     const issue = await ctx.db.get('issues', event.issueId);
-    if (issue?.key) return `/${orgSlug}/issues/${issue.key}`;
+    if (issue?.key) return `/${orgSlug}/work/${issue.key}`;
   }
 
   if (event.projectId && orgSlug) {
@@ -105,12 +168,13 @@ export const unreadCount = query({
 
     const rows = await ctx.db
       .query('notificationRecipients')
-      .withIndex('by_user_read', q =>
-        q.eq('userId', userId).eq('isRead', false),
+      .withIndex('by_user_read_archived', q =>
+        q.eq('userId', userId).eq('isRead', false).eq('isArchived', false),
       )
       .collect();
-
-    return rows.filter(row => !row.isArchived).length;
+    const now = Date.now();
+    return rows.filter(row => !row.snoozedUntil || row.snoozedUntil <= now)
+      .length;
   },
 });
 

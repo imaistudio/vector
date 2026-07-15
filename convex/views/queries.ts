@@ -263,12 +263,15 @@ async function resolveViewIssuePage(
   page?: number,
   pageSize?: number,
 ) {
+  const workCandidates = candidates.filter(
+    issue => issue.kind === 'work' || (!issue.kind && !issue.parentIssueId),
+  );
   const assignmentsByIssue = await loadAssignmentsByIssue(
     ctx,
-    candidates.map(issue => issue._id),
+    workCandidates.map(issue => issue._id),
   );
 
-  const candidatesWithResolvedState = candidates.map(issue => {
+  const candidatesWithResolvedState = workCandidates.map(issue => {
     const effectiveStateId =
       issue.workflowStateId ??
       assignmentsByIssue.get(issue._id)?.find(assignment => assignment.stateId)

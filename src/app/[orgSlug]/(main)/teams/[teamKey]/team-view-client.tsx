@@ -83,7 +83,7 @@ import {
   PermissionGate,
 } from '@/components/ui/permission-aware';
 import { toast } from 'sonner';
-import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
+import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
 import {
   VisibilitySelector,
@@ -1570,7 +1570,7 @@ export default function TeamViewClient({
                 <div className='flex flex-wrap items-center justify-between gap-2'>
                   <div className='overflow-x-auto overflow-y-hidden'>
                     <TabsList>
-                      <TabsTrigger value='issues'>Issues</TabsTrigger>
+                      <TabsTrigger value='issues'>Work</TabsTrigger>
                       <TabsTrigger value='members'>Members</TabsTrigger>
                       <TabsTrigger value='projects'>Projects</TabsTrigger>
                       <TabsTrigger value='documents'>Documents</TabsTrigger>
@@ -1623,7 +1623,7 @@ export default function TeamViewClient({
                           <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2' />
                         )}
                         <Input
-                          placeholder='Search issues...'
+                          placeholder='Search Work...'
                           value={issueSearchText}
                           onChange={e => setIssueSearchText(e.target.value)}
                           className='h-6 w-40 pl-7 text-xs'
@@ -1652,10 +1652,9 @@ export default function TeamViewClient({
                         </Button>
                       </div>
                       {canEdit && (
-                        <CreateIssueDialog
+                        <CreateWorkDialog
                           orgSlug={orgSlug}
-                          defaultStates={{ teamId: team?._id }}
-                          className='h-6 text-xs'
+                          teamId={team?._id}
                         />
                       )}
                     </div>
@@ -1794,10 +1793,10 @@ export default function TeamViewClient({
                                 <Target className='text-muted-foreground/50 h-16 w-16' />
                               </div>
                               <h3 className='mb-2 text-lg font-semibold'>
-                                No issues found
+                                No Work found
                               </h3>
                               <p className='text-muted-foreground mb-6'>
-                                This team doesn&apos;t have any issues yet.
+                                This team doesn&apos;t have any Work yet.
                               </p>
                             </div>
                           </div>

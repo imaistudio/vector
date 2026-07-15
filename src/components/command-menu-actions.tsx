@@ -7,7 +7,8 @@ import { api, useMutation } from '@/lib/convex';
 import { useScopedPermissions } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { toast } from 'sonner';
-import { CreateIssueDialogContent } from '@/components/issues/create-issue-dialog';
+import { CreateRequestDialog } from '@/components/requests/create-request-dialog';
+import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { CreateProjectDialogContent } from '@/components/projects/create-project-dialog';
 import { CreateTeamDialogContent } from '@/components/teams/create-team-dialog';
 
@@ -27,14 +28,19 @@ export function CommandMenuActions() {
     PERMISSIONS.DOCUMENT_CREATE,
   ]);
 
-  const [issueOpen, setIssueOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [workOpen, setWorkOpen] = useState(false);
   const [projectOpen, setProjectOpen] = useState(false);
   const [teamOpen, setTeamOpen] = useState(false);
 
   useEffect(() => {
-    const onCreateIssue = () => {
+    const onCreateRequest = () => {
       if (!permissions[PERMISSIONS.ISSUE_CREATE]) return;
-      setIssueOpen(true);
+      setRequestOpen(true);
+    };
+    const onCreateWork = () => {
+      if (!permissions[PERMISSIONS.ISSUE_CREATE]) return;
+      setWorkOpen(true);
     };
     const onCreateProject = () => {
       if (!permissions[PERMISSIONS.PROJECT_CREATE]) return;
@@ -61,13 +67,18 @@ export function CommandMenuActions() {
       }
     };
 
-    window.addEventListener('command-menu:create-issue', onCreateIssue);
+    window.addEventListener('command-menu:create-request', onCreateRequest);
+    window.addEventListener('command-menu:create-work', onCreateWork);
     window.addEventListener('command-menu:create-project', onCreateProject);
     window.addEventListener('command-menu:create-team', onCreateTeam);
     window.addEventListener('command-menu:create-document', onCreateDocument);
 
     return () => {
-      window.removeEventListener('command-menu:create-issue', onCreateIssue);
+      window.removeEventListener(
+        'command-menu:create-request',
+        onCreateRequest,
+      );
+      window.removeEventListener('command-menu:create-work', onCreateWork);
       window.removeEventListener(
         'command-menu:create-project',
         onCreateProject,
@@ -82,12 +93,18 @@ export function CommandMenuActions() {
 
   return (
     <>
-      {issueOpen && (
-        <CreateIssueDialogContent
-          orgSlug={orgSlug}
-          onClose={() => setIssueOpen(false)}
-        />
-      )}
+      <CreateRequestDialog
+        orgSlug={orgSlug}
+        open={requestOpen}
+        onOpenChange={setRequestOpen}
+        trigger={<span className='hidden' />}
+      />
+      <CreateWorkDialog
+        orgSlug={orgSlug}
+        open={workOpen}
+        onOpenChange={setWorkOpen}
+        trigger={<span className='hidden' />}
+      />
       {projectOpen && (
         <CreateProjectDialogContent
           orgSlug={orgSlug}

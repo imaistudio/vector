@@ -8,7 +8,15 @@
 
 <p align="center">CLI for interacting with a Vector workspace from the terminal.</p>
 
-This package wraps the same auth and Convex-backed workflows used by the app, so you can manage orgs, roles, teams, projects, issues, documents, notifications, and admin settings without opening the UI.
+This package wraps the same auth and Convex-backed workflows used by the app, so people and coding agents can manage Requests, Work, Tasks, organizations, projects, documents, notifications, and admin settings without opening the UI.
+
+Vector's delivery model has three levels:
+
+- **Request** captures an intake, the expected output, routing, and requester review.
+- **Work** is the durable outcome context: workpad, ownership history, linked Requests, agent executions, GitHub evidence, and review state.
+- **Task** is an optional tracked step within Work. A Work can also use only its live checklist and notes.
+
+Accepting or being assigned a Request never starts Work. Use `vcli work start` (or `vcli work status ... active`) for that explicit transition.
 
 ## Install
 
@@ -114,22 +122,41 @@ Create core entities:
 ```bash
 vcli team create --org acme --key eng --name "Engineering"
 vcli project create --org acme --key api --name "API" --team eng
-vcli issue create --org acme --title "Ship CLI" --project api --team eng
+vcli request create --org acme --title "Ship CLI" --expected-output "A published CLI with installation docs" --recipients alice@example.com
+vcli work create --org acme --title "Ship CLI" --request REQ-1 --owner alice@example.com --project api
+vcli work start API-1
+vcli task create API-1 --title "Publish npm package" --assignee alice@example.com
 vcli document create --org acme --title "CLI Notes"
 vcli folder create --org acme --name "Runbooks"
 ```
 
-Issue workflows:
+Request, Work, and Task workflows:
 
 ```bash
-vcli issue list --org acme
-vcli issue assignments API-1
-vcli issue set-priority API-1 High
-vcli issue replace-assignees API-1 "alice,bob"
-vcli issue comment API-1 --body "Investigating now."
-vcli issue link-github API-1 "https://github.com/acme/api/pull/123"
-vcli issue link-github API-2 "https://github.com/acme/api/pull/123"
+vcli request list --org acme --scope inbox
+vcli request route REQ-1 "alice@example.com,bob@example.com"
+vcli request claim REQ-1
+vcli request link-work REQ-1 API-1
+
+vcli work list --org acme --scope active
+vcli work list --org acme --scope mine
+vcli work context API-1
+vcli work status API-1 waiting
+vcli work attention API-1 --title "Need a product decision" --task 2 --execution <liveActivityId>
+vcli work handoff API-1 bob@example.com --summary "Backend is complete; UI remains"
+vcli work ready-for-review API-1
+
+vcli task list API-1
+vcli task create API-1 --title "Update docs"
+vcli task create API-1 --title "Add tests" --execution <liveActivityId>
+vcli task status API-1 2 blocked
+vcli task assign API-1 2 bob@example.com
+vcli task assign API-1 2
 ```
+
+The `--execution` flag is required when an agent wants its Task or attention request attributed to a live Vector execution. It also enforces that Work's agent Task policy permits creation.
+
+The legacy `vcli issue` commands remain temporarily available for compatibility. New automation should use `request`, `work`, and `task`.
 
 Invites and notifications:
 
@@ -162,7 +189,8 @@ vcli admin signup-policy
 Use `--json` for automation and scripts:
 
 ```bash
-vcli --json issue list --org acme
+vcli --json work list --org acme
+vcli --json request list --org acme
 vcli --json notification inbox --filter unread
 ```
 
@@ -214,7 +242,9 @@ Inspect command groups directly:
 ```bash
 vcli auth --help
 vcli org --help
-vcli issue --help
+vcli request --help
+vcli work --help
+vcli task --help
 vcli notification --help
 vcli admin --help
 ```

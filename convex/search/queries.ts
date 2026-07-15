@@ -1,7 +1,8 @@
 import { query } from '../_generated/server';
 import { v } from 'convex/values';
-import { canViewDocument } from '../access';
+import { canViewDocument, canViewIssue } from '../access';
 import { getOrganizationBySlug } from '../authz';
+import { canViewRequest } from '../requests/lib';
 
 export const searchEntities = query({
   args: {
@@ -11,7 +12,14 @@ export const searchEntities = query({
   },
   handler: async (ctx, args) => {
     if (!args.query.trim())
-      return { users: [], teams: [], projects: [], issues: [], documents: [] };
+      return {
+        users: [],
+        teams: [],
+        projects: [],
+        issues: [],
+        requests: [],
+        documents: [],
+      };
 
     const org = await getOrganizationBySlug(ctx, args.orgSlug);
     const limit = args.limit ?? 5;
@@ -24,6 +32,7 @@ export const searchEntities = query({
       projects,
       issuesByTitle,
       issuesByText,
+      requestResults,
       documents,
     ] = await Promise.all([
       // Users: search by name
@@ -64,6 +73,14 @@ export const searchEntities = query({
         )
         .take(limit),
 
+      // Requests: expected output and intake context are included in searchText
+      ctx.db
+        .query('requests')
+        .withSearchIndex('search_text', s =>
+          s.search('searchText', q).eq('organizationId', org._id),
+        )
+        .take(limit * 2),
+
       // Documents: search by title (scoped to org via search index filter)
       ctx.db
         .query('documents')
@@ -97,13 +114,24 @@ export const searchEntities = query({
 
     // Deduplicate issues from title + text search
     const seenIssueIds = new Set<string>();
-    const rawIssues = [...issuesByTitle, ...issuesByText]
+    const candidateIssues = [...issuesByTitle, ...issuesByText]
       .filter(i => {
         if (seenIssueIds.has(i._id)) return false;
         seenIssueIds.add(i._id);
-        return true;
+        return i.kind === 'work' || (!i.kind && !i.parentIssueId);
       })
-      .slice(0, limit);
+      .slice(0, limit * 2);
+    const rawIssues: typeof candidateIssues = [];
+    for (const issue of candidateIssues) {
+      if (await canViewIssue(ctx, issue)) rawIssues.push(issue);
+      if (rawIssues.length >= limit) break;
+    }
+
+    const visibleRequests: typeof requestResults = [];
+    for (const request of requestResults) {
+      if (await canViewRequest(ctx, request)) visibleRequests.push(request);
+      if (visibleRequests.length >= limit) break;
+    }
 
     // Batch-fetch issue states in parallel (fix N+1)
     const issueStates = await Promise.all(
@@ -149,6 +177,13 @@ export const searchEntities = query({
         color: p.color,
       })),
       issues,
+      requests: visibleRequests.map(request => ({
+        _id: request._id,
+        key: request.key,
+        title: request.title,
+        status: request.status,
+        expectedOutput: request.expectedOutput,
+      })),
       documents: visibleDocuments.map(d => ({
         _id: d._id,
         title: d.title,

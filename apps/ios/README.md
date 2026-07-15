@@ -2,7 +2,7 @@
 
 Native SwiftUI companion app for Vector.
 
-This increment includes both the reusable `VectorMobile` Swift package and a runnable `Vector` app target for local Simulator builds and TestFlight archives. The app is still a focused mobile companion: core issue, project, team, status, comment, assignment, and mobile settings surfaces live natively, while deeper workspace administration stays on the web entry points.
+This increment includes both the reusable `VectorMobile` Swift package and a runnable `Vector` app target for local Simulator builds and TestFlight archives. The app is a focused mobile companion for Request intake and review, active Work monitoring, explicit Work starts, Task status changes, handoff acceptance, agent attention, notifications, and mobile settings. Deeper workspace administration stays on the web entry points.
 
 ## Instance Setup
 
@@ -40,6 +40,8 @@ The app includes the Apple Push Notifications entitlement and registers APNs tok
 - `APNS_TOPIC` or `APNS_BUNDLE_ID` set to the iOS bundle ID
 
 The Apple Developer bundle identifier and App Store provisioning profile must also have Push Notifications enabled, otherwise TestFlight can install the app but APNs registration or delivery will fail.
+
+Native notification preferences mirror the web categories for Requests, handoffs, reviews, explicit human attention, recurring reminders, and GitHub evidence. Notification deep links open the matching Request or Work detail directly when the payload includes its key.
 
 ## CI, Signing, and TestFlight
 

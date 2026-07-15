@@ -36,7 +36,7 @@ const categoryLabels: Record<string, { title: string; description: string }> = {
   },
   assignments: {
     title: 'Assignments',
-    description: 'New issue assignments and direct reassignments.',
+    description: 'New Work and Task assignments or transfers.',
   },
   mentions: {
     title: 'Mentions',
@@ -48,11 +48,35 @@ const categoryLabels: Record<string, { title: string; description: string }> = {
   },
   work_sessions: {
     title: 'Work sessions',
-    description: 'Completed or failed agent work sessions on your issues.',
+    description: 'Completed or failed agent executions on your Work.',
   },
   team_status_changes: {
     title: 'Team status changes',
     description: 'Shared-team users coming online or updating their status.',
+  },
+  requests: {
+    title: 'Requests',
+    description: 'Routing, intake, and requester updates.',
+  },
+  handoffs: {
+    title: 'Handoffs',
+    description: 'Ownership proposals, responses, and Task transfers.',
+  },
+  reviews: {
+    title: 'Reviews',
+    description: 'Work or Requests ready for review and requested changes.',
+  },
+  attention: {
+    title: 'Human attention',
+    description: 'Explicit agent attention and blocked Work.',
+  },
+  reminders: {
+    title: 'Reminders',
+    description: 'Scheduled and recurring responsibility reminders.',
+  },
+  github: {
+    title: 'GitHub',
+    description: 'Linked development evidence that needs a human action.',
   },
 };
 

@@ -4,6 +4,9 @@ export const ACTIVITY_ENTITY_TYPES = [
   'team',
   'project',
   'issue',
+  'request',
+  'work',
+  'task',
   'document',
   'view',
 ] as const;
@@ -72,6 +75,30 @@ export const ACTIVITY_EVENT_TYPES = [
   'issue_live_activity_completed',
   'issue_live_activity_commented',
   'issue_live_activity_delegated',
+  // Request / Work / Task model
+  'request_created',
+  'request_routed',
+  'request_claimed',
+  'request_linked_to_work',
+  'request_ready_for_review',
+  'request_changes_requested',
+  'request_completed',
+  'work_created',
+  'work_started',
+  'work_ready_for_review',
+  'work_completed',
+  'work_owner_changed',
+  'work_contributor_added',
+  'work_contributor_removed',
+  'work_handoff_proposed',
+  'work_handoff_accepted',
+  'work_handoff_declined',
+  'work_attention_requested',
+  'work_attention_resolved',
+  'task_created',
+  'task_updated',
+  'task_status_changed',
+  'task_assignee_changed',
 ] as const;
 
 export type ActivityEventType = (typeof ACTIVITY_EVENT_TYPES)[number];
@@ -92,6 +119,10 @@ export const ACTIVITY_FIELDS = [
   'role',
   'content',
   'live_activity',
+  'owner',
+  'task_status',
+  'expected_output',
+  'request_status',
 ] as const;
 
 export type ActivityField = (typeof ACTIVITY_FIELDS)[number];
@@ -115,6 +146,8 @@ const activityReferenceIdValidator = v.union(
   v.id('teams'),
   v.id('projects'),
   v.id('issues'),
+  v.id('requests'),
+  v.id('tasks'),
   v.id('projectStatuses'),
   v.id('issueStates'),
   v.id('issuePriorities'),

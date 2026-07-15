@@ -4,6 +4,7 @@ import { internalQuery, query, type QueryCtx } from '../_generated/server';
 import { getOrganizationBySlug, hasScopedPermission } from '../authz';
 import { getAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
+import { canViewRequest } from '../requests/lib';
 import { PERMISSIONS } from '../_shared/permissions';
 import { getSiteSettings } from '../platformAdmin/lib';
 import { buildArtifactExternalKey } from './shared';
@@ -51,6 +52,17 @@ function getEffectiveGitHubAuthState(
 
   return {
     autoLinkEnabled: integration?.autoLinkEnabled ?? true,
+    keyLinkEnabled:
+      integration?.keyLinkEnabled ?? integration?.autoLinkEnabled ?? true,
+    aiMatchEnabled:
+      integration?.aiMatchEnabled ?? integration?.autoLinkEnabled ?? true,
+    unmatchedArtifactPolicy:
+      integration?.unmatchedArtifactPolicy ?? 'development_inbox',
+    stateAutomationPolicy: integration?.stateAutomationPolicy ?? 'manual',
+    identityContributionPolicy:
+      integration?.identityContributionPolicy ?? 'contributors',
+    githubNotificationPolicy:
+      integration?.githubNotificationPolicy ?? 'action_only',
     installationId,
     hasInstallation,
     hasTokenFallback,
@@ -624,7 +636,7 @@ export const searchAutoLinkIssueCandidates = internalQuery({
       ...sameRepoLinkedIssues,
       ...recentOpenIssues,
     ]) {
-      if (issue.closedAt) continue;
+      if (issue.closedAt || issue.kind === 'legacy_task_source') continue;
       issueMap.set(String(issue._id), issue);
     }
 
@@ -872,8 +884,8 @@ export const isGitHubAppConfigured = query({
     const settings = await getSiteSettings(ctx.db);
     return Boolean(
       settings?.githubAppId ||
-        settings?.githubAppEncryptedPrivateKey ||
-        settings?.githubAppEncryptedWebhookSecret,
+      settings?.githubAppEncryptedPrivateKey ||
+      settings?.githubAppEncryptedWebhookSecret,
     );
   },
 });
@@ -927,8 +939,34 @@ export const getOrgSettings = query({
     return {
       integration: integration
         ? {
-            ...integration,
+            _id: integration._id,
+            provider: integration.provider,
             autoLinkEnabled: integration.autoLinkEnabled ?? true,
+            keyLinkEnabled:
+              integration.keyLinkEnabled ?? integration.autoLinkEnabled ?? true,
+            aiMatchEnabled:
+              integration.aiMatchEnabled ?? integration.autoLinkEnabled ?? true,
+            unmatchedArtifactPolicy:
+              integration.unmatchedArtifactPolicy ?? 'development_inbox',
+            stateAutomationPolicy:
+              integration.stateAutomationPolicy ?? 'manual',
+            identityContributionPolicy:
+              integration.identityContributionPolicy ?? 'contributors',
+            githubNotificationPolicy:
+              integration.githubNotificationPolicy ?? 'action_only',
+            connectionMode: integration.connectionMode,
+            installationId: integration.installationId,
+            webhookSecretFingerprint: integration.webhookSecretFingerprint,
+            webhookSecretLastUpdatedAt: integration.webhookSecretLastUpdatedAt,
+            tokenFingerprint: integration.tokenFingerprint,
+            tokenLastUpdatedAt: integration.tokenLastUpdatedAt,
+            lastWebhookAt: integration.lastWebhookAt,
+            lastWebhookEvent: integration.lastWebhookEvent,
+            lastReconciledAt: integration.lastReconciledAt,
+            lastSyncFailureAt: integration.lastSyncFailureAt,
+            lastSyncFailureMessage: integration.lastSyncFailureMessage,
+            connectedAt: integration.connectedAt,
+            updatedAt: integration.updatedAt,
             hasTokenFallback: Boolean(integration.encryptedToken),
             hasWebhookSecret: Boolean(integration.encryptedWebhookSecret),
           }
@@ -937,6 +975,64 @@ export const getOrgSettings = query({
       repositories,
       canManage,
     };
+  },
+});
+
+export const listDevelopmentInbox = query({
+  args: {
+    orgSlug: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal('untriaged'),
+        v.literal('linked'),
+        v.literal('dismissed'),
+      ),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('UNAUTHORIZED');
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    const canView = await hasScopedPermission(
+      ctx,
+      { organizationId: org._id },
+      userId,
+      PERMISSIONS.ISSUE_VIEW,
+    );
+    if (!canView) throw new ConvexError('FORBIDDEN');
+    const rows = args.status
+      ? await ctx.db
+          .query('githubDevelopmentInbox')
+          .withIndex('by_org_status', q =>
+            q.eq('organizationId', org._id).eq('status', args.status!),
+          )
+          .order('desc')
+          .take(100)
+      : await ctx.db
+          .query('githubDevelopmentInbox')
+          .withIndex('by_organization', q => q.eq('organizationId', org._id))
+          .order('desc')
+          .take(100);
+    return await Promise.all(
+      rows.map(async row => {
+        const createdRequest = row.createdRequestId
+          ? await ctx.db.get('requests', row.createdRequestId)
+          : null;
+        return {
+          ...row,
+          pullRequest: row.pullRequestId
+            ? await ctx.db.get('githubPullRequests', row.pullRequestId)
+            : null,
+          githubIssue: row.githubIssueId
+            ? await ctx.db.get('githubIssues', row.githubIssueId)
+            : null,
+          createdRequest:
+            createdRequest && (await canViewRequest(ctx, createdRequest))
+              ? createdRequest
+              : null,
+        };
+      }),
+    );
   },
 });
 

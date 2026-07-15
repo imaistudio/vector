@@ -12,6 +12,7 @@ import {
   Heading3,
   Image,
   List,
+  ListChecks,
   ListOrdered,
   Pilcrow,
   Quote,
@@ -144,6 +145,12 @@ const getAllItems = (options: SuggestionOptions): SlashItem[] => [
     icon: ListOrdered,
     command: ({ editor, range }) =>
       editor.chain().focus().deleteRange(range).toggleOrderedList().run(),
+  },
+  {
+    title: 'Checklist',
+    icon: ListChecks,
+    command: ({ editor, range }) =>
+      editor.chain().focus().deleteRange(range).toggleTaskList().run(),
   },
   {
     title: 'Image',

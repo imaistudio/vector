@@ -49,7 +49,7 @@ import {
   type KanbanBorderColor,
 } from '@/components/issues/kanban-border-colors';
 import { IssuesTable } from '@/components/issues/issues-table';
-import { CreateIssueDialog } from '@/components/issues/create-issue-dialog';
+import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { TableSkeleton, KanbanSkeleton } from '@/components/ui/table-skeleton';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -1282,7 +1282,7 @@ export default function ProjectViewClient({
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <div className='overflow-x-auto overflow-y-hidden'>
                   <TabsList>
-                    <TabsTrigger value='issues'>Issues</TabsTrigger>
+                    <TabsTrigger value='issues'>Work</TabsTrigger>
                     <TabsTrigger value='activity'>Activity</TabsTrigger>
                     <TabsTrigger value='members'>Members</TabsTrigger>
                   </TabsList>
@@ -1317,7 +1317,7 @@ export default function ProjectViewClient({
                         <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2' />
                       )}
                       <Input
-                        placeholder='Search issues...'
+                        placeholder='Search Work...'
                         value={issueSearchText}
                         onChange={e => setIssueSearchText(e.target.value)}
                         className='h-6 w-40 pl-7 text-xs'
@@ -1346,10 +1346,9 @@ export default function ProjectViewClient({
                       </Button>
                     </div>
                     {project && (
-                      <CreateIssueDialog
+                      <CreateWorkDialog
                         orgSlug={params.orgSlug}
-                        defaultStates={{ projectId: project._id }}
-                        className='h-6 text-xs'
+                        projectId={project._id}
                       />
                     )}
                   </div>
@@ -1396,8 +1395,8 @@ export default function ProjectViewClient({
                       </div>
                       <p className='text-sm'>
                         {issueSearchText
-                          ? 'No issues match your search.'
-                          : 'No issues yet. Create one to get started.'}
+                          ? 'No Work matches your search.'
+                          : 'No Work yet. Create an outcome to get started.'}
                       </p>
                     </div>
                   </motion.div>

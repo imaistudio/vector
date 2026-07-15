@@ -246,7 +246,7 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
         <div className='w-full max-w-3xl'>
           {issues.length === 0 ? (
             <div className='border-border text-muted-foreground rounded-lg border border-dashed py-16 text-center text-sm'>
-              No issues to show.
+              No Work to show.
             </div>
           ) : (
             <PublicListView
@@ -262,9 +262,7 @@ export function PublicViewPage({ orgSlug, viewId }: PublicViewPageProps) {
       {totalPages > 1 && (
         <div className='w-full max-w-3xl'>
           <div className='flex items-center justify-between'>
-            <span className='text-muted-foreground text-xs'>
-              {total} issue{total !== 1 ? 's' : ''}
-            </span>
+            <span className='text-muted-foreground text-xs'>{total} Work</span>
             <div className='flex items-center gap-2'>
               <Button
                 variant='outline'

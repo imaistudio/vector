@@ -21,10 +21,7 @@ import { formatDateHuman } from '@/lib/date';
 import { cn } from '@/lib/utils';
 
 type ActivityStatus =
-  | 'LoadingFirstPage'
-  | 'LoadingMore'
-  | 'CanLoadMore'
-  | 'Exhausted';
+  'LoadingFirstPage' | 'LoadingMore' | 'CanLoadMore' | 'Exhausted';
 
 export interface ActivityFeedItem {
   _id: string;
@@ -75,7 +72,7 @@ interface ActivityFeedListProps {
 function getTargetHref(orgSlug: string, target: ActivityFeedItem['target']) {
   if (!target.key && !target.id) return null;
   if (target.type === 'issue')
-    return target.key ? `/${orgSlug}/issues/${target.key}` : null;
+    return target.key ? `/${orgSlug}/work/${target.key}` : null;
   if (target.type === 'project')
     return target.key ? `/${orgSlug}/projects/${target.key}` : null;
   if (target.type === 'document')

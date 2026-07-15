@@ -11,6 +11,8 @@ export interface ActivityScope {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
+  taskId?: Id<'tasks'>;
   documentId?: Id<'documents'>;
   viewId?: Id<'views'>;
 }
@@ -24,6 +26,8 @@ export interface ActivityWrite {
   teamId?: Id<'teams'>;
   projectId?: Id<'projects'>;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
+  taskId?: Id<'tasks'>;
   documentId?: Id<'documents'>;
   viewId?: Id<'views'>;
   subjectUserId?: Id<'users'>;
@@ -36,6 +40,8 @@ export interface ActivityWrite {
       | Id<'teams'>
       | Id<'projects'>
       | Id<'issues'>
+      | Id<'requests'>
+      | Id<'tasks'>
       | Id<'projectStatuses'>
       | Id<'issueStates'>
       | Id<'issuePriorities'>;
@@ -47,6 +53,8 @@ export interface ActivityWrite {
       | Id<'teams'>
       | Id<'projects'>
       | Id<'issues'>
+      | Id<'requests'>
+      | Id<'tasks'>
       | Id<'projectStatuses'>
       | Id<'issueStates'>
       | Id<'issuePriorities'>;
@@ -358,13 +366,15 @@ export async function recordActivity(
   ctx: Pick<MutationCtx, 'db'>,
   event: ActivityWrite,
 ) {
-  const scope = event.scope ?? {
-    organizationId: event.organizationId,
-    teamId: event.teamId,
-    projectId: event.projectId,
-    issueId: event.issueId,
-    documentId: event.documentId,
-    viewId: event.viewId,
+  const scope = {
+    organizationId: event.scope?.organizationId ?? event.organizationId,
+    teamId: event.scope?.teamId ?? event.teamId,
+    projectId: event.scope?.projectId ?? event.projectId,
+    issueId: event.scope?.issueId ?? event.issueId,
+    requestId: event.scope?.requestId ?? event.requestId,
+    taskId: event.scope?.taskId ?? event.taskId,
+    documentId: event.scope?.documentId ?? event.documentId,
+    viewId: event.scope?.viewId ?? event.viewId,
   };
 
   if (!scope.organizationId) {
@@ -379,6 +389,8 @@ export async function recordActivity(
     teamId: scope.teamId,
     projectId: scope.projectId,
     issueId: scope.issueId,
+    requestId: scope.requestId,
+    taskId: scope.taskId,
     documentId: scope.documentId,
     viewId: scope.viewId,
     subjectUserId: event.subjectUserId,

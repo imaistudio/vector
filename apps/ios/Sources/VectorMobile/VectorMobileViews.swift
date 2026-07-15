@@ -32,34 +32,39 @@ private struct AuthenticatedVectorMobileView: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   @StateObject private var pushCoordinator = VectorPushNotificationCoordinator.shared
   @AppStorage("vector.mobile.notificationsPrompted") private var hasPromptedForNotifications = false
-  @State private var selectedTab: VectorMobileTab = .inbox
+  @State private var selectedTab: VectorMobileTab = .work
   @State private var isShowingNotificationPrompt = false
+  @State private var notificationHrefToOpen: String?
 
   var body: some View {
     TabView(selection: $selectedTab) {
       NavigationStack {
-        InboxScreen(viewModel: viewModel, sessionController: sessionController)
+        MobileRequestsScreen(viewModel: viewModel)
+      }
+      .tabItem {
+        Label(VectorMobileTab.requests.title, systemImage: VectorMobileTab.requests.systemImage)
+      }
+      .tag(VectorMobileTab.requests)
+
+      NavigationStack {
+        MobileWorkScreen(viewModel: viewModel)
+      }
+      .tabItem {
+        Label(VectorMobileTab.work.title, systemImage: VectorMobileTab.work.systemImage)
+      }
+      .tag(VectorMobileTab.work)
+
+      NavigationStack {
+        InboxScreen(
+          viewModel: viewModel,
+          sessionController: sessionController,
+          notificationHrefToOpen: $notificationHrefToOpen
+        )
       }
       .tabItem {
         Label(VectorMobileTab.inbox.title, systemImage: VectorMobileTab.inbox.systemImage)
       }
       .tag(VectorMobileTab.inbox)
-
-      NavigationStack {
-        IssuesScreen(viewModel: viewModel, sessionController: sessionController)
-      }
-      .tabItem {
-        Label(VectorMobileTab.issues.title, systemImage: VectorMobileTab.issues.systemImage)
-      }
-      .tag(VectorMobileTab.issues)
-
-      NavigationStack {
-        WorkspaceScreen(viewModel: viewModel)
-      }
-      .tabItem {
-        Label(VectorMobileTab.workspace.title, systemImage: VectorMobileTab.workspace.systemImage)
-      }
-      .tag(VectorMobileTab.workspace)
 
       NavigationStack {
         MobileSettingsScreen(
@@ -76,6 +81,9 @@ private struct AuthenticatedVectorMobileView: View {
     .tint(VectorTheme.accent)
     .onAppear {
       viewModel.setAuthenticatedUser(sessionController.user)
+      if let href = pushCoordinator.pendingNotificationHref {
+        openNotification(href)
+      }
       Task {
         await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
         if let token = pushCoordinator.deviceToken {
@@ -94,6 +102,9 @@ private struct AuthenticatedVectorMobileView: View {
     }
     .onReceive(pushCoordinator.$deviceToken.compactMap { $0 }.removeDuplicates()) { token in
       viewModel.upsertMobilePushToken(token)
+    }
+    .onReceive(pushCoordinator.$pendingNotificationHref.compactMap { $0 }) { href in
+      openNotification(href)
     }
     .sheet(
       isPresented: $isShowingNotificationPrompt,
@@ -114,30 +125,79 @@ private struct AuthenticatedVectorMobileView: View {
       .presentationDetents([.medium, .large])
     }
   }
+
+  private func openNotification(_ href: String) {
+    let trimmedHref = href.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedHref.isEmpty else {
+      pushCoordinator.consumePendingNotificationHref()
+      return
+    }
+    if let target = pendingNotificationTarget(for: trimmedHref),
+       target.orgSlug == viewModel.configuration.orgSlug
+    {
+      selectedTab = .inbox
+      notificationHrefToOpen = trimmedHref
+    } else {
+      #if os(iOS)
+        let parsedURL = URL(string: trimmedHref)
+        let webURL = parsedURL?.scheme == nil
+          ? viewModel.configuration.webURL(path: trimmedHref)
+          : parsedURL
+        if let webURL {
+          UIApplication.shared.open(webURL)
+        }
+      #endif
+    }
+    pushCoordinator.consumePendingNotificationHref()
+  }
+}
+
+private enum PendingNotificationTarget {
+  case request(orgSlug: String, key: String)
+  case work(orgSlug: String, key: String)
+
+  var orgSlug: String {
+    switch self {
+    case let .request(orgSlug, _), let .work(orgSlug, _): orgSlug
+    }
+  }
+}
+
+private func pendingNotificationTarget(for href: String?) -> PendingNotificationTarget? {
+  guard let href, !href.isEmpty else { return nil }
+  let path = URL(string: href)?.path ?? href
+  let parts = path.split(separator: "/").map(String.init)
+  if let index = parts.firstIndex(of: "requests"), index > 0, parts.indices.contains(index + 1) {
+    return .request(orgSlug: parts[index - 1], key: parts[index + 1])
+  }
+  if let index = parts.firstIndex(of: "work"), index > 0, parts.indices.contains(index + 1) {
+    return .work(orgSlug: parts[index - 1], key: parts[index + 1])
+  }
+  return nil
 }
 
 private enum VectorMobileTab: String, CaseIterable, Identifiable {
+  case requests
+  case work
   case inbox
-  case issues
-  case workspace
   case settings
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
+    case .requests: "Requests"
+    case .work: "Work"
     case .inbox: "Inbox"
-    case .issues: "Issues"
-    case .workspace: "Workspace"
     case .settings: "Settings"
     }
   }
 
   var systemImage: String {
     switch self {
+    case .requests: "tray"
+    case .work: "scope"
     case .inbox: "bell"
-    case .issues: "checklist"
-    case .workspace: "square.grid.2x2"
     case .settings: "gearshape"
     }
   }
@@ -731,6 +791,7 @@ private struct PagingTrigger: View {
 struct InboxScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  @Binding var notificationHrefToOpen: String?
   @State private var isShowingProfileStatusSettings = false
 
   var body: some View {
@@ -768,6 +829,9 @@ struct InboxScreen: View {
     .vectorInlineNavigationTitle()
     .navigationDestination(isPresented: $isShowingProfileStatusSettings) {
       ProfileStatusSettingsScreen(viewModel: viewModel)
+    }
+    .navigationDestination(isPresented: notificationDestinationPresented) {
+      notificationDestination
     }
     .toolbar {
       #if os(iOS)
@@ -811,6 +875,77 @@ struct InboxScreen: View {
       #endif
     }
   }
+
+  private var notificationDestinationPresented: Binding<Bool> {
+    Binding(
+      get: { pendingNotificationTarget(for: notificationHrefToOpen) != nil },
+      set: { isPresented in
+        if !isPresented { notificationHrefToOpen = nil }
+      }
+    )
+  }
+
+  @ViewBuilder
+  private var notificationDestination: some View {
+    switch pendingNotificationTarget(for: notificationHrefToOpen) {
+    case let .request(_, key):
+      MobileRequestDetailScreen(request: requestTarget(key), viewModel: viewModel)
+    case let .work(_, key):
+      MobileWorkDetailScreen(work: workTarget(key), viewModel: viewModel)
+    case nil:
+      EmptyView()
+    }
+  }
+
+  private func requestTarget(_ key: String) -> VectorRequestRow {
+    if let request = viewModel.requests.first(where: { $0.key == key }) { return request }
+    if let notification = viewModel.inboxNotifications.first(where: { $0.requestKey == key }) {
+      return VectorRequestRow(
+        id: notification.requestId ?? key,
+        key: key,
+        title: notification.title,
+        expectedOutput: notification.body,
+        status: notification.eventType == "request_ready_for_review"
+          ? .readyForReview
+          : notification.eventType == "request_changes_requested" ? .changesRequested : .new,
+        createdAt: notification.createdAt,
+        updatedAt: notification.createdAt
+      )
+    }
+    return VectorRequestRow(
+      id: key,
+      key: key,
+      title: key,
+      expectedOutput: "Open this Request to review its expected output.",
+      status: .new,
+      createdAt: 0,
+      updatedAt: 0
+    )
+  }
+
+  private func workTarget(_ key: String) -> VectorWorkRow {
+    if let work = viewModel.work.first(where: { $0.key == key }) { return work }
+    if let notification = viewModel.inboxNotifications.first(where: { $0.workKey == key }) {
+      return VectorWorkRow(
+        id: notification.issueId ?? key,
+        key: key,
+        title: notification.title,
+        workStatus: notification.eventType == "work_ready_for_review"
+          ? .readyForReview
+          : notification.eventType == "work_completed"
+            ? .completed
+            : notification.eventType == "work_blocked" ? .blocked : .planned,
+        creationTime: notification.createdAt
+      )
+    }
+    return VectorWorkRow(
+      id: key,
+      key: key,
+      title: key,
+      workStatus: .planned,
+      creationTime: 0
+    )
+  }
 }
 
 private struct InboxNotificationNavigationRow: View {
@@ -818,33 +953,57 @@ private struct InboxNotificationNavigationRow: View {
   let isLast: Bool
   @ObservedObject var viewModel: VectorMobileViewModel
 
-  private var issueTarget: VectorIssueRow? {
-    guard let key = notification.issueKey else {
+  private var requestTarget: VectorRequestRow? {
+    guard let key = notification.requestKey else {
       return nil
     }
-
-    if let issue = viewModel.issues.first(where: { $0.key == key }) {
-      return issue
+    if let request = viewModel.requests.first(where: { $0.key == key }) {
+      return request
     }
+    let status: VectorRequestStatus = notification.eventType == "request_ready_for_review"
+      ? .readyForReview
+      : notification.eventType == "request_changes_requested" ? .changesRequested : .new
+    return VectorRequestRow(
+      id: notification.requestId ?? key,
+      key: key,
+      title: notification.title,
+      expectedOutput: notification.body,
+      status: status,
+      createdAt: notification.createdAt,
+      updatedAt: notification.createdAt
+    )
+  }
 
-    return VectorIssueRow(
+  private var workTarget: VectorWorkRow? {
+    guard let key = notification.workKey else { return nil }
+    if let work = viewModel.work.first(where: { $0.key == key }) { return work }
+    let status: VectorWorkStatus = notification.eventType == "work_ready_for_review"
+      ? .readyForReview
+      : notification.eventType == "work_completed" ? .completed : notification.eventType == "work_blocked" ? .blocked : .planned
+    return VectorWorkRow(
       id: notification.issueId ?? key,
       key: key,
       title: notification.title,
-      description: notification.body,
-      creationTime: notification.createdAt,
-      updatedAt: notification.createdAt
+      workStatus: status,
+      creationTime: notification.createdAt
     )
   }
 
   var body: some View {
     Group {
-      if let issueTarget {
+      if let requestTarget {
         NavigationLink {
-          IssueDetailScreen(
-            issue: issueTarget,
-            viewModel: viewModel
+          MobileRequestDetailScreen(request: requestTarget, viewModel: viewModel)
+        } label: {
+          InboxNotificationRow(
+            notification: notification,
+            isLast: isLast,
+            baseURL: viewModel.configuration.webBaseURL
           )
+        }
+      } else if let workTarget {
+        NavigationLink {
+          MobileWorkDetailScreen(work: workTarget, viewModel: viewModel)
         } label: {
           InboxNotificationRow(
             notification: notification,
@@ -949,6 +1108,13 @@ private struct InboxNotificationRow: View {
     case .invites: "envelope"
     case .workSessions: "terminal"
     case .teamStatusChanges: "person.wave.2"
+    case .requests: "tray"
+    case .handoffs: "arrow.left.arrow.right"
+    case .reviews: "checkmark.seal"
+    case .attention: "exclamationmark.bubble"
+    case .reminders: "alarm"
+    case .github: "chevron.left.forwardslash.chevron.right"
+    case .unknown: "bell"
     }
   }
 
@@ -960,6 +1126,13 @@ private struct InboxNotificationRow: View {
     case .invites: Color(vectorHex: "#f59e0b")
     case .workSessions: Color(vectorHex: "#14b8a6")
     case .teamStatusChanges: Color(vectorHex: "#06b6d4")
+    case .requests: Color(vectorHex: "#6366f1")
+    case .handoffs: Color(vectorHex: "#f97316")
+    case .reviews: Color(vectorHex: "#a855f7")
+    case .attention: Color(vectorHex: "#ef4444")
+    case .reminders: Color(vectorHex: "#eab308")
+    case .github: Color(vectorHex: "#64748b")
+    case .unknown: Color.secondary
     }
   }
 }
@@ -3956,7 +4129,7 @@ private struct DocumentSection<Content: View>: View {
   }
 }
 
-private struct MarkdownDocumentView: View {
+struct MarkdownDocumentView: View {
   let markdown: String
 
   private var blocks: [VectorMarkdownBlock] {

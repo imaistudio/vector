@@ -8,6 +8,7 @@ import {
   canViewProject,
   canViewTeam,
 } from '../access';
+import { canViewRequest } from '../requests/lib';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import {
   getUserDisplayName,
@@ -33,6 +34,8 @@ type HydratedUserStatuses = Map<
   }
 >;
 type HydratedIssues = Map<Id<'issues'>, Doc<'issues'>>;
+type HydratedRequests = Map<Id<'requests'>, Doc<'requests'>>;
+type HydratedTasks = Map<Id<'tasks'>, Doc<'tasks'>>;
 type HydratedProjects = Map<Id<'projects'>, Doc<'projects'>>;
 type HydratedTeams = Map<Id<'teams'>, Doc<'teams'>>;
 type HydratedDocuments = Map<Id<'documents'>, Doc<'documents'>>;
@@ -105,6 +108,36 @@ async function hydrateIssues(
   );
 }
 
+async function hydrateRequests(
+  ctx: QueryCtx,
+  ids: readonly Id<'requests'>[],
+): Promise<HydratedRequests> {
+  const uniqueIds = [...new Set(ids)];
+  const requests = await Promise.all(
+    uniqueIds.map(id => ctx.db.get('requests', id)),
+  );
+  return new Map(
+    uniqueIds.flatMap((id, index) => {
+      const request = requests[index];
+      return request ? [[id, request]] : [];
+    }),
+  );
+}
+
+async function hydrateTasks(
+  ctx: QueryCtx,
+  ids: readonly Id<'tasks'>[],
+): Promise<HydratedTasks> {
+  const uniqueIds = [...new Set(ids)];
+  const tasks = await Promise.all(uniqueIds.map(id => ctx.db.get('tasks', id)));
+  return new Map(
+    uniqueIds.flatMap((id, index) => {
+      const task = tasks[index];
+      return task ? [[id, task]] : [];
+    }),
+  );
+}
+
 async function hydrateProjects(
   ctx: QueryCtx,
   ids: readonly Id<'projects'>[],
@@ -155,6 +188,7 @@ async function filterVisibleEvents(
   ctx: QueryCtx,
   events: ActivityEventDoc[],
   issues: HydratedIssues,
+  requests: HydratedRequests,
   projects: HydratedProjects,
   teams: HydratedTeams,
   documents: HydratedDocuments,
@@ -162,11 +196,25 @@ async function filterVisibleEvents(
   const visible: ActivityEventDoc[] = [];
 
   for (const event of events) {
-    if (event.entityType === 'issue') {
+    if (
+      event.entityType === 'issue' ||
+      event.entityType === 'work' ||
+      event.entityType === 'task'
+    ) {
       if (!event.issueId) continue;
       const issue = issues.get(event.issueId);
       if (!issue) continue;
       if (await canViewIssue(ctx, issue)) {
+        visible.push(event);
+      }
+      continue;
+    }
+
+    if (event.entityType === 'request') {
+      if (!event.requestId) continue;
+      const request = requests.get(event.requestId);
+      if (!request) continue;
+      if (await canViewRequest(ctx, request)) {
         visible.push(event);
       }
       continue;
@@ -208,6 +256,8 @@ function mapActivityItem(
   users: HydratedUsers,
   userStatuses: HydratedUserStatuses,
   issues: HydratedIssues,
+  requests: HydratedRequests,
+  tasks: HydratedTasks,
   projects: HydratedProjects,
   teams: HydratedTeams,
   documents: HydratedDocuments,
@@ -217,6 +267,10 @@ function mapActivityItem(
     ? (users.get(event.subjectUserId) ?? null)
     : null;
   const issue = event.issueId ? (issues.get(event.issueId) ?? null) : null;
+  const request = event.requestId
+    ? (requests.get(event.requestId) ?? null)
+    : null;
+  const task = event.taskId ? (tasks.get(event.taskId) ?? null) : null;
   const project = event.projectId
     ? (projects.get(event.projectId) ?? null)
     : null;
@@ -226,33 +280,49 @@ function mapActivityItem(
     : null;
 
   const target =
-    event.entityType === 'issue'
+    event.entityType === 'issue' || event.entityType === 'work'
       ? {
-          type: 'issue' as const,
+          type: event.entityType,
           id: event.issueId ?? null,
           key: issue?.key ?? event.snapshot.entityKey ?? null,
           name: issue?.title ?? event.snapshot.entityName ?? null,
         }
-      : event.entityType === 'project'
+      : event.entityType === 'request'
         ? {
-            type: 'project' as const,
-            id: event.projectId ?? null,
-            key: project?.key ?? event.snapshot.entityKey ?? null,
-            name: project?.name ?? event.snapshot.entityName ?? null,
+            type: 'request' as const,
+            id: event.requestId ?? null,
+            key: request?.key ?? event.snapshot.entityKey ?? null,
+            name: request?.title ?? event.snapshot.entityName ?? null,
           }
-        : event.entityType === 'document'
+        : event.entityType === 'task'
           ? {
-              type: 'document' as const,
-              id: event.documentId ?? null,
-              key: null,
-              name: document?.title ?? event.snapshot.entityName ?? null,
+              type: 'task' as const,
+              id: event.taskId ?? null,
+              key: task
+                ? `${issue?.key ?? event.snapshot.entityKey ?? 'Work'}#${task.number}`
+                : (event.snapshot.entityKey ?? null),
+              name: task?.title ?? event.snapshot.entityName ?? null,
             }
-          : {
-              type: 'team' as const,
-              id: event.teamId ?? null,
-              key: team?.key ?? event.snapshot.entityKey ?? null,
-              name: team?.name ?? event.snapshot.entityName ?? null,
-            };
+          : event.entityType === 'project'
+            ? {
+                type: 'project' as const,
+                id: event.projectId ?? null,
+                key: project?.key ?? event.snapshot.entityKey ?? null,
+                name: project?.name ?? event.snapshot.entityName ?? null,
+              }
+            : event.entityType === 'document'
+              ? {
+                  type: 'document' as const,
+                  id: event.documentId ?? null,
+                  key: null,
+                  name: document?.title ?? event.snapshot.entityName ?? null,
+                }
+              : {
+                  type: 'team' as const,
+                  id: event.teamId ?? null,
+                  key: team?.key ?? event.snapshot.entityKey ?? null,
+                  name: team?.name ?? event.snapshot.entityName ?? null,
+                };
 
   return {
     _id: event._id,
@@ -292,6 +362,7 @@ function mapActivityItem(
       commentPreview: event.details.commentPreview ?? null,
       addedUserNames: event.details.addedUserNames ?? [],
       removedUserNames: event.details.removedUserNames ?? [],
+      viaAgent: event.details.viaAgent ?? false,
     },
   };
 }
@@ -317,6 +388,14 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
     ctx,
     events.flatMap(event => (event.issueId ? [event.issueId] : [])),
   );
+  const requests = await hydrateRequests(
+    ctx,
+    events.flatMap(event => (event.requestId ? [event.requestId] : [])),
+  );
+  const tasks = await hydrateTasks(
+    ctx,
+    events.flatMap(event => (event.taskId ? [event.taskId] : [])),
+  );
   const projects = await hydrateProjects(
     ctx,
     events.flatMap(event => (event.projectId ? [event.projectId] : [])),
@@ -334,6 +413,7 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
     ctx,
     events,
     issues,
+    requests,
     projects,
     teams,
     documents,
@@ -345,6 +425,8 @@ async function enrichEvents(ctx: QueryCtx, events: ActivityEventDoc[]) {
       users,
       userStatuses,
       issues,
+      requests,
+      tasks,
       projects,
       teams,
       documents,
