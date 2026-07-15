@@ -2,6 +2,11 @@
 
 import { render } from '@react-email/render';
 import { importPKCS8, SignJWT } from 'jose';
+import {
+  connect as connectHttp2,
+  constants as http2Constants,
+  type IncomingHttpHeaders,
+} from 'node:http2';
 import nodemailer from 'nodemailer';
 import webpush from 'web-push';
 import { internal } from '../_generated/api';
@@ -171,38 +176,85 @@ async function sendApnsNotification({
     environment === 'sandbox'
       ? 'https://api.sandbox.push.apple.com'
       : 'https://api.push.apple.com';
-  const response = await fetch(`${host}/3/device/${token}`, {
-    method: 'POST',
-    headers: {
-      authorization: `bearer ${jwt}`,
-      'apns-topic': topic,
-      'apns-push-type': 'alert',
-      'apns-priority': '10',
-      'content-type': 'application/json',
+  const payload = JSON.stringify({
+    aps: {
+      alert: { title, body },
+      sound: 'default',
     },
-    body: JSON.stringify({
-      aps: {
-        alert: { title, body },
-        sound: 'default',
-      },
-      href,
-      recipientId,
-      category,
-    }),
+    href,
+    recipientId,
+    category,
   });
 
-  if (response.ok) {
-    return { providerMessageId: response.headers.get('apns-id') ?? undefined };
-  }
+  return await new Promise<{ providerMessageId?: string }>(
+    (resolve, reject) => {
+      const session = connectHttp2(host);
+      let responseHeaders: IncomingHttpHeaders | null = null;
+      let responseBody = '';
+      let settled = false;
 
-  let reason = `HTTP ${response.status}`;
-  try {
-    const payload = (await response.json()) as { reason?: string };
-    if (payload.reason) reason = payload.reason;
-  } catch {
-    // APNs may return an empty response body for some failures.
-  }
-  throw Object.assign(new Error(reason), { statusCode: response.status });
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        session.destroy();
+        reject(error instanceof Error ? error : new Error('APNs failed'));
+      };
+
+      session.once('error', fail);
+      session.setTimeout(15_000, () => {
+        fail(new Error('APNs request timed out'));
+      });
+
+      const request = session.request({
+        [http2Constants.HTTP2_HEADER_METHOD]: 'POST',
+        [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${token}`,
+        authorization: `bearer ${jwt}`,
+        'apns-topic': topic,
+        'apns-push-type': 'alert',
+        'apns-priority': '10',
+        'content-type': 'application/json',
+      });
+
+      request.setEncoding('utf8');
+      request.on('response', headers => {
+        responseHeaders = headers;
+      });
+      request.on('data', (chunk: string) => {
+        responseBody += chunk;
+      });
+      request.once('error', fail);
+      request.once('end', () => {
+        if (settled) return;
+        settled = true;
+        session.close();
+
+        const status = Number(
+          responseHeaders?.[http2Constants.HTTP2_HEADER_STATUS] ?? 0,
+        );
+        const providerMessageId = responseHeaders?.['apns-id'];
+        if (status >= 200 && status < 300) {
+          resolve({
+            providerMessageId:
+              typeof providerMessageId === 'string'
+                ? providerMessageId
+                : undefined,
+          });
+          return;
+        }
+
+        let reason = status > 0 ? `HTTP ${status}` : 'Invalid APNs response';
+        try {
+          const response = JSON.parse(responseBody) as { reason?: string };
+          if (response.reason) reason = response.reason;
+        } catch {
+          // APNs may return an empty response body for some failures.
+        }
+        reject(Object.assign(new Error(reason), { statusCode: status }));
+      });
+
+      request.end(payload);
+    },
+  );
 }
 
 function shouldDisableApnsToken(
