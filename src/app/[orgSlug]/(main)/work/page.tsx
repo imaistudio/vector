@@ -67,7 +67,7 @@ export default function WorkPage() {
 
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-10 shrink-0 items-center justify-between border-b px-3'>
+      <header className='flex h-10 shrink-0 items-center justify-between border-b pr-1 pl-3'>
         <div className='flex items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Work</h1>
           <span className='text-muted-foreground text-xs'>
