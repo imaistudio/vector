@@ -9,11 +9,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
+import { BarsSpinner } from '@/components/bars-spinner';
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
@@ -91,105 +90,112 @@ export function CreateRequestDialog({
           </Button>
         )}
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className='max-w-xl p-0'>
-        <ResponsiveDialogHeader className='border-b px-4 py-3'>
-          <ResponsiveDialogTitle className='text-sm'>
-            New request
-          </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className='text-xs'>
-            Describe the outcome first. Routing does not start Work.
-          </ResponsiveDialogDescription>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Create request</ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
-        <form onSubmit={submit} className='space-y-4 p-4'>
-          <div className='space-y-1.5'>
-            <Label htmlFor='request-title' className='text-xs'>
-              Request
-            </Label>
+        <form onSubmit={submit} className='space-y-2'>
+          <div className='relative'>
             <Input
               id='request-title'
               value={title}
               onChange={event => setTitle(event.target.value)}
               placeholder='What do you need?'
-              className='h-8 text-sm'
+              className='h-9 pr-24 text-base'
               autoFocus
+              disabled={submitting}
             />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Request
+            </span>
           </div>
-          <div className='space-y-1.5'>
-            <Label htmlFor='request-context' className='text-xs'>
-              Context
-            </Label>
+
+          <div className='flex flex-wrap items-center gap-2'>
+            <MemberPicker
+              orgSlug={orgSlug}
+              value={recipients}
+              onChange={setRecipients}
+              multiple
+              placeholder='Route to people'
+              disabled={submitting}
+            />
+            <TeamPicker
+              orgSlug={orgSlug}
+              value={routedTeamId}
+              onChange={setRoutedTeamId}
+              disabled={submitting}
+            />
+            <span className='text-muted-foreground ml-auto text-xs'>
+              Routing does not start Work
+            </span>
+          </div>
+
+          <div className='relative'>
             <Textarea
               id='request-context'
               value={description}
               onChange={event => setDescription(event.target.value)}
               placeholder='Background, constraints, links, or examples'
-              className='min-h-20 resize-y text-sm'
+              className='min-h-24 resize-none pr-24 pb-8 text-sm'
+              disabled={submitting}
             />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Context
+            </span>
           </div>
-          <div className='bg-muted/40 space-y-1.5 rounded-md border p-3'>
-            <Label htmlFor='request-output' className='text-xs font-medium'>
-              Expected output <span className='text-destructive'>*</span>
-            </Label>
+
+          <div className='relative'>
             <Textarea
               id='request-output'
               value={expectedOutput}
               onChange={event => setExpectedOutput(event.target.value)}
               placeholder='What should be true when this is delivered?'
-              className='bg-background min-h-20 resize-y text-sm'
+              className='min-h-20 resize-none pr-32 pb-8 text-sm'
               required
+              disabled={submitting}
             />
+            <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+              Expected output <span className='text-destructive'>*</span>
+            </span>
           </div>
-          <div className='space-y-1.5'>
-            <Label htmlFor='request-review' className='text-xs'>
-              Review guidance{' '}
-              <span className='text-muted-foreground font-normal'>
-                (optional)
-              </span>
-            </Label>
+
+          <div className='relative'>
             <Input
               id='request-review'
               value={reviewGuidance}
               onChange={event => setReviewGuidance(event.target.value)}
               placeholder='Anything the reviewer should verify'
-              className='h-8 text-sm'
+              className='h-9 pr-36 text-sm'
+              disabled={submitting}
             />
-          </div>
-          <div className='flex flex-wrap items-center justify-between gap-3 border-t pt-3'>
-            <div className='flex flex-wrap items-center gap-2'>
-              <MemberPicker
-                orgSlug={orgSlug}
-                value={recipients}
-                onChange={setRecipients}
-                multiple
-                placeholder='Route to people'
-              />
-              <TeamPicker
-                orgSlug={orgSlug}
-                value={routedTeamId}
-                onChange={setRoutedTeamId}
-              />
-            </div>
-            <div className='flex items-center gap-2'>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='h-7 text-xs'
-                onClick={() => setOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type='submit'
-                size='sm'
-                className='h-7 text-xs'
-                disabled={submitting || !title.trim() || !expectedOutput.trim()}
-              >
-                Create request
-              </Button>
-            </div>
+            <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+              Review guidance
+            </span>
           </div>
         </form>
+
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            disabled={submitting}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            type='button'
+            size='sm'
+            disabled={submitting || !title.trim() || !expectedOutput.trim()}
+            onClick={submit}
+          >
+            {submitting ? <BarsSpinner size={14} /> : 'Create request'}
+          </Button>
+        </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>
   );

@@ -250,6 +250,28 @@ public final class VectorMobileViewModel: ObservableObject {
     }
   }
 
+  public func createWork(
+    title: String,
+    description: String?,
+    ownerId: VectorID?,
+    requestIds: [VectorID]? = nil
+  ) async -> Bool {
+    let created = await performWorkModelAction(id: "create-work") {
+      _ = try await self.repository.createWork(
+        orgSlug: self.configuration.orgSlug,
+        title: title,
+        description: description,
+        ownerId: ownerId,
+        requestIds: requestIds
+      )
+    }
+    if created {
+      refreshWork()
+      refreshRequests()
+    }
+    return created
+  }
+
   public func claimRequest(_ requestId: VectorID) async -> Bool {
     await performWorkModelAction(id: "request:\(requestId):claim") {
       try await self.repository.claimRequest(requestId: requestId)
@@ -295,6 +317,24 @@ public final class VectorMobileViewModel: ObservableObject {
   public func respondToHandoff(_ handoffId: VectorID, accept: Bool) async -> Bool {
     await performWorkModelAction(id: "handoff:\(handoffId)") {
       try await self.repository.respondToWorkHandoff(handoffId: handoffId, accept: accept)
+    }
+  }
+
+  public func proposeHandoff(_ workId: VectorID, toOwnerId: VectorID, summary: String, note: String?) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):handoff") {
+      try await self.repository.proposeWorkHandoff(workId: workId, toOwnerId: toOwnerId, summary: summary, note: note)
+    }
+  }
+
+  public func raiseAttention(_ workId: VectorID, title: String, details: String?) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):attention") {
+      try await self.repository.raiseWorkAttention(workId: workId, title: title, details: details)
+    }
+  }
+
+  public func createTask(_ workId: VectorID, title: String, assigneeId: VectorID?) async -> Bool {
+    await performWorkModelAction(id: "work:\(workId):create-task") {
+      _ = try await self.repository.createTask(workId: workId, title: title, assigneeId: assigneeId)
     }
   }
 

@@ -1,11 +1,11 @@
 ---
 name: vector-cli-skill-sync
-description: Reminder to update the public vector-skill submodule (packages/vector-skill/SKILL.md) whenever CLI commands, options, or behavior change in src/cli/.
+description: Reminder to update the public vector-skill submodule (packages/vector-skill/SKILL.md) whenever CLI commands, options, or behavior change in packages/vector-cli/src/.
 ---
 
 # Vector CLI Skill Sync
 
-When you make changes to the CLI source files under `src/cli/` that affect:
+When you make changes to the CLI source files under `packages/vector-cli/src/` that affect:
 
 - Command names, subcommands, or aliases
 - Options/flags (added, removed, or renamed)
