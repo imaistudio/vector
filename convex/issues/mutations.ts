@@ -737,6 +737,10 @@ export const changeWorkflowState = mutation({
       throw new ConvexError('INVALID_STATE');
     }
 
+    if (issue.workflowStateId === args.stateId) {
+      return { success: true } as const;
+    }
+
     const now = Date.now();
     const canonicalWork = isCanonicalWork(issue);
     const nextWorkStatus = workStatusForLegacyState(nextState);
@@ -839,22 +843,20 @@ export const changeWorkflowState = mutation({
       await reopenLinkedRequestsAfterCancellation(ctx, issue._id);
     }
 
-    if (issue.workflowStateId !== args.stateId) {
-      await recordActivity(ctx, {
-        scope: resolveIssueScope(issue),
-        actorId: userId,
-        entityType: 'issue',
-        eventType: 'issue_workflow_state_changed',
-        details: {
-          field: 'workflow_state',
-          fromId: issue.workflowStateId,
-          fromLabel: stateLabel(previousState),
-          toId: args.stateId,
-          toLabel: stateLabel(nextState),
-        },
-        snapshot: snapshotForIssue(issue),
-      });
-    }
+    await recordActivity(ctx, {
+      scope: resolveIssueScope(issue),
+      actorId: userId,
+      entityType: 'issue',
+      eventType: 'issue_workflow_state_changed',
+      details: {
+        field: 'workflow_state',
+        fromId: issue.workflowStateId,
+        fromLabel: stateLabel(previousState),
+        toId: args.stateId,
+        toLabel: stateLabel(nextState),
+      },
+      snapshot: snapshotForIssue(issue),
+    });
 
     return { success: true } as const;
   },

@@ -2630,7 +2630,10 @@ requestCommand
       scope: options.scope,
       paginationOpts: buildPaginationOptions(options.limit),
     });
-    printOutput(result.page, runtime.json);
+    printOutput(
+      addEntityUrls(result.page, runtime.appUrl, orgSlug, 'requests'),
+      runtime.json,
+    );
   });
 
 requestCommand
