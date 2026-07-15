@@ -135,13 +135,17 @@ export function buildNotificationCopy(
     }
     case 'request_routed':
       return {
-        title: `Request ${payload.requestKey ?? ''} routed to you`.trim(),
+        title: payload.requestKey
+          ? `Request ${payload.requestKey} routed to you`
+          : 'A request was routed to you',
         body: payload.requestTitle ?? 'A request is waiting for your decision.',
         href: payload.href,
       };
     case 'request_routing_needed':
       return {
-        title: `Request ${payload.requestKey ?? ''} needs routing`.trim(),
+        title: payload.requestKey
+          ? `Request ${payload.requestKey} needs routing`
+          : 'A request needs routing',
         body: payload.requestTitle ?? 'Choose who should receive this request.',
         href: payload.href,
       };
@@ -278,6 +282,13 @@ export async function createNotificationEvent(
   ctx: MutationCtx,
   input: NotificationEventWrite,
 ) {
+  if (input.dedupeKey) {
+    const existing = await ctx.db
+      .query('notificationEvents')
+      .withIndex('by_dedupe_key', q => q.eq('dedupeKey', input.dedupeKey))
+      .first();
+    if (existing) return existing._id;
+  }
   const category = categoryForEvent(input.type);
   const eventId = await ctx.db.insert('notificationEvents', {
     type: input.type,
@@ -381,7 +392,11 @@ function actionStateForEvent(
     case 'request_routed':
     case 'request_routing_needed':
     case 'request_ready_for_review':
+    case 'work_ready_for_review':
+    case 'request_changes_requested':
     case 'work_handoff_proposed':
+    case 'task_assigned':
+    case 'task_transferred':
     case 'agent_attention_requested':
     case 'work_blocked':
     case 'github_action_required':

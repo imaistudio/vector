@@ -179,6 +179,8 @@ function shouldUseFallbackTitle(pathname: string | null) {
   if (!second) return false;
   if (second === 'dashboard') return true;
   if (second === 'settings') return true;
+  if (second === 'requests') return !third;
+  if (second === 'work') return !third;
   if (second === 'issues') return !third;
   if (second === 'projects') return !third;
   if (second === 'teams') return !third;

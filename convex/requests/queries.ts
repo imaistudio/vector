@@ -38,66 +38,83 @@ export const list = query({
     if (!userId) throw new ConvexError('UNAUTHORIZED');
     const org = await getOrganizationBySlug(ctx, args.orgSlug);
     await requireOrganizationMember(ctx, org._id, userId);
-    const page =
-      args.scope === 'mine'
-        ? await ctx.db
-            .query('requests')
-            .withIndex('by_org_owner', q =>
-              q.eq('organizationId', org._id).eq('ownerId', userId),
-            )
-            .order('desc')
-            .paginate(args.paginationOpts)
-        : args.scope === 'requested'
-          ? await ctx.db
-              .query('requests')
-              .withIndex('by_requester', q => q.eq('requesterId', userId))
-              .order('desc')
-              .paginate(args.paginationOpts)
-          : await ctx.db
-              .query('requests')
-              .withIndex('by_organization', q =>
-                q.eq('organizationId', org._id),
-              )
-              .order('desc')
-              .paginate(args.paginationOpts);
-    const visible = (
-      await Promise.all(
-        page.page.map(async request =>
-          (await canViewRequest(ctx, request)) ? request : null,
-        ),
-      )
-    ).filter((request): request is Doc<'requests'> => Boolean(request));
-    const enriched = await Promise.all(
-      visible.map(async request => {
-        const [owner, requester, links, recipients] = await Promise.all([
-          userSummary(ctx, request.ownerId),
-          userSummary(ctx, request.requesterId),
-          ctx.db
-            .query('requestWorkLinks')
-            .withIndex('by_request', q => q.eq('requestId', request._id))
-            .collect(),
-          ctx.db
-            .query('requestRecipients')
-            .withIndex('by_request', q => q.eq('requestId', request._id))
-            .collect(),
-        ]);
-        return {
-          ...request,
-          owner,
-          requester,
-          linkedWorkCount: links.length,
-          recipientCount: recipients.filter(r => r.role === 'recipient').length,
-        };
-      }),
-    );
-    const inbox =
-      args.scope === 'inbox'
+    const fetchPage = (paginationOpts: typeof args.paginationOpts) => {
+      if (args.scope === 'mine') {
+        return ctx.db
+          .query('requests')
+          .withIndex('by_org_owner', q =>
+            q.eq('organizationId', org._id).eq('ownerId', userId),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
+      if (args.scope === 'requested') {
+        return ctx.db
+          .query('requests')
+          .withIndex('by_org_requester', q =>
+            q.eq('organizationId', org._id).eq('requesterId', userId),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
+      return ctx.db
+        .query('requests')
+        .withIndex('by_organization', q => q.eq('organizationId', org._id))
+        .order('desc')
+        .paginate(paginationOpts);
+    };
+
+    const enrich = async (requests: Doc<'requests'>[]) => {
+      const visible = (
+        await Promise.all(
+          requests.map(async request =>
+            (await canViewRequest(ctx, request)) ? request : null,
+          ),
+        )
+      ).filter((request): request is Doc<'requests'> => Boolean(request));
+      const enriched = await Promise.all(
+        visible.map(async request => {
+          const [owner, requester, links, recipients] = await Promise.all([
+            userSummary(ctx, request.ownerId),
+            userSummary(ctx, request.requesterId),
+            ctx.db
+              .query('requestWorkLinks')
+              .withIndex('by_request', q => q.eq('requestId', request._id))
+              .collect(),
+            ctx.db
+              .query('requestRecipients')
+              .withIndex('by_request', q => q.eq('requestId', request._id))
+              .collect(),
+          ]);
+          return {
+            ...request,
+            owner,
+            requester,
+            linkedWorkCount: links.length,
+            recipientCount: recipients.filter(r => r.role === 'recipient')
+              .length,
+          };
+        }),
+      );
+      return args.scope === 'inbox'
         ? enriched.filter(request =>
             ['new', 'routed', 'ready_for_review', 'changes_requested'].includes(
               request.status,
             ),
           )
         : enriched;
+    };
+
+    let page = await fetchPage(args.paginationOpts);
+    const inbox = await enrich(page.page);
+    while (inbox.length < args.paginationOpts.numItems && !page.isDone) {
+      page = await fetchPage({
+        ...args.paginationOpts,
+        cursor: page.continueCursor,
+        numItems: args.paginationOpts.numItems - inbox.length,
+      });
+      inbox.push(...(await enrich(page.page)));
+    }
     if (args.scope === 'inbox') {
       const statusRank: Record<string, number> = {
         ready_for_review: 0,

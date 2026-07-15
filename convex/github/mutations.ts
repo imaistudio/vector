@@ -23,6 +23,7 @@ import { buildIssueSearchText } from '../issues/search';
 import { getNextAvailableIssueKey } from '../issues/keys';
 import { nextRequestKey, requestSearchText } from '../requests/lib';
 import { createNotificationEvent, getRequestHref } from '../notifications/lib';
+import { workFocusRank } from '../work/lib';
 import {
   buildArtifactExternalKey,
   normalizeIssueKey,
@@ -527,6 +528,13 @@ async function applyWorkflowAutomationForIssue(
             ? 'completed'
             : 'canceled'
           : issue.workStatus,
+      focusRank:
+        issue.kind === 'work'
+          ? workFocusRank(
+              targetType === 'done' ? 'completed' : 'canceled',
+              issue.effort ?? 'unknown',
+            )
+          : issue.focusRank,
       lastMeaningfulActivityAt: Date.now(),
       lastActivityEventType: 'github_state_automation',
     });
@@ -571,18 +579,25 @@ async function applyWorkflowAutomationForIssue(
       .withIndex('by_work', query => query.eq('workId', issue._id))
       .collect();
     for (const link of links) {
+      if (link.relation !== 'fulfills') continue;
       const request = await ctx.db.get('requests', link.requestId);
       if (
         !request ||
-        ['completed', 'declined', 'duplicate'].includes(request.status)
+        ['ready_for_review', 'completed', 'declined', 'duplicate'].includes(
+          request.status,
+        )
       )
         continue;
       const requestLinks = await ctx.db
         .query('requestWorkLinks')
         .withIndex('by_request', query => query.eq('requestId', request._id))
         .collect();
+      const fulfillingLinks = requestLinks.filter(
+        requestLink => requestLink.relation === 'fulfills',
+      );
+      if (fulfillingLinks.length === 0) continue;
       const linkedWork = await Promise.all(
-        requestLinks.map(requestLink =>
+        fulfillingLinks.map(requestLink =>
           ctx.db.get('issues', requestLink.workId),
         ),
       );
@@ -622,7 +637,7 @@ async function applyWorkflowAutomationForIssue(
             : undefined,
         },
         recipients: Array.from(recipients).map(userId => ({ userId })),
-        dedupeKey: `request-ready:github:${request._id}:${now}`,
+        dedupeKey: `request-ready:${request._id}:${now}`,
       });
     }
   }
@@ -1607,10 +1622,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
     const integration = await getOrCreateIntegration(ctx, args.organizationId);
     const unmatchedPolicy =
       integration?.unmatchedArtifactPolicy ?? 'development_inbox';
-    if (
-      integration?.autoLinkEnabled === false ||
-      unmatchedPolicy === 'ignore'
-    ) {
+    if (unmatchedPolicy === 'ignore') {
       return { created: false } as const;
     }
 
@@ -1749,6 +1761,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       createdBy: linkedUser?._id,
       kind: 'work',
       workStatus: 'planned',
+      focusRank: workFocusRank('planned', 'unknown'),
       effort: 'unknown',
       completionPolicy: 'manual',
       agentTaskCreationPolicy: 'allow',

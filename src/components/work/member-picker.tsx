@@ -5,6 +5,7 @@ import { ChevronsUpDown, UserRound, Users } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api, useCachedQuery } from '@/lib/convex';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Popover,
   PopoverContent,
@@ -73,41 +74,54 @@ export function MemberPicker({
         <Command>
           <CommandInput placeholder='Search people…' />
           <CommandList>
-            <CommandEmpty>No people found.</CommandEmpty>
-            <CommandGroup>
-              {(members ?? []).map(member => {
-                const checked = value.includes(member.userId);
-                const name =
-                  member.user?.name ??
-                  member.user?.username ??
-                  member.user?.email ??
-                  'Unnamed';
-                return (
-                  <CommandItem
-                    key={member._id}
-                    value={`${name} ${member.user?.email ?? ''}`}
-                    data-checked={checked}
-                    onSelect={() => {
-                      if (multiple) {
-                        onChange(
-                          checked
-                            ? value.filter(id => id !== member.userId)
-                            : [...value, member.userId],
-                        );
-                      } else {
-                        onChange(checked ? [] : [member.userId]);
-                        setOpen(false);
-                      }
-                    }}
-                  >
-                    <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[9px] font-medium'>
-                      {name.slice(0, 2).toUpperCase()}
-                    </span>
-                    <span className='min-w-0 flex-1 truncate'>{name}</span>
-                  </CommandItem>
-                );
-              })}
-            </CommandGroup>
+            {members === undefined ? (
+              <div className='space-y-1 p-2'>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className='flex h-8 items-center gap-2 px-1'>
+                    <Skeleton className='size-5 rounded-full' />
+                    <Skeleton className='h-3 flex-1' />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <CommandEmpty>No people found.</CommandEmpty>
+                <CommandGroup>
+                  {(members ?? []).map(member => {
+                    const checked = value.includes(member.userId);
+                    const name =
+                      member.user?.name ??
+                      member.user?.username ??
+                      member.user?.email ??
+                      'Unnamed';
+                    return (
+                      <CommandItem
+                        key={member._id}
+                        value={`${name} ${member.user?.email ?? ''}`}
+                        data-checked={checked}
+                        onSelect={() => {
+                          if (multiple) {
+                            onChange(
+                              checked
+                                ? value.filter(id => id !== member.userId)
+                                : [...value, member.userId],
+                            );
+                          } else {
+                            onChange(checked ? [] : [member.userId]);
+                            setOpen(false);
+                          }
+                        }}
+                      >
+                        <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[9px] font-medium'>
+                          {name.slice(0, 2).toUpperCase()}
+                        </span>
+                        <span className='min-w-0 flex-1 truncate'>{name}</span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

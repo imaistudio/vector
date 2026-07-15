@@ -52,6 +52,7 @@ Core semantics:
 - A pending handoff leaves the current owner accountable. The recipient may accept or decline.
 - After acceptance, the new owner must explicitly start their own execution period.
 - Work states are planned, active, waiting, blocked, ready for review, completed, and canceled.
+- Work focus lists use an indexed rank so blocked and review-ready outcomes surface before ordinary active Work, then larger effort and longer-stale activity surface first instead of being buried by newer small changes.
 - Agent execution status is separate from aggregate Work status.
 - GitHub artifacts are evidence by default and update Work state only under explicit workspace and per-Work policies.
 

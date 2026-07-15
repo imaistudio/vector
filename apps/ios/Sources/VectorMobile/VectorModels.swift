@@ -1458,11 +1458,11 @@ public struct VectorInboxNotification: Decodable, Equatable, Identifiable {
   }
 
   public var issueKey: String? {
-    workKey
+    pathKey(after: "issues")
   }
 
   public var workKey: String? {
-    pathKey(after: "work") ?? pathKey(after: "issues")
+    pathKey(after: "work")
   }
 
   public var requestKey: String? {

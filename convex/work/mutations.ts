@@ -11,6 +11,7 @@ import { buildIssueSearchText } from '../issues/search';
 import { getNextAvailableIssueKey, getNextSequenceSeed } from '../issues/keys';
 import { createNotificationEvent, getIssueHref } from '../notifications/lib';
 import { PERMISSIONS, requirePermission } from '../permissions/utils';
+import { canEditRequest } from '../requests/lib';
 import {
   agentTaskCreationPolicyValidator,
   workCompletionPolicyValidator,
@@ -23,6 +24,7 @@ import {
   requireUser,
   requireWork,
   touchMeaningfulWork,
+  workFocusRank,
   workflowStateForWorkStatus,
 } from './lib';
 
@@ -113,6 +115,7 @@ async function createWorkRecord(
     lastActivityEventType: 'work_created',
     kind: 'work',
     workStatus: 'planned',
+    focusRank: workFocusRank('planned', input.effort ?? 'unknown'),
     ownerId: input.ownerId,
     effort: input.effort ?? 'unknown',
     completionPolicy: input.completionPolicy ?? 'manual',
@@ -172,7 +175,9 @@ async function maybeRaiseLinkedRequestsForReview(
     const request = await ctx.db.get('requests', link.requestId);
     if (
       !request ||
-      ['completed', 'declined', 'duplicate'].includes(request.status)
+      ['ready_for_review', 'completed', 'declined', 'duplicate'].includes(
+        request.status,
+      )
     )
       continue;
     const allLinks = await ctx.db
@@ -213,7 +218,7 @@ async function maybeRaiseLinkedRequestsForReview(
         href: org ? `/${org.slug}/requests/${request.key}` : undefined,
       },
       recipients: Array.from(recipients).map(userId => ({ userId })),
-      dedupeKey: `request-ready:${request._id}:${request.readyForReviewAt ?? now}`,
+      dedupeKey: `request-ready:${request._id}:${now}`,
     });
   }
 }
@@ -251,7 +256,11 @@ export const create = mutation({
     if (!work) throw new ConvexError('WORK_CREATE_FAILED');
     for (const requestId of new Set(args.data.requestIds ?? [])) {
       const request = await ctx.db.get('requests', requestId);
-      if (!request || request.organizationId !== organization._id) {
+      if (
+        !request ||
+        request.organizationId !== organization._id ||
+        !(await canEditRequest(ctx, request))
+      ) {
         throw new ConvexError('REQUEST_NOT_FOUND');
       }
       const existing = await ctx.db
@@ -269,10 +278,12 @@ export const create = mutation({
           createdAt: Date.now(),
         });
       }
-      await ctx.db.patch('requests', requestId, {
-        status: 'planned',
-        updatedAt: Date.now(),
-      });
+      if (['new', 'routed'].includes(request.status)) {
+        await ctx.db.patch('requests', requestId, {
+          status: work.startedAt ? 'in_delivery' : 'planned',
+          updatedAt: Date.now(),
+        });
+      }
     }
     await recordActivity(ctx, {
       scope: resolveIssueScope(work),
@@ -307,6 +318,10 @@ export const updateDetails = mutation({
       description:
         args.description === undefined ? work.description : args.description,
       effort: args.effort ?? work.effort,
+      focusRank: workFocusRank(
+        work.workStatus ?? 'planned',
+        args.effort ?? work.effort ?? 'unknown',
+      ),
       completionPolicy: args.completionPolicy ?? work.completionPolicy,
       agentTaskCreationPolicy:
         args.agentTaskCreationPolicy ?? work.agentTaskCreationPolicy,
@@ -341,6 +356,7 @@ export const start = mutation({
       kind: 'work',
       ownerId,
       workStatus: 'active',
+      focusRank: workFocusRank('active', work.effort ?? 'unknown'),
       workflowStateId: state?._id ?? work.workflowStateId,
       startedAt: work.startedAt ?? now,
       startedBy: work.startedBy ?? userId,
@@ -404,6 +420,7 @@ export const setStatus = mutation({
     );
     await touchMeaningfulWork(ctx, work._id, {
       workStatus: args.status,
+      focusRank: workFocusRank(args.status, work.effort ?? 'unknown'),
       workflowStateId: state?._id ?? work.workflowStateId,
     });
     await recordActivity(ctx, {
@@ -467,6 +484,7 @@ export const readyForReview = mutation({
     );
     await touchMeaningfulWork(ctx, work._id, {
       workStatus: 'ready_for_review',
+      focusRank: workFocusRank('ready_for_review', work.effort ?? 'unknown'),
       workflowStateId: state?._id ?? work.workflowStateId,
       readyForReviewAt: Date.now(),
       lastActivityEventType: 'work_ready_for_review',
@@ -522,6 +540,7 @@ export const complete = mutation({
     );
     await touchMeaningfulWork(ctx, work._id, {
       workStatus: 'completed',
+      focusRank: workFocusRank('completed', work.effort ?? 'unknown'),
       workflowStateId: state?._id ?? work.workflowStateId,
       closedAt: Date.now(),
       lastActivityEventType: 'work_completed',

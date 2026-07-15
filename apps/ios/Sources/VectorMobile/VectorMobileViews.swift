@@ -34,6 +34,7 @@ private struct AuthenticatedVectorMobileView: View {
   @AppStorage("vector.mobile.notificationsPrompted") private var hasPromptedForNotifications = false
   @State private var selectedTab: VectorMobileTab = .work
   @State private var isShowingNotificationPrompt = false
+  @State private var notificationHrefToOpen: String?
 
   var body: some View {
     TabView(selection: $selectedTab) {
@@ -54,7 +55,11 @@ private struct AuthenticatedVectorMobileView: View {
       .tag(VectorMobileTab.work)
 
       NavigationStack {
-        InboxScreen(viewModel: viewModel, sessionController: sessionController)
+        InboxScreen(
+          viewModel: viewModel,
+          sessionController: sessionController,
+          notificationHrefToOpen: $notificationHrefToOpen
+        )
       }
       .tabItem {
         Label(VectorMobileTab.inbox.title, systemImage: VectorMobileTab.inbox.systemImage)
@@ -76,9 +81,8 @@ private struct AuthenticatedVectorMobileView: View {
     .tint(VectorTheme.accent)
     .onAppear {
       viewModel.setAuthenticatedUser(sessionController.user)
-      if pushCoordinator.pendingNotificationHref != nil {
-        selectedTab = .inbox
-        pushCoordinator.consumePendingNotificationHref()
+      if let href = pushCoordinator.pendingNotificationHref {
+        openNotification(href)
       }
       Task {
         await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
@@ -99,9 +103,8 @@ private struct AuthenticatedVectorMobileView: View {
     .onReceive(pushCoordinator.$deviceToken.compactMap { $0 }.removeDuplicates()) { token in
       viewModel.upsertMobilePushToken(token)
     }
-    .onReceive(pushCoordinator.$pendingNotificationHref.compactMap { $0 }) { _ in
-      selectedTab = .inbox
-      pushCoordinator.consumePendingNotificationHref()
+    .onReceive(pushCoordinator.$pendingNotificationHref.compactMap { $0 }) { href in
+      openNotification(href)
     }
     .sheet(
       isPresented: $isShowingNotificationPrompt,
@@ -122,6 +125,30 @@ private struct AuthenticatedVectorMobileView: View {
       .presentationDetents([.medium, .large])
     }
   }
+
+  private func openNotification(_ href: String) {
+      selectedTab = .inbox
+      notificationHrefToOpen = pendingNotificationTarget(for: href) == nil ? nil : href
+      pushCoordinator.consumePendingNotificationHref()
+  }
+}
+
+private enum PendingNotificationTarget {
+  case request(String)
+  case work(String)
+}
+
+private func pendingNotificationTarget(for href: String?) -> PendingNotificationTarget? {
+  guard let href, !href.isEmpty else { return nil }
+  let path = URL(string: href)?.path ?? href
+  let parts = path.split(separator: "/").map(String.init)
+  if let index = parts.firstIndex(of: "requests"), parts.indices.contains(index + 1) {
+    return .request(parts[index + 1])
+  }
+  if let index = parts.firstIndex(of: "work"), parts.indices.contains(index + 1) {
+    return .work(parts[index + 1])
+  }
+  return nil
 }
 
 private enum VectorMobileTab: String, CaseIterable, Identifiable {
@@ -739,6 +766,7 @@ private struct PagingTrigger: View {
 struct InboxScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
+  @Binding var notificationHrefToOpen: String?
   @State private var isShowingProfileStatusSettings = false
 
   var body: some View {
@@ -776,6 +804,9 @@ struct InboxScreen: View {
     .vectorInlineNavigationTitle()
     .navigationDestination(isPresented: $isShowingProfileStatusSettings) {
       ProfileStatusSettingsScreen(viewModel: viewModel)
+    }
+    .navigationDestination(isPresented: notificationDestinationPresented) {
+      notificationDestination
     }
     .toolbar {
       #if os(iOS)
@@ -818,6 +849,77 @@ struct InboxScreen: View {
       }
       #endif
     }
+  }
+
+  private var notificationDestinationPresented: Binding<Bool> {
+    Binding(
+      get: { pendingNotificationTarget(for: notificationHrefToOpen) != nil },
+      set: { isPresented in
+        if !isPresented { notificationHrefToOpen = nil }
+      }
+    )
+  }
+
+  @ViewBuilder
+  private var notificationDestination: some View {
+    switch pendingNotificationTarget(for: notificationHrefToOpen) {
+    case let .request(key):
+      MobileRequestDetailScreen(request: requestTarget(key), viewModel: viewModel)
+    case let .work(key):
+      MobileWorkDetailScreen(work: workTarget(key), viewModel: viewModel)
+    case nil:
+      EmptyView()
+    }
+  }
+
+  private func requestTarget(_ key: String) -> VectorRequestRow {
+    if let request = viewModel.requests.first(where: { $0.key == key }) { return request }
+    if let notification = viewModel.inboxNotifications.first(where: { $0.requestKey == key }) {
+      return VectorRequestRow(
+        id: notification.requestId ?? key,
+        key: key,
+        title: notification.title,
+        expectedOutput: notification.body,
+        status: notification.eventType == "request_ready_for_review"
+          ? .readyForReview
+          : notification.eventType == "request_changes_requested" ? .changesRequested : .new,
+        createdAt: notification.createdAt,
+        updatedAt: notification.createdAt
+      )
+    }
+    return VectorRequestRow(
+      id: key,
+      key: key,
+      title: key,
+      expectedOutput: "Open this Request to review its expected output.",
+      status: .new,
+      createdAt: 0,
+      updatedAt: 0
+    )
+  }
+
+  private func workTarget(_ key: String) -> VectorWorkRow {
+    if let work = viewModel.work.first(where: { $0.key == key }) { return work }
+    if let notification = viewModel.inboxNotifications.first(where: { $0.workKey == key }) {
+      return VectorWorkRow(
+        id: notification.issueId ?? key,
+        key: key,
+        title: notification.title,
+        workStatus: notification.eventType == "work_ready_for_review"
+          ? .readyForReview
+          : notification.eventType == "work_completed"
+            ? .completed
+            : notification.eventType == "work_blocked" ? .blocked : .planned,
+        creationTime: notification.createdAt
+      )
+    }
+    return VectorWorkRow(
+      id: key,
+      key: key,
+      title: key,
+      workStatus: .planned,
+      creationTime: 0
+    )
   }
 }
 

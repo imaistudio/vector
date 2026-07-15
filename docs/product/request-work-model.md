@@ -461,10 +461,10 @@ The product must not collapse these states together:
 
 ```text
 Work state
-Planned, active, blocked, ready for review, completed, canceled
+Planned, active, waiting, blocked, ready for review, completed, canceled
 
 Task state
-Todo, in progress, waiting, blocked, completed, canceled
+Todo, in progress, waiting, blocked, done, canceled
 
 Execution state
 Running, waiting, blocked, paused, completed, failed, disconnected

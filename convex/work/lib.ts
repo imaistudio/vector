@@ -4,10 +4,33 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { canEditIssue, canViewIssue } from '../access';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { getAuthUserId } from '../authUtils';
-import type { WorkStatus } from '../_shared/work';
+import type { WorkEffort, WorkStatus } from '../_shared/work';
 
 export function isCanonicalWork(work: Doc<'issues'>) {
   return work.kind === 'work' || (!work.kind && !work.parentIssueId);
+}
+
+export function workFocusRank(
+  status: WorkStatus,
+  effort: WorkEffort = 'unknown',
+) {
+  const statusRank: Record<WorkStatus, number> = {
+    blocked: 0,
+    ready_for_review: 10,
+    active: 20,
+    waiting: 30,
+    planned: 40,
+    completed: 60,
+    canceled: 70,
+  };
+  const effortRank: Record<WorkEffort, number> = {
+    l: 0,
+    m: 1,
+    s: 2,
+    xs: 3,
+    unknown: 4,
+  };
+  return statusRank[status] + effortRank[effort];
 }
 
 export async function requireUser(

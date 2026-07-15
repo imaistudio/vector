@@ -18,6 +18,7 @@ import {
   requireUser,
   requireWork,
   touchMeaningfulWork,
+  workFocusRank,
   workflowStateForWorkStatus,
 } from '../work/lib';
 import {
@@ -300,7 +301,9 @@ export const claim = mutation({
     await requireOrganizationMember(ctx, request.organizationId, userId);
     await ctx.db.patch('requests', request._id, {
       ownerId: userId,
-      status: 'planned',
+      status: ['new', 'routed'].includes(request.status)
+        ? 'planned'
+        : request.status,
       updatedAt: Date.now(),
     });
     const recipient = await ctx.db
@@ -398,6 +401,7 @@ export const requestChanges = mutation({
         );
         await touchMeaningfulWork(ctx, work._id, {
           workStatus: 'active',
+          focusRank: workFocusRank('active', work.effort ?? 'unknown'),
           workflowStateId: activeState?._id ?? work.workflowStateId,
           readyForReviewAt: undefined,
           lastActivityEventType: 'request_changes_requested',
@@ -504,6 +508,7 @@ export const complete = mutation({
       );
       await touchMeaningfulWork(ctx, work._id, {
         workStatus: 'completed',
+        focusRank: workFocusRank('completed', work.effort ?? 'unknown'),
         workflowStateId: completedState?._id ?? work.workflowStateId,
         closedAt: now,
         lastActivityEventType: 'work_completed',

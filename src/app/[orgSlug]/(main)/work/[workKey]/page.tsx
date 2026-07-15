@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -57,6 +57,7 @@ import {
 import { MemberPicker } from '@/components/work/member-picker';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
+import { IssueCommentsSection } from '@/components/comments/comments-section';
 
 const taskStatuses = [
   { value: 'todo', label: 'Todo', icon: Circle },
@@ -71,10 +72,12 @@ function TaskStatus({
   orgSlug,
   taskId,
   serverStatus,
+  disabled = false,
 }: {
   orgSlug: string;
   taskId: Id<'tasks'>;
   serverStatus: (typeof taskStatuses)[number]['value'];
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [status, setOptimisticStatus] = useOptimisticValue(serverStatus);
@@ -87,7 +90,7 @@ function TaskStatus({
       orgSlug={orgSlug}
       permission={PERMISSIONS.ISSUE_EDIT}
     >
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
         <PopoverTrigger asChild>
           <Button
             variant='ghost'
@@ -99,6 +102,7 @@ function TaskStatus({
               status === 'waiting' && 'text-amber-500',
             )}
             title={current.label}
+            disabled={disabled}
           >
             <Icon className='size-4' />
           </Button>
@@ -136,10 +140,12 @@ function TaskAssignee({
   orgSlug,
   taskId,
   serverAssigneeId,
+  disabled = false,
 }: {
   orgSlug: string;
   taskId: Id<'tasks'>;
   serverAssigneeId?: Id<'users'>;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [assigneeId, setOptimisticAssigneeId] =
@@ -165,12 +171,13 @@ function TaskAssignee({
       orgSlug={orgSlug}
       permission={PERMISSIONS.ISSUE_EDIT}
     >
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
         <PopoverTrigger asChild>
           <Button
             variant='ghost'
             size='xs'
             className='text-muted-foreground hidden h-6 max-w-32 gap-1 px-1.5 font-normal sm:flex'
+            disabled={disabled}
           >
             <UserRound className='size-3' />
             <span className='truncate'>{name ?? 'Assign'}</span>
@@ -222,12 +229,14 @@ function WorkPropertySelector({
   serverValue,
   options,
   onUpdate,
+  disabled = false,
 }: {
   orgSlug: string;
   label: string;
   serverValue: string;
   options: readonly { value: string; label: string }[];
   onUpdate: (value: string) => Promise<unknown>;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setOptimisticValue] = useOptimisticValue(serverValue);
@@ -239,12 +248,13 @@ function WorkPropertySelector({
         orgSlug={orgSlug}
         permission={PERMISSIONS.ISSUE_EDIT}
       >
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
           <PopoverTrigger asChild>
             <Button
               variant='ghost'
               size='xs'
               className='h-6 gap-1 px-1.5 font-normal'
+              disabled={disabled}
             >
               {selected?.label ?? value}
               <ChevronDown className='size-3' />
@@ -293,10 +303,12 @@ function WorkStatusSelector({
   orgSlug,
   workId,
   serverStatus,
+  disabled = false,
 }: {
   orgSlug: string;
   workId: Id<'issues'>;
   serverStatus: string;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [status, setOptimisticStatus] = useOptimisticValue(serverStatus);
@@ -318,12 +330,13 @@ function WorkStatusSelector({
       orgSlug={orgSlug}
       permission={PERMISSIONS.ISSUE_EDIT}
     >
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
         <PopoverTrigger asChild>
           <Button
             variant='outline'
             size='xs'
             className='hidden h-5 gap-1 px-1.5 text-[10px] font-normal sm:flex'
+            disabled={disabled}
           >
             {selected.label}
             <ChevronDown className='size-3' />
@@ -374,6 +387,7 @@ function HandoffDialog({
   const [people, setPeople] = useState<Id<'users'>[]>([]);
   const [summary, setSummary] = useState('');
   const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const propose = useMutation(api.work.mutations.proposeHandoff);
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
@@ -424,10 +438,11 @@ function HandoffDialog({
             <Button
               size='sm'
               className='h-7 text-xs'
-              disabled={!people[0] || !summary.trim()}
+              disabled={submitting || !people[0] || !summary.trim()}
               onClick={() => {
                 const person = people[0];
-                if (!person) return;
+                if (!person || submitting) return;
+                setSubmitting(true);
                 void propose({
                   workId,
                   toOwnerId: person,
@@ -440,7 +455,8 @@ function HandoffDialog({
                     setSummary('');
                     setNote('');
                   })
-                  .catch(() => toast.error('Could not propose handoff'));
+                  .catch(() => toast.error('Could not propose handoff'))
+                  .finally(() => setSubmitting(false));
               }}
             >
               Propose
@@ -482,6 +498,9 @@ export default function WorkDetailPage() {
     workKey: string;
   }>();
   const work = useCachedQuery(api.work.queries.getByKey, { orgSlug, workKey });
+  const currentUser = useCachedQuery(api.users.currentUser);
+  const searchParams = useSearchParams();
+  const focusedTaskId = searchParams.get('task');
   const updateDetails = useMutation(api.work.mutations.updateDetails);
   const startWork = useMutation(api.work.mutations.start);
   const readyForReview = useMutation(api.work.mutations.readyForReview);
@@ -492,6 +511,7 @@ export default function WorkDetailPage() {
   const [workpad, setWorkpad] = useState('');
   const [loadedWorkId, setLoadedWorkId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState('');
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const debouncedWorkpad = useDebouncedValue(workpad, 700);
 
   useEffect(() => {
@@ -503,7 +523,9 @@ export default function WorkDetailPage() {
   useEffect(() => {
     if (
       !work ||
+      !work.canEdit ||
       loadedWorkId !== String(work._id) ||
+      debouncedWorkpad !== workpad ||
       debouncedWorkpad === (work.description ?? '')
     )
       return;
@@ -511,9 +533,26 @@ export default function WorkDetailPage() {
       workId: work._id,
       description: debouncedWorkpad,
     }).catch(() => toast.error('Workpad changes could not be saved'));
-  }, [debouncedWorkpad, loadedWorkId, updateDetails, work]);
+  }, [debouncedWorkpad, loadedWorkId, updateDetails, work, workpad]);
+
+  useEffect(() => {
+    if (!work || !focusedTaskId) return;
+    if (!work.tasks.some(task => String(task._id) === focusedTaskId)) return;
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`task-${focusedTaskId}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }, [focusedTaskId, work]);
 
   if (work === undefined) return <WorkSkeleton />;
+  if (work === null) {
+    return (
+      <div className='text-muted-foreground flex min-h-64 items-center justify-center text-sm'>
+        Work not found
+      </div>
+    );
+  }
   const pendingHandoff = work.handoffs.find(item => item.status === 'pending');
   const openAttention = work.attention.filter(item => item.status === 'open');
   const activeExecutions = work.executions.filter(item =>
@@ -524,12 +563,29 @@ export default function WorkDetailPage() {
 
   const addTask = () => {
     const title = newTask.trim();
-    if (!title) return;
+    if (!title || pendingAction) return;
     setNewTask('');
-    void createTask({ workId: work._id, title }).catch(() => {
-      setNewTask(title);
-      toast.error('Could not create Task');
-    });
+    setPendingAction('create-task');
+    void createTask({ workId: work._id, title })
+      .catch(() => {
+        setNewTask(title);
+        toast.error('Could not create Task');
+      })
+      .finally(() => setPendingAction(null));
+  };
+
+  const runAction = (
+    key: string,
+    action: () => Promise<unknown>,
+    errorMessage: string,
+  ) => {
+    if (pendingAction) return;
+    setPendingAction(key);
+    void action()
+      .catch(error =>
+        toast.error(error instanceof Error ? error.message : errorMessage),
+      )
+      .finally(() => setPendingAction(null));
   };
 
   return (
@@ -537,6 +593,7 @@ export default function WorkDetailPage() {
       <header className='bg-background/95 sticky top-0 z-20 flex min-h-12 items-center gap-2 border-b px-3 backdrop-blur'>
         <Link
           href={`/${orgSlug}/work`}
+          aria-label='Back to Work'
           className={cn(
             buttonVariants({ variant: 'ghost', size: 'sm' }),
             'size-7 p-0',
@@ -554,21 +611,22 @@ export default function WorkDetailPage() {
           orgSlug={orgSlug}
           workId={work._id}
           serverStatus={work.workStatus}
+          disabled={!work.canEdit}
         />
-        {!work.ownerStartedAt &&
+        {work.canEdit &&
+          !work.ownerStartedAt &&
           ['planned', 'active', 'waiting', 'blocked'].includes(
             work.workStatus,
           ) && (
             <Button
               size='sm'
               className='h-7 gap-1.5 px-2 text-xs'
+              disabled={pendingAction !== null}
               onClick={() =>
-                void startWork({ workId: work._id }).catch(error =>
-                  toast.error(
-                    error instanceof Error
-                      ? error.message
-                      : 'Could not start Work',
-                  ),
+                runAction(
+                  'start',
+                  () => startWork({ workId: work._id }),
+                  'Could not start Work',
                 )
               }
             >
@@ -576,15 +634,19 @@ export default function WorkDetailPage() {
               Start Work
             </Button>
           )}
-        {work.ownerStartedAt &&
+        {work.canEdit &&
+          work.ownerStartedAt &&
           ['active', 'waiting', 'blocked'].includes(work.workStatus) && (
             <Button
               size='sm'
               variant='outline'
               className='h-7 gap-1.5 px-2 text-xs'
+              disabled={pendingAction !== null}
               onClick={() =>
-                void readyForReview({ workId: work._id }).catch(() =>
-                  toast.error('Could not raise review'),
+                runAction(
+                  'review',
+                  () => readyForReview({ workId: work._id }),
+                  'Could not raise review',
                 )
               }
             >
@@ -592,13 +654,16 @@ export default function WorkDetailPage() {
               Review
             </Button>
           )}
-        {work.workStatus === 'ready_for_review' && (
+        {work.canEdit && work.workStatus === 'ready_for_review' && (
           <Button
             size='sm'
             className='h-7 gap-1.5 px-2 text-xs'
+            disabled={pendingAction !== null}
             onClick={() =>
-              void completeWork({ workId: work._id }).catch(() =>
-                toast.error('Could not complete Work'),
+              runAction(
+                'complete',
+                () => completeWork({ workId: work._id }),
+                'Could not complete Work',
               )
             }
           >
@@ -628,11 +693,17 @@ export default function WorkDetailPage() {
                 variant='outline'
                 size='sm'
                 className='h-6 text-[11px]'
+                disabled={pendingAction !== null}
                 onClick={() =>
-                  void respondHandoff({
-                    handoffId: pendingHandoff._id,
-                    accept: true,
-                  }).catch(() => toast.error('Could not accept handoff'))
+                  runAction(
+                    'accept-handoff',
+                    () =>
+                      respondHandoff({
+                        handoffId: pendingHandoff._id,
+                        accept: true,
+                      }),
+                    'Could not accept handoff',
+                  )
                 }
               >
                 Accept
@@ -641,11 +712,17 @@ export default function WorkDetailPage() {
                 variant='ghost'
                 size='sm'
                 className='h-6 text-[11px]'
+                disabled={pendingAction !== null}
                 onClick={() =>
-                  void respondHandoff({
-                    handoffId: pendingHandoff._id,
-                    accept: false,
-                  })
+                  runAction(
+                    'decline-handoff',
+                    () =>
+                      respondHandoff({
+                        handoffId: pendingHandoff._id,
+                        accept: false,
+                      }),
+                    'Could not decline handoff',
+                  )
                 }
               >
                 Decline
@@ -665,14 +742,23 @@ export default function WorkDetailPage() {
                   {item.details}
                 </span>
               )}
-              <Button
-                variant='ghost'
-                size='sm'
-                className='h-6 text-[11px]'
-                onClick={() => void resolveAttention({ attentionId: item._id })}
-              >
-                Resolve
-              </Button>
+              {work.canEdit && (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='h-6 text-[11px]'
+                  disabled={pendingAction !== null}
+                  onClick={() =>
+                    runAction(
+                      `attention:${item._id}`,
+                      () => resolveAttention({ attentionId: item._id }),
+                      'Could not resolve attention request',
+                    )
+                  }
+                >
+                  Resolve
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -737,6 +823,7 @@ export default function WorkDetailPage() {
               onChange={setWorkpad}
               orgSlug={orgSlug}
               mode='full'
+              disabled={!work.canEdit}
               borderless
               className='notion-editor document-prose'
               placeholder="Type notes or press '/' for commands. Use - [ ] for a checklist."
@@ -756,12 +843,18 @@ export default function WorkDetailPage() {
               {work.tasks.map(task => (
                 <div
                   key={task._id}
-                  className='group flex min-h-9 items-center gap-2 border-b px-2 last:border-b-0'
+                  id={`task-${task._id}`}
+                  className={cn(
+                    'group flex min-h-9 scroll-m-20 items-center gap-2 border-b px-2 transition-colors last:border-b-0',
+                    focusedTaskId === String(task._id) &&
+                      'bg-primary/7 ring-primary/20 ring-1 ring-inset',
+                  )}
                 >
                   <TaskStatus
                     orgSlug={orgSlug}
                     taskId={task._id}
                     serverStatus={task.status}
+                    disabled={!work.canEdit}
                   />
                   <span className='text-muted-foreground w-7 shrink-0 font-mono text-[10px]'>
                     #{task.number}
@@ -782,25 +875,31 @@ export default function WorkDetailPage() {
                     orgSlug={orgSlug}
                     taskId={task._id}
                     serverAssigneeId={task.assigneeId}
+                    disabled={!work.canEdit}
                   />
                 </div>
               ))}
-              <div className='flex h-9 items-center gap-2 px-2'>
-                <Plus className='text-muted-foreground size-4' />
-                <Input
-                  value={newTask}
-                  onChange={event => setNewTask(event.target.value)}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault();
-                      addTask();
-                    }
-                  }}
-                  placeholder='Add a Task…'
-                  className='h-7 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0'
-                />
-                <span className='text-muted-foreground text-[10px]'>Enter</span>
-              </div>
+              {work.canEdit && (
+                <div className='flex h-9 items-center gap-2 px-2'>
+                  <Plus className='text-muted-foreground size-4' />
+                  <Input
+                    value={newTask}
+                    disabled={pendingAction !== null}
+                    onChange={event => setNewTask(event.target.value)}
+                    onKeyDown={event => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addTask();
+                      }
+                    }}
+                    placeholder='Add a Task…'
+                    className='h-7 flex-1 border-0 bg-transparent px-0 text-xs shadow-none focus-visible:ring-0'
+                  />
+                  <span className='text-muted-foreground text-[10px]'>
+                    Enter
+                  </span>
+                </div>
+              )}
             </div>
           </section>
 
@@ -853,6 +952,23 @@ export default function WorkDetailPage() {
             issueId={work._id}
             issueKey={work.key}
           />
+
+          <section className='mt-7 border-t pt-6'>
+            <IssueCommentsSection
+              orgSlug={orgSlug}
+              issueId={work._id}
+              currentUser={
+                currentUser
+                  ? {
+                      _id: currentUser._id,
+                      name: currentUser.name ?? '',
+                      email: currentUser.email ?? null,
+                      image: currentUser.image ?? null,
+                    }
+                  : null
+              }
+            />
+          </section>
         </main>
 
         <aside className='border-t px-4 py-4 lg:border-t-0 lg:border-l'>
@@ -873,19 +989,24 @@ export default function WorkDetailPage() {
                   {ownerName ?? 'No owner'}
                 </span>
               </div>
-              <div className='mt-2'>
-                <HandoffDialog
-                  orgSlug={orgSlug}
-                  workId={work._id}
-                  ownerName={ownerName}
-                />
-              </div>
+              {work.canEdit && (
+                <div className='mt-2'>
+                  <HandoffDialog
+                    orgSlug={orgSlug}
+                    workId={work._id}
+                    ownerName={ownerName}
+                  />
+                </div>
+              )}
             </div>
-            <ReminderDialog orgSlug={orgSlug} workId={work._id} />
+            {work.canEdit && (
+              <ReminderDialog orgSlug={orgSlug} workId={work._id} />
+            )}
             <div className='grid grid-cols-2 gap-x-3 gap-y-1 text-xs lg:grid-cols-1'>
               <WorkPropertySelector
                 orgSlug={orgSlug}
                 label='Effort'
+                disabled={!work.canEdit}
                 serverValue={work.effort ?? 'unknown'}
                 options={[
                   { value: 'unknown', label: 'Unknown' },
@@ -908,6 +1029,7 @@ export default function WorkDetailPage() {
               <WorkPropertySelector
                 orgSlug={orgSlug}
                 label='Agent Tasks'
+                disabled={!work.canEdit}
                 serverValue={work.agentTaskCreationPolicy ?? 'allow'}
                 options={[
                   { value: 'allow', label: 'Allowed' },
@@ -925,6 +1047,7 @@ export default function WorkDetailPage() {
               <WorkPropertySelector
                 orgSlug={orgSlug}
                 label='Completion'
+                disabled={!work.canEdit}
                 serverValue={work.completionPolicy ?? 'manual'}
                 options={[
                   { value: 'manual', label: 'Human review' },

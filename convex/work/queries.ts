@@ -41,74 +41,84 @@ export const list = query({
       ctx,
       args.orgSlug,
     );
-    const page =
-      args.scope === 'mine' || args.scope === 'active'
-        ? await ctx.db
+    const fetchPage = (paginationOpts: typeof args.paginationOpts) =>
+      args.scope === 'mine'
+        ? ctx.db
             .query('issues')
-            .withIndex('by_org_owner', q =>
-              q.eq('organizationId', organization._id).eq('ownerId', userId),
+            .withIndex('by_org_kind_owner_focus_activity', q =>
+              q
+                .eq('organizationId', organization._id)
+                .eq('kind', 'work')
+                .eq('ownerId', userId),
             )
-            .order('desc')
-            .paginate(args.paginationOpts)
-        : await ctx.db
+            .order('asc')
+            .paginate(paginationOpts)
+        : ctx.db
             .query('issues')
-            .withIndex('by_organization', q =>
-              q.eq('organizationId', organization._id),
+            .withIndex('by_org_kind_focus_activity', q =>
+              q.eq('organizationId', organization._id).eq('kind', 'work'),
             )
-            .order('desc')
-            .paginate(args.paginationOpts);
+            .order('asc')
+            .paginate(paginationOpts);
 
-    const canonical = page.page.filter(
-      work => work.kind === 'work' || (!work.kind && !work.parentIssueId),
-    );
-    const visible = (
-      await Promise.all(
-        canonical.map(async work =>
-          (await canViewIssue(ctx, work)) ? work : null,
-        ),
-      )
-    ).filter((work): work is Doc<'issues'> => Boolean(work));
+    const enrich = async (works: Doc<'issues'>[]) => {
+      const visible = (
+        await Promise.all(
+          works.map(async work =>
+            (await canViewIssue(ctx, work)) ? work : null,
+          ),
+        )
+      ).filter((work): work is Doc<'issues'> => Boolean(work));
 
-    const rows = await Promise.all(
-      visible.map(async work => {
-        const [owner, state, tasks, activities, attention] = await Promise.all([
-          userSummary(ctx, work.ownerId),
-          work.workflowStateId
-            ? ctx.db.get('issueStates', work.workflowStateId)
-            : null,
-          ctx.db
-            .query('tasks')
-            .withIndex('by_work', q => q.eq('workId', work._id))
-            .collect(),
-          ctx.db
-            .query('issueLiveActivities')
-            .withIndex('by_issue', q => q.eq('issueId', work._id))
-            .collect(),
-          ctx.db
-            .query('workAttentionRequests')
-            .withIndex('by_work_status', q =>
-              q.eq('workId', work._id).eq('status', 'open'),
-            )
-            .collect(),
-        ]);
-        return {
-          ...work,
-          workStatus: work.workStatus ?? statusFromLegacyState(state),
-          owner,
-          taskProgress: {
-            done: tasks.filter(task => task.status === 'done').length,
-            total: tasks.length,
-          },
-          activeExecutionCount: activities.filter(activity =>
-            ['active', 'waiting_for_input', 'paused'].includes(activity.status),
-          ).length,
-          openAttentionCount: attention.length,
-        };
-      }),
-    );
+      const rows = await Promise.all(
+        visible.map(async work => {
+          const [owner, state, tasks, activities, attention] =
+            await Promise.all([
+              userSummary(ctx, work.ownerId),
+              work.workflowStateId
+                ? ctx.db.get('issueStates', work.workflowStateId)
+                : null,
+              ctx.db
+                .query('tasks')
+                .withIndex('by_work', q => q.eq('workId', work._id))
+                .take(500),
+              Promise.all(
+                (['active', 'waiting_for_input', 'paused'] as const).map(
+                  status =>
+                    ctx.db
+                      .query('issueLiveActivities')
+                      .withIndex('by_issue_status', q =>
+                        q.eq('issueId', work._id).eq('status', status),
+                      )
+                      .take(100),
+                ),
+              ).then(groups => groups.flat()),
+              ctx.db
+                .query('workAttentionRequests')
+                .withIndex('by_work_status', q =>
+                  q.eq('workId', work._id).eq('status', 'open'),
+                )
+                .take(100),
+            ]);
+          return {
+            ...work,
+            workStatus: work.workStatus ?? statusFromLegacyState(state),
+            owner,
+            taskProgress: {
+              done: tasks.filter(task => task.status === 'done').length,
+              total: tasks.length,
+            },
+            activeExecutionCount: activities.filter(activity =>
+              ['active', 'waiting_for_input', 'paused'].includes(
+                activity.status,
+              ),
+            ).length,
+            openAttentionCount: attention.length,
+          };
+        }),
+      );
 
-    const filtered =
-      args.scope === 'attention'
+      return args.scope === 'attention'
         ? rows.filter(
             row =>
               row.openAttentionCount > 0 ||
@@ -122,6 +132,18 @@ export const list = query({
                 row.activeExecutionCount > 0,
             )
           : rows;
+    };
+
+    let page = await fetchPage(args.paginationOpts);
+    const filtered = await enrich(page.page);
+    while (filtered.length < args.paginationOpts.numItems && !page.isDone) {
+      page = await fetchPage({
+        ...args.paginationOpts,
+        cursor: page.continueCursor,
+        numItems: args.paginationOpts.numItems - filtered.length,
+      });
+      filtered.push(...(await enrich(page.page)));
+    }
     const statusRank: Record<string, number> = {
       blocked: 0,
       ready_for_review: 1,
@@ -196,22 +218,22 @@ export const getByKey = query({
         .query('workOwnershipPeriods')
         .withIndex('by_work', q => q.eq('workId', work._id))
         .order('desc')
-        .collect(),
+        .take(200),
       ctx.db
         .query('workHandoffs')
         .withIndex('by_work', q => q.eq('workId', work._id))
         .order('desc')
-        .collect(),
+        .take(200),
       ctx.db
         .query('workAttentionRequests')
         .withIndex('by_work', q => q.eq('workId', work._id))
         .order('desc')
-        .collect(),
+        .take(200),
       ctx.db
         .query('issueLiveActivities')
         .withIndex('by_issue', q => q.eq('issueId', work._id))
         .order('desc')
-        .collect(),
+        .take(200),
     ]);
     const contributorUsers = await Promise.all(
       contributors.map(row => userSummary(ctx, row.userId)),
@@ -383,12 +405,13 @@ export const resolveLegacyIssueRoute = query({
       .first();
     if (!issue || !(await canViewIssue(ctx, issue))) return null;
     if (!issue.parentIssueId) return { workKey: issue.key, taskId: null };
-    const parent = await ctx.db.get('issues', issue.parentIssueId);
-    if (!parent) return null;
     const task = await ctx.db
       .query('tasks')
       .withIndex('by_legacy_issue', q => q.eq('legacyIssueId', issue._id))
       .first();
-    return { workKey: parent.key, taskId: task?._id ?? null };
+    if (!task) return null;
+    const work = await ctx.db.get('issues', task.workId);
+    if (!work || !(await canViewIssue(ctx, work))) return null;
+    return { workKey: work.key, taskId: task._id };
   },
 });

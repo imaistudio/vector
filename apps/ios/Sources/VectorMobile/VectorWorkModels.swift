@@ -95,6 +95,7 @@ public enum VectorWorkStatus: String, Decodable, Equatable, CaseIterable, Identi
 public enum VectorTaskStatus: String, Decodable, Equatable, CaseIterable, Identifiable, Sendable {
   case todo
   case inProgress = "in_progress"
+  case waiting
   case blocked
   case done
   case canceled
@@ -105,6 +106,7 @@ public enum VectorTaskStatus: String, Decodable, Equatable, CaseIterable, Identi
     switch self {
     case .todo: "To do"
     case .inProgress: "In progress"
+    case .waiting: "Waiting"
     case .blocked: "Blocked"
     case .done: "Done"
     case .canceled: "Canceled"
@@ -460,13 +462,13 @@ public struct VectorWorkOwnershipPeriod: Decodable, Equatable, Identifiable {
 public struct VectorWorkHandoff: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let status: String
-  public let summary: String
+  public let summary: String?
   public let fromOwner: VectorUser?
   public let toOwner: VectorUser?
   public let isRecipient: Bool
   @ConvexFloat public var initiatedAt: Double
 
-  public init(id: VectorID, status: String, summary: String, fromOwner: VectorUser?, toOwner: VectorUser?, isRecipient: Bool, initiatedAt: Double) {
+  public init(id: VectorID, status: String, summary: String? = nil, fromOwner: VectorUser?, toOwner: VectorUser?, isRecipient: Bool, initiatedAt: Double) {
     self.id = id
     self.status = status
     self.summary = summary
@@ -483,42 +485,42 @@ public struct VectorWorkHandoff: Decodable, Equatable, Identifiable {
     case fromOwner
     case toOwner
     case isRecipient
-    case initiatedAt
+    case initiatedAt = "createdAt"
   }
 }
 
 public struct VectorWorkAttention: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let prompt: String
-  public let category: String
+  public let details: String?
   public let status: String
   @ConvexFloat public var requestedAt: Double
 
-  public init(id: VectorID, prompt: String, category: String, status: String, requestedAt: Double) {
+  public init(id: VectorID, prompt: String, details: String? = nil, status: String, requestedAt: Double) {
     self.id = id
     self.prompt = prompt
-    self.category = category
+    self.details = details
     self.status = status
     self._requestedAt = ConvexFloat(wrappedValue: requestedAt)
   }
 
   private enum CodingKeys: String, CodingKey {
     case id = "_id"
-    case prompt
-    case category
+    case prompt = "title"
+    case details
     case status
-    case requestedAt
+    case requestedAt = "createdAt"
   }
 }
 
 public struct VectorWorkExecution: Decodable, Equatable, Identifiable {
   public let id: VectorID
-  public let title: String
+  public let title: String?
   public let provider: String
   public let status: String
   public let latestSummary: String?
 
-  public init(id: VectorID, title: String, provider: String, status: String, latestSummary: String? = nil) {
+  public init(id: VectorID, title: String? = nil, provider: String, status: String, latestSummary: String? = nil) {
     self.id = id
     self.title = title
     self.provider = provider

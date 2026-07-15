@@ -54,17 +54,34 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(work.ownerStartedAt, 1_774_560_000_000)
   }
 
+  func testWorkDetailDecodesExecutionHandoffAttentionAndWaitingTask() throws {
+    let payload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","linkedRequests":[],"tasks":[{"_id":"task-1","number":1,"title":"Wait for review","status":"waiting"}],"ownershipPeriods":[],"handoffs":[{"_id":"handoff-1","status":"pending","fromOwner":null,"toOwner":null,"isRecipient":true,"createdAt":1774560000000}],"attention":[{"_id":"attention-1","title":"Choose a rollout path","details":"Blue or green?","status":"open","createdAt":1774560100000}],"executions":[{"_id":"execution-1","provider":"codex","status":"waiting_for_input","latestSummary":"Needs a decision"}],"canEdit":true,"_creationTime":1774550000000}"#.data(using: .utf8)!
+
+    let work = try JSONDecoder().decode(VectorWorkDetail.self, from: payload)
+
+    XCTAssertEqual(work.tasks.first?.status, .waiting)
+    XCTAssertNil(work.handoffs.first?.summary)
+    XCTAssertEqual(work.handoffs.first?.initiatedAt, 1_774_560_000_000)
+    XCTAssertEqual(work.attention.first?.prompt, "Choose a rollout path")
+    XCTAssertEqual(work.attention.first?.requestedAt, 1_774_560_100_000)
+    XCTAssertNil(work.executions.first?.title)
+  }
+
   func testNotificationDeepLinksRecognizeRequestAndWorkRoutes() throws {
     let requestPayload = #"{"_id":"notification-1","category":"reviews","eventType":"request_ready_for_review","title":"Ready","body":"Review it","href":"/vector/requests/REQ-8","requestId":"request-8","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
     let workPayload = #"{"_id":"notification-2","category":"attention","eventType":"work_blocked","title":"Blocked","body":"Needs input","href":"/vector/work/VEC-9","issueId":"work-9","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
+    let legacyPayload = #"{"_id":"notification-3","category":"attention","eventType":"work_blocked","title":"Legacy","body":"Open safely","href":"/vector/issues/VEC-10","issueId":"legacy-10","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
 
     let request = try JSONDecoder().decode(VectorInboxNotification.self, from: requestPayload)
     let work = try JSONDecoder().decode(VectorInboxNotification.self, from: workPayload)
+    let legacy = try JSONDecoder().decode(VectorInboxNotification.self, from: legacyPayload)
 
     XCTAssertEqual(request.requestKey, "REQ-8")
     XCTAssertEqual(request.requestId, "request-8")
     XCTAssertEqual(work.workKey, "VEC-9")
     XCTAssertEqual(work.issueId, "work-9")
+    XCTAssertNil(legacy.workKey)
+    XCTAssertEqual(legacy.issueKey, "VEC-10")
   }
 
   func testAuthNormalizesAppURLLikeCLI() throws {

@@ -938,7 +938,8 @@ export const getOrgSettings = query({
     return {
       integration: integration
         ? {
-            ...integration,
+            _id: integration._id,
+            provider: integration.provider,
             autoLinkEnabled: integration.autoLinkEnabled ?? true,
             keyLinkEnabled:
               integration.keyLinkEnabled ?? integration.autoLinkEnabled ?? true,
@@ -952,6 +953,19 @@ export const getOrgSettings = query({
               integration.identityContributionPolicy ?? 'contributors',
             githubNotificationPolicy:
               integration.githubNotificationPolicy ?? 'action_only',
+            connectionMode: integration.connectionMode,
+            installationId: integration.installationId,
+            webhookSecretFingerprint: integration.webhookSecretFingerprint,
+            webhookSecretLastUpdatedAt: integration.webhookSecretLastUpdatedAt,
+            tokenFingerprint: integration.tokenFingerprint,
+            tokenLastUpdatedAt: integration.tokenLastUpdatedAt,
+            lastWebhookAt: integration.lastWebhookAt,
+            lastWebhookEvent: integration.lastWebhookEvent,
+            lastReconciledAt: integration.lastReconciledAt,
+            lastSyncFailureAt: integration.lastSyncFailureAt,
+            lastSyncFailureMessage: integration.lastSyncFailureMessage,
+            connectedAt: integration.connectedAt,
+            updatedAt: integration.updatedAt,
             hasTokenFallback: Boolean(integration.encryptedToken),
             hasWebhookSecret: Boolean(integration.encryptedWebhookSecret),
           }

@@ -601,6 +601,7 @@ export default defineSchema({
     // their data is copied into the dedicated tasks table.
     kind: v.optional(workKindValidator),
     workStatus: v.optional(workStatusValidator),
+    focusRank: v.optional(v.number()),
     ownerId: v.optional(v.id('users')),
     effort: v.optional(workEffortValidator),
     completionPolicy: v.optional(workCompletionPolicyValidator),
@@ -639,9 +640,22 @@ export default defineSchema({
     .index('by_created_by', ['createdBy'])
     .index('by_parent', ['parentIssueId'])
     .index('by_org_kind', ['organizationId', 'kind'])
+    .index('by_org_kind_focus_activity', [
+      'organizationId',
+      'kind',
+      'focusRank',
+      'lastMeaningfulActivityAt',
+    ])
     .index('by_org_work_status', ['organizationId', 'workStatus'])
     .index('by_org_owner', ['organizationId', 'ownerId'])
     .index('by_org_kind_owner', ['organizationId', 'kind', 'ownerId'])
+    .index('by_org_kind_owner_focus_activity', [
+      'organizationId',
+      'kind',
+      'ownerId',
+      'focusRank',
+      'lastMeaningfulActivityAt',
+    ])
     .searchIndex('search_title', {
       searchField: 'title',
       filterFields: ['organizationId'],
@@ -705,6 +719,7 @@ export default defineSchema({
     .index('by_org_owner', ['organizationId', 'ownerId'])
     .index('by_routed_team', ['routedTeamId'])
     .index('by_requester', ['requesterId'])
+    .index('by_org_requester', ['organizationId', 'requesterId'])
     .index('by_created_by', ['createdBy'])
     .searchIndex('search_text', {
       searchField: 'searchText',
@@ -1339,8 +1354,10 @@ export default defineSchema({
     .index('by_event', ['eventId'])
     .index('by_user', ['userId'])
     .index('by_user_read', ['userId', 'isRead'])
+    .index('by_user_read_archived', ['userId', 'isRead', 'isArchived'])
     .index('by_user_archived', ['userId', 'isArchived'])
     .index('by_user_action', ['userId', 'actionState'])
+    .index('by_user_action_archived', ['userId', 'actionState', 'isArchived'])
     .index('by_email', ['email']),
 
   notificationPreferences: defineTable({
@@ -1713,7 +1730,6 @@ export default defineSchema({
     originKind: v.optional(actorOriginKindValidator),
     clientKind: v.optional(v.string()),
     clientVersion: v.optional(v.string()),
-    idempotencyKey: v.optional(v.string()),
   })
     .index('by_organization', ['organizationId'])
     .index('by_issue', ['issueId'])

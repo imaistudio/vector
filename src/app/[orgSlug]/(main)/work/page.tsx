@@ -94,7 +94,7 @@ export default function WorkPage() {
       <div className='min-h-0 flex-1'>
         {result.status === 'LoadingFirstPage' ? (
           <WorkRowsSkeleton />
-        ) : result.results.length === 0 ? (
+        ) : result.results.length === 0 && result.status === 'Exhausted' ? (
           <div className='text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 text-center'>
             <Circle className='size-7 opacity-40' />
             <p className='text-sm'>No Work in this view</p>

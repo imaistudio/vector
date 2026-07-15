@@ -6,6 +6,7 @@ import type { Id } from '@/convex/_generated/dataModel';
 import { api, useCachedQuery } from '@/lib/convex';
 import { DynamicIcon } from '@/lib/dynamic-icons';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Popover,
   PopoverContent,
@@ -62,38 +63,51 @@ export function TeamPicker({
         <Command>
           <CommandInput placeholder='Search teams…' />
           <CommandList>
-            <CommandEmpty>No teams found.</CommandEmpty>
-            <CommandGroup>
-              <CommandItem
-                data-checked={!value}
-                onSelect={() => {
-                  onChange();
-                  setOpen(false);
-                }}
-              >
-                <Users className='size-3.5' />
-                No team
-              </CommandItem>
-              {(workspace?.teams ?? []).map(team => (
-                <CommandItem
-                  key={team._id}
-                  value={`${team.name} ${team.key}`}
-                  data-checked={team._id === value}
-                  onSelect={() => {
-                    onChange(team._id);
-                    setOpen(false);
-                  }}
-                >
-                  <DynamicIcon
-                    name={team.icon}
-                    fallback={Users}
-                    className='size-3.5'
-                    style={{ color: team.color ?? undefined }}
-                  />
-                  <span className='truncate'>{team.name}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            {workspace === undefined ? (
+              <div className='space-y-1 p-2'>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className='flex h-8 items-center gap-2 px-1'>
+                    <Skeleton className='size-4 rounded' />
+                    <Skeleton className='h-3 flex-1' />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <CommandEmpty>No teams found.</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    data-checked={!value}
+                    onSelect={() => {
+                      onChange();
+                      setOpen(false);
+                    }}
+                  >
+                    <Users className='size-3.5' />
+                    No team
+                  </CommandItem>
+                  {(workspace?.teams ?? []).map(team => (
+                    <CommandItem
+                      key={team._id}
+                      value={`${team.name} ${team.key}`}
+                      data-checked={team._id === value}
+                      onSelect={() => {
+                        onChange(team._id);
+                        setOpen(false);
+                      }}
+                    >
+                      <DynamicIcon
+                        name={team.icon}
+                        fallback={Users}
+                        className='size-3.5'
+                        style={{ color: team.color ?? undefined }}
+                      />
+                      <span className='truncate'>{team.name}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

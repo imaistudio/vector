@@ -59,6 +59,7 @@ function RouteDialog({
   const [routedTeamId, setRoutedTeamId] = useState<Id<'teams'> | undefined>(
     currentTeamId,
   );
+  const [submitting, setSubmitting] = useState(false);
   const route = useMutation(api.requests.mutations.route);
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
@@ -109,7 +110,10 @@ function RouteDialog({
             <Button
               size='sm'
               className='h-7 text-xs'
-              onClick={() =>
+              disabled={submitting}
+              onClick={() => {
+                if (submitting) return;
+                setSubmitting(true);
                 void route({
                   requestId,
                   recipientIds: recipients,
@@ -120,7 +124,8 @@ function RouteDialog({
                     setOpen(false);
                   })
                   .catch(() => toast.error('Could not route request'))
-              }
+                  .finally(() => setSubmitting(false));
+              }}
             >
               Save routing
             </Button>
@@ -140,15 +145,26 @@ function LinkWorkDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [linkingId, setLinkingId] = useState<Id<'issues'> | null>(null);
   const work = useCachedPaginatedQuery(
     api.work.queries.list,
-    { orgSlug, scope: 'all' },
+    open ? { orgSlug, scope: 'all' } : 'skip',
     { initialNumItems: 100 },
   );
-  const linkWork = useMutation(api.requests.mutations.linkWork);
-  const visible = work.results.filter(item =>
-    `${item.key} ${item.title}`.toLowerCase().includes(search.toLowerCase()),
+  const normalizedSearch = search.trim();
+  const searchResults = useCachedQuery(
+    api.search.queries.searchEntities,
+    open && normalizedSearch
+      ? { orgSlug, query: normalizedSearch, limit: 50 }
+      : 'skip',
   );
+  const linkWork = useMutation(api.requests.mutations.linkWork);
+  const visible = normalizedSearch
+    ? (searchResults?.issues ?? [])
+    : work.results;
+  const isLoading = normalizedSearch
+    ? searchResults === undefined
+    : work.status === 'LoadingFirstPage';
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
       <ResponsiveDialogTrigger asChild>
@@ -178,7 +194,7 @@ function LinkWorkDialog({
             className='mb-2 h-8 text-sm'
           />
           <div className='max-h-72 overflow-y-auto rounded-md border'>
-            {work.status === 'LoadingFirstPage'
+            {isLoading
               ? Array.from({ length: 5 }).map((_, index) => (
                   <div
                     key={index}
@@ -192,8 +208,11 @@ function LinkWorkDialog({
                   <button
                     type='button'
                     key={item._id}
+                    disabled={linkingId !== null}
                     className='hover:bg-muted/40 flex h-10 w-full items-center gap-2 border-b px-3 text-left last:border-b-0'
-                    onClick={() =>
+                    onClick={() => {
+                      if (linkingId) return;
+                      setLinkingId(item._id);
                       void linkWork({
                         requestId,
                         workId: item._id,
@@ -204,7 +223,8 @@ function LinkWorkDialog({
                           setOpen(false);
                         })
                         .catch(() => toast.error('Could not attach Work'))
-                    }
+                        .finally(() => setLinkingId(null));
+                    }}
                   >
                     <span className='text-muted-foreground font-mono text-[10px]'>
                       {item.key}
@@ -231,9 +251,12 @@ function ReviewDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const requestChanges = useMutation(api.requests.mutations.requestChanges);
   const complete = useMutation(api.requests.mutations.complete);
   const submit = () => {
+    if (submitting) return;
+    setSubmitting(true);
     const action =
       mode === 'changes'
         ? requestChanges({ requestId, note })
@@ -245,7 +268,8 @@ function ReviewDialog({
         );
         setOpen(false);
       })
-      .catch(() => toast.error('Could not save review'));
+      .catch(() => toast.error('Could not save review'))
+      .finally(() => setSubmitting(false));
   };
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
@@ -299,7 +323,7 @@ function ReviewDialog({
             <Button
               size='sm'
               className='h-7 text-xs'
-              disabled={mode === 'changes' && !note.trim()}
+              disabled={submitting || (mode === 'changes' && !note.trim())}
               onClick={submit}
             >
               Confirm
@@ -321,6 +345,7 @@ export default function RequestDetailPage() {
     requestKey,
   });
   const claim = useMutation(api.requests.mutations.claim);
+  const [claiming, setClaiming] = useState(false);
   if (request === undefined)
     return (
       <div>
@@ -352,6 +377,7 @@ export default function RequestDetailPage() {
       <header className='bg-background/95 sticky top-0 z-20 flex min-h-12 items-center gap-2 border-b px-3 backdrop-blur'>
         <Link
           href={`/${orgSlug}/requests`}
+          aria-label='Back to Requests'
           className={cn(
             buttonVariants({ variant: 'ghost', size: 'sm' }),
             'size-7 p-0',
@@ -368,7 +394,7 @@ export default function RequestDetailPage() {
         <Badge variant='outline' className='h-5 px-1.5 text-[10px]'>
           {request.status.replaceAll('_', ' ')}
         </Badge>
-        {!isTerminal && (
+        {!isTerminal && request.canEdit && (
           <RouteDialog
             orgSlug={orgSlug}
             requestId={request._id}
@@ -380,11 +406,14 @@ export default function RequestDetailPage() {
           <Button
             size='sm'
             className='h-7 gap-1.5 px-2 text-xs'
-            onClick={() =>
-              void claim({ requestId: request._id }).catch(() =>
-                toast.error('Could not claim request'),
-              )
-            }
+            disabled={claiming}
+            onClick={() => {
+              if (claiming) return;
+              setClaiming(true);
+              void claim({ requestId: request._id })
+                .catch(() => toast.error('Could not claim request'))
+                .finally(() => setClaiming(false));
+            }}
           >
             <UserRound className='size-3.5' />
             Take request
@@ -435,7 +464,7 @@ export default function RequestDetailPage() {
                 </h2>
               </div>
               <div className='flex items-center gap-2'>
-                {!isTerminal && (
+                {!isTerminal && request.canEdit && (
                   <>
                     <LinkWorkDialog orgSlug={orgSlug} requestId={request._id} />
                     <CreateWorkDialog
@@ -502,10 +531,14 @@ export default function RequestDetailPage() {
                 </p>
               </div>
               <div className='flex shrink-0 items-center gap-2'>
-                {request.status === 'ready_for_review' && (
-                  <ReviewDialog requestId={request._id} mode='changes' />
+                {request.canEdit && (
+                  <>
+                    {request.status === 'ready_for_review' && (
+                      <ReviewDialog requestId={request._id} mode='changes' />
+                    )}
+                    <ReviewDialog requestId={request._id} mode='complete' />
+                  </>
                 )}
-                <ReviewDialog requestId={request._id} mode='complete' />
               </div>
             </section>
           )}
@@ -546,14 +579,16 @@ export default function RequestDetailPage() {
                       </span>
                     </div>
                   ))}
-                {request.recipients.length === 0 && (
+                {!request.recipients.some(row => row.role === 'recipient') && (
                   <span className='text-muted-foreground text-xs'>
                     Not routed
                   </span>
                 )}
               </div>
             </div>
-            <ReminderDialog orgSlug={orgSlug} requestId={request._id} />
+            {request.canEdit && (
+              <ReminderDialog orgSlug={orgSlug} requestId={request._id} />
+            )}
             <div className='grid gap-2 text-xs'>
               <div className='flex justify-between gap-2'>
                 <span className='text-muted-foreground'>Source</span>

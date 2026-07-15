@@ -1,6 +1,7 @@
 import { Migrations } from '@convex-dev/migrations';
 import { components } from './_generated/api';
 import schema from './schema';
+import { workFocusRank } from './work/lib';
 
 export const migrations = new Migrations(components.migrations, { schema });
 
@@ -52,8 +53,13 @@ export const migrateIssuesToWorkAndTasks = migrations.define({
 
     if (issue.parentIssueId) {
       let rootWorkId = issue.parentIssueId;
+      const visited = new Set<string>([String(issue._id)]);
       let parent = await ctx.db.get('issues', rootWorkId);
       while (parent?.parentIssueId) {
+        if (visited.has(String(parent._id))) {
+          throw new Error(`Cyclic issue parent chain at ${parent._id}`);
+        }
+        visited.add(String(parent._id));
         rootWorkId = parent.parentIssueId;
         parent = await ctx.db.get('issues', rootWorkId);
       }
@@ -131,6 +137,10 @@ export const migrateIssuesToWorkAndTasks = migrations.define({
     return {
       kind: 'work' as const,
       workStatus: issue.workStatus ?? workStatusForState(state?.type),
+      focusRank: workFocusRank(
+        issue.workStatus ?? workStatusForState(state?.type),
+        issue.effort ?? 'unknown',
+      ),
       ownerId: primaryOwner,
       effort: issue.effort ?? ('unknown' as const),
       completionPolicy: issue.completionPolicy ?? ('manual' as const),
@@ -142,6 +152,19 @@ export const migrateIssuesToWorkAndTasks = migrations.define({
         issue.updatedAt ??
         issue._creationTime,
       updatedAt: issue.updatedAt ?? now,
+    };
+  },
+});
+
+export const backfillWorkFocusRank = migrations.define({
+  table: 'issues',
+  migrateOne: async (_ctx, issue) => {
+    if (issue.kind !== 'work') return {};
+    return {
+      focusRank: workFocusRank(
+        issue.workStatus ?? 'planned',
+        issue.effort ?? 'unknown',
+      ),
     };
   },
 });

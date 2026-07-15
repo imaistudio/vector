@@ -87,13 +87,26 @@ export default function RequestsPage() {
             </div>
           ))}
         </div>
-      ) : result.results.length === 0 ? (
+      ) : result.results.length === 0 && result.status === 'Exhausted' ? (
         <div className='text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 text-center'>
           <Inbox className='size-7 opacity-40' />
-          <p className='text-sm'>The request inbox is clear</p>
+          <p className='text-sm'>
+            {scope === 'inbox'
+              ? 'The request inbox is clear'
+              : scope === 'mine'
+                ? 'Nothing is routed to you'
+                : scope === 'requested'
+                  ? 'You have not made any requests'
+                  : 'No requests yet'}
+          </p>
           <p className='max-w-sm text-xs'>
-            New requests stay visible here until they are routed, planned, or
-            reviewed.
+            {scope === 'inbox'
+              ? 'New requests stay visible here until they are routed, planned, or reviewed.'
+              : scope === 'mine'
+                ? 'Requests assigned directly to you will appear here.'
+                : scope === 'requested'
+                  ? 'Requests you create will stay visible here through delivery and review.'
+                  : 'Create a request to define an expected output and route it into Work.'}
           </p>
         </div>
       ) : (

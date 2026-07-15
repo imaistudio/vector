@@ -164,6 +164,7 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
     try {
       await setAutomationPolicies({ orgSlug, ...next });
     } catch (error) {
+      setOptimisticPolicies(serverPolicies);
       console.error(error);
       toast.error('Failed to update GitHub automation policies');
     }
@@ -401,7 +402,12 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
           action={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant='outline' size='sm' className='h-7 text-xs'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-7 text-xs'
+                  disabled={!settings.canManage}
+                >
                   {policies.unmatchedArtifactPolicy.replaceAll('_', ' ')}
                   <ChevronRight className='size-3.5 rotate-90' />
                 </Button>
@@ -438,7 +444,12 @@ export function GitHubIntegrationSettings({ orgSlug }: { orgSlug: string }) {
           action={
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant='outline' size='sm' className='h-7 text-xs'>
+                <Button
+                  variant='outline'
+                  size='sm'
+                  className='h-7 text-xs'
+                  disabled={!settings.canManage}
+                >
                   {policies.stateAutomationPolicy}
                   <ChevronRight className='size-3.5 rotate-90' />
                 </Button>

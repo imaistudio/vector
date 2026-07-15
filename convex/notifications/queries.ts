@@ -22,31 +22,62 @@ export const listInbox = query({
       throw new ConvexError('UNAUTHORIZED');
     }
 
-    const page =
-      args.filter === 'action'
-        ? await ctx.db
-            .query('notificationRecipients')
-            .withIndex('by_user_action', q =>
-              q.eq('userId', userId).eq('actionState', 'needs_action'),
-            )
-            .order('desc')
-            .paginate(args.paginationOpts)
-        : await ctx.db
-            .query('notificationRecipients')
-            .withIndex('by_user', q => q.eq('userId', userId))
-            .order('desc')
-            .paginate(args.paginationOpts);
+    const fetchPage = (paginationOpts: typeof args.paginationOpts) => {
+      if (args.filter === 'action') {
+        return ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_action_archived', q =>
+            q
+              .eq('userId', userId)
+              .eq('actionState', 'needs_action')
+              .eq('isArchived', false),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
 
-    const visible = page.page.filter(item => {
-      if (item.isArchived) return false;
+      if (args.filter === 'unread') {
+        return ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_read_archived', q =>
+            q.eq('userId', userId).eq('isRead', false).eq('isArchived', false),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
+
+      return ctx.db
+        .query('notificationRecipients')
+        .withIndex('by_user_archived', q =>
+          q.eq('userId', userId).eq('isArchived', false),
+        )
+        .order('desc')
+        .paginate(paginationOpts);
+    };
+
+    const isVisible = (item: Doc<'notificationRecipients'>) => {
       if (
         item.actionState === 'snoozed' &&
         (item.snoozedUntil ?? 0) > Date.now()
       )
         return false;
-      if (args.filter === 'unread') return !item.isRead;
       return true;
-    });
+    };
+
+    let page = await fetchPage(args.paginationOpts);
+    const visible = page.page.filter(isVisible);
+
+    // Archived and read state are handled by indexes. Active snoozes are
+    // time-based, so keep advancing the database cursor until this visible
+    // page is full or the underlying result set is exhausted.
+    while (visible.length < args.paginationOpts.numItems && !page.isDone) {
+      page = await fetchPage({
+        ...args.paginationOpts,
+        cursor: page.continueCursor,
+        numItems: args.paginationOpts.numItems - visible.length,
+      });
+      visible.push(...page.page.filter(isVisible));
+    }
 
     // Resolve a fresh deep link for each notification. Stored hrefs from
     // older recipients can be stale or missing — recompute from the parent

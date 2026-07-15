@@ -60,6 +60,7 @@ export function ReminderDialog({
     useState<(typeof cadences)[number]['value']>('weekly');
   const [when, setWhen] = useState(tomorrowLocalValue);
   const [inactivity, setInactivity] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const createReminder = useMutation(api.reminders.create);
   const selectedCadence = cadences.find(item => item.value === cadence)!;
   const recipientPolicies = useMemo(
@@ -72,11 +73,13 @@ export function ReminderDialog({
     [targetType],
   );
   const submit = () => {
+    if (submitting) return;
     const firstFireAt = new Date(when).getTime();
     if (!Number.isFinite(firstFireAt)) {
       toast.error('Choose a reminder time');
       return;
     }
+    setSubmitting(true);
     void createReminder({
       orgSlug,
       targetType,
@@ -98,7 +101,8 @@ export function ReminderDialog({
         toast.error(
           error instanceof Error ? error.message : 'Could not create reminder',
         ),
-      );
+      )
+      .finally(() => setSubmitting(false));
   };
   return (
     <ResponsiveDialog open={open} onOpenChange={setOpen}>
@@ -208,7 +212,12 @@ export function ReminderDialog({
             >
               Cancel
             </Button>
-            <Button size='sm' className='h-7 text-xs' onClick={submit}>
+            <Button
+              size='sm'
+              className='h-7 text-xs'
+              disabled={submitting}
+              onClick={submit}
+            >
               Schedule
             </Button>
           </div>

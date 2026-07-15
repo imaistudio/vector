@@ -5,6 +5,7 @@ import {
   query,
   type MutationCtx,
 } from './_generated/server';
+import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { canEditRequest, canViewRequest } from './requests/lib';
 import {
@@ -19,24 +20,104 @@ import {
 } from './_shared/work';
 import { requireOrganization, requireUser, requireWork } from './work/lib';
 
-function nextOccurrence(rule: Doc<'reminderRules'>, scheduledFor: number) {
+type LocalDate = { year: number; month: number; day: number };
+
+function localDateParts(timestamp: number, timezone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(timestamp);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find(part => part.type === type)?.value);
+  return {
+    year: value('year'),
+    month: value('month'),
+    day: value('day'),
+    hour: value('hour'),
+    minute: value('minute'),
+    second: value('second'),
+  };
+}
+
+function addLocalDays(date: LocalDate, days: number): LocalDate {
+  const next = new Date(Date.UTC(date.year, date.month - 1, date.day + days));
+  return {
+    year: next.getUTCFullYear(),
+    month: next.getUTCMonth() + 1,
+    day: next.getUTCDate(),
+  };
+}
+
+function localWeekday(date: LocalDate) {
+  return new Date(Date.UTC(date.year, date.month - 1, date.day)).getUTCDay();
+}
+
+function localDateTimeToTimestamp(
+  date: LocalDate,
+  hour: number,
+  minute: number,
+  timezone: string,
+) {
+  const wallClockAsUtc = Date.UTC(
+    date.year,
+    date.month - 1,
+    date.day,
+    hour,
+    minute,
+  );
+  let candidate = wallClockAsUtc;
+
+  // Convert an IANA-zone wall clock to an instant. Rechecking the offset makes
+  // this work on both sides of daylight-saving transitions.
+  for (let index = 0; index < 4; index += 1) {
+    const local = localDateParts(candidate, timezone);
+    const localAsUtc = Date.UTC(
+      local.year,
+      local.month - 1,
+      local.day,
+      local.hour,
+      local.minute,
+      local.second,
+    );
+    const next = wallClockAsUtc - (localAsUtc - candidate);
+    if (Math.abs(next - candidate) < 1_000) return next;
+    candidate = next;
+  }
+  return candidate;
+}
+
+export function nextOccurrence(
+  rule: Doc<'reminderRules'>,
+  scheduledFor: number,
+) {
   if (rule.cadence === 'once') return null;
-  const day = 24 * 60 * 60 * 1000;
-  let next =
-    scheduledFor +
-    (rule.cadence === 'weekly'
+  const timeMatch = /^(\d{2}):(\d{2})/.exec(rule.localTime);
+  if (!timeMatch) return null;
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  const interval =
+    rule.cadence === 'weekly'
       ? 7
       : rule.cadence === 'custom_days'
         ? Math.max(1, rule.intervalDays ?? 1)
-        : 1) *
-      day;
+        : 1;
+  let date = addLocalDays(
+    localDateParts(scheduledFor, rule.timezone),
+    interval,
+  );
   if (rule.cadence === 'weekdays') {
-    while ([0, 6].includes(new Date(next).getUTCDay())) next += day;
+    while ([0, 6].includes(localWeekday(date))) date = addLocalDays(date, 1);
   }
-  return next;
+  return localDateTimeToTimestamp(date, hour, minute, rule.timezone);
 }
 
-function nextFutureOccurrence(
+export function nextFutureOccurrence(
   rule: Doc<'reminderRules'>,
   scheduledFor: number,
   now: number,
@@ -206,8 +287,35 @@ export const create = mutation({
         throw new ConvexError('TASK_NOT_FOUND');
       await requireWork(ctx, task.workId, 'edit');
     } else throw new ConvexError('REMINDER_TARGET_MISMATCH');
-    if (args.recipientPolicies.length === 0)
+    const recipientPolicies = Array.from(new Set(args.recipientPolicies));
+    if (recipientPolicies.length === 0)
       throw new ConvexError('RECIPIENT_POLICY_REQUIRED');
+    const applicablePolicies = new Set(
+      args.targetType === 'request'
+        ? ['requester', 'request_owner', 'watchers']
+        : args.targetType === 'task'
+          ? ['task_assignee', 'work_owner', 'work_creator']
+          : ['work_owner', 'work_creator'],
+    );
+    if (recipientPolicies.some(policy => !applicablePolicies.has(policy)))
+      throw new ConvexError('INCOMPATIBLE_RECIPIENT_POLICY');
+    if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(args.localTime))
+      throw new ConvexError('INVALID_REMINDER_LOCAL_TIME');
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: args.timezone }).format();
+    } catch {
+      throw new ConvexError('INVALID_REMINDER_TIMEZONE');
+    }
+    if (
+      args.cadence === 'custom_days' &&
+      (!Number.isInteger(args.intervalDays) || (args.intervalDays ?? 0) < 1)
+    )
+      throw new ConvexError('INVALID_REMINDER_INTERVAL');
+    if (
+      args.inactivityHours !== undefined &&
+      (!Number.isFinite(args.inactivityHours) || args.inactivityHours <= 0)
+    )
+      throw new ConvexError('INVALID_INACTIVITY_HOURS');
     if (args.firstFireAt <= Date.now())
       throw new ConvexError('REMINDER_MUST_BE_IN_FUTURE');
     const now = Date.now();
@@ -217,7 +325,7 @@ export const create = mutation({
       requestId: args.requestId,
       workId: args.workId,
       taskId: args.taskId,
-      recipientPolicies: Array.from(new Set(args.recipientPolicies)),
+      recipientPolicies,
       cadence: args.cadence,
       intervalDays: args.intervalDays,
       localTime: args.localTime,
@@ -273,7 +381,10 @@ export const processDue = internalMutation({
       ) {
         const next =
           nextFutureOccurrence(rule, rule.nextFireAt, now) ??
-          now + rule.inactivityHours * 60 * 60 * 1000;
+          Math.max(
+            now + 1,
+            target.updatedAt + rule.inactivityHours * 60 * 60 * 1000,
+          );
         await ctx.db.patch('reminderRules', rule._id, {
           nextFireAt: next,
           updatedAt: now,
@@ -326,6 +437,9 @@ export const processDue = internalMutation({
         lastFiredAt: now,
         updatedAt: now,
       });
+    }
+    if (rules.length === 50) {
+      await ctx.scheduler.runAfter(0, internal.reminders.processDue, {});
     }
     return { processed: rules.length };
   },

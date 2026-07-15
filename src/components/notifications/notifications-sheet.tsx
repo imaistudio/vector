@@ -162,6 +162,7 @@ export function NotificationsSheet({
                     )}
                     onClick={() => void handleOpen(recipient)}
                     onKeyDown={event => {
+                      if (event.target !== event.currentTarget) return;
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
                         void handleOpen(recipient);

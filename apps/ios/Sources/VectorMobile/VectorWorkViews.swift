@@ -391,7 +391,7 @@ struct MobileWorkDetailScreen: View {
                 Text("Blocked").tag(VectorWorkStatus.blocked)
               }
             }
-            if ![.readyForReview, .completed, .canceled].contains(detail.workStatus) {
+            if detail.ownerStartedAt != nil && [.active, .waiting, .blocked].contains(detail.workStatus) {
               Button("Raise for human review") {
                 Task { _ = await viewModel.readyWorkForReview(detail.id) }
               }
@@ -472,7 +472,7 @@ struct MobileWorkDetailScreen: View {
                 VStack(alignment: .leading, spacing: 3) {
                   HStack {
                     Circle().fill(executionStatusColor(execution.status)).frame(width: 7, height: 7)
-                    Text(execution.title).font(.subheadline.weight(.medium))
+                    Text(execution.title ?? "Agent execution").font(.subheadline.weight(.medium))
                     Spacer()
                     Text(execution.provider.replacingOccurrences(of: "_", with: " ").capitalized)
                       .font(.caption2).foregroundStyle(.secondary)
@@ -490,7 +490,8 @@ struct MobileWorkDetailScreen: View {
             Section("Handoff waiting for you") {
               ForEach(pendingHandoffs) { handoff in
                 VStack(alignment: .leading, spacing: 8) {
-                  Text(handoff.summary).font(.subheadline)
+                  Text(handoff.summary ?? "Review the previous owner's context before accepting.")
+                    .font(.subheadline)
                   Text("From \(handoff.fromOwner?.displayName ?? "previous owner")")
                     .font(.caption).foregroundStyle(.secondary)
                   HStack {
@@ -606,6 +607,7 @@ private func taskStatusImage(_ status: VectorTaskStatus) -> String {
   switch status {
   case .todo: "circle"
   case .inProgress: "circle.lefthalf.filled"
+  case .waiting: "clock"
   case .blocked: "exclamationmark.circle"
   case .done: "checkmark.circle.fill"
   case .canceled: "xmark.circle"
@@ -616,6 +618,7 @@ private func taskStatusColor(_ status: VectorTaskStatus) -> Color {
   switch status {
   case .todo, .canceled: .secondary
   case .inProgress: .blue
+  case .waiting: .yellow
   case .blocked: .orange
   case .done: .green
   }

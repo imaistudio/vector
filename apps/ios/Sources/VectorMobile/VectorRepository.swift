@@ -932,7 +932,7 @@ public final class MockVectorRepository: VectorMobileRepository {
         VectorWorkOwnershipPeriod(id: "ownership-1", owner: owner, summary: "Accepted after the routing pass.", startedAt: now - 14_400_000, executionStartedAt: now - 10_800_000),
         VectorWorkOwnershipPeriod(id: "ownership-0", owner: VectorUser(id: "user-2", name: "Maya"), summary: "Established the first mobile direction.", startedAt: now - 259_200_000, executionStartedAt: now - 250_000_000, endedAt: now - 14_400_000),
       ],
-      attention: key == "VEC-37" ? [VectorWorkAttention(id: "attention-1", prompt: "Choose whether reminders should escalate after two misses.", category: "decision", status: "open", requestedAt: now - 3_600_000)] : [],
+      attention: key == "VEC-37" ? [VectorWorkAttention(id: "attention-1", prompt: "Choose whether reminders should escalate after two misses.", details: "A human decision is required before continuing.", status: "open", requestedAt: now - 3_600_000)] : [],
       executions: [
         VectorWorkExecution(id: "execution-1", title: "Building native Work flow", provider: "codex", status: "active", latestSummary: "Compiling and checking the iOS surface in Simulator."),
         VectorWorkExecution(id: "execution-2", title: "Reviewing notification policy", provider: "claude_code", status: "waiting_for_input", latestSummary: "Waiting for the reminder escalation decision."),
