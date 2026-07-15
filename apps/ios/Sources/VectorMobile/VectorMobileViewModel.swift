@@ -22,6 +22,7 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var isLoadingRequests = false
   @Published public private(set) var isLoadingWork = false
   @Published public private(set) var pendingWorkModelActions: Set<String> = []
+  @Published public private(set) var workModelActionError: String?
   @Published public private(set) var issues: [VectorIssueRow] = []
   @Published public private(set) var projects: [VectorProject] = []
   @Published public private(set) var teams: [VectorTeam] = []
@@ -350,14 +351,20 @@ public final class VectorMobileViewModel: ObservableObject {
   ) async -> Bool {
     guard !pendingWorkModelActions.contains(id) else { return false }
     pendingWorkModelActions.insert(id)
+    workModelActionError = nil
     defer { pendingWorkModelActions.remove(id) }
     do {
       try await operation()
       return true
     } catch {
       errorMessage = error.localizedDescription
+      workModelActionError = error.localizedDescription
       return false
     }
+  }
+
+  public func clearWorkModelActionError() {
+    workModelActionError = nil
   }
 
   public func setAuthenticatedUser(_ user: VectorAuthenticatedUser?) {
