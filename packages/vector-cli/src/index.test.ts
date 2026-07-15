@@ -246,6 +246,7 @@ describe('Vector CLI command surface', () => {
         'start <workKey>',
         'status <workKey> <status>',
         'context [options] <workKey>',
+        'watch [options] <workKey>',
         'ready-for-review <workKey>',
         'complete <workKey>',
         'handoff [options] <workKey> <member>',

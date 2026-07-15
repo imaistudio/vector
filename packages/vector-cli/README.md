@@ -141,6 +141,7 @@ vcli request link-work REQ-1 API-1
 vcli work list --org acme --scope active
 vcli work list --org acme --scope mine
 vcli work context API-1
+vcli work watch API-1 --events tasks,requests
 vcli work status API-1 waiting
 vcli work attention API-1 --title "Need a product decision" --task 2 --execution <liveActivityId>
 vcli work handoff API-1 bob@example.com --summary "Backend is complete; UI remains"
@@ -153,6 +154,14 @@ vcli task status API-1 2 blocked
 vcli task assign API-1 2 bob@example.com
 vcli task assign API-1 2
 ```
+
+`work watch` uses a live Convex subscription rather than polling. Watch all
+changes with `vcli work watch API-1`, or filter to `work`, `tasks`, `requests`,
+`attention`, `handoffs`, and `executions` with `--events`. Event types are
+granular, including `task.completed` and `request.added`. For agents, global
+`--json` emits one NDJSON object per event. Combine `--once` with
+`--timeout <seconds>` for a bounded wait, and add `--initial` when the current
+snapshot should be emitted before future changes.
 
 The `--execution` flag is required when an agent wants its Task or attention request attributed to a live Vector execution. It also enforces that Work's agent Task policy permits creation.
 
@@ -192,6 +201,7 @@ Use `--json` for automation and scripts:
 vcli --json work list --org acme
 vcli --json request list --org acme
 vcli --json notification inbox --filter unread
+vcli --json work watch API-1 --events tasks,requests --once --timeout 1800
 ```
 
 For scripts, prefer:
