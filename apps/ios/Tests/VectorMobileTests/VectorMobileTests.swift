@@ -834,6 +834,36 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testRequestCreationExposesProgressAndFailure() async {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+    var continuation: CheckedContinuation<Void, Error>?
+    repository.createRequestAction = {
+      try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    let createTask = Task {
+      await viewModel.createRequest(
+        title: "Mobile QA request",
+        description: nil,
+        expectedOutput: "Visible completion",
+        reviewGuidance: nil
+      )
+    }
+    await waitUntil { viewModel.pendingWorkModelActions.contains("create-request") }
+    XCTAssertNil(viewModel.workModelActionError)
+
+    continuation?.resume(throwing: VectorMobileError.validation("Request creation failed"))
+    let created = await createTask.value
+    XCTAssertFalse(created)
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+    XCTAssertEqual(viewModel.workModelActionError, "Request creation failed")
+
+    viewModel.clearWorkModelActionError()
+    XCTAssertNil(viewModel.workModelActionError)
+  }
+
+  @MainActor
   private func waitUntil(
     timeout: TimeInterval = 1,
     file: StaticString = #filePath,
@@ -907,6 +937,7 @@ private final class CountingVectorRepository: VectorMobileRepository {
   let userStatusSubject = CurrentValueSubject<VectorUserStatus?, Error>(nil)
   var setPresenceCalls: [VectorPresenceStatus] = []
   var setPresenceAction: ((VectorPresenceStatus) async throws -> Void)?
+  var createRequestAction: (() async throws -> Void)?
 
   func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
     issueListCalls[scope, default: 0] += 1
@@ -993,6 +1024,11 @@ private final class CountingVectorRepository: VectorMobileRepository {
   func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws {}
 
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
+
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult {
+    if let createRequestAction { try await createRequestAction() }
+    return VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")
+  }
 
   func updateTitle(issueId: VectorID, title: String) async throws {}
 

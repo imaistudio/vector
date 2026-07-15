@@ -39,6 +39,7 @@ struct MobileRequestsScreen: View {
       }
     }
     .navigationTitle("Requests")
+    .vectorInlineNavigationTitle()
     .searchable(text: $searchText, prompt: "Request key, title, or output")
     .safeAreaInset(edge: .top, spacing: 0) {
       Picker("Request scope", selection: $viewModel.requestScope) {
@@ -243,6 +244,10 @@ private struct MobileCreateRequestSheet: View {
       && !viewModel.pendingWorkModelActions.contains("create-request")
   }
 
+  private var isCreating: Bool {
+    viewModel.pendingWorkModelActions.contains("create-request")
+  }
+
   var body: some View {
     NavigationStack {
       Form {
@@ -263,7 +268,7 @@ private struct MobileCreateRequestSheet: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
         ToolbarItem(placement: .confirmationAction) {
-          Button("Create") {
+          Button {
             Task {
               let created = await viewModel.createRequest(
                 title: title,
@@ -273,9 +278,24 @@ private struct MobileCreateRequestSheet: View {
               )
               if created { isPresented = false }
             }
+          } label: {
+            if isCreating {
+              ProgressView().controlSize(.small).accessibilityLabel("Creating request")
+            } else {
+              Text("Create")
+            }
           }
           .disabled(!canSubmit)
         }
+      }
+      .interactiveDismissDisabled(isCreating)
+      .alert("Could not create request", isPresented: Binding(
+        get: { viewModel.workModelActionError != nil },
+        set: { if !$0 { viewModel.clearWorkModelActionError() } }
+      )) {
+        Button("OK") { viewModel.clearWorkModelActionError() }
+      } message: {
+        Text(viewModel.workModelActionError ?? "Please try again.")
       }
     }
   }
@@ -316,6 +336,7 @@ struct MobileWorkScreen: View {
       }
     }
     .navigationTitle("Work")
+    .vectorInlineNavigationTitle()
     .searchable(text: $searchText, prompt: "Work key or title")
     .safeAreaInset(edge: .top, spacing: 0) {
       Picker("Work scope", selection: $viewModel.workScope) {
@@ -347,6 +368,10 @@ private struct MobileCreateWorkSheet: View {
   @State private var title: String
   @State private var context = ""
   @State private var ownerId: VectorID?
+
+  private var isCreating: Bool {
+    viewModel.pendingWorkModelActions.contains("create-work")
+  }
 
   init(viewModel: VectorMobileViewModel, isPresented: Binding<Bool>, defaultTitle: String = "", requestId: VectorID? = nil) {
     self.viewModel = viewModel
@@ -380,7 +405,7 @@ private struct MobileCreateWorkSheet: View {
       .toolbar {
         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
         ToolbarItem(placement: .confirmationAction) {
-          Button("Create") {
+          Button {
             Task {
               let created = await viewModel.createWork(
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -390,9 +415,24 @@ private struct MobileCreateWorkSheet: View {
               )
               if created { isPresented = false }
             }
+          } label: {
+            if isCreating {
+              ProgressView().controlSize(.small).accessibilityLabel("Creating Work")
+            } else {
+              Text("Create")
+            }
           }
           .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.pendingWorkModelActions.contains("create-work"))
         }
+      }
+      .interactiveDismissDisabled(isCreating)
+      .alert("Could not create Work", isPresented: Binding(
+        get: { viewModel.workModelActionError != nil },
+        set: { if !$0 { viewModel.clearWorkModelActionError() } }
+      )) {
+        Button("OK") { viewModel.clearWorkModelActionError() }
+      } message: {
+        Text(viewModel.workModelActionError ?? "Please try again.")
       }
     }
   }
