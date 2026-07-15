@@ -129,22 +129,8 @@ export const list = query({
           : rows;
     };
 
-    let page = await fetchPage(args.paginationOpts);
+    const page = await fetchPage(args.paginationOpts);
     const filtered = await enrich(page.page);
-    let refillAttempts = 0;
-    while (
-      filtered.length < args.paginationOpts.numItems &&
-      !page.isDone &&
-      refillAttempts < 5
-    ) {
-      refillAttempts += 1;
-      page = await fetchPage({
-        ...args.paginationOpts,
-        cursor: page.continueCursor,
-        numItems: args.paginationOpts.numItems - filtered.length,
-      });
-      filtered.push(...(await enrich(page.page)));
-    }
     const statusRank: Record<string, number> = {
       blocked: 0,
       ready_for_review: 1,
