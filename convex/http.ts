@@ -18,7 +18,7 @@ http.route({
   handler: httpAction(async (ctx, request) => {
     const body = await request.text();
     const url = new URL(request.url);
-    await ctx.runAction(internal.github.actions.processWebhook, {
+    await ctx.scheduler.runAfter(0, internal.github.actions.processWebhook, {
       body,
       event: request.headers.get('x-github-event') ?? 'unknown',
       deliveryId: request.headers.get('x-github-delivery') ?? undefined,
@@ -26,7 +26,9 @@ http.route({
       signature: request.headers.get('x-hub-signature-256') ?? undefined,
     });
 
-    return new Response('ok', { status: 200 });
+    // Signature verification and all provider/AI work run durably after the
+    // response, keeping GitHub's delivery path well below its timeout window.
+    return new Response('accepted', { status: 202 });
   }),
 });
 

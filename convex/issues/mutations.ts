@@ -41,6 +41,8 @@ import {
   normalizeKanbanBorderColor,
   KANBAN_BORDER_COLOR_OPTIONS,
 } from '../../src/lib/kanban-border-tags';
+import { isCanonicalWork, workFocusRank } from '../work/lib';
+import type { WorkStatus } from '../_shared/work';
 
 const kanbanBorderTagValidator = v.union(
   ...KANBAN_BORDER_COLOR_OPTIONS.map(option => v.literal(option.value)),
@@ -117,6 +119,15 @@ async function resolveDefaultWorkflowStateId(
     .order('asc')
     .first()
     .then(state => state?._id);
+}
+
+function workStatusForLegacyState(
+  state: Doc<'issueStates'> | null,
+): WorkStatus {
+  if (state?.type === 'in_progress') return 'active';
+  if (state?.type === 'done') return 'ready_for_review';
+  if (state?.type === 'canceled') return 'canceled';
+  return 'planned';
 }
 
 export const create = mutation({
@@ -225,6 +236,29 @@ export const create = mutation({
 
     const workflowStateId =
       args.data.stateId ?? (await resolveDefaultWorkflowStateId(ctx, org._id));
+    const workflowState = workflowStateId
+      ? await ctx.db.get('issueStates', workflowStateId)
+      : null;
+    const now = Date.now();
+    const isTopLevelWork = !parentIssue;
+    const workStatus = workStatusForLegacyState(workflowState);
+    if (
+      isTopLevelWork &&
+      (workStatus === 'ready_for_review' || workStatus === 'canceled')
+    ) {
+      throw new ConvexError('INVALID_INITIAL_WORK_STATE');
+    }
+    const requestedAssignees = Array.from(new Set(args.data.assigneeIds ?? []));
+    const ownerId = isTopLevelWork
+      ? requestedAssignees.length === 1
+        ? requestedAssignees[0]
+        : workStatus === 'active'
+          ? userId
+          : undefined
+      : undefined;
+    if (isTopLevelWork && workStatus === 'active' && ownerId !== userId) {
+      throw new ConvexError('ONLY_OWNER_CAN_START_WORK');
+    }
 
     const issueId = await ctx.db.insert('issues', {
       organizationId: org._id,
@@ -248,8 +282,30 @@ export const create = mutation({
       parentIssueId: args.data.parentIssueId,
       startDate: args.data.startDate?.trim() || undefined,
       dueDate: args.data.dueDate?.trim() || undefined,
-      updatedAt: Date.now(),
+      updatedAt: now,
       lastActivityEventType: 'issue_created',
+      kind: isTopLevelWork ? 'work' : undefined,
+      workStatus: isTopLevelWork ? workStatus : undefined,
+      focusRank: isTopLevelWork
+        ? workFocusRank(workStatus, 'unknown')
+        : undefined,
+      ownerId,
+      effort: isTopLevelWork ? 'unknown' : undefined,
+      completionPolicy: isTopLevelWork ? 'manual' : undefined,
+      agentTaskCreationPolicy: isTopLevelWork ? 'allow' : undefined,
+      creationSource: isTopLevelWork ? 'human' : undefined,
+      lastMeaningfulActivityAt: isTopLevelWork ? now : undefined,
+      startedAt: isTopLevelWork && workStatus === 'active' ? now : undefined,
+      startedBy: isTopLevelWork && workStatus === 'active' ? userId : undefined,
+      ownerStartedAt:
+        isTopLevelWork && workStatus === 'active' && ownerId ? now : undefined,
+      ownerStartedBy:
+        isTopLevelWork && workStatus === 'active' && ownerId
+          ? userId
+          : undefined,
+      readyForReviewAt:
+        isTopLevelWork && workStatus === 'ready_for_review' ? now : undefined,
+      closedAt: isTopLevelWork && workStatus === 'canceled' ? now : undefined,
     });
 
     const assigneeStateId = workflowStateId;
@@ -279,6 +335,28 @@ export const create = mutation({
           issueId,
           assigneeId: undefined,
           stateId: assigneeStateId,
+        });
+      }
+    }
+
+    if (isTopLevelWork && ownerId) {
+      await ctx.db.insert('workOwnershipPeriods', {
+        workId: issueId,
+        ownerId,
+        startedBy: userId,
+        startedAt: now,
+        executionStartedAt: workStatus === 'active' ? now : undefined,
+        executionStartedBy: workStatus === 'active' ? userId : undefined,
+      });
+    }
+    if (isTopLevelWork) {
+      for (const contributorId of requestedAssignees) {
+        if (contributorId === ownerId) continue;
+        await ctx.db.insert('workContributors', {
+          workId: issueId,
+          userId: contributorId,
+          addedBy: userId,
+          addedAt: now,
         });
       }
     }
@@ -655,13 +733,91 @@ export const changeWorkflowState = mutation({
       throw new ConvexError('INVALID_STATE');
     }
 
+    const now = Date.now();
+    const canonicalWork = isCanonicalWork(issue);
+    const nextWorkStatus = workStatusForLegacyState(nextState);
+    if (
+      canonicalWork &&
+      nextWorkStatus === 'ready_for_review' &&
+      !issue.ownerStartedAt
+    ) {
+      throw new ConvexError('WORK_NOT_STARTED');
+    }
+    if (
+      canonicalWork &&
+      nextWorkStatus === 'active' &&
+      issue.ownerId &&
+      issue.ownerId !== userId
+    ) {
+      throw new ConvexError('ONLY_OWNER_CAN_START_WORK');
+    }
+    const nextOwnerId =
+      canonicalWork && nextWorkStatus === 'active'
+        ? (issue.ownerId ?? userId)
+        : issue.ownerId;
+
     await ctx.db.patch('issues', args.issueId, {
       workflowStateId: args.stateId,
-      closedAt:
-        nextState.type === 'done' || nextState.type === 'canceled'
-          ? Date.now()
-          : undefined,
+      workStatus: canonicalWork ? nextWorkStatus : issue.workStatus,
+      focusRank: canonicalWork
+        ? workFocusRank(nextWorkStatus, issue.effort ?? 'unknown')
+        : issue.focusRank,
+      ownerId: nextOwnerId,
+      startedAt:
+        canonicalWork && nextWorkStatus === 'active'
+          ? (issue.startedAt ?? now)
+          : issue.startedAt,
+      startedBy:
+        canonicalWork && nextWorkStatus === 'active'
+          ? (issue.startedBy ?? userId)
+          : issue.startedBy,
+      ownerStartedAt:
+        canonicalWork && nextWorkStatus === 'active'
+          ? (issue.ownerStartedAt ?? now)
+          : issue.ownerStartedAt,
+      ownerStartedBy:
+        canonicalWork && nextWorkStatus === 'active'
+          ? (issue.ownerStartedBy ?? userId)
+          : issue.ownerStartedBy,
+      readyForReviewAt:
+        canonicalWork && nextWorkStatus === 'ready_for_review'
+          ? (issue.readyForReviewAt ?? now)
+          : nextWorkStatus === 'ready_for_review'
+            ? issue.readyForReviewAt
+            : undefined,
+      lastMeaningfulActivityAt: canonicalWork
+        ? now
+        : issue.lastMeaningfulActivityAt,
+      closedAt: nextState.type === 'canceled' ? now : undefined,
     });
+
+    if (
+      canonicalWork &&
+      nextWorkStatus === 'active' &&
+      !issue.ownerStartedAt &&
+      nextOwnerId
+    ) {
+      const activePeriod = await ctx.db
+        .query('workOwnershipPeriods')
+        .withIndex('by_work', q => q.eq('workId', issue._id))
+        .order('desc')
+        .first();
+      if (activePeriod && !activePeriod.endedAt) {
+        await ctx.db.patch('workOwnershipPeriods', activePeriod._id, {
+          executionStartedAt: activePeriod.executionStartedAt ?? now,
+          executionStartedBy: activePeriod.executionStartedBy ?? userId,
+        });
+      } else {
+        await ctx.db.insert('workOwnershipPeriods', {
+          workId: issue._id,
+          ownerId: nextOwnerId,
+          startedBy: userId,
+          startedAt: now,
+          executionStartedAt: now,
+          executionStartedBy: userId,
+        });
+      }
+    }
 
     if (issue.workflowStateId !== args.stateId) {
       await recordActivity(ctx, {
@@ -876,6 +1032,9 @@ export const deleteIssue = mutation({
 
     if (!(await canDeleteIssue(ctx, issue))) {
       throw new ConvexError('FORBIDDEN');
+    }
+    if (isCanonicalWork(issue)) {
+      throw new ConvexError('CANCEL_WORK_INSTEAD');
     }
 
     const children = await ctx.db

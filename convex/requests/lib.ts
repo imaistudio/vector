@@ -4,6 +4,23 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { hasPermission } from '../access';
 import { getAuthUserId } from '../authUtils';
 import { PERMISSIONS } from '../permissions/utils';
+import type { RequestStatus } from '../_shared/work';
+
+const REQUEST_FOCUS_RANK: Record<RequestStatus, number> = {
+  ready_for_review: 0,
+  changes_requested: 10,
+  new: 20,
+  routed: 30,
+  in_delivery: 40,
+  planned: 50,
+  completed: 70,
+  declined: 80,
+  duplicate: 90,
+};
+
+export function requestFocusRank(status: RequestStatus) {
+  return REQUEST_FOCUS_RANK[status];
+}
 
 export async function canViewRequest(
   ctx: QueryCtx | MutationCtx,

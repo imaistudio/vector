@@ -635,7 +635,7 @@ export const searchAutoLinkIssueCandidates = internalQuery({
       ...sameRepoLinkedIssues,
       ...recentOpenIssues,
     ]) {
-      if (issue.closedAt) continue;
+      if (issue.closedAt || issue.kind === 'legacy_task_source') continue;
       issueMap.set(String(issue._id), issue);
     }
 

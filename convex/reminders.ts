@@ -230,19 +230,20 @@ export const listForTarget = query({
         throw new ConvexError('TASK_NOT_FOUND');
       await requireWork(ctx, task.workId, 'view');
     }
-    const rows = await ctx.db
+    if (args.requestId)
+      return await ctx.db
+        .query('reminderRules')
+        .withIndex('by_request', q => q.eq('requestId', args.requestId))
+        .collect();
+    if (args.workId)
+      return await ctx.db
+        .query('reminderRules')
+        .withIndex('by_work', q => q.eq('workId', args.workId))
+        .collect();
+    return await ctx.db
       .query('reminderRules')
-      .withIndex('by_organization', q =>
-        q.eq('organizationId', organization._id),
-      )
+      .withIndex('by_task', q => q.eq('taskId', args.taskId))
       .collect();
-    return rows.filter(rule =>
-      args.requestId
-        ? rule.requestId === args.requestId
-        : args.workId
-          ? rule.workId === args.workId
-          : rule.taskId === args.taskId,
-    );
   },
 });
 

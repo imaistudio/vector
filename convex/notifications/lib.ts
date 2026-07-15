@@ -46,6 +46,10 @@ export type NotificationEventWrite = {
   payload: NotificationPayload;
   recipients: NotificationRecipientInput[];
   dedupeKey?: string;
+  // Agent executions are authenticated as their supervising human. Explicit
+  // attention must still page that same human instead of looking like a
+  // redundant human self-notification.
+  allowActorRecipient?: boolean;
 };
 
 export type NotificationPreferenceValue = {
@@ -314,7 +318,8 @@ export async function createNotificationEvent(
     if (
       recipient.userId &&
       input.actorId &&
-      recipient.userId === input.actorId
+      recipient.userId === input.actorId &&
+      !input.allowActorRecipient
     ) {
       continue;
     }
@@ -338,9 +343,12 @@ export async function createNotificationEvent(
 
   for (const recipient of uniqueRecipients.values()) {
     const preference = recipient.userId
-      ? (await getMergedPreferences(ctx, recipient.userId)).find(
-          value => value.category === category,
-        )
+      ? await ctx.db
+          .query('notificationPreferences')
+          .withIndex('by_user_category', q =>
+            q.eq('userId', recipient.userId!).eq('category', category),
+          )
+          .first()
       : null;
     const inAppEnabled = preference?.inAppEnabled ?? Boolean(recipient.userId);
     const recipientId = await ctx.db.insert('notificationRecipients', {

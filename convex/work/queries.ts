@@ -4,6 +4,7 @@ import { query, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { canEditIssue, canViewIssue } from '../access';
 import {
+  isCanonicalWork,
   requireOrganization,
   requireWorkByKey,
   statusFromLegacyState,
@@ -176,11 +177,18 @@ export const list = query({
 export const getByKey = query({
   args: { orgSlug: v.string(), workKey: v.string() },
   handler: async (ctx, args) => {
-    const { work, userId } = await requireWorkByKey(
+    const { organization, userId } = await requireOrganization(
       ctx,
       args.orgSlug,
-      args.workKey,
     );
+    const work = await ctx.db
+      .query('issues')
+      .withIndex('by_org_key', q =>
+        q.eq('organizationId', organization._id).eq('key', args.workKey),
+      )
+      .first();
+    if (!work || !isCanonicalWork(work) || !(await canViewIssue(ctx, work)))
+      return null;
     const [
       owner,
       state,
@@ -272,6 +280,7 @@ export const getByKey = query({
       historyUserIds.map(async id => [id, await userSummary(ctx, id)] as const),
     );
     const historyUsers = new Map(historyUserPairs);
+    const canEdit = await canEditIssue(ctx, work);
     return {
       ...work,
       workStatus: work.workStatus ?? statusFromLegacyState(state),
@@ -284,6 +293,7 @@ export const getByKey = query({
       linkedRequests: requests,
       tasks: tasks.map(task => ({
         ...task,
+        canUpdateStatus: canEdit || task.assigneeId === userId,
         assignee: task.assigneeId
           ? (assignees.get(task.assigneeId) ?? null)
           : null,
@@ -304,7 +314,7 @@ export const getByKey = query({
       })),
       attention,
       executions,
-      canEdit: await canEditIssue(ctx, work),
+      canEdit,
     };
   },
 });

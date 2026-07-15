@@ -61,8 +61,15 @@ function RouteDialog({
   );
   const [submitting, setSubmitting] = useState(false);
   const route = useMutation(api.requests.mutations.route);
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setRecipients(currentRecipients);
+      setRoutedTeamId(currentTeamId);
+    }
+    setOpen(nextOpen);
+  };
   return (
-    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+    <ResponsiveDialog open={open} onOpenChange={handleOpenChange}>
       <ResponsiveDialogTrigger asChild>
         <Button
           variant='outline'

@@ -1,4 +1,5 @@
 import { mutation, internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { ConvexError, v } from 'convex/values';
 import { getAuthUserId } from '../authUtils';
 import { notificationCategoryValidator } from './shared';
@@ -120,7 +121,34 @@ export const setActionState = mutation({
           ? (recipient.readAt ?? Date.now())
           : recipient.readAt,
     });
+    if (args.actionState === 'snoozed' && args.snoozedUntil) {
+      await ctx.scheduler.runAt(
+        args.snoozedUntil,
+        internal.notifications.mutations.restoreSnoozedAction,
+        { recipientId: recipient._id },
+      );
+    }
     return { success: true } as const;
+  },
+});
+
+export const restoreSnoozedAction = internalMutation({
+  args: { recipientId: v.id('notificationRecipients') },
+  handler: async (ctx, args) => {
+    const recipient = await ctx.db.get(
+      'notificationRecipients',
+      args.recipientId,
+    );
+    if (
+      !recipient ||
+      recipient.actionState !== 'snoozed' ||
+      (recipient.snoozedUntil ?? Number.POSITIVE_INFINITY) > Date.now()
+    )
+      return;
+    await ctx.db.patch('notificationRecipients', recipient._id, {
+      actionState: 'needs_action',
+      snoozedUntil: undefined,
+    });
   },
 });
 

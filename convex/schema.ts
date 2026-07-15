@@ -689,6 +689,9 @@ export default defineSchema({
     reviewGuidance: v.optional(v.string()),
     searchText: v.optional(v.string()),
     status: requestStatusValidator,
+    // Stable lifecycle priority used by paginated Request lists. Lower values
+    // surface human review and change requests before routine intake.
+    focusRank: v.optional(v.number()),
     source: requestSourceValidator,
     requesterId: v.optional(v.id('users')),
     requesterName: v.optional(v.string()),
@@ -716,10 +719,23 @@ export default defineSchema({
     .index('by_organization', ['organizationId'])
     .index('by_org_key', ['organizationId', 'key'])
     .index('by_org_status', ['organizationId', 'status'])
+    .index('by_org_focus_created', ['organizationId', 'focusRank', 'createdAt'])
     .index('by_org_owner', ['organizationId', 'ownerId'])
+    .index('by_org_owner_focus_created', [
+      'organizationId',
+      'ownerId',
+      'focusRank',
+      'createdAt',
+    ])
     .index('by_routed_team', ['routedTeamId'])
     .index('by_requester', ['requesterId'])
     .index('by_org_requester', ['organizationId', 'requesterId'])
+    .index('by_org_requester_focus_created', [
+      'organizationId',
+      'requesterId',
+      'focusRank',
+      'createdAt',
+    ])
     .index('by_created_by', ['createdBy'])
     .searchIndex('search_text', {
       searchField: 'searchText',

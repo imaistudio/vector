@@ -17,6 +17,8 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var work: [VectorWorkRow] = []
   @Published public private(set) var selectedRequest: VectorRequestDetail?
   @Published public private(set) var selectedWork: VectorWorkDetail?
+  @Published public private(set) var selectedRequestError: String?
+  @Published public private(set) var selectedWorkError: String?
   @Published public private(set) var isLoadingRequests = false
   @Published public private(set) var isLoadingWork = false
   @Published public private(set) var pendingWorkModelActions: Set<String> = []
@@ -192,30 +194,38 @@ public final class VectorMobileViewModel: ObservableObject {
   public func loadRequest(_ row: VectorRequestRow) {
     requestDetailCancellable?.cancel()
     selectedRequest = nil
+    selectedRequestError = nil
     requestDetailCancellable = repository.request(orgSlug: configuration.orgSlug, key: row.key)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { [weak self] completion in
           if case let .failure(error) = completion {
-            self?.errorMessage = error.localizedDescription
+            self?.selectedRequestError = error.localizedDescription
           }
         },
-        receiveValue: { [weak self] detail in self?.selectedRequest = detail }
+        receiveValue: { [weak self] detail in
+          self?.selectedRequestError = nil
+          self?.selectedRequest = detail
+        }
       )
   }
 
   public func loadWork(_ row: VectorWorkRow) {
     workDetailCancellable?.cancel()
     selectedWork = nil
+    selectedWorkError = nil
     workDetailCancellable = repository.work(orgSlug: configuration.orgSlug, key: row.key)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { [weak self] completion in
           if case let .failure(error) = completion {
-            self?.errorMessage = error.localizedDescription
+            self?.selectedWorkError = error.localizedDescription
           }
         },
-        receiveValue: { [weak self] detail in self?.selectedWork = detail }
+        receiveValue: { [weak self] detail in
+          self?.selectedWorkError = nil
+          self?.selectedWork = detail
+        }
       )
   }
 

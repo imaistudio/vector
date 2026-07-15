@@ -2,6 +2,7 @@ import { Migrations } from '@convex-dev/migrations';
 import { components } from './_generated/api';
 import schema from './schema';
 import { workFocusRank } from './work/lib';
+import { requestFocusRank } from './requests/lib';
 
 export const migrations = new Migrations(components.migrations, { schema });
 
@@ -167,6 +168,13 @@ export const backfillWorkFocusRank = migrations.define({
       ),
     };
   },
+});
+
+export const backfillRequestFocusRank = migrations.define({
+  table: 'requests',
+  migrateOne: async (_ctx, request) => ({
+    focusRank: requestFocusRank(request.status),
+  }),
 });
 
 export const migrateCommentsToTasks = migrations.define({

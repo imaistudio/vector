@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { mutation, type MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
   recordActivity,
   resolveIssueScope,
@@ -24,6 +24,7 @@ import {
 import {
   canEditRequest,
   nextRequestKey,
+  requestFocusRank,
   requestHref,
   requestSearchText,
   requireRequest,
@@ -80,6 +81,8 @@ async function insertRequest(
   }
   const next = await nextRequestKey(ctx, organization);
   const now = Date.now();
+  const initialStatus =
+    recipientIds.length > 0 || input.routedTeamId ? 'routed' : 'new';
   const requestId = await ctx.db.insert('requests', {
     organizationId: input.organizationId,
     key: next.key,
@@ -94,7 +97,8 @@ async function insertRequest(
       description: input.description,
       expectedOutput,
     }),
-    status: recipientIds.length > 0 || input.routedTeamId ? 'routed' : 'new',
+    status: initialStatus,
+    focusRank: requestFocusRank(initialStatus),
     source: input.source,
     requesterId: input.requesterId,
     requesterName: input.requesterName?.trim() || undefined,
@@ -129,6 +133,74 @@ async function insertRequest(
     });
   }
   return { requestId, requestKey: next.key, recipientIds };
+}
+
+async function reconcileRequestAfterWorkLink(
+  ctx: MutationCtx,
+  request: Awaited<ReturnType<typeof requireRequest>>,
+  actorId: Id<'users'>,
+) {
+  if (['completed', 'declined', 'duplicate'].includes(request.status)) return;
+  const links = await ctx.db
+    .query('requestWorkLinks')
+    .withIndex('by_request', q => q.eq('requestId', request._id))
+    .collect();
+  const fulfilling = links.filter(link => link.relation === 'fulfills');
+  if (fulfilling.length === 0) return;
+  const work = (
+    await Promise.all(fulfilling.map(link => ctx.db.get('issues', link.workId)))
+  ).filter((item): item is Doc<'issues'> => item !== null);
+  if (work.length !== fulfilling.length) return;
+
+  const allReady = work.every(item =>
+    ['ready_for_review', 'completed'].includes(item.workStatus ?? ''),
+  );
+  const now = Date.now();
+  if (allReady) {
+    if (request.status === 'ready_for_review') return;
+    await ctx.db.patch('requests', request._id, {
+      status: 'ready_for_review',
+      focusRank: requestFocusRank('ready_for_review'),
+      readyForReviewAt: now,
+      updatedAt: now,
+    });
+    const organization = await ctx.db.get(
+      'organizations',
+      request.organizationId,
+    );
+    const recipients = new Set<Id<'users'>>();
+    if (request.requesterId) recipients.add(request.requesterId);
+    if (request.createdBy) recipients.add(request.createdBy);
+    await createNotificationEvent(ctx, {
+      type: 'request_ready_for_review',
+      actorId,
+      organizationId: request.organizationId,
+      requestId: request._id,
+      payload: {
+        requestKey: request.key,
+        requestTitle: request.title,
+        href: organization
+          ? requestHref(organization.slug, request.key)
+          : undefined,
+      },
+      recipients: Array.from(recipients).map(userId => ({ userId })),
+      dedupeKey: `request-ready:${request._id}:${fulfilling
+        .map(link => link.workId)
+        .sort()
+        .join(',')}`,
+    });
+    return;
+  }
+
+  if (!['new', 'routed', 'planned'].includes(request.status)) return;
+  const nextStatus = work.some(item => item.startedAt)
+    ? 'in_delivery'
+    : 'planned';
+  await ctx.db.patch('requests', request._id, {
+    status: nextStatus,
+    focusRank: requestFocusRank(nextStatus),
+    updatedAt: now,
+  });
 }
 
 export const create = mutation({
@@ -243,6 +315,8 @@ export const route = mutation({
   handler: async (ctx, args) => {
     const actorId = await requireUser(ctx);
     const request = await requireRequest(ctx, args.requestId, 'edit');
+    if (['completed', 'declined', 'duplicate'].includes(request.status))
+      throw new ConvexError('REQUEST_TERMINAL');
     const recipients = Array.from(new Set(args.recipientIds));
     for (const id of recipients)
       await assertOrganizationUser(ctx, request.organizationId, id);
@@ -266,10 +340,21 @@ export const route = mutation({
         assignedBy: actorId,
         assignedAt: now,
       });
+    const routingStatus =
+      recipients.length || args.routedTeamId ? 'routed' : 'new';
+    const nextStatus = ['new', 'routed'].includes(request.status)
+      ? routingStatus
+      : request.status;
     await ctx.db.patch('requests', request._id, {
-      ownerId: recipients.length === 1 ? recipients[0] : undefined,
+      ownerId:
+        recipients.length === 1
+          ? recipients[0]
+          : ['new', 'routed'].includes(request.status)
+            ? undefined
+            : request.ownerId,
       routedTeamId: args.routedTeamId,
-      status: recipients.length || args.routedTeamId ? 'routed' : 'new',
+      status: nextStatus,
+      focusRank: requestFocusRank(nextStatus),
       updatedAt: now,
     });
     const org = await ctx.db.get('organizations', request.organizationId);
@@ -285,7 +370,10 @@ export const route = mutation({
           href: org ? requestHref(org.slug, request.key) : undefined,
         },
         recipients: recipients.map(userId => ({ userId })),
-        dedupeKey: `request-routed:${request._id}:${now}`,
+        dedupeKey: `request-routed:${request._id}:${recipients
+          .map(String)
+          .sort()
+          .join(',')}:${args.routedTeamId ?? 'none'}:${request.status}`,
       });
     return { success: true } as const;
   },
@@ -296,14 +384,18 @@ export const claim = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const request = await requireRequest(ctx, args.requestId, 'view');
+    if (!['ready_for_review', 'changes_requested'].includes(request.status))
+      throw new ConvexError('REQUEST_NOT_IN_REVIEW');
     if (request.ownerId && request.ownerId !== userId)
       throw new ConvexError('REQUEST_ALREADY_OWNED');
     await requireOrganizationMember(ctx, request.organizationId, userId);
+    const nextStatus = ['new', 'routed'].includes(request.status)
+      ? 'planned'
+      : request.status;
     await ctx.db.patch('requests', request._id, {
       ownerId: userId,
-      status: ['new', 'routed'].includes(request.status)
-        ? 'planned'
-        : request.status,
+      status: nextStatus,
+      focusRank: requestFocusRank(nextStatus),
       updatedAt: Date.now(),
     });
     const recipient = await ctx.db
@@ -342,22 +434,19 @@ export const linkWork = mutation({
         q.eq('requestId', request._id).eq('workId', work._id),
       )
       .first();
+    const relation = args.relation ?? 'fulfills';
     if (!existing)
       await ctx.db.insert('requestWorkLinks', {
         requestId: request._id,
         workId: work._id,
-        relation: args.relation ?? 'fulfills',
+        relation,
         createdBy: userId,
         createdAt: Date.now(),
       });
-    if (
-      (args.relation ?? 'fulfills') === 'fulfills' &&
-      ['new', 'routed'].includes(request.status)
-    )
-      await ctx.db.patch('requests', request._id, {
-        status: work.startedAt ? 'in_delivery' : 'planned',
-        updatedAt: Date.now(),
-      });
+    else if (existing.relation !== relation)
+      await ctx.db.patch('requestWorkLinks', existing._id, { relation });
+    if (relation === 'fulfills')
+      await reconcileRequestAfterWorkLink(ctx, request, userId);
     return { success: true } as const;
   },
 });
@@ -377,6 +466,7 @@ export const requestChanges = mutation({
     if (!note) throw new ConvexError('REVIEW_NOTE_REQUIRED');
     await ctx.db.patch('requests', request._id, {
       status: 'changes_requested',
+      focusRank: requestFocusRank('changes_requested'),
       latestReviewNote: note,
       reviewedAt: Date.now(),
       reviewedBy: userId,
@@ -433,7 +523,7 @@ export const requestChanges = mutation({
         href: org ? requestHref(org.slug, request.key) : undefined,
       },
       recipients: Array.from(recipients).map(id => ({ userId: id })),
-      dedupeKey: `request-changes:${request._id}:${Date.now()}`,
+      dedupeKey: `request-changes:${request._id}:${request.updatedAt}`,
     });
     return { success: true } as const;
   },
@@ -444,6 +534,7 @@ export const complete = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const request = await requireRequest(ctx, args.requestId, 'view');
+    if (request.status === 'completed') return { success: true } as const;
     if (
       request.requesterId !== userId &&
       request.createdBy !== userId &&
@@ -453,6 +544,7 @@ export const complete = mutation({
     const now = Date.now();
     await ctx.db.patch('requests', request._id, {
       status: 'completed',
+      focusRank: requestFocusRank('completed'),
       latestReviewNote: args.note?.trim() || request.latestReviewNote,
       reviewedAt: now,
       reviewedBy: userId,
@@ -541,7 +633,7 @@ export const complete = mutation({
         recipients: Array.from(recipients).map(recipientId => ({
           userId: recipientId,
         })),
-        dedupeKey: `request-completed:${request._id}:${now}`,
+        dedupeKey: `request-completed:${request._id}:${request.readyForReviewAt ?? request.reviewedAt ?? request.updatedAt}`,
       });
     }
     return { success: true } as const;

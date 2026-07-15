@@ -2,6 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { query, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import { canViewIssue } from '../access';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { getAuthUserId } from '../authUtils';
 import { canEditRequest, canViewRequest } from './lib';
@@ -42,25 +43,25 @@ export const list = query({
       if (args.scope === 'mine') {
         return ctx.db
           .query('requests')
-          .withIndex('by_org_owner', q =>
+          .withIndex('by_org_owner_focus_created', q =>
             q.eq('organizationId', org._id).eq('ownerId', userId),
           )
-          .order('desc')
+          .order('asc')
           .paginate(paginationOpts);
       }
       if (args.scope === 'requested') {
         return ctx.db
           .query('requests')
-          .withIndex('by_org_requester', q =>
+          .withIndex('by_org_requester_focus_created', q =>
             q.eq('organizationId', org._id).eq('requesterId', userId),
           )
-          .order('desc')
+          .order('asc')
           .paginate(paginationOpts);
       }
       return ctx.db
         .query('requests')
-        .withIndex('by_organization', q => q.eq('organizationId', org._id))
-        .order('desc')
+        .withIndex('by_org_focus_created', q => q.eq('organizationId', org._id))
+        .order('asc')
         .paginate(paginationOpts);
     };
 
@@ -72,30 +73,44 @@ export const list = query({
           ),
         )
       ).filter((request): request is Doc<'requests'> => Boolean(request));
-      const enriched = await Promise.all(
-        visible.map(async request => {
-          const [owner, requester, links, recipients] = await Promise.all([
-            userSummary(ctx, request.ownerId),
-            userSummary(ctx, request.requesterId),
-            ctx.db
-              .query('requestWorkLinks')
-              .withIndex('by_request', q => q.eq('requestId', request._id))
-              .collect(),
-            ctx.db
-              .query('requestRecipients')
-              .withIndex('by_request', q => q.eq('requestId', request._id))
-              .collect(),
-          ]);
-          return {
-            ...request,
-            owner,
-            requester,
-            linkedWorkCount: links.length,
-            recipientCount: recipients.filter(r => r.role === 'recipient')
-              .length,
-          };
-        }),
-      );
+      const enriched = (
+        await Promise.all(
+          visible.map(async request => {
+            const [owner, requester, links, recipients] = await Promise.all([
+              userSummary(ctx, request.ownerId),
+              userSummary(ctx, request.requesterId),
+              ctx.db
+                .query('requestWorkLinks')
+                .withIndex('by_request', q => q.eq('requestId', request._id))
+                .collect(),
+              ctx.db
+                .query('requestRecipients')
+                .withIndex('by_request', q => q.eq('requestId', request._id))
+                .collect(),
+            ]);
+            if (
+              args.scope === 'inbox' &&
+              request.ownerId !== userId &&
+              request.requesterId !== userId &&
+              request.createdBy !== userId &&
+              !recipients.some(
+                recipient =>
+                  recipient.role === 'recipient' && recipient.userId === userId,
+              )
+            ) {
+              return null;
+            }
+            return {
+              ...request,
+              owner,
+              requester,
+              linkedWorkCount: links.length,
+              recipientCount: recipients.filter(r => r.role === 'recipient')
+                .length,
+            };
+          }),
+        )
+      ).filter(request => request !== null);
       return args.scope === 'inbox'
         ? enriched.filter(request =>
             ['new', 'routed', 'ready_for_review', 'changes_requested'].includes(
@@ -115,19 +130,8 @@ export const list = query({
       });
       inbox.push(...(await enrich(page.page)));
     }
-    if (args.scope === 'inbox') {
-      const statusRank: Record<string, number> = {
-        ready_for_review: 0,
-        changes_requested: 1,
-        new: 2,
-        routed: 3,
-      };
-      inbox.sort(
-        (left, right) =>
-          (statusRank[left.status] ?? 9) - (statusRank[right.status] ?? 9) ||
-          left.createdAt - right.createdAt,
-      );
-    }
+    // Inbox priority is applied by by_org_focus_created before pagination, so
+    // urgent review/change requests cannot be hidden on a later page.
     return { ...page, page: inbox };
   },
 });
@@ -171,7 +175,9 @@ export const getByKey = query({
       await Promise.all(
         workLinks.map(async link => {
           const work = await ctx.db.get('issues', link.workId);
-          return work ? { ...work, relation: link.relation } : null;
+          return work && (await canViewIssue(ctx, work))
+            ? { ...work, relation: link.relation }
+            : null;
         }),
       )
     ).filter(Boolean);

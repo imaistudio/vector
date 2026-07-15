@@ -20,8 +20,12 @@ import {
 } from '../activities/lib';
 import { PERMISSIONS } from '../_shared/permissions';
 import { buildIssueSearchText } from '../issues/search';
-import { getNextAvailableIssueKey } from '../issues/keys';
-import { nextRequestKey, requestSearchText } from '../requests/lib';
+import { getNextAvailableIssueKey, getNextSequenceSeed } from '../issues/keys';
+import {
+  nextRequestKey,
+  requestFocusRank,
+  requestSearchText,
+} from '../requests/lib';
 import { createNotificationEvent, getRequestHref } from '../notifications/lib';
 import { workFocusRank } from '../work/lib';
 import {
@@ -475,12 +479,39 @@ async function applyWorkflowAutomationForIssue(
     selectWorkflowTypeFromGitHubIssues(githubIssues.map(pr => pr.state));
 
   if (!targetType) {
+    if (
+      issue.kind === 'work' &&
+      issue.ownerId &&
+      pullRequests.length > 0 &&
+      pullRequests.every(pr => pr.state === 'closed')
+    ) {
+      const organization = await ctx.db.get(
+        'organizations',
+        issue.organizationId,
+      );
+      await createNotificationEvent(ctx, {
+        type: 'github_action_required',
+        organizationId: issue.organizationId,
+        issueId: issue._id,
+        payload: {
+          workKey: issue.key,
+          workTitle: issue.title,
+          href: organization
+            ? `/${organization.slug}/work/${issue.key}`
+            : undefined,
+        },
+        recipients: [{ userId: issue.ownerId }],
+        dedupeKey: `github-closed-unmerged:${issue._id}:${pullRequests
+          .map(pr => pr._id)
+          .sort()
+          .join(',')}`,
+      });
+    }
     return;
   }
   // Agent attachment and GitHub activity never imply that a person has
   // intentionally started Work. GitHub opt-in only handles terminal evidence.
-  if (issue.kind === 'work' && !['done', 'canceled'].includes(targetType))
-    return;
+  if (issue.kind === 'work' && targetType !== 'done') return;
 
   const nextStateId = await getIssueStateIdByType(
     ctx,
@@ -612,6 +643,7 @@ async function applyWorkflowAutomationForIssue(
       const now = Date.now();
       await ctx.db.patch('requests', request._id, {
         status: 'ready_for_review',
+        focusRank: requestFocusRank('ready_for_review'),
         readyForReviewAt: now,
         updatedAt: now,
       });
@@ -637,7 +669,10 @@ async function applyWorkflowAutomationForIssue(
             : undefined,
         },
         recipients: Array.from(recipients).map(userId => ({ userId })),
-        dedupeKey: `request-ready:${request._id}:${now}`,
+        dedupeKey: `request-ready:${request._id}:${fulfillingLinks
+          .map(link => link.workId)
+          .sort()
+          .join(',')}`,
       });
     }
   }
@@ -888,7 +923,7 @@ async function syncArtifactLinksForIssues(args: {
     identifier,
   );
 
-  const issueIds = await Promise.all(
+  const resolvedTargets = await Promise.all(
     Array.from(new Set(args.issueKeys.map(normalizeIssueKey))).map(
       async key => {
         const issue = await ctx.db
@@ -897,10 +932,24 @@ async function syncArtifactLinksForIssues(args: {
             q.eq('organizationId', organizationId).eq('key', key),
           )
           .first();
-        return issue?._id ?? null;
+        if (!issue) return null;
+        if (issue.kind !== 'legacy_task_source')
+          return { issueId: issue._id, taskId: undefined };
+        const task = await ctx.db
+          .query('tasks')
+          .withIndex('by_legacy_issue', q => q.eq('legacyIssueId', issue._id))
+          .first();
+        return task ? { issueId: task.workId, taskId: task._id } : null;
       },
     ),
-  ).then(ids => ids.filter((id): id is Id<'issues'> => id !== null));
+  ).then(targets =>
+    targets.filter(
+      (
+        target,
+      ): target is { issueId: Id<'issues'>; taskId: Id<'tasks'> | undefined } =>
+        target !== null,
+    ),
+  );
 
   const existingLinks = await (artifactType === 'pull_request'
     ? ctx.db
@@ -923,38 +972,48 @@ async function syncArtifactLinksForIssues(args: {
           )
           .collect());
 
-  let targetIssueIds: Id<'issues'>[] = [];
+  let targets: Array<{
+    issueId: Id<'issues'>;
+    taskId?: Id<'tasks'>;
+  }> = [];
   if (
     args.source === 'auto' &&
-    issueIds.length === 0 &&
+    resolvedTargets.length === 0 &&
     existingLinks.some(link => link.active)
   ) {
-    targetIssueIds = Array.from(
-      new Set(
-        existingLinks.filter(link => link.active).map(link => link.issueId),
-      ),
-    );
+    const seen = new Set<string>();
+    targets = existingLinks
+      .filter(link => link.active)
+      .map(link => ({ issueId: link.issueId, taskId: link.taskId }))
+      .filter(target => {
+        const key = `${target.issueId}:${target.taskId ?? ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
   } else {
-    for (const issueId of issueIds) {
+    for (const target of resolvedTargets) {
       const suppression = await ctx.db
         .query('githubArtifactSuppressions')
         .withIndex('by_issue_external', q =>
           q
-            .eq('issueId', issueId)
+            .eq('issueId', target.issueId)
             .eq('artifactType', artifactType)
             .eq('externalKey', externalKey),
         )
         .first();
       if (!suppression) {
-        targetIssueIds.push(issueId);
+        targets.push(target);
       }
     }
   }
 
-  const targetSet = new Set(targetIssueIds.map(String));
+  const targetSet = new Set(
+    targets.map(target => `${target.issueId}:${target.taskId ?? ''}`),
+  );
   for (const link of existingLinks) {
     if (link.source !== 'auto') continue;
-    if (targetSet.has(String(link.issueId))) continue;
+    if (targetSet.has(`${link.issueId}:${link.taskId ?? ''}`)) continue;
     if (link.active) {
       await ctx.db.patch('githubArtifactLinks', link._id, {
         active: false,
@@ -963,8 +1022,10 @@ async function syncArtifactLinksForIssues(args: {
     }
   }
 
-  for (const issueId of targetIssueIds) {
-    const existing = existingLinks.find(link => link.issueId === issueId);
+  for (const target of targets) {
+    const existing = existingLinks.find(
+      link => link.issueId === target.issueId && link.taskId === target.taskId,
+    );
     if (existing) {
       if (!existing.active) {
         await ctx.db.patch('githubArtifactLinks', existing._id, {
@@ -975,7 +1036,8 @@ async function syncArtifactLinksForIssues(args: {
     } else {
       await ctx.db.insert('githubArtifactLinks', {
         organizationId,
-        issueId,
+        issueId: target.issueId,
+        taskId: target.taskId,
         artifactType,
         pullRequestId:
           artifactType === 'pull_request'
@@ -1001,7 +1063,7 @@ async function syncArtifactLinksForIssues(args: {
 
   // Auto-assign users from PR author/assignees when linking pull requests
   if (artifactType === 'pull_request') {
-    for (const issueId of targetIssueIds) {
+    for (const { issueId } of targets) {
       await autoAssignFromPullRequest(
         ctx,
         organizationId,
@@ -1009,7 +1071,7 @@ async function syncArtifactLinksForIssues(args: {
         artifactId as Id<'githubPullRequests'>,
       );
     }
-    if (targetIssueIds.length > 0) {
+    if (targets.length > 0) {
       const inbox = await ctx.db
         .query('githubDevelopmentInbox')
         .withIndex('by_pull_request', query =>
@@ -1026,7 +1088,7 @@ async function syncArtifactLinksForIssues(args: {
   }
 
   if (artifactType === 'issue') {
-    for (const issueId of targetIssueIds) {
+    for (const { issueId } of targets) {
       await autoAssignFromGitHubIssue(
         ctx,
         organizationId,
@@ -1038,7 +1100,7 @@ async function syncArtifactLinksForIssues(args: {
 
   const affectedIssueIds = new Set([
     ...existingLinks.map(link => link.issueId),
-    ...targetIssueIds,
+    ...targets.map(target => target.issueId),
   ]);
 
   for (const issueId of affectedIssueIds) {
@@ -1686,6 +1748,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
             expectedOutput,
           }),
           status: 'new',
+          focusRank: requestFocusRank('new'),
           source: 'github',
           requesterId: linkedUser?._id,
           requesterName: pullRequest.authorLogin,
@@ -1722,15 +1785,11 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
     const nextIssueKey = await getNextAvailableIssueKey(ctx, {
       organizationId: args.organizationId,
       prefix: organization.slug.toUpperCase(),
-      startingSequenceNumber:
-        (
-          await ctx.db
-            .query('issues')
-            .withIndex('by_organization', q =>
-              q.eq('organizationId', args.organizationId),
-            )
-            .collect()
-        ).length + 1,
+      startingSequenceNumber: await getNextSequenceSeed(
+        ctx,
+        args.organizationId,
+        undefined,
+      ),
     });
     const nextNumber = nextIssueKey.sequenceNumber;
     const issueKey = nextIssueKey.key;

@@ -135,9 +135,10 @@ public final class VectorPushNotificationCoordinator: NSObject, VectorPushNotifi
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse
   ) async {
-    let href = response.notification.request.content.userInfo["href"] as? String
+    let href = (response.notification.request.content.userInfo["href"] as? String)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
     await MainActor.run {
-      pendingNotificationHref = href ?? ""
+      pendingNotificationHref = href?.isEmpty == false ? href : nil
     }
   }
 

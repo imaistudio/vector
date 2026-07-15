@@ -117,14 +117,14 @@ async function resolveNotificationHrefFromEvent(
     : null;
   const orgSlug = org?.slug;
 
-  if (event.issueId && orgSlug) {
-    const issue = await ctx.db.get('issues', event.issueId);
-    if (issue?.key) return `/${orgSlug}/work/${issue.key}`;
-  }
-
   if (event.requestId && orgSlug) {
     const request = await ctx.db.get('requests', event.requestId);
     if (request?.key) return `/${orgSlug}/requests/${request.key}`;
+  }
+
+  if (event.issueId && orgSlug) {
+    const issue = await ctx.db.get('issues', event.issueId);
+    if (issue?.key) return `/${orgSlug}/work/${issue.key}`;
   }
 
   if (event.projectId && orgSlug) {
@@ -159,12 +159,11 @@ export const unreadCount = query({
 
     const rows = await ctx.db
       .query('notificationRecipients')
-      .withIndex('by_user_read', q =>
-        q.eq('userId', userId).eq('isRead', false),
+      .withIndex('by_user_read_archived', q =>
+        q.eq('userId', userId).eq('isRead', false).eq('isArchived', false),
       )
       .collect();
-
-    return rows.filter(row => !row.isArchived).length;
+    return rows.length;
   },
 });
 

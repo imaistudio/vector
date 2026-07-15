@@ -54,6 +54,23 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(work.ownerStartedAt, 1_774_560_000_000)
   }
 
+  func testUnknownWorkModelStatusesRemainDecodable() throws {
+    let decoder = JSONDecoder()
+
+    XCTAssertEqual(
+      try decoder.decode(VectorRequestStatus.self, from: Data(#""queued""#.utf8)),
+      .unknown
+    )
+    XCTAssertEqual(
+      try decoder.decode(VectorWorkStatus.self, from: Data(#""paused_by_policy""#.utf8)),
+      .unknown
+    )
+    XCTAssertEqual(
+      try decoder.decode(VectorTaskStatus.self, from: Data(#""skipped""#.utf8)),
+      .unknown
+    )
+  }
+
   func testWorkDetailDecodesExecutionHandoffAttentionAndWaitingTask() throws {
     let payload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","linkedRequests":[],"tasks":[{"_id":"task-1","number":1,"title":"Wait for review","status":"waiting"}],"ownershipPeriods":[],"handoffs":[{"_id":"handoff-1","status":"pending","fromOwner":null,"toOwner":null,"isRecipient":true,"createdAt":1774560000000}],"attention":[{"_id":"attention-1","title":"Choose a rollout path","details":"Blue or green?","status":"open","createdAt":1774560100000}],"executions":[{"_id":"execution-1","provider":"codex","status":"waiting_for_input","latestSummary":"Needs a decision"}],"canEdit":true,"_creationTime":1774550000000}"#.data(using: .utf8)!
 

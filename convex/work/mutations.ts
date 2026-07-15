@@ -11,7 +11,7 @@ import { buildIssueSearchText } from '../issues/search';
 import { getNextAvailableIssueKey, getNextSequenceSeed } from '../issues/keys';
 import { createNotificationEvent, getIssueHref } from '../notifications/lib';
 import { PERMISSIONS, requirePermission } from '../permissions/utils';
-import { canEditRequest } from '../requests/lib';
+import { canEditRequest, requestFocusRank } from '../requests/lib';
 import {
   agentTaskCreationPolicyValidator,
   workCompletionPolicyValidator,
@@ -154,9 +154,56 @@ async function setLinkedRequestsInDelivery(
     if (request && ['new', 'routed', 'planned'].includes(request.status)) {
       await ctx.db.patch('requests', request._id, {
         status: 'in_delivery',
+        focusRank: requestFocusRank('in_delivery'),
         updatedAt: Date.now(),
       });
     }
+  }
+}
+
+async function reopenLinkedRequestsAfterCancellation(
+  ctx: MutationCtx,
+  workId: Id<'issues'>,
+) {
+  const links = await ctx.db
+    .query('requestWorkLinks')
+    .withIndex('by_work', query => query.eq('workId', workId))
+    .collect();
+  for (const link of links) {
+    if (link.relation !== 'fulfills') continue;
+    const request = await ctx.db.get('requests', link.requestId);
+    if (
+      !request ||
+      ['completed', 'declined', 'duplicate', 'changes_requested'].includes(
+        request.status,
+      )
+    )
+      continue;
+    const requestLinks = await ctx.db
+      .query('requestWorkLinks')
+      .withIndex('by_request', query => query.eq('requestId', request._id))
+      .collect();
+    const otherFulfillingWork = (
+      await Promise.all(
+        requestLinks
+          .filter(
+            requestLink =>
+              requestLink.relation === 'fulfills' &&
+              requestLink.workId !== workId,
+          )
+          .map(requestLink => ctx.db.get('issues', requestLink.workId)),
+      )
+    ).filter((item): item is Doc<'issues'> => item !== null);
+    const hasOtherDeliveryInProgress = otherFulfillingWork.some(item =>
+      ['active', 'waiting', 'blocked'].includes(item.workStatus ?? ''),
+    );
+    const nextStatus = hasOtherDeliveryInProgress ? 'in_delivery' : 'planned';
+    await ctx.db.patch('requests', request._id, {
+      status: nextStatus,
+      focusRank: requestFocusRank(nextStatus),
+      readyForReviewAt: undefined,
+      updatedAt: Date.now(),
+    });
   }
 }
 
@@ -197,6 +244,7 @@ async function maybeRaiseLinkedRequestsForReview(
     if (!allReady) continue;
     await ctx.db.patch('requests', request._id, {
       status: 'ready_for_review',
+      focusRank: requestFocusRank('ready_for_review'),
       readyForReviewAt: now,
       updatedAt: now,
     });
@@ -218,7 +266,11 @@ async function maybeRaiseLinkedRequestsForReview(
         href: org ? `/${org.slug}/requests/${request.key}` : undefined,
       },
       recipients: Array.from(recipients).map(userId => ({ userId })),
-      dedupeKey: `request-ready:${request._id}:${now}`,
+      dedupeKey: `request-ready:${request._id}:${linkedWork
+        .map(item => item?._id)
+        .filter(Boolean)
+        .sort()
+        .join(',')}`,
     });
   }
 }
@@ -281,6 +333,9 @@ export const create = mutation({
       if (['new', 'routed'].includes(request.status)) {
         await ctx.db.patch('requests', requestId, {
           status: work.startedAt ? 'in_delivery' : 'planned',
+          focusRank: requestFocusRank(
+            work.startedAt ? 'in_delivery' : 'planned',
+          ),
           updatedAt: Date.now(),
         });
       }
@@ -345,6 +400,12 @@ export const start = mutation({
     const work = await requireWork(ctx, args.workId, 'edit');
     if (work.ownerId && work.ownerId !== userId)
       throw new ConvexError('ONLY_OWNER_CAN_START_WORK');
+    if (
+      ['ready_for_review', 'completed', 'canceled'].includes(
+        work.workStatus ?? '',
+      )
+    )
+      throw new ConvexError('WORK_NOT_STARTABLE');
     const state = await workflowStateForWorkStatus(
       ctx,
       work.organizationId,
@@ -413,6 +474,9 @@ export const setStatus = mutation({
     if (args.status === 'ready_for_review' || args.status === 'completed') {
       throw new ConvexError('USE_REVIEW_LIFECYCLE_ACTION');
     }
+    if (work.workStatus === args.status) return { success: true } as const;
+    if (['completed', 'canceled'].includes(work.workStatus ?? ''))
+      throw new ConvexError('WORK_TERMINAL');
     const state = await workflowStateForWorkStatus(
       ctx,
       work.organizationId,
@@ -457,10 +521,12 @@ export const setStatus = mutation({
           recipients: Array.from(recipients).map(recipientId => ({
             userId: recipientId,
           })),
-          dedupeKey: `work-blocked:${work._id}:${Date.now()}`,
+          dedupeKey: `work-blocked:${work._id}:${work.updatedAt ?? work._creationTime}`,
         });
       }
     }
+    if (args.status === 'canceled')
+      await reopenLinkedRequestsAfterCancellation(ctx, work._id);
     return { success: true } as const;
   },
 });
@@ -470,6 +536,11 @@ export const readyForReview = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const work = await requireWork(ctx, args.workId, 'edit');
+    if (['completed', 'canceled'].includes(work.workStatus ?? ''))
+      throw new ConvexError('WORK_TERMINAL');
+    if (!work.ownerStartedAt) throw new ConvexError('WORK_NOT_STARTED');
+    if (work.workStatus === 'ready_for_review')
+      return { success: true } as const;
     if (
       work.ownerId &&
       work.ownerId !== userId &&
@@ -514,7 +585,7 @@ export const readyForReview = mutation({
         recipients: Array.from(reviewers).map(recipientId => ({
           userId: recipientId,
         })),
-        dedupeKey: `work-ready:${work._id}:${Date.now()}`,
+        dedupeKey: `work-ready:${work._id}:${work.updatedAt ?? work._creationTime}`,
       });
     }
     await recordActivity(ctx, {
@@ -533,6 +604,9 @@ export const complete = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const work = await requireWork(ctx, args.workId, 'edit');
+    if (work.workStatus === 'completed') return { success: true } as const;
+    if (work.workStatus !== 'ready_for_review')
+      throw new ConvexError('WORK_NOT_READY_FOR_COMPLETION');
     const state = await workflowStateForWorkStatus(
       ctx,
       work.organizationId,
@@ -577,7 +651,7 @@ export const complete = mutation({
         recipients: Array.from(stakeholders).map(recipientId => ({
           userId: recipientId,
         })),
-        dedupeKey: `work-completed:${work._id}:${Date.now()}`,
+        dedupeKey: `work-completed:${work._id}:${work.readyForReviewAt ?? work.updatedAt ?? work._creationTime}`,
       });
     }
     await recordActivity(ctx, {
@@ -785,6 +859,13 @@ export const raiseAttention = mutation({
     });
     const recipients = new Set<Id<'users'>>();
     if (work.ownerId) recipients.add(work.ownerId);
+    if (work.createdBy) recipients.add(work.createdBy);
+    if (work.reporterId) recipients.add(work.reporterId);
+    const contributors = await ctx.db
+      .query('workContributors')
+      .withIndex('by_work', q => q.eq('workId', work._id))
+      .collect();
+    for (const contributor of contributors) recipients.add(contributor.userId);
     const org = await ctx.db.get('organizations', work.organizationId);
     await createNotificationEvent(ctx, {
       type: 'agent_attention_requested',
@@ -800,6 +881,7 @@ export const raiseAttention = mutation({
       },
       recipients: Array.from(recipients).map(userId => ({ userId })),
       dedupeKey: `attention:${attentionId}`,
+      allowActorRecipient: Boolean(execution),
     });
     return { attentionId };
   },

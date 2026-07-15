@@ -52,6 +52,12 @@ public enum VectorRequestStatus: String, Decodable, Equatable, Sendable {
   case completed
   case declined
   case duplicate
+  case unknown
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    self = Self(rawValue: value) ?? .unknown
+  }
 
   public var label: String {
     switch self {
@@ -64,6 +70,7 @@ public enum VectorRequestStatus: String, Decodable, Equatable, Sendable {
     case .completed: "Completed"
     case .declined: "Declined"
     case .duplicate: "Duplicate"
+    case .unknown: "Unknown"
     }
   }
 }
@@ -76,6 +83,12 @@ public enum VectorWorkStatus: String, Decodable, Equatable, CaseIterable, Identi
   case readyForReview = "ready_for_review"
   case completed
   case canceled
+  case unknown
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    self = Self(rawValue: value) ?? .unknown
+  }
 
   public var id: String { rawValue }
 
@@ -88,6 +101,7 @@ public enum VectorWorkStatus: String, Decodable, Equatable, CaseIterable, Identi
     case .readyForReview: "Ready for review"
     case .completed: "Completed"
     case .canceled: "Canceled"
+    case .unknown: "Unknown"
     }
   }
 }
@@ -99,6 +113,12 @@ public enum VectorTaskStatus: String, Decodable, Equatable, CaseIterable, Identi
   case blocked
   case done
   case canceled
+  case unknown
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    self = Self(rawValue: value) ?? .unknown
+  }
 
   public var id: String { rawValue }
 
@@ -110,6 +130,7 @@ public enum VectorTaskStatus: String, Decodable, Equatable, CaseIterable, Identi
     case .blocked: "Blocked"
     case .done: "Done"
     case .canceled: "Canceled"
+    case .unknown: "Unknown"
     }
   }
 }

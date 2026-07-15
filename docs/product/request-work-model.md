@@ -777,6 +777,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 
 - In this version an agent is an execution attached to an authenticated human, device, and optional process. It is not a standalone organization member.
 - Trustworthy attribution is inferred from the live execution. CLI-created agent Tasks and attention requests must pass `--execution <liveActivityId>`; arbitrary provider labels are not accepted as proof.
+- External agents currently use the same authenticated CLI credential as their supervising human, so the backend cannot prove that a command which omits `--execution` came from an agent. The public skill requires execution attribution and policy enforcement applies to attributed execution commands. Cryptographic enforcement for every agent-originated command requires distinct agent credentials or signed bridge context and remains a later trust-model upgrade.
 - Attached sessions must belong to the authenticated user's registered device/session context and the same Work.
 - Per-Work agent Task policies are `allow`, `approval_required`, and `deny`, defaulting to `allow`.
 - People with Work edit permission may change the policy inline.

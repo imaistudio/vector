@@ -46,6 +46,9 @@ export function NotificationsSheet({
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<'all' | 'unread' | 'action'>('action');
+  const [pendingRecipientId, setPendingRecipientId] = useState<string | null>(
+    null,
+  );
   const { results, status, loadMore } = usePaginatedQuery(
     api.notifications.queries.listInbox,
     { filter },
@@ -64,6 +67,20 @@ export function NotificationsSheet({
 
     onOpenChange(false);
     router.push(recipient.href ?? '/settings/notifications');
+  };
+
+  const updateActionState = (
+    recipientId: (typeof results)[number]['_id'],
+    actionState: 'done' | 'snoozed',
+    snoozedUntil?: number,
+  ) => {
+    if (pendingRecipientId) return;
+    setPendingRecipientId(String(recipientId));
+    void setActionState({
+      recipientId,
+      actionState,
+      snoozedUntil,
+    }).finally(() => setPendingRecipientId(null));
   };
 
   return (
@@ -207,12 +224,12 @@ export function NotificationsSheet({
                             variant='ghost'
                             size='sm'
                             className='h-6 gap-1 px-1.5 text-[10px]'
+                            disabled={
+                              pendingRecipientId === String(recipient._id)
+                            }
                             onClick={event => {
                               event.stopPropagation();
-                              void setActionState({
-                                recipientId: recipient._id,
-                                actionState: 'done',
-                              });
+                              updateActionState(recipient._id, 'done');
                             }}
                           >
                             <Check className='size-3' />
@@ -222,13 +239,16 @@ export function NotificationsSheet({
                             variant='ghost'
                             size='sm'
                             className='h-6 gap-1 px-1.5 text-[10px]'
+                            disabled={
+                              pendingRecipientId === String(recipient._id)
+                            }
                             onClick={event => {
                               event.stopPropagation();
-                              void setActionState({
-                                recipientId: recipient._id,
-                                actionState: 'snoozed',
-                                snoozedUntil: Date.now() + 24 * 60 * 60 * 1000,
-                              });
+                              updateActionState(
+                                recipient._id,
+                                'snoozed',
+                                Date.now() + 24 * 60 * 60 * 1000,
+                              );
                             }}
                           >
                             <Clock3 className='size-3' />

@@ -182,6 +182,10 @@ struct MobileRequestDetailScreen: View {
           .disabled(viewModel.pendingWorkModelActions.contains { $0.contains(detail.id) })
         }
         .listStyle(.plain)
+      } else if let error = viewModel.selectedRequestError {
+        MobileWorkModelErrorView(message: error) {
+          viewModel.loadRequest(request)
+        }
       } else {
         MobileWorkModelDetailSkeleton()
       }
@@ -434,7 +438,7 @@ struct MobileWorkDetailScreen: View {
               ForEach(detail.tasks) { task in
                 HStack(spacing: 10) {
                   Menu {
-                    ForEach(VectorTaskStatus.allCases) { status in
+                    ForEach(VectorTaskStatus.allCases.filter { $0 != .unknown }) { status in
                       Button(status.label) { Task { _ = await viewModel.setTaskStatus(task.id, status: status) } }
                     }
                   } label: {
@@ -521,6 +525,10 @@ struct MobileWorkDetailScreen: View {
           }
         }
         .listStyle(.plain)
+      } else if let error = viewModel.selectedWorkError {
+        MobileWorkModelErrorView(message: error) {
+          viewModel.loadWork(work)
+        }
       } else {
         MobileWorkModelDetailSkeleton()
       }
@@ -580,6 +588,22 @@ private struct MobileWorkModelDetailSkeleton: View {
   }
 }
 
+private struct MobileWorkModelErrorView: View {
+  let message: String
+  let retry: () -> Void
+
+  var body: some View {
+    ContentUnavailableView {
+      Label("Could not load this item", systemImage: "exclamationmark.triangle")
+    } description: {
+      Text(message)
+    } actions: {
+      Button("Try again", action: retry)
+        .buttonStyle(.borderedProminent)
+    }
+  }
+}
+
 private func requestStatusColor(_ status: VectorRequestStatus) -> Color {
   switch status {
   case .readyForReview: .purple
@@ -588,6 +612,7 @@ private func requestStatusColor(_ status: VectorRequestStatus) -> Color {
   case .declined, .duplicate: .secondary
   case .inDelivery: .blue
   case .new, .routed, .planned: VectorTheme.accent
+  case .unknown: .secondary
   }
 }
 
@@ -600,6 +625,7 @@ private func workStatusColor(_ status: VectorWorkStatus) -> Color {
   case .completed: .green
   case .canceled: .secondary
   case .planned: VectorTheme.accent
+  case .unknown: .secondary
   }
 }
 
@@ -611,6 +637,7 @@ private func taskStatusImage(_ status: VectorTaskStatus) -> String {
   case .blocked: "exclamationmark.circle"
   case .done: "checkmark.circle.fill"
   case .canceled: "xmark.circle"
+  case .unknown: "questionmark.circle"
   }
 }
 
@@ -621,6 +648,7 @@ private func taskStatusColor(_ status: VectorTaskStatus) -> Color {
   case .waiting: .yellow
   case .blocked: .orange
   case .done: .green
+  case .unknown: .secondary
   }
 }
 

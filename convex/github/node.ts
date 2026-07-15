@@ -7,6 +7,7 @@ import {
   createHmac,
   createPrivateKey,
   randomBytes,
+  timingSafeEqual,
 } from 'node:crypto';
 import { SignJWT } from 'jose';
 
@@ -103,7 +104,12 @@ export function verifyGitHubWebhookSignature(
     .update(body)
     .digest('hex')}`;
 
-  return expected === signature;
+  const expectedBytes = Buffer.from(expected);
+  const signatureBytes = Buffer.from(signature);
+  return (
+    expectedBytes.length === signatureBytes.length &&
+    timingSafeEqual(expectedBytes, signatureBytes)
+  );
 }
 
 async function createGitHubAppJwt(opts?: {

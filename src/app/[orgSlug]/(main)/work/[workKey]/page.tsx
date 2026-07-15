@@ -854,7 +854,7 @@ export default function WorkDetailPage() {
                     orgSlug={orgSlug}
                     taskId={task._id}
                     serverStatus={task.status}
-                    disabled={!work.canEdit}
+                    disabled={!task.canUpdateStatus}
                   />
                   <span className='text-muted-foreground w-7 shrink-0 font-mono text-[10px]'>
                     #{task.number}

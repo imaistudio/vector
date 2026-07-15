@@ -127,9 +127,26 @@ private struct AuthenticatedVectorMobileView: View {
   }
 
   private func openNotification(_ href: String) {
-      selectedTab = .inbox
-      notificationHrefToOpen = pendingNotificationTarget(for: href) == nil ? nil : href
+    let trimmedHref = href.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedHref.isEmpty else {
       pushCoordinator.consumePendingNotificationHref()
+      return
+    }
+    if pendingNotificationTarget(for: trimmedHref) != nil {
+      selectedTab = .inbox
+      notificationHrefToOpen = trimmedHref
+    } else {
+      #if os(iOS)
+        let parsedURL = URL(string: trimmedHref)
+        let webURL = parsedURL?.scheme == nil
+          ? viewModel.configuration.webURL(path: trimmedHref)
+          : parsedURL
+        if let webURL {
+          UIApplication.shared.open(webURL)
+        }
+      #endif
+    }
+    pushCoordinator.consumePendingNotificationHref()
   }
 }
 
