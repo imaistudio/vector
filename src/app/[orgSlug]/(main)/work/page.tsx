@@ -67,31 +67,36 @@ export default function WorkPage() {
 
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-10 shrink-0 items-center justify-between border-b pr-1 pl-3'>
-        <div className='flex items-baseline gap-2'>
+      <header className='flex h-10 shrink-0 items-center gap-3 border-b pr-1 pl-3'>
+        <div className='flex shrink-0 items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Work</h1>
           <span className='text-muted-foreground text-xs'>
             outcomes in motion
           </span>
         </div>
-        <CreateWorkDialog orgSlug={orgSlug} />
+        <nav
+          aria-label='Work scope'
+          className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'
+        >
+          {scopes.map(item => (
+            <Button
+              key={item.value}
+              variant='ghost'
+              size='sm'
+              className={cn(
+                'h-7 shrink-0 px-2 text-xs',
+                scope === item.value && 'bg-muted',
+              )}
+              onClick={() => setScope(item.value)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </nav>
+        <div className='shrink-0'>
+          <CreateWorkDialog orgSlug={orgSlug} />
+        </div>
       </header>
-      <div className='flex h-9 shrink-0 items-center gap-1 border-b px-2'>
-        {scopes.map(item => (
-          <Button
-            key={item.value}
-            variant='ghost'
-            size='sm'
-            className={cn(
-              'h-7 px-2 text-xs',
-              scope === item.value && 'bg-muted',
-            )}
-            onClick={() => setScope(item.value)}
-          >
-            {item.label}
-          </Button>
-        ))}
-      </div>
       <div className='min-h-0 flex-1'>
         {result.status === 'LoadingFirstPage' ? (
           <WorkRowsSkeleton />

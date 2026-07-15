@@ -48,31 +48,36 @@ export default function RequestsPage() {
   );
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-10 shrink-0 items-center justify-between border-b pr-1 pl-3'>
-        <div className='flex items-baseline gap-2'>
+      <header className='flex h-10 shrink-0 items-center gap-3 border-b pr-1 pl-3'>
+        <div className='flex shrink-0 items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Requests</h1>
           <span className='text-muted-foreground text-xs'>
             intake and review
           </span>
         </div>
-        <CreateRequestDialog orgSlug={orgSlug} />
+        <nav
+          aria-label='Request scope'
+          className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'
+        >
+          {scopes.map(item => (
+            <Button
+              key={item.value}
+              variant='ghost'
+              size='sm'
+              className={cn(
+                'h-7 shrink-0 px-2 text-xs',
+                scope === item.value && 'bg-muted',
+              )}
+              onClick={() => setScope(item.value)}
+            >
+              {item.label}
+            </Button>
+          ))}
+        </nav>
+        <div className='shrink-0'>
+          <CreateRequestDialog orgSlug={orgSlug} />
+        </div>
       </header>
-      <div className='flex h-9 items-center gap-1 overflow-x-auto border-b px-2'>
-        {scopes.map(item => (
-          <Button
-            key={item.value}
-            variant='ghost'
-            size='sm'
-            className={cn(
-              'h-7 shrink-0 px-2 text-xs',
-              scope === item.value && 'bg-muted',
-            )}
-            onClick={() => setScope(item.value)}
-          >
-            {item.label}
-          </Button>
-        ))}
-      </div>
       {result.status === 'LoadingFirstPage' ? (
         <div>
           {Array.from({ length: 8 }).map((_, index) => (
