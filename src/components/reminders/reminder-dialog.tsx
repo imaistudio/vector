@@ -5,6 +5,7 @@ import { BellPlus, Check, ChevronDown } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api, useMutation } from '@/lib/convex';
 import { toast } from 'sonner';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +23,6 @@ import {
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
-  ResponsiveDialogDescription,
   ResponsiveDialogHeader,
   ResponsiveDialogTitle,
   ResponsiveDialogTrigger,
@@ -116,18 +116,17 @@ export function ReminderDialog({
           Reminder
         </Button>
       </ResponsiveDialogTrigger>
-      <ResponsiveDialogContent className='max-w-md p-0'>
-        <ResponsiveDialogHeader className='border-b px-4 py-3'>
-          <ResponsiveDialogTitle className='text-sm'>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>
             Set responsibility reminder
           </ResponsiveDialogTitle>
-          <ResponsiveDialogDescription className='text-xs'>
-            Reminders stop automatically when the underlying {targetType} is
-            complete or canceled.
-          </ResponsiveDialogDescription>
         </ResponsiveDialogHeader>
-        <div className='space-y-4 p-4'>
-          <div className='grid grid-cols-2 gap-3'>
+        <form className='space-y-2'>
+          <div className='grid grid-cols-2 gap-2'>
             <div className='space-y-1.5'>
               <Label className='text-xs'>Cadence</Label>
               <Popover open={cadenceOpen} onOpenChange={setCadenceOpen}>
@@ -136,6 +135,7 @@ export function ReminderDialog({
                     variant='outline'
                     size='sm'
                     className='h-8 w-full justify-between text-xs font-normal'
+                    disabled={submitting}
                   >
                     {selectedCadence.label}
                     <ChevronDown className='size-3.5' />
@@ -176,6 +176,7 @@ export function ReminderDialog({
                 value={when}
                 onChange={event => setWhen(event.target.value)}
                 className='h-8 text-xs'
+                disabled={submitting}
               />
             </div>
           </div>
@@ -194,6 +195,7 @@ export function ReminderDialog({
               onChange={event => setInactivity(event.target.value)}
               placeholder='e.g. 48'
               className='h-8 text-xs'
+              disabled={submitting}
             />
           </div>
           <p className='text-muted-foreground text-[11px]'>
@@ -203,24 +205,19 @@ export function ReminderDialog({
               .join(' and ')}
             .
           </p>
-          <div className='flex justify-end gap-2'>
-            <Button
-              variant='ghost'
-              size='sm'
-              className='h-7 text-xs'
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              size='sm'
-              className='h-7 text-xs'
-              disabled={submitting}
-              onClick={submit}
-            >
-              Schedule
-            </Button>
-          </div>
+        </form>
+        <div className='flex w-full flex-row items-center justify-between gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            disabled={submitting}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button size='sm' disabled={submitting} onClick={submit}>
+            {submitting ? <BarsSpinner size={14} /> : 'Schedule reminder'}
+          </Button>
         </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>

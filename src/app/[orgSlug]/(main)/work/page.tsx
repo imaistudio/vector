@@ -21,6 +21,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { UserAvatar } from '@/components/user-avatar';
+import { UserProfilePopover } from '@/components/user-profile-popover';
 
 const scopes = [
   { value: 'active', label: 'Active now' },
@@ -112,97 +113,116 @@ export default function WorkPage() {
         ) : (
           <div>
             {result.results.map(work => (
-              <Link
+              <div
                 key={work._id}
-                href={`/${orgSlug}/work/${work.key}`}
                 className='hover:bg-muted/35 group flex min-h-9 items-center gap-2 border-b px-3 text-xs transition-colors'
               >
-                <span
-                  className={cn(
-                    'size-2 shrink-0 rounded-full',
-                    statusTone[work.workStatus] ?? 'bg-muted-foreground/40',
+                <Link
+                  href={`/${orgSlug}/work/${work.key}`}
+                  className='flex min-w-0 flex-1 items-center gap-2 self-stretch'
+                >
+                  <span
+                    className={cn(
+                      'size-2 shrink-0 rounded-full',
+                      statusTone[work.workStatus] ?? 'bg-muted-foreground/40',
+                    )}
+                  />
+                  <span
+                    className='text-muted-foreground w-18 shrink-0 truncate font-mono text-[10px] whitespace-nowrap'
+                    title={work.key}
+                  >
+                    {work.key}
+                  </span>
+                  <span className='min-w-0 flex-1 truncate font-medium'>
+                    {work.title}
+                  </span>
+                  {work.effort && work.effort !== 'unknown' && (
+                    <Badge
+                      variant={work.effort === 'l' ? 'secondary' : 'outline'}
+                      className='h-5 min-w-6 px-1.5 text-[10px] uppercase'
+                    >
+                      {work.effort}
+                    </Badge>
                   )}
-                />
-                <span className='text-muted-foreground w-18 shrink-0 font-mono text-[10px]'>
-                  {work.key}
-                </span>
-                <span className='min-w-0 flex-1 truncate font-medium'>
-                  {work.title}
-                </span>
-                {work.effort && work.effort !== 'unknown' && (
-                  <Badge
-                    variant={work.effort === 'l' ? 'secondary' : 'outline'}
-                    className='h-5 min-w-6 px-1.5 text-[10px] uppercase'
-                  >
-                    {work.effort}
-                  </Badge>
-                )}
-                {work.openAttentionCount > 0 && (
-                  <Badge
-                    variant='destructive'
-                    className='h-5 gap-1 px-1.5 text-[10px]'
-                  >
-                    <AlertCircle className='size-3' />
-                    {work.openAttentionCount}
-                  </Badge>
-                )}
-                {work.workStatus === 'active' && (
-                  <Badge
-                    variant='outline'
-                    className='hidden h-5 gap-1 px-1.5 text-[10px] sm:inline-flex'
-                  >
-                    <Play className='size-3' />
-                    Active
-                  </Badge>
-                )}
-                {work.workStatus === 'ready_for_review' && (
-                  <Badge
-                    variant='outline'
-                    className='hidden h-5 gap-1 px-1.5 text-[10px] sm:inline-flex'
-                  >
-                    <CheckCircle2 className='size-3' />
-                    Review
-                  </Badge>
-                )}
-                <span className='text-muted-foreground hidden items-center gap-1 text-[11px] md:flex'>
-                  <ListChecks className='size-3.5' />
-                  {work.taskProgress.done}/{work.taskProgress.total}
-                </span>
-                {work.activeExecutionCount > 0 && (
+                  {work.openAttentionCount > 0 && (
+                    <Badge
+                      variant='destructive'
+                      className='h-5 gap-1 px-1.5 text-[10px]'
+                    >
+                      <AlertCircle className='size-3' />
+                      {work.openAttentionCount}
+                    </Badge>
+                  )}
+                  {work.workStatus === 'active' && (
+                    <Badge
+                      variant='outline'
+                      className='hidden h-5 gap-1 px-1.5 text-[10px] sm:inline-flex'
+                    >
+                      <Play className='size-3' />
+                      Active
+                    </Badge>
+                  )}
+                  {work.workStatus === 'ready_for_review' && (
+                    <Badge
+                      variant='outline'
+                      className='hidden h-5 gap-1 px-1.5 text-[10px] sm:inline-flex'
+                    >
+                      <CheckCircle2 className='size-3' />
+                      Review
+                    </Badge>
+                  )}
                   <span className='text-muted-foreground hidden items-center gap-1 text-[11px] md:flex'>
-                    <Bot className='size-3.5' />
-                    {work.activeExecutionCount}
+                    <ListChecks className='size-3.5' />
+                    {work.taskProgress.done}/{work.taskProgress.total}
                   </span>
-                )}
-                {work.dueDate && (
-                  <span className='text-muted-foreground hidden items-center gap-1 text-[11px] lg:flex'>
-                    <CalendarClock className='size-3.5' />
-                    {work.dueDate}
-                  </span>
-                )}
-                <span className='flex w-24 shrink-0 items-center justify-end gap-1.5 text-[11px]'>
+                  {work.activeExecutionCount > 0 && (
+                    <span className='text-muted-foreground hidden items-center gap-1 text-[11px] md:flex'>
+                      <Bot className='size-3.5' />
+                      {work.activeExecutionCount}
+                    </span>
+                  )}
+                  {work.dueDate && (
+                    <span className='text-muted-foreground hidden items-center gap-1 text-[11px] lg:flex'>
+                      <CalendarClock className='size-3.5' />
+                      {work.dueDate}
+                    </span>
+                  )}
+                </Link>
+                <span className='flex w-10 shrink-0 items-center justify-end text-[11px]'>
                   {work.owner ? (
-                    <>
-                      <span className='truncate'>
-                        {work.owner.name ?? work.owner.username ?? 'Owner'}
-                      </span>
-                      <UserAvatar
-                        name={work.owner.name ?? work.owner.username}
-                        email={work.owner.email}
-                        image={work.owner.image}
-                        userId={work.owner._id}
+                    <UserProfilePopover
+                      name={work.owner.name ?? work.owner.username}
+                      email={work.owner.email}
+                      image={work.owner.image}
+                      userId={work.owner._id}
+                      align='end'
+                    >
+                      <Button
+                        variant='ghost'
                         size='sm'
-                        className='size-5'
-                      />
-                    </>
+                        className='size-7 rounded-full p-0'
+                        aria-label={`View ${work.owner.name ?? work.owner.username ?? work.owner.email ?? 'owner'} details`}
+                      >
+                        <UserAvatar
+                          name={work.owner.name ?? work.owner.username}
+                          email={work.owner.email}
+                          image={work.owner.image}
+                          userId={work.owner._id}
+                          size='sm'
+                          className='size-5'
+                        />
+                      </Button>
+                    </UserProfilePopover>
                   ) : (
-                    <span className='text-muted-foreground flex items-center gap-1'>
+                    <span
+                      className='text-muted-foreground flex size-7 items-center justify-center'
+                      title='Unowned'
+                    >
                       <UserRound className='size-3.5' />
-                      Unowned
                     </span>
                   )}
                 </span>
-              </Link>
+              </div>
             ))}
             <AutoLoadMore
               status={result.status}

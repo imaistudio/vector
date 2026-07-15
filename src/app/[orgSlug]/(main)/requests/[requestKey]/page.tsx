@@ -382,7 +382,7 @@ export default function RequestDetailPage() {
   );
   return (
     <div className='min-h-full'>
-      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-2 border-b px-3 backdrop-blur'>
+      <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-1.5 border-b pr-1.5 pl-1 backdrop-blur'>
         <Link
           href={`/${orgSlug}/requests`}
           aria-label='Back to Requests'
