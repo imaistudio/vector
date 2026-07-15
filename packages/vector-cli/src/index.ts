@@ -6,13 +6,14 @@ import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { Command } from 'commander';
-import { ConvexHttpClient } from 'convex/browser';
+import { ConvexClient, ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { api } from '../../../convex/_generated/api.js';
 import type { Id } from '../../../convex/_generated/dataModel';
 import type { Permission } from '../../../convex/_shared/permissions';
 import {
   fetchAuthSession,
+  fetchConvexToken,
   loginWithPassword,
   logout,
   pollDeviceToken,
@@ -23,6 +24,14 @@ import {
 } from './auth';
 import { createConvexClient, runAction, runMutation, runQuery } from './convex';
 import { printOutput } from './output';
+import {
+  diffWorkSnapshots,
+  parseWorkWatchCategories,
+  snapshotWork,
+  WORK_WATCH_CATEGORIES,
+  type WorkWatchEvent,
+  type WorkWatchSource,
+} from './work-watch';
 import {
   clearSession,
   createEmptySession,
@@ -2907,6 +2916,116 @@ workCommand
       }),
       runtime.json,
     );
+  });
+
+workCommand
+  .command('watch <workKey>')
+  .description('Watch Work for real-time task, request, and lifecycle changes')
+  .option(
+    '--events <categories>',
+    `Comma-separated: ${WORK_WATCH_CATEGORIES.join(', ')}, or all`,
+    'all',
+  )
+  .option('--initial', 'Emit the current Work snapshot before watching')
+  .option('--once', 'Exit after the first matching change')
+  .option('--timeout <seconds>', 'Exit after this many seconds')
+  .action(async (workKey, options, command) => {
+    const { runtime, session } = await getClient(command);
+    const orgSlug = requireOrg(runtime);
+    const categories = parseWorkWatchCategories(options.events);
+    const timeoutSeconds = options.timeout
+      ? requiredNumber(options.timeout, 'timeout')
+      : undefined;
+    if (timeoutSeconds !== undefined && timeoutSeconds <= 0) {
+      throw new Error('timeout must be greater than zero');
+    }
+
+    const realtime = new ConvexClient(runtime.convexUrl);
+    realtime.setAuth(async () => {
+      const { token } = await fetchConvexToken(session, runtime.appUrl);
+      return token;
+    });
+
+    let previous: ReturnType<typeof snapshotWork> | undefined;
+    let settled = false;
+    let unsubscribe: (() => void) | undefined;
+    let timer: NodeJS.Timeout | undefined;
+
+    const emit = (event: WorkWatchEvent & { observedAt: string }) => {
+      if (runtime.json) {
+        console.log(JSON.stringify(event));
+      } else {
+        console.log(
+          `${event.observedAt}  ${event.type.padEnd(19)}  ${event.summary}`,
+        );
+      }
+    };
+
+    const stop = async () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe?.();
+      await realtime.close();
+    };
+
+    if (!runtime.json) {
+      console.error(
+        `Watching ${workKey} for ${categories.join(', ')} changes. Press Ctrl+C to stop.`,
+      );
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const finish = () => void stop().then(resolve, reject);
+      const onSignal = () => finish();
+      process.once('SIGINT', onSignal);
+      process.once('SIGTERM', onSignal);
+
+      if (timeoutSeconds !== undefined) {
+        timer = setTimeout(finish, timeoutSeconds * 1000);
+      }
+
+      unsubscribe = realtime.onUpdate(
+        api.work.queries.getByKey,
+        { orgSlug, workKey },
+        result => {
+          if (!result) {
+            reject(
+              new Error(`Work not found or no longer visible: ${workKey}`),
+            );
+            void stop();
+            return;
+          }
+          const next = snapshotWork(result as WorkWatchSource);
+          if (!previous) {
+            previous = next;
+            if (options.initial) {
+              emit({
+                category: 'work',
+                type: 'work.snapshot',
+                workKey: next.work.key,
+                entityId: next.work._id,
+                summary: `Watching Work ${next.work.key}`,
+                after: next as unknown as Record<string, unknown>,
+                observedAt: new Date().toISOString(),
+              });
+            }
+            return;
+          }
+
+          const events = diffWorkSnapshots(previous, next, categories);
+          previous = next;
+          for (const event of events) {
+            emit({ ...event, observedAt: new Date().toISOString() });
+          }
+          if (options.once && events.length > 0) finish();
+        },
+        error => {
+          reject(error);
+          void stop();
+        },
+      );
+    });
   });
 
 workCommand

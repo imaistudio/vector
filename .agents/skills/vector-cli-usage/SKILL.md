@@ -232,6 +232,16 @@ vcli --json issue list --org acme
 vcli --json notification inbox --filter unread
 ```
 
+For an agent that needs to wait for Work to change, use the real-time watcher.
+Global `--json` produces one NDJSON object per event:
+
+```bash
+vcli --json work watch API-1 --events tasks,requests --once --timeout 1800
+```
+
+Available categories are `work`, `tasks`, `requests`, `attention`, `handoffs`,
+and `executions`. Use `--initial` to emit the current snapshot before changes.
+
 If the user is scripting, mention:
 
 - prefer `--json`
