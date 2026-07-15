@@ -42,6 +42,11 @@ import {
   KANBAN_BORDER_COLOR_OPTIONS,
 } from '../../src/lib/kanban-border-tags';
 import { isCanonicalWork, workFocusRank } from '../work/lib';
+import {
+  maybeRaiseLinkedRequestsForReview,
+  reopenLinkedRequestsAfterCancellation,
+  setLinkedRequestsInDelivery,
+} from '../work/requestReconciliation';
 import type { WorkStatus } from '../_shared/work';
 
 const kanbanBorderTagValidator = v.union(
@@ -303,9 +308,6 @@ export const create = mutation({
         isTopLevelWork && workStatus === 'active' && ownerId
           ? userId
           : undefined,
-      readyForReviewAt:
-        isTopLevelWork && workStatus === 'ready_for_review' ? now : undefined,
-      closedAt: isTopLevelWork && workStatus === 'canceled' ? now : undefined,
     });
 
     const assigneeStateId = workflowStateId;
@@ -782,13 +784,17 @@ export const changeWorkflowState = mutation({
       readyForReviewAt:
         canonicalWork && nextWorkStatus === 'ready_for_review'
           ? (issue.readyForReviewAt ?? now)
-          : nextWorkStatus === 'ready_for_review'
-            ? issue.readyForReviewAt
-            : undefined,
+          : canonicalWork
+            ? undefined
+            : issue.readyForReviewAt,
       lastMeaningfulActivityAt: canonicalWork
         ? now
         : issue.lastMeaningfulActivityAt,
-      closedAt: nextState.type === 'canceled' ? now : undefined,
+      closedAt: canonicalWork
+        ? nextState.type === 'canceled'
+          ? now
+          : undefined
+        : issue.closedAt,
     });
 
     if (
@@ -817,6 +823,18 @@ export const changeWorkflowState = mutation({
           executionStartedBy: userId,
         });
       }
+    }
+
+    if (canonicalWork && nextWorkStatus === 'active') {
+      await setLinkedRequestsInDelivery(ctx, issue._id);
+    } else if (canonicalWork && nextWorkStatus === 'ready_for_review') {
+      await maybeRaiseLinkedRequestsForReview(
+        ctx,
+        { ...issue, workStatus: nextWorkStatus },
+        userId,
+      );
+    } else if (canonicalWork && nextWorkStatus === 'canceled') {
+      await reopenLinkedRequestsAfterCancellation(ctx, issue._id);
     }
 
     if (issue.workflowStateId !== args.stateId) {

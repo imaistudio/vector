@@ -69,6 +69,11 @@ final class VectorMobileTests: XCTestCase {
       try decoder.decode(VectorTaskStatus.self, from: Data(#""skipped""#.utf8)),
       .unknown
     )
+    XCTAssertEqual(
+      try decoder.decode(VectorNotificationCategory.self, from: Data(#""new_backend_category""#.utf8)),
+      .unknown
+    )
+    XCTAssertFalse(VectorNotificationCategory.allCases.contains(.unknown))
   }
 
   func testWorkDetailDecodesExecutionHandoffAttentionAndWaitingTask() throws {

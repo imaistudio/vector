@@ -747,6 +747,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - A recipient is asked to respond or plan. The Request owner has claimed planning accountability. A watcher observes. Work contributors are separate and belong to Work, not Request.
 - A Request may remain routed to a team without a person owner. A team member can later claim it.
 - Automatic routing rules and AI suggestions are deferred. Manual routing to people or a team is complete without AI.
+- Public Request intake remains available when an organization explicitly enables it. The anonymous mutation enforces fixed-window organization and submitter quotas before persisting a Request or notifying anyone; stronger CAPTCHA-style proof may be added later if public abuse warrants it.
 
 ### Work lifecycle
 
@@ -756,6 +757,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - Work has both an overall first-start timestamp and a per-owner execution-start timestamp. Accepting a handoff clears the latter, requiring the new owner to explicitly start their period.
 - Waiting and blocked are explicit aggregate Work states. A paused execution does not change Work automatically.
 - Automatic aggregation from mixed Task states is deferred; humans and authorized agents set aggregate Work state deliberately.
+- Legacy board and command surfaces that still mutate a Work through workflow states use the same Request reconciliation as the dedicated Work actions, so alternate UI paths cannot bypass intake → delivery → review propagation.
 
 ### Focus and execution
 
@@ -797,6 +799,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - Requesting changes updates the Request, notifies the Request owner and linked Work owners, and reopens linked review-ready Work to Active. The review note is surfaced as current Work context. It does not reopen already completed/canceled Work or create follow-up Work silently.
 - Request completion remains a human review action by the requester, creator, or another user with edit authority. Automated Request acceptance is deferred.
 - When that human accepts a Request, linked review-ready Work auto-completes only if every fulfilling Request on that Work is terminal. This keeps shared Work from closing while another requester still needs review.
+- Changing the last Request ↔ Work relation away from `fulfills` removes that Work from completion aggregation and returns the Request to the appropriate intake/planning state. `contributes` links preserve context without driving review.
 
 ### Notifications and reminders
 
@@ -816,6 +819,9 @@ The first implementation uses the following concrete answers. Items explicitly m
 - Repository state is evidence by default. GitHub may complete/cancel Work only when both the workspace state-automation policy and the individual Work completion policy opt into GitHub control.
 - GitHub never starts Work. When opted-in terminal evidence completes all Work linked to a Request, that Request becomes Ready for human review.
 - Artifacts attach primarily to Work. Task-level artifact links are represented in the schema and can be expanded in a later UI pass.
+- A successful key/AI resolution with no match removes stale automatic links. A disabled, unavailable, or failed resolver preserves existing links so a temporary integration outage cannot silently detach evidence.
+- Task-scoped development evidence updates only that Task. It never completes the parent Work or raises its Requests for review; only Work-scoped evidence may drive GitHub-controlled Work completion.
+- Reconciliation and any open-pull-request webhook action apply the unmatched-artifact policy idempotently, so installing GitHub after a PR opened or missing its original webhook does not hide that work. Dismissed inbox items remain dismissed.
 
 ### Naming and migration
 
@@ -824,6 +830,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - `/issues` and `/issues/:key` are compatibility redirects. A legacy child-issue URL redirects to its parent Work and identifies the migrated Task.
 - Existing root issues become Work. Existing child issues become dedicated Tasks while their issue rows remain compatibility aliases during migration.
 - The internal `issues` table remains the storage identity for Work in this migration to preserve foreign keys and GitHub relationships. Product language and new APIs use Work.
+- Logged-out legacy links preserve their full destination through sign-in, while inaccessible or missing legacy records resolve as not found instead of surfacing a server error.
 
 ## 22. Current Implementation Mapping
 
@@ -834,6 +841,7 @@ Implementation is organized around these durable boundaries:
 - Convex `tasks` stores the independently trackable units inside Work.
 - Ownership periods and handoff records preserve accountability history and distinct per-owner execution starts.
 - Attention records, live activity records, and execution provenance keep agent state separate from aggregate Work state.
+- The shared activity feed authorizes and hydrates Request, Work, and Task scopes directly, so lifecycle history remains visible without treating the new entities as legacy team activity.
 - Reminder rules and occurrences provide durable recurring scheduling with idempotent delivery.
 - GitHub artifact links remain attached to the stable Work identity; a Development inbox captures unmatched evidence.
 - CLI command groups are `request`, `work`, and `task`. The `issue` group remains compatibility-only.

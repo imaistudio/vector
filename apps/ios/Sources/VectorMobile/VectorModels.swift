@@ -190,6 +190,27 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
   case attention
   case reminders
   case github
+  case unknown
+
+  public static let allCases: [VectorNotificationCategory] = [
+    .invites,
+    .assignments,
+    .mentions,
+    .comments,
+    .workSessions,
+    .teamStatusChanges,
+    .requests,
+    .handoffs,
+    .reviews,
+    .attention,
+    .reminders,
+    .github,
+  ]
+
+  public init(from decoder: Decoder) throws {
+    let value = try decoder.singleValueContainer().decode(String.self)
+    self = Self(rawValue: value) ?? .unknown
+  }
 
   public var id: String { rawValue }
 
@@ -207,6 +228,7 @@ public enum VectorNotificationCategory: String, CaseIterable, Codable, Equatable
     case .attention: "Attention"
     case .reminders: "Reminders"
     case .github: "GitHub"
+    case .unknown: "Other"
     }
   }
 }

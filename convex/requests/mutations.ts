@@ -36,6 +36,57 @@ const visibilityValidator = v.union(
   v.literal('public'),
 );
 
+const PUBLIC_REQUEST_WINDOW_MS = 15 * 60 * 1000;
+const PUBLIC_REQUEST_ORGANIZATION_LIMIT = 20;
+const PUBLIC_REQUEST_IDENTITY_LIMIT = 3;
+
+async function consumePublicRequestQuota(
+  ctx: MutationCtx,
+  organizationId: Id<'organizations'>,
+  requesterEmail: string,
+) {
+  const now = Date.now();
+  const windowStartedAt =
+    Math.floor(now / PUBLIC_REQUEST_WINDOW_MS) * PUBLIC_REQUEST_WINDOW_MS;
+  const identity = requesterEmail.trim().toLowerCase() || 'anonymous';
+  const quotas = [
+    { scope: 'organization', limit: PUBLIC_REQUEST_ORGANIZATION_LIMIT },
+    { scope: `identity:${identity}`, limit: PUBLIC_REQUEST_IDENTITY_LIMIT },
+  ];
+
+  for (const quota of quotas) {
+    const existing = await ctx.db
+      .query('publicRequestRateLimits')
+      .withIndex('by_org_scope', q =>
+        q.eq('organizationId', organizationId).eq('scope', quota.scope),
+      )
+      .unique();
+    if (
+      existing &&
+      existing.windowStartedAt === windowStartedAt &&
+      existing.count >= quota.limit
+    )
+      throw new ConvexError('PUBLIC_REQUEST_RATE_LIMITED');
+
+    if (existing) {
+      await ctx.db.patch('publicRequestRateLimits', existing._id, {
+        windowStartedAt,
+        count:
+          existing.windowStartedAt === windowStartedAt ? existing.count + 1 : 1,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert('publicRequestRateLimits', {
+        organizationId,
+        scope: quota.scope,
+        windowStartedAt,
+        count: 1,
+        updatedAt: now,
+      });
+    }
+  }
+}
+
 async function insertRequest(
   ctx: MutationCtx,
   input: {
@@ -73,6 +124,11 @@ async function insertRequest(
     const team = await ctx.db.get('teams', input.routedTeamId);
     if (!team || team.organizationId !== input.organizationId)
       throw new ConvexError('TEAM_NOT_FOUND');
+  }
+  if (input.priorityId) {
+    const priority = await ctx.db.get('issuePriorities', input.priorityId);
+    if (!priority || priority.organizationId !== input.organizationId)
+      throw new ConvexError('PRIORITY_NOT_FOUND');
   }
   if (input.projectId) {
     const project = await ctx.db.get('projects', input.projectId);
@@ -146,7 +202,27 @@ async function reconcileRequestAfterWorkLink(
     .withIndex('by_request', q => q.eq('requestId', request._id))
     .collect();
   const fulfilling = links.filter(link => link.relation === 'fulfills');
-  if (fulfilling.length === 0) return;
+  if (fulfilling.length === 0) {
+    if (request.status === 'changes_requested') return;
+    const recipient = await ctx.db
+      .query('requestRecipients')
+      .withIndex('by_request', q => q.eq('requestId', request._id))
+      .first();
+    const nextStatus = request.ownerId
+      ? 'planned'
+      : recipient || request.routedTeamId
+        ? 'routed'
+        : 'new';
+    if (request.status !== nextStatus || request.readyForReviewAt) {
+      await ctx.db.patch('requests', request._id, {
+        status: nextStatus,
+        focusRank: requestFocusRank(nextStatus),
+        readyForReviewAt: undefined,
+        updatedAt: Date.now(),
+      });
+    }
+    return;
+  }
   const work = (
     await Promise.all(fulfilling.map(link => ctx.db.get('issues', link.workId)))
   ).filter((item): item is Doc<'issues'> => item !== null);
@@ -192,13 +268,14 @@ async function reconcileRequestAfterWorkLink(
     return;
   }
 
-  if (!['new', 'routed', 'planned'].includes(request.status)) return;
+  if (request.status === 'changes_requested') return;
   const nextStatus = work.some(item => item.startedAt)
     ? 'in_delivery'
     : 'planned';
   await ctx.db.patch('requests', request._id, {
     status: nextStatus,
     focusRank: requestFocusRank(nextStatus),
+    readyForReviewAt: undefined,
     updatedAt: now,
   });
 }
@@ -268,6 +345,13 @@ export const createPublic = mutation({
     const project = organization.publicIssueProjectId
       ? await ctx.db.get('projects', organization.publicIssueProjectId)
       : null;
+    const requesterName = args.requesterName.trim();
+    const requesterEmail = args.requesterEmail.trim().toLowerCase();
+    if (requesterName.length > 120 || requesterEmail.length > 320)
+      throw new ConvexError('INVALID_REQUESTER');
+    if (requesterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(requesterEmail))
+      throw new ConvexError('INVALID_REQUESTER_EMAIL');
+    await consumePublicRequestQuota(ctx, organization._id, requesterEmail);
     const result = await insertRequest(ctx, {
       organizationId: organization._id,
       title: args.title,
@@ -275,8 +359,8 @@ export const createPublic = mutation({
       expectedOutput: args.expectedOutput,
       reviewGuidance: args.reviewGuidance,
       source: 'public',
-      requesterName: args.requesterName,
-      requesterEmail: args.requesterEmail,
+      requesterName,
+      requesterEmail,
       projectId: project?._id,
       routedTeamId: project?.teamId,
       visibility: 'organization',
@@ -384,7 +468,11 @@ export const claim = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const request = await requireRequest(ctx, args.requestId, 'view');
-    if (!['ready_for_review', 'changes_requested'].includes(request.status))
+    if (
+      !['new', 'routed', 'ready_for_review', 'changes_requested'].includes(
+        request.status,
+      )
+    )
       throw new ConvexError('REQUEST_NOT_IN_REVIEW');
     if (request.ownerId && request.ownerId !== userId)
       throw new ConvexError('REQUEST_ALREADY_OWNED');
@@ -445,7 +533,7 @@ export const linkWork = mutation({
       });
     else if (existing.relation !== relation)
       await ctx.db.patch('requestWorkLinks', existing._id, { relation });
-    if (relation === 'fulfills')
+    if (relation === 'fulfills' || existing?.relation === 'fulfills')
       await reconcileRequestAfterWorkLink(ctx, request, userId);
     return { success: true } as const;
   },
@@ -519,7 +607,7 @@ export const requestChanges = mutation({
       requestId: request._id,
       payload: {
         requestKey: request.key,
-        requestTitle: note,
+        requestTitle: request.title,
         href: org ? requestHref(org.slug, request.key) : undefined,
       },
       recipients: Array.from(recipients).map(id => ({ userId: id })),

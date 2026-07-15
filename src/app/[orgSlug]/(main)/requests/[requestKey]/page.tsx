@@ -42,6 +42,7 @@ import { MemberPicker } from '@/components/work/member-picker';
 import { TeamPicker } from '@/components/work/team-picker';
 import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
+import { UserAvatar } from '@/components/user-avatar';
 
 function RouteDialog({
   orgSlug,
@@ -409,23 +410,26 @@ export default function RequestDetailPage() {
             currentTeamId={request.routedTeamId}
           />
         )}
-        {!isTerminal && !request.ownerId && (
-          <Button
-            size='sm'
-            className='h-7 gap-1.5 px-2 text-xs'
-            disabled={claiming}
-            onClick={() => {
-              if (claiming) return;
-              setClaiming(true);
-              void claim({ requestId: request._id })
-                .catch(() => toast.error('Could not claim request'))
-                .finally(() => setClaiming(false));
-            }}
-          >
-            <UserRound className='size-3.5' />
-            Take request
-          </Button>
-        )}
+        {!request.ownerId &&
+          ['new', 'routed', 'ready_for_review', 'changes_requested'].includes(
+            request.status,
+          ) && (
+            <Button
+              size='sm'
+              className='h-7 gap-1.5 px-2 text-xs'
+              disabled={claiming}
+              onClick={() => {
+                if (claiming) return;
+                setClaiming(true);
+                void claim({ requestId: request._id })
+                  .catch(() => toast.error('Could not claim request'))
+                  .finally(() => setClaiming(false));
+              }}
+            >
+              <UserRound className='size-3.5' />
+              Take request
+            </Button>
+          )}
       </header>
       <div className='mx-auto grid max-w-5xl lg:grid-cols-[minmax(0,1fr)_250px]'>
         <main className='min-w-0 space-y-7 px-5 py-6 md:px-8'>
@@ -576,11 +580,14 @@ export default function RequestDetailPage() {
                       key={row._id}
                       className='flex items-center gap-2 text-xs'
                     >
-                      <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[8px]'>
-                        {(row.user?.name ?? row.user?.email ?? '?')
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
+                      <UserAvatar
+                        name={row.user?.name ?? row.user?.username}
+                        email={row.user?.email}
+                        image={row.user?.image}
+                        userId={row.userId}
+                        size='sm'
+                        className='size-5'
+                      />
                       <span className='truncate'>
                         {row.user?.name ?? row.user?.email}
                       </span>

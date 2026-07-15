@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { CreateWorkDialog } from '@/components/work/create-work-dialog';
+import { UserAvatar } from '@/components/user-avatar';
 
 const scopes = [
   { value: 'active', label: 'Active now' },
@@ -180,11 +181,14 @@ export default function WorkPage() {
                       <span className='truncate'>
                         {work.owner.name ?? work.owner.username ?? 'Owner'}
                       </span>
-                      <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[8px]'>
-                        {(work.owner.name ?? work.owner.email ?? '?')
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
+                      <UserAvatar
+                        name={work.owner.name ?? work.owner.username}
+                        email={work.owner.email}
+                        image={work.owner.image}
+                        userId={work.owner._id}
+                        size='sm'
+                        className='size-5'
+                      />
                     </>
                   ) : (
                     <span className='text-muted-foreground flex items-center gap-1'>

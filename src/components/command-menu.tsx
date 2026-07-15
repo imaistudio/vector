@@ -51,7 +51,7 @@ function parsePageContext(pathname: string, orgSlug: string): PageContext {
     ? pathname.slice(prefix.length)
     : pathname;
 
-  const issueMatch = rest.match(/^\/(?:issues|work)\/([A-Za-z0-9-]+-\d+)$/);
+  const issueMatch = rest.match(/^\/issues\/([A-Za-z0-9-]+-\d+)$/);
   if (issueMatch) return { type: 'issue', issueKey: issueMatch[1] };
 
   const teamMatch = rest.match(/^\/teams\/([A-Za-z0-9_-]+)$/);

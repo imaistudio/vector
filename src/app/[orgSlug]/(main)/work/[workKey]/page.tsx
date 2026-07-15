@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -58,6 +58,7 @@ import { MemberPicker } from '@/components/work/member-picker';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
 import { IssueCommentsSection } from '@/components/comments/comments-section';
+import { UserAvatar } from '@/components/user-avatar';
 
 const taskStatuses = [
   { value: 'todo', label: 'Todo', icon: Circle },
@@ -69,12 +70,10 @@ const taskStatuses = [
 ] as const;
 
 function TaskStatus({
-  orgSlug,
   taskId,
   serverStatus,
   disabled = false,
 }: {
-  orgSlug: string;
   taskId: Id<'tasks'>;
   serverStatus: (typeof taskStatuses)[number]['value'];
   disabled?: boolean;
@@ -86,53 +85,48 @@ function TaskStatus({
     taskStatuses.find(item => item.value === status) ?? taskStatuses[0];
   const Icon = current.icon;
   return (
-    <PermissionAwareSelector
-      orgSlug={orgSlug}
-      permission={PERMISSIONS.ISSUE_EDIT}
-    >
-      <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
-        <PopoverTrigger asChild>
-          <Button
-            variant='ghost'
-            size='sm'
-            className={cn(
-              'size-6 shrink-0 p-0',
-              status === 'done' && 'text-emerald-500',
-              status === 'blocked' && 'text-red-500',
-              status === 'waiting' && 'text-amber-500',
-            )}
-            title={current.label}
-            disabled={disabled}
-          >
-            <Icon className='size-4' />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align='start' className='w-44 p-0'>
-          <Command>
-            <CommandList>
-              <CommandGroup>
-                {taskStatuses.map(item => (
-                  <CommandItem
-                    key={item.value}
-                    data-checked={item.value === status}
-                    onSelect={() => {
-                      setOptimisticStatus(item.value);
-                      setOpen(false);
-                      void setStatus({ taskId, status: item.value }).catch(() =>
-                        toast.error('Could not update Task'),
-                      );
-                    }}
-                  >
-                    <item.icon className='size-3.5' />
-                    {item.label}
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </PermissionAwareSelector>
+    <Popover open={open} onOpenChange={next => !disabled && setOpen(next)}>
+      <PopoverTrigger asChild>
+        <Button
+          variant='ghost'
+          size='sm'
+          className={cn(
+            'size-6 shrink-0 p-0',
+            status === 'done' && 'text-emerald-500',
+            status === 'blocked' && 'text-red-500',
+            status === 'waiting' && 'text-amber-500',
+          )}
+          title={current.label}
+          disabled={disabled}
+        >
+          <Icon className='size-4' />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align='start' className='w-44 p-0'>
+        <Command>
+          <CommandList>
+            <CommandGroup>
+              {taskStatuses.map(item => (
+                <CommandItem
+                  key={item.value}
+                  data-checked={item.value === status}
+                  onSelect={() => {
+                    setOptimisticStatus(item.value);
+                    setOpen(false);
+                    void setStatus({ taskId, status: item.value }).catch(() =>
+                      toast.error('Could not update Task'),
+                    );
+                  }}
+                >
+                  <item.icon className='size-3.5' />
+                  {item.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -207,9 +201,14 @@ function TaskAssignee({
                       value={`${memberName} ${member.user?.email ?? ''}`}
                       onSelect={() => choose(member.userId)}
                     >
-                      <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[8px]'>
-                        {memberName.slice(0, 2).toUpperCase()}
-                      </span>
+                      <UserAvatar
+                        name={member.user?.name ?? member.user?.username}
+                        email={member.user?.email}
+                        image={member.user?.image}
+                        userId={member.userId}
+                        size='sm'
+                        className='size-5'
+                      />
                       <span className='truncate'>{memberName}</span>
                     </CommandItem>
                   );
@@ -315,7 +314,7 @@ function WorkStatusSelector({
   const setStatus = useMutation(api.work.mutations.setStatus);
   const start = useMutation(api.work.mutations.start);
   const selected = workStatusOptions.find(option => option.value === status);
-  if (!selected) {
+  if (!selected || status === 'canceled') {
     return (
       <Badge
         variant='outline'
@@ -512,6 +511,7 @@ export default function WorkDetailPage() {
   const [loadedWorkId, setLoadedWorkId] = useState<string | null>(null);
   const [newTask, setNewTask] = useState('');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const lastScrolledTaskId = useRef<string | null>(null);
   const debouncedWorkpad = useDebouncedValue(workpad, 700);
 
   useEffect(() => {
@@ -536,12 +536,17 @@ export default function WorkDetailPage() {
   }, [debouncedWorkpad, loadedWorkId, updateDetails, work, workpad]);
 
   useEffect(() => {
-    if (!work || !focusedTaskId) return;
+    if (!work || !focusedTaskId) {
+      lastScrolledTaskId.current = null;
+      return;
+    }
+    if (lastScrolledTaskId.current === focusedTaskId) return;
     if (!work.tasks.some(task => String(task._id) === focusedTaskId)) return;
     requestAnimationFrame(() => {
-      document
-        .getElementById(`task-${focusedTaskId}`)
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const element = document.getElementById(`task-${focusedTaskId}`);
+      if (!element) return;
+      lastScrolledTaskId.current = focusedTaskId;
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
   }, [focusedTaskId, work]);
 
@@ -851,7 +856,6 @@ export default function WorkDetailPage() {
                   )}
                 >
                   <TaskStatus
-                    orgSlug={orgSlug}
                     taskId={task._id}
                     serverStatus={task.status}
                     disabled={!task.canUpdateStatus}
@@ -978,13 +982,19 @@ export default function WorkDetailPage() {
                 Accountability
               </div>
               <div className='flex items-center gap-2 text-xs'>
-                <span className='bg-muted flex size-6 items-center justify-center rounded-full text-[9px]'>
-                  {ownerName ? (
-                    ownerName.slice(0, 2).toUpperCase()
-                  ) : (
+                {work.owner ? (
+                  <UserAvatar
+                    name={work.owner.name ?? work.owner.username}
+                    email={work.owner.email}
+                    image={work.owner.image}
+                    userId={work.owner._id}
+                    size='sm'
+                  />
+                ) : (
+                  <span className='bg-muted flex size-6 items-center justify-center rounded-full'>
                     <UserRound className='size-3.5' />
-                  )}
-                </span>
+                  </span>
+                )}
                 <span className='min-w-0 flex-1 truncate'>
                   {ownerName ?? 'No owner'}
                 </span>

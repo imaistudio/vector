@@ -366,15 +366,15 @@ export async function recordActivity(
   ctx: Pick<MutationCtx, 'db'>,
   event: ActivityWrite,
 ) {
-  const scope = event.scope ?? {
-    organizationId: event.organizationId,
-    teamId: event.teamId,
-    projectId: event.projectId,
-    issueId: event.issueId,
-    requestId: event.requestId,
-    taskId: event.taskId,
-    documentId: event.documentId,
-    viewId: event.viewId,
+  const scope = {
+    organizationId: event.scope?.organizationId ?? event.organizationId,
+    teamId: event.scope?.teamId ?? event.teamId,
+    projectId: event.scope?.projectId ?? event.projectId,
+    issueId: event.scope?.issueId ?? event.issueId,
+    requestId: event.scope?.requestId ?? event.requestId,
+    taskId: event.scope?.taskId ?? event.taskId,
+    documentId: event.scope?.documentId ?? event.documentId,
+    viewId: event.scope?.viewId ?? event.viewId,
   };
 
   if (!scope.organizationId) {

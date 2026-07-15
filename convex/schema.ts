@@ -237,6 +237,17 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_org_namespace', ['organizationId', 'namespace']),
 
+  // Fixed-window quotas for the anonymous Request intake endpoint. Keeping
+  // these counters in Convex makes the public mutation safe even when it is
+  // called directly instead of through the web form.
+  publicRequestRateLimits: defineTable({
+    organizationId: v.id('organizations'),
+    scope: v.string(),
+    windowStartedAt: v.number(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index('by_org_scope', ['organizationId', 'scope']),
+
   // Organization members (equivalent to Drizzle 'member' table)
   members: defineTable({
     organizationId: v.id('organizations'),

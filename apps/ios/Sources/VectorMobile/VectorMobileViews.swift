@@ -1106,6 +1106,7 @@ private struct InboxNotificationRow: View {
     case .attention: "exclamationmark.bubble"
     case .reminders: "alarm"
     case .github: "chevron.left.forwardslash.chevron.right"
+    case .unknown: "bell"
     }
   }
 
@@ -1123,6 +1124,7 @@ private struct InboxNotificationRow: View {
     case .attention: Color(vectorHex: "#ef4444")
     case .reminders: Color(vectorHex: "#eab308")
     case .github: Color(vectorHex: "#64748b")
+    case .unknown: Color.secondary
     }
   }
 }

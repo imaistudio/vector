@@ -221,8 +221,12 @@ async function queueIssueDescriptionRefreshForAssistantThreads(
     orgSlug: args.organization.slug,
     path:
       args.issue.key.trim().length > 0
-        ? `/${args.organization.slug}/work/${args.issue.key}`
-        : `/${args.organization.slug}/work`,
+        ? args.issue.kind === 'work'
+          ? `/${args.organization.slug}/work/${args.issue.key}`
+          : `/${args.organization.slug}/issues/${args.issue.key}`
+        : args.issue.kind === 'work'
+          ? `/${args.organization.slug}/work`
+          : `/${args.organization.slug}/issues`,
     issueKey: args.issue.key,
     entityType: 'issue' as const,
     entityId: String(args.issue._id),
@@ -435,6 +439,130 @@ async function recordGithubLinkActivity(
   });
 }
 
+async function loadWorkflowEvidence(
+  ctx: MutationCtx,
+  links: Doc<'githubArtifactLinks'>[],
+) {
+  const pullRequests = await Promise.all(
+    links
+      .map(link => link.pullRequestId)
+      .filter((id): id is Id<'githubPullRequests'> => Boolean(id))
+      .map(id => ctx.db.get('githubPullRequests', id)),
+  ).then(items =>
+    items.filter((item): item is NonNullable<typeof item> => item !== null),
+  );
+  const githubIssues = await Promise.all(
+    links
+      .map(link => link.githubIssueId)
+      .filter((id): id is Id<'githubIssues'> => Boolean(id))
+      .map(id => ctx.db.get('githubIssues', id)),
+  ).then(items =>
+    items.filter((item): item is NonNullable<typeof item> => item !== null),
+  );
+  return { pullRequests, githubIssues };
+}
+
+async function applyTaskScopedWorkflowAutomation(
+  ctx: MutationCtx,
+  work: Doc<'issues'>,
+  links: Doc<'githubArtifactLinks'>[],
+) {
+  const taskIds = Array.from(
+    new Set(
+      links
+        .map(link => link.taskId)
+        .filter((id): id is Id<'tasks'> => Boolean(id)),
+    ),
+  );
+  let changed = false;
+  for (const taskId of taskIds) {
+    const task = await ctx.db.get('tasks', taskId);
+    if (!task || task.workId !== work._id) continue;
+    const taskLinks = links.filter(link => link.taskId === taskId);
+    const { pullRequests, githubIssues } = await loadWorkflowEvidence(
+      ctx,
+      taskLinks,
+    );
+    const targetType =
+      selectWorkflowTypeFromPullRequests(pullRequests.map(pr => pr.state)) ??
+      selectWorkflowTypeFromGitHubIssues(githubIssues.map(item => item.state));
+    if (!targetType) {
+      const recipientId = task.assigneeId ?? work.ownerId;
+      if (
+        recipientId &&
+        pullRequests.length > 0 &&
+        pullRequests.every(pr => pr.state === 'closed')
+      ) {
+        const organization = await ctx.db.get(
+          'organizations',
+          work.organizationId,
+        );
+        await createNotificationEvent(ctx, {
+          type: 'github_action_required',
+          organizationId: work.organizationId,
+          issueId: work._id,
+          taskId: task._id,
+          payload: {
+            workKey: work.key,
+            workTitle: work.title,
+            taskTitle: task.title,
+            href: organization
+              ? `/${organization.slug}/work/${work.key}?task=${task._id}`
+              : undefined,
+          },
+          recipients: [{ userId: recipientId }],
+          dedupeKey: `github-task-closed-unmerged:${task._id}:${pullRequests
+            .map(pr => pr._id)
+            .sort()
+            .join(',')}`,
+        });
+      }
+      continue;
+    }
+    const nextStatus =
+      targetType === 'done'
+        ? 'done'
+        : targetType === 'canceled'
+          ? 'canceled'
+          : targetType === 'in_progress'
+            ? 'in_progress'
+            : 'todo';
+    if (task.status === nextStatus) continue;
+    const now = Date.now();
+    await ctx.db.patch('tasks', task._id, {
+      status: nextStatus,
+      startedAt:
+        nextStatus === 'in_progress' ? (task.startedAt ?? now) : task.startedAt,
+      completedAt: nextStatus === 'done' ? now : undefined,
+      updatedAt: now,
+    });
+    changed = true;
+    const actorId = work.createdBy ?? work.reporterId;
+    if (actorId) {
+      await recordActivity(ctx, {
+        scope: resolveIssueScope(work),
+        taskId: task._id,
+        actorId,
+        entityType: 'task',
+        eventType: 'task_status_changed',
+        details: {
+          field: 'status',
+          fromLabel: task.status,
+          toLabel: nextStatus,
+        },
+        snapshot: snapshotForIssue(work),
+      });
+    }
+  }
+  if (changed) {
+    await ctx.db.patch('issues', work._id, {
+      updatedAt: Date.now(),
+      lastMeaningfulActivityAt: Date.now(),
+      lastActivityEventType: 'github_task_state_automation',
+    });
+  }
+}
+
 async function applyWorkflowAutomationForIssue(
   ctx: MutationCtx,
   issueId: Id<'issues'>,
@@ -457,21 +585,16 @@ async function applyWorkflowAutomationForIssue(
     )
     .collect();
 
-  const pullRequests = await Promise.all(
-    links
-      .map(link => link.pullRequestId)
-      .filter((id): id is Id<'githubPullRequests'> => Boolean(id))
-      .map(id => ctx.db.get('githubPullRequests', id)),
-  ).then(items =>
-    items.filter((item): item is NonNullable<typeof item> => item !== null),
-  );
-  const githubIssues = await Promise.all(
-    links
-      .map(link => link.githubIssueId)
-      .filter((id): id is Id<'githubIssues'> => Boolean(id))
-      .map(id => ctx.db.get('githubIssues', id)),
-  ).then(items =>
-    items.filter((item): item is NonNullable<typeof item> => item !== null),
+  if (issue.kind === 'work') {
+    await applyTaskScopedWorkflowAutomation(ctx, issue, links);
+  }
+  const workflowLinks =
+    issue.kind === 'work' ? links.filter(link => !link.taskId) : links;
+  if (workflowLinks.length === 0) return;
+
+  const { pullRequests, githubIssues } = await loadWorkflowEvidence(
+    ctx,
+    workflowLinks,
   );
 
   const targetType =
@@ -705,8 +828,11 @@ async function autoAssignFromGitHubLogins(
   const issue = await ctx.db.get('issues', issueId);
   if (!issue) return;
 
-  const defaultState = await getDefaultAssignmentState(ctx, organizationId);
-  if (!defaultState) return;
+  const defaultState =
+    issue.kind === 'work'
+      ? null
+      : await getDefaultAssignmentState(ctx, organizationId);
+  if (issue.kind !== 'work' && !defaultState) return;
 
   const existingAssignments = await ctx.db
     .query('issueAssignees')
@@ -737,6 +863,8 @@ async function autoAssignFromGitHubLogins(
       }
       continue;
     }
+
+    if (!defaultState) continue;
 
     // Check not already assigned
     const existingAssignment = existingAssignments.find(
@@ -907,6 +1035,7 @@ async function syncArtifactLinksForIssues(args: {
   identifier: string | number;
   issueKeys: string[];
   source: 'auto' | 'manual';
+  preserveExistingWhenEmpty?: boolean;
   actorId?: Id<'users'>;
 }) {
   const {
@@ -978,6 +1107,7 @@ async function syncArtifactLinksForIssues(args: {
   }> = [];
   if (
     args.source === 'auto' &&
+    args.preserveExistingWhenEmpty &&
     resolvedTargets.length === 0 &&
     existingLinks.some(link => link.active)
   ) {
@@ -1184,6 +1314,8 @@ export const setAutoLinkEnabled = mutation({
     const integration = await getOrCreateIntegration(ctx, org._id);
     await ctx.db.patch('githubIntegrations', integration!._id, {
       autoLinkEnabled: args.enabled,
+      keyLinkEnabled: args.enabled,
+      aiMatchEnabled: args.enabled,
       updatedAt: Date.now(),
     });
 
@@ -1542,6 +1674,7 @@ export const syncPullRequestLinks = internalMutation({
     repoFullName: v.string(),
     number: v.number(),
     issueKeys: v.array(v.string()),
+    preserveExistingWhenEmpty: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await syncArtifactLinksForIssues({
@@ -1553,6 +1686,7 @@ export const syncPullRequestLinks = internalMutation({
       identifier: args.number,
       issueKeys: args.issueKeys,
       source: 'auto',
+      preserveExistingWhenEmpty: args.preserveExistingWhenEmpty,
     });
   },
 });
@@ -1573,7 +1707,6 @@ export const syncLinkedIssueContentFromPullRequest = internalMutation({
     if (!organization || !pullRequest) {
       throw new ConvexError('PULL_REQUEST_NOT_FOUND');
     }
-
     const links = await ctx.db
       .query('githubArtifactLinks')
       .withIndex('by_pr', q => q.eq('pullRequestId', args.pullRequestId))
@@ -1692,7 +1825,7 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       .query('githubArtifactLinks')
       .withIndex('by_pr', q => q.eq('pullRequestId', args.pullRequestId))
       .collect();
-    if (existingLinks.length > 0) {
+    if (existingLinks.some(link => link.active)) {
       return { created: false } as const;
     }
 
@@ -1702,6 +1835,9 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
     ]);
     if (!organization || !pullRequest) {
       throw new ConvexError('PULL_REQUEST_NOT_FOUND');
+    }
+    if (!['open', 'draft'].includes(pullRequest.state)) {
+      return { created: false } as const;
     }
 
     const repository = await ctx.db.get(
@@ -1771,6 +1907,15 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
         await ctx.db.patch('githubDevelopmentInbox', existingInbox._id, {
           status: 'linked',
           createdRequestId,
+          updatedAt: Date.now(),
+        });
+      } else if (
+        existingInbox &&
+        !createdRequestId &&
+        existingInbox.status === 'linked'
+      ) {
+        await ctx.db.patch('githubDevelopmentInbox', existingInbox._id, {
+          status: 'untriaged',
           updatedAt: Date.now(),
         });
       }
@@ -1877,6 +2022,7 @@ export const syncGitHubIssueLinks = internalMutation({
     repoFullName: v.string(),
     number: v.number(),
     issueKeys: v.array(v.string()),
+    preserveExistingWhenEmpty: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await syncArtifactLinksForIssues({
@@ -1888,6 +2034,7 @@ export const syncGitHubIssueLinks = internalMutation({
       identifier: args.number,
       issueKeys: args.issueKeys,
       source: 'auto',
+      preserveExistingWhenEmpty: args.preserveExistingWhenEmpty,
     });
   },
 });

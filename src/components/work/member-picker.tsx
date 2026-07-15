@@ -19,6 +19,7 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
+import { UserAvatar } from '@/components/user-avatar';
 
 export function MemberPicker({
   orgSlug,
@@ -112,9 +113,14 @@ export function MemberPicker({
                           }
                         }}
                       >
-                        <span className='bg-muted flex size-5 items-center justify-center rounded-full text-[9px] font-medium'>
-                          {name.slice(0, 2).toUpperCase()}
-                        </span>
+                        <UserAvatar
+                          name={member.user?.name ?? member.user?.username}
+                          email={member.user?.email}
+                          image={member.user?.image}
+                          userId={member.userId}
+                          size='sm'
+                          className='size-5'
+                        />
                         <span className='min-w-0 flex-1 truncate'>{name}</span>
                       </CommandItem>
                     );

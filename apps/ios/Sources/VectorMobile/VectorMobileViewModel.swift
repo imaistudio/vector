@@ -1544,6 +1544,8 @@ public final class VectorMobileViewModel: ObservableObject {
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: true)
     case .teamStatusChanges:
       VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: false)
+    case .unknown:
+      VectorNotificationPreference(category: category, inAppEnabled: true, emailEnabled: false, pushEnabled: false)
     }
   }
 

@@ -163,7 +163,9 @@ export const unreadCount = query({
         q.eq('userId', userId).eq('isRead', false).eq('isArchived', false),
       )
       .collect();
-    return rows.length;
+    const now = Date.now();
+    return rows.filter(row => !row.snoozedUntil || row.snoozedUntil <= now)
+      .length;
   },
 });
 

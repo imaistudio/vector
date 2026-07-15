@@ -110,7 +110,7 @@ struct MobileRequestDetailScreen: View {
 
   var body: some View {
     Group {
-      if let detail = viewModel.selectedRequest, detail.id == request.id {
+      if let detail = viewModel.selectedRequest, detail.id == request.id || detail.key == request.key {
         List {
           Section {
             VStack(alignment: .leading, spacing: 10) {
@@ -165,7 +165,7 @@ struct MobileRequestDetailScreen: View {
           }
 
           Section {
-            if detail.owner == nil {
+            if detail.owner == nil && detail.status.isClaimable {
               Button("Take request") {
                 Task { _ = await viewModel.claimRequest(detail.id) }
               }
@@ -354,7 +354,7 @@ struct MobileWorkDetailScreen: View {
 
   var body: some View {
     Group {
-      if let detail = viewModel.selectedWork, detail.id == work.id {
+      if let detail = viewModel.selectedWork, detail.id == work.id || detail.key == work.key {
         List {
           Section {
             VStack(alignment: .leading, spacing: 10) {

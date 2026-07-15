@@ -4,6 +4,7 @@ import { internalQuery, query, type QueryCtx } from '../_generated/server';
 import { getOrganizationBySlug, hasScopedPermission } from '../authz';
 import { getAuthUserId } from '../authUtils';
 import { canViewIssue } from '../access';
+import { canViewRequest } from '../requests/lib';
 import { PERMISSIONS } from '../_shared/permissions';
 import { getSiteSettings } from '../platformAdmin/lib';
 import { buildArtifactExternalKey } from './shared';
@@ -1013,18 +1014,24 @@ export const listDevelopmentInbox = query({
           .order('desc')
           .take(100);
     return await Promise.all(
-      rows.map(async row => ({
-        ...row,
-        pullRequest: row.pullRequestId
-          ? await ctx.db.get('githubPullRequests', row.pullRequestId)
-          : null,
-        githubIssue: row.githubIssueId
-          ? await ctx.db.get('githubIssues', row.githubIssueId)
-          : null,
-        createdRequest: row.createdRequestId
+      rows.map(async row => {
+        const createdRequest = row.createdRequestId
           ? await ctx.db.get('requests', row.createdRequestId)
-          : null,
-      })),
+          : null;
+        return {
+          ...row,
+          pullRequest: row.pullRequestId
+            ? await ctx.db.get('githubPullRequests', row.pullRequestId)
+            : null,
+          githubIssue: row.githubIssueId
+            ? await ctx.db.get('githubIssues', row.githubIssueId)
+            : null,
+          createdRequest:
+            createdRequest && (await canViewRequest(ctx, createdRequest))
+              ? createdRequest
+              : null,
+        };
+      }),
     );
   },
 });

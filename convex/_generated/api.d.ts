@@ -96,6 +96,7 @@ import type * as views_queries from "../views/queries.js";
 import type * as work_lib from "../work/lib.js";
 import type * as work_mutations from "../work/mutations.js";
 import type * as work_queries from "../work/queries.js";
+import type * as work_requestReconciliation from "../work/requestReconciliation.js";
 import type * as workModelMigrations from "../workModelMigrations.js";
 
 import type {
@@ -193,6 +194,7 @@ declare const fullApi: ApiFromModules<{
   "work/lib": typeof work_lib;
   "work/mutations": typeof work_mutations;
   "work/queries": typeof work_queries;
+  "work/requestReconciliation": typeof work_requestReconciliation;
   workModelMigrations: typeof workModelMigrations;
 }>;
 

@@ -22,6 +22,7 @@ public enum VectorRequestScope: String, CaseIterable, Identifiable, Sendable {
     case .all: "All"
     }
   }
+
 }
 
 public enum VectorWorkScope: String, CaseIterable, Identifiable, Sendable {
@@ -71,6 +72,13 @@ public enum VectorRequestStatus: String, Decodable, Equatable, Sendable {
     case .declined: "Declined"
     case .duplicate: "Duplicate"
     case .unknown: "Unknown"
+    }
+  }
+
+  public var isClaimable: Bool {
+    switch self {
+    case .new, .routed, .readyForReview, .changesRequested: true
+    default: false
     }
   }
 }
