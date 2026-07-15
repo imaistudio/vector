@@ -559,16 +559,18 @@ Expected result:
 - `ENG-200` shows the commit in `Child Issue Commits`
 - the parent does not get a direct commit link unless its own key is referenced
 
-### Test 6: Suppression
+### Test 6: Durable unlink and suppression
 
 1. Let an artifact auto-link to an issue.
 2. In the issue `Development` section, click `Suppress`.
 3. Re-deliver the webhook or wait for reconciliation.
+4. Manually link another artifact, click `Unlink`, and re-deliver its webhook.
 
 Expected result:
 
-- the artifact stays unlinked
-- it does not come back on the next sync
+- both artifacts stay unlinked
+- neither comes back or creates unmatched Work/Requests on the next sync
+- manually linking either artifact again reverses its durable unlink decision
 
 ### Test 7: Refresh and stale data
 
@@ -658,8 +660,9 @@ Check:
 
 Check:
 
-- you used `Suppress` on an auto-linked artifact
-- you did not use plain unlink on something that is still auto-matchable
+- the artifact was not explicitly linked again after the unlink or suppression
+- the Development inbox record is still `dismissed`
+- the webhook and reconciliation paths are using the latest deployment
 
 ### UI shows stale or old status
 

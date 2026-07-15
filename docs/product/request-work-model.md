@@ -821,7 +821,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - Artifacts attach primarily to Work. Task-level artifact links are represented in the schema and can be expanded in a later UI pass.
 - A successful key/AI resolution with no match removes stale automatic links. A disabled, unavailable, or failed resolver preserves existing links so a temporary integration outage cannot silently detach evidence.
 - Task-scoped development evidence updates only that Task. It never completes the parent Work or raises its Requests for review; only Work-scoped evidence may drive GitHub-controlled Work completion.
-- Manual suppression is scoped to the exact Work-level or Task-level attachment that was removed, so hiding evidence from one Task does not hide it from its siblings or parent Work.
+- Manual unlink and suppression are scoped to the exact Work-level or Task-level attachment that was removed, so hiding evidence from one Task does not hide it from its siblings or parent Work. Either action also records the artifact as human-triaged, preventing later webhook updates from creating a new unmatched Request or Work; an explicit manual re-link reverses that decision.
 - Reconciliation and webhook ingestion apply the unmatched-artifact policy idempotently to open pull requests and GitHub issues, so installing GitHub after an artifact opened or missing its original webhook does not hide that work. Dismissed inbox items remain dismissed.
 
 ### Naming and migration

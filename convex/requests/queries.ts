@@ -122,7 +122,13 @@ export const list = query({
 
     let page = await fetchPage(args.paginationOpts);
     const inbox = await enrich(page.page);
-    while (inbox.length < args.paginationOpts.numItems && !page.isDone) {
+    let refillAttempts = 0;
+    while (
+      inbox.length < args.paginationOpts.numItems &&
+      !page.isDone &&
+      refillAttempts < 5
+    ) {
+      refillAttempts += 1;
       page = await fetchPage({
         ...args.paginationOpts,
         cursor: page.continueCursor,

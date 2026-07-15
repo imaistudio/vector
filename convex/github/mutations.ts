@@ -1285,9 +1285,17 @@ async function syncArtifactLinksForIssues(args: {
           query.eq('pullRequestId', artifactId as Id<'githubPullRequests'>),
         )
         .first();
-      if (inbox && inbox.status === 'untriaged') {
+      if (inbox && inbox.status !== 'linked') {
         await ctx.db.patch('githubDevelopmentInbox', inbox._id, {
           status: 'linked',
+          updatedAt: Date.now(),
+        });
+      } else if (!inbox && args.source === 'manual') {
+        await ctx.db.insert('githubDevelopmentInbox', {
+          organizationId,
+          pullRequestId: artifactId as Id<'githubPullRequests'>,
+          status: 'linked',
+          createdAt: Date.now(),
           updatedAt: Date.now(),
         });
       }
@@ -1302,6 +1310,28 @@ async function syncArtifactLinksForIssues(args: {
         issueId,
         artifactId as Id<'githubIssues'>,
       );
+    }
+    if (targets.length > 0) {
+      const inbox = await ctx.db
+        .query('githubDevelopmentInbox')
+        .withIndex('by_github_issue', query =>
+          query.eq('githubIssueId', artifactId as Id<'githubIssues'>),
+        )
+        .first();
+      if (inbox && inbox.status !== 'linked') {
+        await ctx.db.patch('githubDevelopmentInbox', inbox._id, {
+          status: 'linked',
+          updatedAt: Date.now(),
+        });
+      } else if (!inbox && args.source === 'manual') {
+        await ctx.db.insert('githubDevelopmentInbox', {
+          organizationId,
+          githubIssueId: artifactId as Id<'githubIssues'>,
+          status: 'linked',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
     }
   }
 
@@ -1943,6 +1973,10 @@ export const createIssueFromPullRequestIfNeeded = internalMutation({
       .withIndex('by_pull_request', q => q.eq('pullRequestId', pullRequest._id))
       .first();
 
+    if (existingInbox?.status === 'dismissed') {
+      return { created: false, inboxed: false } as const;
+    }
+
     if (existingInbox?.createdWorkId) {
       return {
         created: false,
@@ -2188,6 +2222,10 @@ export const triageUnmatchedGitHubIssue = internalMutation({
       .query('githubDevelopmentInbox')
       .withIndex('by_github_issue', q => q.eq('githubIssueId', githubIssue._id))
       .first();
+
+    if (existingInbox?.status === 'dismissed') {
+      return { created: false, inboxed: false } as const;
+    }
 
     if (existingInbox?.createdWorkId) {
       return {
@@ -2591,69 +2629,98 @@ export const unlinkArtifact = mutation({
     });
 
     let suppressionId: Id<'githubArtifactSuppressions'> | null = null;
-    if (args.suppress) {
-      let externalKey: string | null = null;
-      if (link.pullRequestId) {
-        const pr = await ctx.db.get('githubPullRequests', link.pullRequestId);
-        const repo = pr
-          ? await ctx.db.get('githubRepositories', pr.repositoryId)
-          : null;
-        if (pr && repo) {
-          externalKey = buildArtifactExternalKey(
-            'pull_request',
-            repo.fullName,
-            pr.number,
-          );
-        }
-      } else if (link.githubIssueId) {
-        const ghIssue = await ctx.db.get('githubIssues', link.githubIssueId);
-        const repo = ghIssue
-          ? await ctx.db.get('githubRepositories', ghIssue.repositoryId)
-          : null;
-        if (ghIssue && repo) {
-          externalKey = buildArtifactExternalKey(
-            'issue',
-            repo.fullName,
-            ghIssue.number,
-          );
-        }
-      } else if (link.commitId) {
-        const commit = await ctx.db.get('githubCommits', link.commitId);
-        const repo = commit
-          ? await ctx.db.get('githubRepositories', commit.repositoryId)
-          : null;
-        if (commit && repo) {
-          externalKey = buildArtifactExternalKey(
-            'commit',
-            repo.fullName,
-            commit.sha,
-          );
-        }
+    let externalKey: string | null = null;
+    if (link.pullRequestId) {
+      const pr = await ctx.db.get('githubPullRequests', link.pullRequestId);
+      const repo = pr
+        ? await ctx.db.get('githubRepositories', pr.repositoryId)
+        : null;
+      if (pr && repo) {
+        externalKey = buildArtifactExternalKey(
+          'pull_request',
+          repo.fullName,
+          pr.number,
+        );
       }
+    } else if (link.githubIssueId) {
+      const ghIssue = await ctx.db.get('githubIssues', link.githubIssueId);
+      const repo = ghIssue
+        ? await ctx.db.get('githubRepositories', ghIssue.repositoryId)
+        : null;
+      if (ghIssue && repo) {
+        externalKey = buildArtifactExternalKey(
+          'issue',
+          repo.fullName,
+          ghIssue.number,
+        );
+      }
+    } else if (link.commitId) {
+      const commit = await ctx.db.get('githubCommits', link.commitId);
+      const repo = commit
+        ? await ctx.db.get('githubRepositories', commit.repositoryId)
+        : null;
+      if (commit && repo) {
+        externalKey = buildArtifactExternalKey(
+          'commit',
+          repo.fullName,
+          commit.sha,
+        );
+      }
+    }
 
-      if (externalKey) {
-        const existingSuppression = await ctx.db
-          .query('githubArtifactSuppressions')
-          .withIndex('by_issue_task_external', q =>
-            q
-              .eq('issueId', issue._id)
-              .eq('taskId', link.taskId)
-              .eq('artifactType', link.artifactType)
-              .eq('externalKey', externalKey),
-          )
-          .first();
-        suppressionId =
-          existingSuppression?._id ??
-          (await ctx.db.insert('githubArtifactSuppressions', {
-            organizationId: issue.organizationId,
-            issueId: issue._id,
-            taskId: link.taskId,
-            artifactType: link.artifactType,
-            externalKey,
-            reason: 'manual_suppress',
-            createdBy: userId,
-            createdAt: Date.now(),
-          }));
+    if (externalKey) {
+      const existingSuppression = await ctx.db
+        .query('githubArtifactSuppressions')
+        .withIndex('by_issue_task_external', q =>
+          q
+            .eq('issueId', issue._id)
+            .eq('taskId', link.taskId)
+            .eq('artifactType', link.artifactType)
+            .eq('externalKey', externalKey),
+        )
+        .first();
+      suppressionId =
+        existingSuppression?._id ??
+        (await ctx.db.insert('githubArtifactSuppressions', {
+          organizationId: issue.organizationId,
+          issueId: issue._id,
+          taskId: link.taskId,
+          artifactType: link.artifactType,
+          externalKey,
+          reason: args.suppress ? 'manual_suppress' : 'manual_unlink',
+          createdBy: userId,
+          createdAt: Date.now(),
+        }));
+    }
+
+    if (link.pullRequestId || link.githubIssueId) {
+      const inbox = link.pullRequestId
+        ? await ctx.db
+            .query('githubDevelopmentInbox')
+            .withIndex('by_pull_request', q =>
+              q.eq('pullRequestId', link.pullRequestId),
+            )
+            .first()
+        : await ctx.db
+            .query('githubDevelopmentInbox')
+            .withIndex('by_github_issue', q =>
+              q.eq('githubIssueId', link.githubIssueId),
+            )
+            .first();
+      if (inbox) {
+        await ctx.db.patch('githubDevelopmentInbox', inbox._id, {
+          status: 'dismissed',
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.insert('githubDevelopmentInbox', {
+          organizationId: issue.organizationId,
+          pullRequestId: link.pullRequestId,
+          githubIssueId: link.githubIssueId,
+          status: 'dismissed',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
       }
     }
 
