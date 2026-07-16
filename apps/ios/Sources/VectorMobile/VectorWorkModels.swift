@@ -703,6 +703,26 @@ public struct VectorWorkSession: Decodable, Equatable, Identifiable {
   public var displayTitle: String {
     workSession?.title ?? title ?? latestSummary ?? "Agent session"
   }
+
+  public func messagingAvailability(
+    effectiveStatus: String? = nil
+  ) -> VectorAgentSessionMessagingAvailability {
+    switch (effectiveStatus ?? status).lowercased() {
+    case "disconnected", "offline":
+      return .offline
+    case "completed", "failed", "canceled", "cancelled":
+      return .ended
+    default:
+      return canInteract ? .available : .readOnly
+    }
+  }
+}
+
+public enum VectorAgentSessionMessagingAvailability: Equatable, Sendable {
+  case available
+  case readOnly
+  case offline
+  case ended
 }
 
 public struct VectorAgentSessionMessage: Decodable, Equatable, Identifiable {

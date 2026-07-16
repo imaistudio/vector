@@ -25,11 +25,15 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var workSessions: [VectorWorkSession] = []
   @Published public private(set) var delegationTargets: [VectorDelegationTarget] = []
   @Published public private(set) var selectedAgentSession: VectorAgentSessionSnapshot?
+  @Published public private(set) var agentSessionLoadError: String?
+  @Published public private(set) var agentSessionLoadErrorSessionId: VectorID?
+  @Published public private(set) var agentSessionSendError: String?
+  @Published public private(set) var agentSessionSendErrorSessionId: VectorID?
+  @Published public private(set) var sendingAgentSessionId: VectorID?
   @Published public private(set) var selectedRequestError: String?
   @Published public private(set) var selectedWorkError: String?
   @Published public private(set) var workSessionError: String?
   @Published public private(set) var isDelegatingWorkSession = false
-  @Published public private(set) var isSendingAgentMessage = false
   @Published public private(set) var isLoadingRequests = false
   @Published public private(set) var isLoadingWork = false
   @Published public private(set) var pendingWorkModelActions: Set<String> = []
@@ -116,6 +120,23 @@ public final class VectorMobileViewModel: ObservableObject {
   private var pendingComments: [VectorID: VectorComment] = [:]
   private var userStatusMutationSequence = 0
   private var optimisticUserStatusGuard: OptimisticUserStatusGuard?
+  private let requestCreationTimeout: Duration
+  private var requestCreationAttemptId: UUID?
+  private var requestCreationOperationTask: Task<Void, Never>?
+  private var requestCreationTimeoutTask: Task<Void, Never>?
+  private var requestCreationContinuation: CheckedContinuation<Bool, Never>?
+
+  public var isSendingAgentMessage: Bool {
+    sendingAgentSessionId != nil
+  }
+
+  public func agentSessionLoadError(for sessionId: VectorID) -> String? {
+    agentSessionLoadErrorSessionId == sessionId ? agentSessionLoadError : nil
+  }
+
+  public func agentSessionSendError(for sessionId: VectorID) -> String? {
+    agentSessionSendErrorSessionId == sessionId ? agentSessionSendError : nil
+  }
 
   private struct OptimisticUserStatusGuard {
     enum ConfirmationMode {
@@ -137,10 +158,12 @@ public final class VectorMobileViewModel: ObservableObject {
   public init(
     configuration: VectorMobileConfiguration = .demo,
     repository: VectorMobileRepository = MockVectorRepository(),
-    initialLoadPolicy: VectorMobileInitialLoadPolicy = .allSurfaces
+    initialLoadPolicy: VectorMobileInitialLoadPolicy = .allSurfaces,
+    requestCreationTimeout: Duration = .seconds(20)
   ) {
     self.configuration = configuration
     self.repository = repository
+    self.requestCreationTimeout = requestCreationTimeout
     switch initialLoadPolicy {
     case .primarySurfaces:
       refreshPrimarySurfaces()
@@ -301,17 +324,23 @@ public final class VectorMobileViewModel: ObservableObject {
   public func loadAgentSession(liveActivityId: VectorID) {
     agentSessionCancellable?.cancel()
     selectedAgentSession = nil
-    workSessionError = nil
+    agentSessionLoadError = nil
+    agentSessionLoadErrorSessionId = nil
     agentSessionCancellable = repository.agentSession(liveActivityId: liveActivityId)
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { [weak self] completion in
           if case let .failure(error) = completion {
-            self?.workSessionError = error.localizedDescription
+            self?.agentSessionLoadError = error.localizedDescription
+            self?.agentSessionLoadErrorSessionId = liveActivityId
           }
         },
         receiveValue: { [weak self] session in
           self?.selectedAgentSession = session
+          self?.agentSessionLoadError = session == nil
+            ? "This agent session is unavailable or you no longer have access."
+            : nil
+          self?.agentSessionLoadErrorSessionId = session == nil ? liveActivityId : nil
         }
       )
   }
@@ -322,15 +351,86 @@ public final class VectorMobileViewModel: ObservableObject {
     expectedOutput: String,
     reviewGuidance: String?
   ) async -> Bool {
-    await performWorkModelAction(id: "create-request") {
-      _ = try await self.repository.createRequest(
-        orgSlug: self.configuration.orgSlug,
-        title: title,
-        description: description,
-        expectedOutput: expectedOutput,
-        reviewGuidance: reviewGuidance
-      )
+    let actionId = "create-request"
+    guard !pendingWorkModelActions.contains(actionId) else { return false }
+
+    let attemptId = UUID()
+    requestCreationAttemptId = attemptId
+    pendingWorkModelActions.insert(actionId)
+    workModelActionError = nil
+
+    return await withTaskCancellationHandler {
+      await withCheckedContinuation { continuation in
+        requestCreationContinuation = continuation
+        requestCreationOperationTask = Task { [weak self] in
+          guard let self else { return }
+          do {
+            _ = try await repository.createRequest(
+              orgSlug: configuration.orgSlug,
+              title: title,
+              description: description,
+              expectedOutput: expectedOutput,
+              reviewGuidance: reviewGuidance
+            )
+            finishRequestCreation(attemptId: attemptId, succeeded: true)
+          } catch is CancellationError {
+            finishRequestCreation(attemptId: attemptId, succeeded: false)
+          } catch {
+            finishRequestCreation(
+              attemptId: attemptId,
+              succeeded: false,
+              errorMessage: error.localizedDescription
+            )
+          }
+        }
+        requestCreationTimeoutTask = Task { [weak self, requestCreationTimeout] in
+          do {
+            try await Task.sleep(for: requestCreationTimeout)
+          } catch {
+            return
+          }
+          self?.finishRequestCreation(
+            attemptId: attemptId,
+            succeeded: false,
+            errorMessage: "Vector could not confirm that the request was created. Check Requests before trying again."
+          )
+        }
+
+        if Task.isCancelled {
+          finishRequestCreation(attemptId: attemptId, succeeded: false)
+        }
+      }
+    } onCancel: {
+      Task { @MainActor [weak self] in
+        self?.finishRequestCreation(attemptId: attemptId, succeeded: false)
+      }
     }
+  }
+
+  private func finishRequestCreation(
+    attemptId: UUID,
+    succeeded: Bool,
+    errorMessage: String? = nil
+  ) {
+    guard requestCreationAttemptId == attemptId else { return }
+
+    requestCreationAttemptId = nil
+    let operationTask = requestCreationOperationTask
+    let timeoutTask = requestCreationTimeoutTask
+    let continuation = requestCreationContinuation
+    requestCreationOperationTask = nil
+    requestCreationTimeoutTask = nil
+    requestCreationContinuation = nil
+    pendingWorkModelActions.remove("create-request")
+
+    if let errorMessage {
+      workModelActionError = errorMessage
+    }
+    refreshRequests()
+
+    operationTask?.cancel()
+    timeoutTask?.cancel()
+    continuation?.resume(returning: succeeded)
   }
 
   public func createWork(
@@ -454,10 +554,11 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async -> Bool {
     let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedBody.isEmpty, !isSendingAgentMessage else { return false }
-    isSendingAgentMessage = true
-    workSessionError = nil
-    defer { isSendingAgentMessage = false }
+    guard !trimmedBody.isEmpty, sendingAgentSessionId == nil else { return false }
+    sendingAgentSessionId = liveActivityId
+    agentSessionSendError = nil
+    agentSessionSendErrorSessionId = nil
+    defer { sendingAgentSessionId = nil }
 
     do {
       _ = try await repository.sendAgentSessionMessage(
@@ -466,7 +567,8 @@ public final class VectorMobileViewModel: ObservableObject {
       )
       return true
     } catch {
-      workSessionError = error.localizedDescription
+      agentSessionSendError = error.localizedDescription
+      agentSessionSendErrorSessionId = liveActivityId
       return false
     }
   }

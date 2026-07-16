@@ -11,6 +11,9 @@ on:
       - '.github/workflows/ios.yml'
       - 'apps/ios/**'
       - 'scripts/prepare-ios-signing.mjs'
+      - 'scripts/testflight-distribution.mjs'
+      - 'scripts/testflight-distribution.test.mjs'
+      - 'scripts/verify-testflight-build.mjs'
   push:
     branches:
       - main
@@ -18,6 +21,9 @@ on:
       - '.github/workflows/ios.yml'
       - 'apps/ios/**'
       - 'scripts/prepare-ios-signing.mjs'
+      - 'scripts/testflight-distribution.mjs'
+      - 'scripts/testflight-distribution.test.mjs'
+      - 'scripts/verify-testflight-build.mjs'
   workflow_dispatch:
     inputs:
       signed_archive:
@@ -26,12 +32,12 @@ on:
         type: boolean
         default: false
       upload_testflight:
-        description: 'Upload the exported IPA to TestFlight after archive export.'
+        description: 'Upload the exported IPA, then distribute it to the selected TestFlight groups.'
         required: true
         type: boolean
         default: false
       verify_testflight_build:
-        description: 'Optional existing TestFlight build number to verify without uploading another build.'
+        description: 'Optional existing TestFlight build number to verify and distribute without uploading another build.'
         required: false
         type: string
         default: ''
@@ -60,6 +66,11 @@ on:
         required: false
         type: string
         default: 'studio.imai.vector'
+      external_beta_groups:
+        description: 'Comma-separated external TestFlight group names/IDs. * selects all; none disables this lane.'
+        required: false
+        type: string
+        default: 'none'
       export_method:
         description: 'xcodebuild export method, e.g. app-store-connect, release-testing, enterprise, debugging.'
         required: false
@@ -87,9 +98,17 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
       - name: Run Swift package tests
         run: swift test
         working-directory: apps/ios
+
+      - name: Test TestFlight automation
+        run: node --test scripts/testflight-distribution.test.mjs
 
       - name: Build app target for iOS Simulator
         run: xcodebuild -project Vector.xcodeproj -scheme Vector -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
@@ -118,6 +137,11 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
 
       - name: Validate app target inputs
         run: |
@@ -283,7 +307,7 @@ jobs:
             --p8-file-path "$api_key_path" \
             --output-format normal
 
-      - name: Wait for TestFlight processing
+      - name: Distribute to internal and external TestFlight groups
         if: inputs.upload_testflight
         env:
           APPLE_API_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
@@ -291,9 +315,13 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
           TESTFLIGHT_BUILD_NUMBER: ${{ github.run_number }}
+          TESTFLIGHT_INTERNAL_GROUPS: '*'
+          TESTFLIGHT_EXTERNAL_GROUPS: ${{ inputs.external_beta_groups }}
         run: node scripts/verify-testflight-build.mjs
 
       - name: Job summary
+        env:
+          SUMMARY_EXTERNAL_BETA_GROUPS: ${{ inputs.external_beta_groups }}
         run: |
           {
             echo "## iOS signed archive"
@@ -304,10 +332,16 @@ jobs:
             echo "- Build number: \`${GITHUB_RUN_NUMBER}\`"
             echo "- Export method: \`$IOS_EXPORT_METHOD\`"
             echo "- TestFlight upload: \`${{ inputs.upload_testflight }}\`"
+            if [ "${{ inputs.upload_testflight }}" = "true" ]; then
+              echo "- Internal groups: \`*\` (all)"
+              echo "- External groups: \`$SUMMARY_EXTERNAL_BETA_GROUPS\`"
+            else
+              echo "- TestFlight distribution: \`skipped\`"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify-testflight:
-    name: Verify TestFlight
+    name: Verify and Distribute TestFlight
     if: github.event_name == 'workflow_dispatch' && inputs.verify_testflight_build != ''
     runs-on: ubuntu-latest
 
@@ -317,10 +351,17 @@ jobs:
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       IOS_BUNDLE_ID: ${{ inputs.bundle_id }}
       TESTFLIGHT_BUILD_NUMBER: ${{ inputs.verify_testflight_build }}
+      TESTFLIGHT_INTERNAL_GROUPS: '*'
+      TESTFLIGHT_EXTERNAL_GROUPS: ${{ inputs.external_beta_groups }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Wait for TestFlight processing
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Distribute to internal and external TestFlight groups
         run: node scripts/verify-testflight-build.mjs
