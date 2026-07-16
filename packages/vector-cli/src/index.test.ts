@@ -122,6 +122,52 @@ describe('Vector CLI command surface', () => {
     expect(output).toContain('app URL is required');
   }, 30_000);
 
+  it('tells an agent to start the service before attaching its session', () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), 'vcli-attach-session-'));
+    const env = {
+      ...process.env,
+      VECTOR_HOME: path.join(tempRoot, '.vector'),
+    };
+
+    const result = runCliRaw(['work', 'attach-session', 'VEC-42'], {
+      cwd: tempRoot,
+      env,
+    });
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+    expect(result.status).toBe(1);
+    expect(output).toContain('Bridge is not configured');
+    expect(output).toContain('vcli service start');
+  }, 30_000);
+
+  it('refuses session attachment when a configured service is stopped', () => {
+    const tempRoot = mkdtempSync(path.join(tmpdir(), 'vcli-stopped-service-'));
+    const vectorHome = path.join(tempRoot, '.vector');
+    mkdirSync(vectorHome, { recursive: true });
+    writeFileSync(
+      path.join(vectorHome, 'bridge.json'),
+      JSON.stringify({
+        deviceId: 'device-1',
+        deviceKey: 'device-key',
+        deviceSecret: 'secret',
+        userId: 'user-1',
+        displayName: 'Stopped Mac',
+        convexUrl: 'https://example.convex.cloud',
+        registeredAt: new Date().toISOString(),
+      }),
+    );
+
+    const result = runCliRaw(['work', 'attach-session', 'VEC-42'], {
+      cwd: tempRoot,
+      env: { ...process.env, VECTOR_HOME: vectorHome },
+    });
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+    expect(result.status).toBe(1);
+    expect(output).toContain('Bridge is not running');
+    expect(output).toContain('vcli service start');
+  }, 30_000);
+
   it('renders the root help with all top-level commands', () => {
     const output = runCli(['--help']);
 
@@ -318,6 +364,7 @@ describe('Vector CLI command surface', () => {
         'start <workKey>',
         'status <workKey> <status>',
         'context [options] <workKey>',
+        'attach-session [options] <workKey>',
         'watch [options] <workKey>',
         'ready-for-review <workKey>',
         'complete <workKey>',

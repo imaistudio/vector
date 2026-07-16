@@ -16,6 +16,11 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(VectorConvexFunctions.raiseWorkAttention, "work/mutations:raiseAttention")
     XCTAssertEqual(VectorConvexFunctions.createTask, "tasks/mutations:create")
     XCTAssertEqual(VectorConvexFunctions.setTaskStatus, "tasks/mutations:setStatus")
+    XCTAssertEqual(VectorConvexFunctions.listWorkSessions, "agentBridge/queries:listIssueLiveActivities")
+    XCTAssertEqual(VectorConvexFunctions.listDelegationTargets, "agentBridge/queries:listDelegationTargets")
+    XCTAssertEqual(VectorConvexFunctions.getAgentSessionSnapshot, "agentBridge/queries:getAgentSessionSnapshot")
+    XCTAssertEqual(VectorConvexFunctions.delegateWorkSession, "agentBridge/mutations:delegateIssue")
+    XCTAssertEqual(VectorConvexFunctions.sendAgentSessionMessage, "agentBridge/mutations:appendLiveMessage")
     XCTAssertEqual(VectorConvexFunctions.listIssuesPage, "issues/queries:listIssuesPage")
     XCTAssertEqual(VectorConvexFunctions.getIssueByKey, "issues/queries:getByKey")
     XCTAssertEqual(VectorConvexFunctions.createIssue, "issues/mutations:create")
@@ -91,6 +96,20 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(work.attention.first?.prompt, "Choose a rollout path")
     XCTAssertEqual(work.attention.first?.requestedAt, 1_774_560_100_000)
     XCTAssertNil(work.executions.first?.title)
+  }
+
+  func testWorkSessionAndTranscriptDecodeConvexPayloads() throws {
+    let sessionPayload = #"{"_id":"activity-1","provider":"codex","providerLabel":"Codex","title":"Implement service mode","status":"active","latestSummary":"Running tests","deviceName":"Raj’s Mac","canInteract":true,"lastEventAt":1774560300000,"workSession":{"_id":"session-1","title":"VEC-42: Service mode","agentProvider":"codex","cwd":"/workspace/vector","repoRoot":"/workspace/vector","branch":"main","canInteract":true,"canManage":true}}"#.data(using: .utf8)!
+    let snapshotPayload = #"{"liveActivityId":"activity-1","workSessionId":"session-1","agent":"codex","title":"VEC-42: Service mode","status":"active","cwd":"/workspace/vector","messages":[{"id":"message-1","role":"assistant","text":"Service is running","status":"completed","direction":"agent_to_vector","deliveryStatus":"delivered","createdAt":1774560300000}]}"#.data(using: .utf8)!
+
+    let session = try JSONDecoder().decode(VectorWorkSession.self, from: sessionPayload)
+    let snapshot = try JSONDecoder().decode(VectorAgentSessionSnapshot.self, from: snapshotPayload)
+
+    XCTAssertEqual(session.deviceName, "Raj’s Mac")
+    XCTAssertEqual(session.workSession?.branch, "main")
+    XCTAssertTrue(session.canInteract)
+    XCTAssertEqual(snapshot.messages.first?.text, "Service is running")
+    XCTAssertEqual(snapshot.messages.first?.direction, "agent_to_vector")
   }
 
   func testNotificationDeepLinksRecognizeRequestAndWorkRoutes() throws {

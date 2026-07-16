@@ -26,6 +26,10 @@ import { createConvexClient, runAction, runMutation, runQuery } from './convex';
 import { printOutput } from './output';
 import { isNewerVersion } from './version';
 import {
+  discoverAttachableSessions,
+  findCurrentAgentSession,
+} from './agent-adapters';
+import {
   diffWorkSnapshots,
   parseWorkWatchCategories,
   snapshotWork,
@@ -2951,6 +2955,103 @@ workCommand
         workKey,
         taskId: task?._id,
       }),
+      runtime.json,
+    );
+  });
+
+workCommand
+  .command('attach-session <workKey>')
+  .description('Attach the current local agent session to Work')
+  .option('--task <number>', 'Attribute the session to one Task in the Work')
+  .option(
+    '--session <sessionKey>',
+    'Use a specific detected session when auto-detection is ambiguous',
+  )
+  .action(async (workKey, options, command) => {
+    const bridgeConfig = loadBridgeConfig();
+    if (!bridgeConfig) {
+      throw new Error(
+        'Bridge is not configured. Run `vcli service start` first.',
+      );
+    }
+
+    const bridgeStatus = getBridgeStatus();
+    if (!bridgeStatus.running) {
+      throw new Error(
+        'Bridge is not running. Run `vcli service start` before attaching a session.',
+      );
+    }
+
+    const sessions = discoverAttachableSessions();
+    const session = findCurrentAgentSession(sessions, {
+      sessionKey: options.session,
+      cwd: process.cwd(),
+    });
+    if (!session) {
+      const detected = sessions
+        .map(item => `${item.provider}:${item.sessionKey}`)
+        .join(', ');
+      throw new Error(
+        options.session
+          ? `Agent session not found: ${options.session}`
+          : detected
+            ? `Could not identify the current agent session. Re-run with --session <sessionKey>. Detected: ${detected}`
+            : 'No local agent session was detected. Start this command from inside Codex, Claude Code, Cursor, Copilot, OpenCode, or Pi.',
+      );
+    }
+
+    const { client, runtime } = await getClient(command);
+    const work = await resolveWork(client, requireOrg(runtime), workKey);
+    const task = options.task
+      ? await resolveTask(client, work._id, options.task)
+      : undefined;
+    const processId = await runMutation(
+      client,
+      api.agentBridge.mutations.reportProcess,
+      {
+        deviceId: bridgeConfig.deviceId as Id<'agentDevices'>,
+        provider: session.provider,
+        providerLabel: session.providerLabel,
+        localProcessId: session.localProcessId,
+        sessionKey: session.sessionKey,
+        cwd: session.cwd,
+        repoRoot: session.repoRoot,
+        branch: session.branch,
+        title: session.title,
+        model: session.model,
+        permissionMode: session.permissionMode,
+        thinkingLevel: session.thinkingLevel,
+        fastMode: session.fastMode,
+        contextLength: session.contextLength,
+        mode: session.mode,
+        status: session.status,
+        supportsInboundMessages: session.supportsInboundMessages,
+      },
+    );
+    const liveActivityId = await runMutation(
+      client,
+      api.agentBridge.mutations.attachLiveActivity,
+      {
+        issueId: work._id,
+        taskId: task?._id,
+        deviceId: bridgeConfig.deviceId as Id<'agentDevices'>,
+        processId,
+        provider: session.provider,
+        title: session.title,
+      },
+    );
+
+    printOutput(
+      {
+        ok: true,
+        workKey: work.key,
+        taskId: task?._id,
+        liveActivityId,
+        deviceId: bridgeConfig.deviceId,
+        processId,
+        provider: session.provider,
+        sessionKey: session.sessionKey,
+      },
       runtime.json,
     );
   });

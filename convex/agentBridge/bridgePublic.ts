@@ -481,7 +481,7 @@ export const reconcileObservedProcesses = mutation({
         continue;
       }
 
-      if (!process.localProcessId) {
+      if (!process.sessionKey && !process.localProcessId) {
         await ctx.db.patch('agentProcesses', process._id, {
           status: 'disconnected',
           endedAt: now,
@@ -496,7 +496,7 @@ export const reconcileObservedProcesses = mutation({
         !!process.localProcessId &&
         activeLocalProcessIds.has(process.localProcessId);
 
-      if (sessionStillActive || pidStillActive) {
+      if (process.sessionKey ? sessionStillActive : pidStillActive) {
         continue;
       }
 
@@ -515,6 +515,13 @@ export const reconcileObservedProcesses = mutation({
           lastEventAt: now,
           endedAt: now,
         });
+        if (activity.workSessionId) {
+          await ctx.db.patch('workSessions', activity.workSessionId, {
+            status: 'disconnected',
+            lastEventAt: now,
+            endedAt: now,
+          });
+        }
       }
 
       disconnected++;
@@ -652,6 +659,15 @@ export const updateWorkSessionTerminal = mutation({
     const workSession = await ctx.db.get('workSessions', args.workSessionId);
     if (!workSession || workSession.deviceId !== args.deviceId) {
       throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
+    if (args.agentProcessId) {
+      const agentProcess = await ctx.db.get(
+        'agentProcesses',
+        args.agentProcessId,
+      );
+      if (!agentProcess || agentProcess.deviceId !== args.deviceId) {
+        throw new ConvexError('PROCESS_NOT_FOUND');
+      }
     }
 
     const now = Date.now();
@@ -923,6 +939,11 @@ export const getTerminalSignals = query({
   },
   handler: async (ctx, args) => {
     await validateDeviceSecret(ctx, args.deviceId, args.deviceSecret);
+
+    const workSession = await ctx.db.get('workSessions', args.workSessionId);
+    if (!workSession || workSession.deviceId !== args.deviceId) {
+      throw new ConvexError('WORK_SESSION_NOT_FOUND');
+    }
 
     return ctx.db
       .query('terminalSignals')

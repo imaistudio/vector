@@ -22,8 +22,14 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var work: [VectorWorkRow] = []
   @Published public private(set) var selectedRequest: VectorRequestDetail?
   @Published public private(set) var selectedWork: VectorWorkDetail?
+  @Published public private(set) var workSessions: [VectorWorkSession] = []
+  @Published public private(set) var delegationTargets: [VectorDelegationTarget] = []
+  @Published public private(set) var selectedAgentSession: VectorAgentSessionSnapshot?
   @Published public private(set) var selectedRequestError: String?
   @Published public private(set) var selectedWorkError: String?
+  @Published public private(set) var workSessionError: String?
+  @Published public private(set) var isDelegatingWorkSession = false
+  @Published public private(set) var isSendingAgentMessage = false
   @Published public private(set) var isLoadingRequests = false
   @Published public private(set) var isLoadingWork = false
   @Published public private(set) var pendingWorkModelActions: Set<String> = []
@@ -89,6 +95,9 @@ public final class VectorMobileViewModel: ObservableObject {
   private var workListCancellable: AnyCancellable?
   private var requestDetailCancellable: AnyCancellable?
   private var workDetailCancellable: AnyCancellable?
+  private var workSessionsCancellable: AnyCancellable?
+  private var delegationTargetsCancellable: AnyCancellable?
+  private var agentSessionCancellable: AnyCancellable?
   private var projectListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var teamListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var documentListCancellables: [String: AnyCancellable] = [:]
@@ -236,6 +245,7 @@ public final class VectorMobileViewModel: ObservableObject {
     workDetailCancellable?.cancel()
     selectedWork = nil
     selectedWorkError = nil
+    loadWorkSessions(issueId: row.id)
     workDetailCancellable = repository.work(orgSlug: configuration.orgSlug, key: row.key)
       .receive(on: DispatchQueue.main)
       .sink(
@@ -249,6 +259,59 @@ public final class VectorMobileViewModel: ObservableObject {
             ? "This work was not found or you no longer have access."
             : nil
           self?.selectedWork = detail
+        }
+      )
+  }
+
+  public func loadWorkSessions(issueId: VectorID) {
+    workSessionsCancellable?.cancel()
+    workSessions = []
+    workSessionError = nil
+    workSessionsCancellable = repository.workSessions(issueId: issueId)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.workSessionError = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] sessions in
+          self?.workSessions = sessions
+        }
+      )
+  }
+
+  public func loadDelegationTargets() {
+    delegationTargetsCancellable?.cancel()
+    workSessionError = nil
+    delegationTargetsCancellable = repository.delegationTargets()
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.workSessionError = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] targets in
+          self?.delegationTargets = targets
+        }
+      )
+  }
+
+  public func loadAgentSession(liveActivityId: VectorID) {
+    agentSessionCancellable?.cancel()
+    selectedAgentSession = nil
+    workSessionError = nil
+    agentSessionCancellable = repository.agentSession(liveActivityId: liveActivityId)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self] completion in
+          if case let .failure(error) = completion {
+            self?.workSessionError = error.localizedDescription
+          }
+        },
+        receiveValue: { [weak self] session in
+          self?.selectedAgentSession = session
         }
       )
   }
@@ -361,6 +424,50 @@ public final class VectorMobileViewModel: ObservableObject {
   public func setTaskStatus(_ taskId: VectorID, status: VectorTaskStatus) async -> Bool {
     await performWorkModelAction(id: "task:\(taskId):status") {
       try await self.repository.setTaskStatus(taskId: taskId, status: status)
+    }
+  }
+
+  public func delegateWorkSession(
+    issueId: VectorID,
+    deviceId: VectorID,
+    workspaceId: VectorID,
+    provider: String
+  ) async -> Bool {
+    guard !isDelegatingWorkSession else { return false }
+    isDelegatingWorkSession = true
+    workSessionError = nil
+    defer { isDelegatingWorkSession = false }
+
+    do {
+      _ = try await repository.delegateWorkSession(
+        issueId: issueId,
+        deviceId: deviceId,
+        workspaceId: workspaceId,
+        provider: provider
+      )
+      return true
+    } catch {
+      workSessionError = error.localizedDescription
+      return false
+    }
+  }
+
+  public func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async -> Bool {
+    let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedBody.isEmpty, !isSendingAgentMessage else { return false }
+    isSendingAgentMessage = true
+    workSessionError = nil
+    defer { isSendingAgentMessage = false }
+
+    do {
+      _ = try await repository.sendAgentSessionMessage(
+        liveActivityId: liveActivityId,
+        body: trimmedBody
+      )
+      return true
+    } catch {
+      workSessionError = error.localizedDescription
+      return false
     }
   }
 

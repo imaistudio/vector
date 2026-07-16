@@ -22,7 +22,6 @@ import {
   CommandList,
 } from '@/components/ui/command';
 import {
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Maximize2,
@@ -130,7 +129,6 @@ export function LiveActivityCard({
   const [expanded, setExpanded] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
-  const [markingDone, setMarkingDone] = useState(false);
   const [detaching, setDetaching] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const updateStatus = useMutation(
@@ -138,9 +136,6 @@ export function LiveActivityCard({
   );
   const reconnectMutation = useMutation(
     api.agentBridge.mutations.reconnectLiveActivity,
-  );
-  const changeWorkflowState = useMutation(
-    api.issues.mutations.changeWorkflowState,
   );
   const timeAgo = formatDistanceToNow(activity.lastEventAt, {
     addSuffix: true,
@@ -152,15 +147,6 @@ export function LiveActivityCard({
     'canceled',
     'disconnected',
   ].includes(activity.status);
-
-  // Fetch workspace options only for terminal sessions to find the "done" state
-  const workspaceOptions = useCachedQuery(
-    api.organizations.queries.getWorkspaceOptions,
-    isTerminal ? { orgSlug } : 'skip',
-  );
-  const doneState = workspaceOptions?.issueStates?.find(
-    (s: { type: string }) => s.type === 'done',
-  );
 
   const isOwner = currentUser?._id === activity.ownerUserId;
   const canInteractSession = activity.canInteract ?? isOwner;
@@ -208,27 +194,11 @@ export function LiveActivityCard({
         liveActivityId: activity._id,
         status: 'canceled',
       });
-      toast.success('Process detached from issue');
+      toast.success('Session detached from Work');
     } catch {
       toast.error('Failed to detach process');
     } finally {
       setDetaching(false);
-    }
-  };
-
-  const handleMarkDone = async () => {
-    if (!doneState || markingDone) return;
-    setMarkingDone(true);
-    try {
-      await changeWorkflowState({
-        issueId: activity.issueId,
-        stateId: doneState._id,
-      });
-      toast.success('Issue marked as done');
-    } catch {
-      toast.error('Failed to mark issue as done');
-    } finally {
-      setMarkingDone(false);
     }
   };
 
@@ -435,20 +405,6 @@ export function LiveActivityCard({
               {reconnecting ? 'Reconnecting...' : 'Reconnect session'}
             </Button>
           )}
-          {doneState &&
-            (activity.status === 'completed' ||
-              activity.status === 'failed') && (
-              <Button
-                variant='outline'
-                size='sm'
-                className='h-7 w-full gap-1.5 text-xs'
-                onClick={() => void handleMarkDone()}
-                disabled={markingDone}
-              >
-                <CheckCircle2 className='size-3.5' />
-                {markingDone ? 'Marking...' : 'Mark issue as done'}
-              </Button>
-            )}
         </div>
       )}
     </>

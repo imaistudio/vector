@@ -58,6 +58,7 @@ import { MemberPicker } from '@/components/work/member-picker';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { IssueDevelopmentSection } from '@/components/issues/issue-development-section';
 import { IssueCommentsSection } from '@/components/comments/comments-section';
+import { WorkSessionSection } from '@/components/live-activity';
 import { UserAvatar } from '@/components/user-avatar';
 import { BarsSpinner } from '@/components/bars-spinner';
 
@@ -704,9 +705,6 @@ export default function WorkDetailPage() {
     ? undefined
     : work.handoffs.find(item => item.status === 'pending');
   const openAttention = work.attention.filter(item => item.status === 'open');
-  const activeExecutions = work.executions.filter(item =>
-    ['active', 'waiting_for_input', 'paused'].includes(item.status),
-  );
   const ownerName =
     work.owner?.name ?? work.owner?.username ?? work.owner?.email;
 
@@ -1064,47 +1062,21 @@ export default function WorkDetailPage() {
           </section>
 
           <section className='mb-4'>
-            <div className='mb-1.5 flex items-center gap-2'>
-              <Bot className='size-3.5' />
-              <h2 className='text-xs font-semibold'>Executions</h2>
-              <span className='text-muted-foreground text-[10px]'>
-                {activeExecutions.length} live
-              </span>
-            </div>
-            {work.executions.length === 0 ? (
-              <div className='text-muted-foreground rounded-md border border-dashed px-3 py-2 text-xs'>
-                No agent executions attached yet. Starting an execution will not
-                change the Work state.
-              </div>
-            ) : (
-              <div className='overflow-hidden rounded-md border'>
-                {work.executions.slice(0, 12).map(execution => (
-                  <div
-                    key={execution._id}
-                    className='flex min-h-8 items-center gap-2 border-b px-2.5 last:border-b-0'
-                  >
-                    <span
-                      className={cn(
-                        'size-2 rounded-full',
-                        execution.status === 'active'
-                          ? 'bg-emerald-500'
-                          : execution.status === 'waiting_for_input'
-                            ? 'bg-red-500'
-                            : execution.status === 'paused'
-                              ? 'bg-amber-500'
-                              : 'bg-muted-foreground/40',
-                      )}
-                    />
-                    <span className='min-w-0 flex-1 truncate text-xs'>
-                      {execution.title ?? `${execution.provider} execution`}
-                    </span>
-                    <Badge variant='outline' className='h-5 text-[10px]'>
-                      {execution.status.replaceAll('_', ' ')}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
+            <WorkSessionSection
+              orgSlug={orgSlug}
+              issueId={work._id}
+              canManage={work.canEdit}
+              currentUser={
+                currentUser
+                  ? {
+                      _id: currentUser._id,
+                      name: currentUser.name ?? '',
+                      email: currentUser.email ?? null,
+                      image: currentUser.image ?? null,
+                    }
+                  : null
+              }
+            />
           </section>
 
           <IssueDevelopmentSection

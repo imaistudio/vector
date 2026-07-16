@@ -110,6 +110,22 @@ vcli service status
 The status command reports a degraded bridge when heartbeats fail instead of
 leaving it stuck at "Starting". On macOS, the native menu bar app is installed
 with the bridge, uses the active profile, and requires macOS 14 or newer.
+`service start` installs the bridge with login startup and automatic restart;
+`service enable` can restore that login item after it has been disabled.
+
+From inside a supported agent session, attach that session to Work so it is
+visible and messageable from the Work page:
+
+```bash
+vcli --json work attach-session AUTH-42
+vcli --json work attach-session AUTH-42 --task 3
+```
+
+The command uses the calling agent's stable session identity when available,
+is idempotent for the same active session, and returns the `liveActivityId` to
+use for execution attribution. Multiple distinct sessions can attach to the
+same Work. If the command reports that the bridge is not configured or running,
+run `vcli service start`, check `vcli service status`, and retry.
 
 ## Common Commands
 

@@ -2,7 +2,7 @@
 
 Native SwiftUI companion app for Vector.
 
-This increment includes both the reusable `VectorMobile` Swift package and a runnable `Vector` app target for local Simulator builds and TestFlight archives. The app is a focused mobile companion for Request intake and review, active Work monitoring, explicit Work starts, Task status changes, handoff acceptance, agent attention, notifications, and mobile settings. Deeper workspace administration stays on the web entry points.
+This increment includes both the reusable `VectorMobile` Swift package and a runnable `Vector` app target for local Simulator builds and TestFlight archives. The app is a focused mobile companion for Request intake and review, active Work monitoring, explicit Work starts, Task status changes, handoff acceptance, agent delegation, Work Session transcripts and messaging, notifications, and mobile settings. Deeper workspace administration stays on the web entry points.
 
 ## Instance Setup
 

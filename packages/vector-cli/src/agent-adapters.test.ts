@@ -169,6 +169,176 @@ describe('agent-adapters session discovery', () => {
     });
   });
 
+  it('keeps multiple Codex threads that share one process attachable', async () => {
+    const realHome = mkdtempSync(join(tmpdir(), 'vector-real-home-'));
+    const fakeHome = mkdtempSync(join(tmpdir(), 'vector-fake-home-'));
+    const workspace = mkdtempSync(join(tmpdir(), 'vector-workspace-'));
+    const firstTranscript = join(
+      realHome,
+      '.codex',
+      'sessions',
+      '2026',
+      '07',
+      '16',
+      'first.jsonl',
+    );
+    const secondTranscript = join(
+      realHome,
+      '.codex',
+      'sessions',
+      '2026',
+      '07',
+      '16',
+      'second.jsonl',
+    );
+
+    writeJsonl(firstTranscript, [
+      { type: 'session_meta', payload: { id: 'thread-a', cwd: workspace } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'First Work session' }],
+        },
+      },
+    ]);
+    writeJsonl(secondTranscript, [
+      { type: 'session_meta', payload: { id: 'thread-b', cwd: workspace } },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Second Work session' }],
+        },
+      },
+    ]);
+    process.env.HOME = fakeHome;
+
+    vi.doMock('os', async () => {
+      const actual = await vi.importActual<typeof import('os')>('os');
+      return {
+        ...actual,
+        homedir: () => fakeHome,
+        userInfo: () => ({ ...actual.userInfo(), homedir: realHome }),
+      };
+    });
+    vi.doMock('child_process', async () => {
+      const actual =
+        await vi.importActual<typeof import('child_process')>('child_process');
+      return {
+        ...actual,
+        execSync: vi.fn((command: string) => {
+          if (command === 'ps -axo pid=,ucomm=') return '123 codex\n';
+          if (command.includes('-a -p 123 -Fn -d cwd')) {
+            return `p123\nfcwd\nn${workspace}\n`;
+          }
+          if (command.includes('-p 123 -Fn')) {
+            return `p123\nn${firstTranscript}\nn${secondTranscript}\n`;
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        }),
+      };
+    });
+
+    const { discoverAttachableSessions } = await import('./agent-adapters');
+    const sessions = discoverAttachableSessions();
+
+    expect(sessions).toHaveLength(2);
+    expect(sessions.map(session => session.sessionKey).sort()).toEqual([
+      'thread-a',
+      'thread-b',
+    ]);
+    expect(new Set(sessions.map(session => session.localProcessId))).toEqual(
+      new Set(['123']),
+    );
+  });
+
+  it('selects the invoking agent session from process ancestry', async () => {
+    const { findCurrentAgentSession } = await import('./agent-adapters');
+    const sessions = [
+      {
+        provider: 'codex' as const,
+        providerLabel: 'Codex',
+        localProcessId: '100',
+        sessionKey: 'codex-current',
+        cwd: '/workspace/vector',
+        mode: 'observed' as const,
+        status: 'observed' as const,
+        supportsInboundMessages: true,
+      },
+      {
+        provider: 'claude_code' as const,
+        providerLabel: 'Claude',
+        localProcessId: '200',
+        sessionKey: 'claude-other',
+        cwd: '/workspace/vector',
+        mode: 'observed' as const,
+        status: 'observed' as const,
+        supportsInboundMessages: true,
+      },
+    ];
+
+    expect(
+      findCurrentAgentSession(sessions, {
+        currentPid: 103,
+        processTable: '1 0\n100 1\n102 100\n103 102\n200 1\n',
+        cwd: '/workspace/vector',
+      }),
+    ).toMatchObject({ sessionKey: 'codex-current' });
+  });
+
+  it('requires an explicit session when a workspace match is ambiguous', async () => {
+    const { findCurrentAgentSession } = await import('./agent-adapters');
+    const sessions = ['session-a', 'session-b'].map((sessionKey, index) => ({
+      provider: 'codex' as const,
+      providerLabel: 'Codex',
+      localProcessId: String(100 + index),
+      sessionKey,
+      cwd: '/workspace/vector',
+      mode: 'observed' as const,
+      status: 'observed' as const,
+      supportsInboundMessages: true,
+    }));
+
+    expect(
+      findCurrentAgentSession(sessions, {
+        currentPid: 500,
+        processTable: '500 1\n',
+        cwd: '/workspace/vector/packages/cli',
+      }),
+    ).toBeUndefined();
+    expect(
+      findCurrentAgentSession(sessions, { sessionKey: 'session-b' }),
+    ).toMatchObject({ sessionKey: 'session-b' });
+  });
+
+  it('does not guess between agent threads that share an ancestor process', async () => {
+    const { findCurrentAgentSession } = await import('./agent-adapters');
+    const sessions = ['thread-a', 'thread-b'].map(sessionKey => ({
+      provider: 'codex' as const,
+      providerLabel: 'Codex',
+      localProcessId: '100',
+      sessionKey,
+      cwd: '/workspace/vector',
+      mode: 'observed' as const,
+      status: 'observed' as const,
+      supportsInboundMessages: true,
+    }));
+
+    expect(
+      findCurrentAgentSession(sessions, {
+        currentPid: 103,
+        processTable: '1 0\n100 1\n103 100\n',
+        cwd: '/workspace/vector',
+      }),
+    ).toBeUndefined();
+    expect(
+      findCurrentAgentSession(sessions, { sessionKey: 'thread-b' }),
+    ).toMatchObject({ sessionKey: 'thread-b' });
+  });
+
   it('discovers only live Claude sessions and ignores tool-result noise in titles', async () => {
     const realHome = mkdtempSync(join(tmpdir(), 'vector-real-home-'));
     const fakeHome = mkdtempSync(join(tmpdir(), 'vector-fake-home-'));
