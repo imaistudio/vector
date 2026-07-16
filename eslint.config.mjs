@@ -25,18 +25,19 @@ const eslintConfig = [
   prettier,
   {
     files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      parserOptions: {
-        projectService: true,
-      },
-    },
     plugins: {
       'unused-imports': unusedImports,
     },
     rules: {
+      'max-lines': [
+        'warn',
+        { max: 2000, skipBlankLines: true, skipComments: true },
+      ],
       'comma-dangle': 'off',
       '@typescript-eslint/comma-dangle': 'off',
-      '@typescript-eslint/no-floating-promises': 'error',
+      // Type-aware promise checking is handled by Oxlint/tsgolint. Keeping it
+      // out of ESLint avoids starting a second TypeScript project service.
+      '@typescript-eslint/no-floating-promises': 'off',
       // Next 16.2 enables newer React Compiler lint rules through the
       // core-web-vitals preset. Keep the upgrade behavior-compatible for now;
       // these existing patterns need a dedicated cleanup pass.

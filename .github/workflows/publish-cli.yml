@@ -84,7 +84,7 @@ jobs:
           VECTOR_BUILD_NUMBER: ${{ github.run_number }}
         run: |
           pnpm run test:cli
-          pnpm exec tsc --noEmit --pretty false
+          pnpm run typecheck
           pnpm run build:cli-package
           test "$(plutil -extract CFBundleShortVersionString raw packages/vector-cli/native/VectorMenuBar.app/Contents/Info.plist)" = "${{ steps.publish.outputs.version }}"
           npm pack --dry-run --json ./packages/vector-cli > /tmp/vector-cli-pack.json
