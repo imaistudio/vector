@@ -722,6 +722,9 @@ export default defineSchema({
       v.literal('public'),
     ),
     createdBy: v.optional(v.id('users')),
+    // Client-generated idempotency key used by native clients when a committed
+    // mutation response is lost during reconnect.
+    clientRequestId: v.optional(v.string()),
     readyForReviewAt: v.optional(v.number()),
     latestReviewNote: v.optional(v.string()),
     reviewedAt: v.optional(v.number()),
@@ -752,6 +755,11 @@ export default defineSchema({
       'createdAt',
     ])
     .index('by_created_by', ['createdBy'])
+    .index('by_org_creator_client_request', [
+      'organizationId',
+      'createdBy',
+      'clientRequestId',
+    ])
     .searchIndex('search_text', {
       searchField: 'searchText',
       filterFields: ['organizationId', 'status'],

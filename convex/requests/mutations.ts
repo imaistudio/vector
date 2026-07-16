@@ -104,6 +104,7 @@ async function insertRequest(
     dueDate?: string;
     visibility: 'private' | 'organization' | 'public';
     createdBy?: Id<'users'>;
+    clientRequestId?: string;
   },
 ) {
   const organization = await ctx.db.get('organizations', input.organizationId);
@@ -115,6 +116,9 @@ async function insertRequest(
     throw new ConvexError('EXPECTED_OUTPUT_REQUIRED');
   if (input.description && input.description.length > 20_000)
     throw new ConvexError('DESCRIPTION_TOO_LONG');
+  const clientRequestId = input.clientRequestId?.trim() || undefined;
+  if (clientRequestId && clientRequestId.length > 100)
+    throw new ConvexError('INVALID_CLIENT_REQUEST_ID');
   const recipientIds = Array.from(new Set(input.recipientIds ?? []));
   for (const recipientId of recipientIds)
     await assertOrganizationUser(ctx, input.organizationId, recipientId);
@@ -164,6 +168,7 @@ async function insertRequest(
     dueDate: input.dueDate?.trim() || undefined,
     visibility: input.visibility,
     createdBy: input.createdBy,
+    clientRequestId,
     createdAt: now,
     updatedAt: now,
   });
@@ -289,6 +294,7 @@ export const create = mutation({
       projectId: v.optional(v.id('projects')),
       dueDate: v.optional(v.string()),
       visibility: v.optional(visibilityValidator),
+      clientRequestId: v.optional(v.string()),
     }),
   },
   handler: async (ctx, args) => {
@@ -296,9 +302,35 @@ export const create = mutation({
     const organization = await getOrganizationBySlug(ctx, args.orgSlug);
     await requireOrganizationMember(ctx, organization._id, userId);
     await requirePermission(ctx, organization._id, PERMISSIONS.ISSUE_CREATE);
+    const clientRequestId = args.data.clientRequestId?.trim();
+    if (clientRequestId) {
+      if (clientRequestId.length > 100)
+        throw new ConvexError('INVALID_CLIENT_REQUEST_ID');
+      const existing = await ctx.db
+        .query('requests')
+        .withIndex('by_org_creator_client_request', q =>
+          q
+            .eq('organizationId', organization._id)
+            .eq('createdBy', userId)
+            .eq('clientRequestId', clientRequestId),
+        )
+        .unique();
+      if (existing) {
+        const recipients = await ctx.db
+          .query('requestRecipients')
+          .withIndex('by_request', q => q.eq('requestId', existing._id))
+          .collect();
+        return {
+          requestId: existing._id,
+          requestKey: existing.key,
+          recipientIds: recipients.map(recipient => recipient.userId),
+        };
+      }
+    }
     const result = await insertRequest(ctx, {
       organizationId: organization._id,
       ...args.data,
+      clientRequestId,
       source: 'workspace',
       requesterId: userId,
       createdBy: userId,

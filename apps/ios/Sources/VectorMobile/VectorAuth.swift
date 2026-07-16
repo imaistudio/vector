@@ -68,6 +68,55 @@ public protocol VectorSessionStore: Sendable {
   func clear() throws
 }
 
+/// Coordinates the in-memory and persisted session so token refreshes can
+/// update credentials without overwriting the workspace selected by the app.
+public final class VectorSessionState: @unchecked Sendable {
+  private let lock = NSLock()
+  private let store: VectorSessionStore
+  private var session: VectorStoredSession
+
+  public init(session: VectorStoredSession, store: VectorSessionStore) {
+    self.session = session
+    self.store = store
+  }
+
+  public func snapshot() -> VectorStoredSession {
+    lock.lock()
+    defer { lock.unlock() }
+    return session
+  }
+
+  @discardableResult
+  public func mergeCredentials(from refreshedSession: VectorStoredSession) -> VectorStoredSession {
+    lock.lock()
+    defer { lock.unlock() }
+
+    // orgSlug deliberately remains owned by the session controller. The auth
+    // provider may only refresh connection details and Better Auth cookies.
+    session.appURL = refreshedSession.appURL
+    session.convexURL = refreshedSession.convexURL
+    session.cookies = refreshedSession.cookies
+    session.user = refreshedSession.user
+    try? store.save(session)
+    return session
+  }
+
+  @discardableResult
+  public func selectWorkspace(_ orgSlug: String) throws -> VectorStoredSession {
+    lock.lock()
+    defer { lock.unlock() }
+    session.orgSlug = orgSlug
+    try store.save(session)
+    return session
+  }
+
+  public func clear() throws {
+    lock.lock()
+    defer { lock.unlock() }
+    try store.clear()
+  }
+}
+
 public final class VectorKeychainSessionStore: VectorSessionStore, @unchecked Sendable {
   private let service: String
   private let account: String
@@ -473,13 +522,16 @@ public struct VectorBetterAuthData: Equatable {
 
 public final class VectorBetterAuthProvider: AuthProvider {
   private let authClient: VectorAuthClient
-  private let sessionStore: VectorSessionStore
-  private var session: VectorStoredSession
+  private let sessionState: VectorSessionState
 
   public init(session: VectorStoredSession, authClient: VectorAuthClient, sessionStore: VectorSessionStore) {
-    self.session = session
     self.authClient = authClient
-    self.sessionStore = sessionStore
+    self.sessionState = VectorSessionState(session: session, store: sessionStore)
+  }
+
+  public init(sessionState: VectorSessionState, authClient: VectorAuthClient) {
+    self.authClient = authClient
+    self.sessionState = sessionState
   }
 
   public func login(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> VectorBetterAuthData {
@@ -487,16 +539,15 @@ public final class VectorBetterAuthProvider: AuthProvider {
   }
 
   public func loginFromCache(onIdToken: @Sendable @escaping (String?) -> Void) async throws -> VectorBetterAuthData {
-    let result = try await authClient.fetchConvexToken(session: session)
-    session = result.session
-    try? sessionStore.save(result.session)
+    let result = try await authClient.fetchConvexToken(session: sessionState.snapshot())
+    let mergedSession = sessionState.mergeCredentials(from: result.session)
     onIdToken(result.token)
-    return VectorBetterAuthData(session: result.session, token: result.token)
+    return VectorBetterAuthData(session: mergedSession, token: result.token)
   }
 
   public func logout() async throws {
-    try await authClient.logout(session: session)
-    try sessionStore.clear()
+    try await authClient.logout(session: sessionState.snapshot())
+    try sessionState.clear()
   }
 
   public func extractIdToken(from authResult: VectorBetterAuthData) -> String {
@@ -518,11 +569,14 @@ public final class VectorMobileSessionController: ObservableObject {
   @Published public private(set) var errorMessage: String?
   @Published public private(set) var user: VectorAuthenticatedUser?
   @Published public private(set) var organizations: [VectorOrganization] = []
+  @Published public private(set) var activeOrganization: VectorOrganization?
+  @Published public private(set) var workspaceSwitchError: String?
   @Published public private(set) var isDemoMode = false
 
   private let authClient: VectorAuthClient
   private let sessionStore: VectorSessionStore
   private var convexClient: ConvexClient?
+  private var sessionState: VectorSessionState?
 
   public init(
     authClient: VectorAuthClient = VectorAuthClient(),
@@ -574,41 +628,56 @@ public final class VectorMobileSessionController: ObservableObject {
       return
     }
 
-    do {
-      guard var storedSession = try sessionStore.load(), let client = convexClient else {
-        throw VectorAuthError.missingStoredSession
-      }
-
-      storedSession.orgSlug = organization.slug
-      try sessionStore.save(storedSession)
-
-      let configuration = VectorMobileConfiguration(
-        orgSlug: organization.slug,
-        convexDeploymentURL: storedSession.convexURL,
-        webBaseURL: storedSession.appURL
-      )
-      let nextViewModel = VectorMobileViewModel(
-        configuration: configuration,
-        repository: ConvexVectorRepository(client: client),
-        initialLoadPolicy: .primarySurfaces
-      )
-      if let pushToken = VectorPushNotificationCoordinator.shared.deviceToken {
-        nextViewModel.upsertMobilePushToken(pushToken)
-      }
-
-      viewModel = nextViewModel
-      errorMessage = nil
-      phase = .signedIn
-    } catch {
-      errorMessage = error.localizedDescription
+    guard
+      let currentViewModel = viewModel,
+      let client = convexClient,
+      let sessionState
+    else {
+      workspaceSwitchError = "Vector is reconnecting. Try switching workspaces again in a moment."
+      return
     }
+
+    do {
+      try sessionState.selectWorkspace(organization.slug)
+      workspaceSwitchError = nil
+    } catch {
+      // The in-memory session has still changed, so keep the app usable and
+      // explain that only persistence for the next launch failed.
+      workspaceSwitchError = "The workspace changed for this session, but Vector could not save it for the next launch."
+    }
+
+    let configuration = VectorMobileConfiguration(
+      orgSlug: organization.slug,
+      convexDeploymentURL: currentViewModel.configuration.convexDeploymentURL,
+      webBaseURL: currentViewModel.configuration.webBaseURL
+    )
+    let nextViewModel = VectorMobileViewModel(
+      configuration: configuration,
+      repository: ConvexVectorRepository(client: client),
+      initialLoadPolicy: .primarySurfaces
+    )
+    nextViewModel.setAuthenticatedUser(user)
+    if let pushToken = VectorPushNotificationCoordinator.shared.deviceToken {
+      nextViewModel.upsertMobilePushToken(pushToken)
+    }
+
+    activeOrganization = organization
+    viewModel = nextViewModel
+    errorMessage = nil
+    phase = .signedIn
+  }
+
+  public func clearWorkspaceSwitchError() {
+    workspaceSwitchError = nil
   }
 
   public func useDemoData() {
     isDemoMode = true
     user = VectorAuthenticatedUser(name: "Demo")
     organizations = [VectorOrganization(id: "demo", name: "Demo workspace", slug: VectorMobileConfiguration.demo.orgSlug)]
+    activeOrganization = organizations.first
     convexClient = nil
+    sessionState = nil
     viewModel = VectorMobileViewModel(
       configuration: .demo,
       repository: MockVectorRepository(),
@@ -633,9 +702,12 @@ public final class VectorMobileSessionController: ObservableObject {
       await MainActor.run {
         VectorPushNotificationCoordinator.shared.clearRegistration()
         self.convexClient = nil
+        self.sessionState = nil
         self.viewModel = nil
         self.user = nil
         self.organizations = []
+        self.activeOrganization = nil
+        self.workspaceSwitchError = nil
         self.isDemoMode = false
         self.errorMessage = nil
         self.phase = .signedOut
@@ -648,7 +720,8 @@ public final class VectorMobileSessionController: ObservableObject {
     requestedOrgSlug: String?,
     allowWorkspaceFallback: Bool = false
   ) async throws {
-    let provider = VectorBetterAuthProvider(session: session, authClient: authClient, sessionStore: sessionStore)
+    let sessionState = VectorSessionState(session: session, store: sessionStore)
+    let provider = VectorBetterAuthProvider(sessionState: sessionState, authClient: authClient)
     let client = ConvexClientWithAuth<VectorBetterAuthData>(
       deploymentUrl: session.convexURL.absoluteString,
       authProvider: provider
@@ -665,7 +738,7 @@ public final class VectorMobileSessionController: ObservableObject {
 
     var savedSession = authData.session
     savedSession.orgSlug = selectedOrg.slug
-    try? sessionStore.save(savedSession)
+    _ = try? sessionState.selectWorkspace(selectedOrg.slug)
 
     let configuration = VectorMobileConfiguration(
       orgSlug: selectedOrg.slug,
@@ -673,6 +746,7 @@ public final class VectorMobileSessionController: ObservableObject {
       webBaseURL: savedSession.appURL
     )
     convexClient = client
+    self.sessionState = sessionState
     viewModel = VectorMobileViewModel(
       configuration: configuration,
       repository: ConvexVectorRepository(client: client),
@@ -680,6 +754,7 @@ public final class VectorMobileSessionController: ObservableObject {
     )
     user = savedSession.user
     organizations = orgs
+    activeOrganization = selectedOrg
     isDemoMode = false
     errorMessage = nil
     phase = .signedIn

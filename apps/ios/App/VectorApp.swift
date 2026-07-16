@@ -33,10 +33,11 @@ final class VectorAppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct VectorApp: App {
   @UIApplicationDelegateAdaptor(VectorAppDelegate.self) private var appDelegate
+  @StateObject private var sessionController = VectorMobileSessionController()
 
   var body: some Scene {
     WindowGroup {
-      VectorMobileRootView()
+      VectorMobileRootView(sessionController: sessionController)
     }
   }
 }
