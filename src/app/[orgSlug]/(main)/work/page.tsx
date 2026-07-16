@@ -13,7 +13,7 @@ import {
   Play,
   UserRound,
 } from 'lucide-react';
-import { api, useCachedPaginatedQuery } from '@/lib/convex';
+import { api, useCachedPaginatedQuery, useCachedQuery } from '@/lib/convex';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,6 +29,10 @@ const scopes = [
   { value: 'attention', label: 'Needs attention' },
   { value: 'all', label: 'All Work' },
 ] as const;
+
+function formatCount(count: number, capped = false) {
+  return capped || count >= 100 ? '99+' : String(count);
+}
 
 const statusTone: Record<string, string> = {
   planned: 'bg-muted-foreground/50',
@@ -60,6 +64,9 @@ export default function WorkPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const [scope, setScope] =
     useState<(typeof scopes)[number]['value']>('active');
+  const scopeCounts = useCachedQuery(api.work.queries.scopeCounts, {
+    orgSlug,
+  });
   const result = useCachedPaginatedQuery(
     api.work.queries.list,
     { orgSlug, scope },
@@ -79,20 +86,45 @@ export default function WorkPage() {
           aria-label='Work scope'
           className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'
         >
-          {scopes.map(item => (
-            <Button
-              key={item.value}
-              variant='ghost'
-              size='sm'
-              className={cn(
-                'h-7 shrink-0 px-2 text-xs',
-                scope === item.value && 'bg-muted',
-              )}
-              onClick={() => setScope(item.value)}
-            >
-              {item.label}
-            </Button>
-          ))}
+          {scopes.map(item => {
+            const count = scopeCounts?.[item.value];
+            const capped = scopeCounts
+              ? item.value === 'active'
+                ? scopeCounts.activeCapped
+                : item.value === 'mine'
+                  ? scopeCounts.mineCapped
+                  : item.value === 'attention'
+                    ? scopeCounts.attentionCapped
+                    : scopeCounts.allCapped
+              : false;
+            const needsAttention = item.value === 'attention' && count !== 0;
+            return (
+              <Button
+                key={item.value}
+                variant='ghost'
+                size='sm'
+                className={cn(
+                  'h-7 shrink-0 gap-1.5 px-2 text-xs',
+                  scope === item.value && 'bg-muted',
+                )}
+                onClick={() => setScope(item.value)}
+                aria-pressed={scope === item.value}
+              >
+                <span>{item.label}</span>
+                {count === undefined ? (
+                  <Skeleton className='size-3 rounded-full' />
+                ) : needsAttention ? (
+                  <span className='flex min-w-4 items-center justify-center rounded-full bg-violet-500 px-1 text-[10px] leading-4 font-medium text-white'>
+                    {formatCount(count, capped)}
+                  </span>
+                ) : (
+                  <span className='text-muted-foreground text-[10px] tabular-nums'>
+                    {formatCount(count, capped)}
+                  </span>
+                )}
+              </Button>
+            );
+          })}
         </nav>
         <div className='shrink-0'>
           <CreateWorkDialog orgSlug={orgSlug} />

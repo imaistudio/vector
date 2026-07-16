@@ -18,6 +18,7 @@ import {
   workFocusRank,
   workflowStateForWorkStatus,
 } from '../work/lib';
+import { cancelPendingHandoffs } from '../work/handoffs';
 import {
   canEditRequest,
   nextRequestKey,
@@ -689,6 +690,7 @@ export const complete = mutation({
         closedAt: now,
         lastActivityEventType: 'work_completed',
       });
+      await cancelPendingHandoffs(ctx, work._id, userId);
       await recordActivity(ctx, {
         scope: { ...resolveIssueScope(work), requestId: request._id },
         actorId: userId,

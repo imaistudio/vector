@@ -16,6 +16,7 @@ import {
   Hand,
   History,
   ListChecks,
+  Pencil,
   Play,
   Plus,
   Send,
@@ -484,6 +485,108 @@ function HandoffDialog({
   );
 }
 
+function EditHandoffDialog({
+  handoffId,
+  initialSummary,
+  initialNote,
+}: {
+  handoffId: Id<'workHandoffs'>;
+  initialSummary: string;
+  initialNote?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [summary, setSummary] = useState(initialSummary);
+  const [note, setNote] = useState(initialNote ?? '');
+  const [submitting, setSubmitting] = useState(false);
+  const updateHandoff = useMutation(api.work.mutations.updateHandoff);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) {
+      setSummary(initialSummary);
+      setNote(initialNote ?? '');
+    }
+    setOpen(nextOpen);
+  };
+
+  return (
+    <ResponsiveDialog open={open} onOpenChange={handleOpenChange}>
+      <ResponsiveDialogTrigger asChild>
+        <Button
+          variant='ghost'
+          size='sm'
+          className='h-6 gap-1 px-1.5 text-[11px]'
+        >
+          <Pencil className='size-3' />
+          Edit message
+        </Button>
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent
+        showCloseButton={false}
+        className='gap-2 p-2 sm:max-w-2xl'
+      >
+        <ResponsiveDialogHeader className='sr-only'>
+          <ResponsiveDialogTitle>Edit handoff message</ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
+        <div className='relative'>
+          <Textarea
+            value={summary}
+            onChange={event => setSummary(event.target.value)}
+            placeholder='What is complete, what remains, and where should they resume?'
+            className='min-h-24 resize-none pr-28 pb-8 text-sm'
+            disabled={submitting}
+          />
+          <span className='text-muted-foreground bg-background pointer-events-none absolute right-2 bottom-2 rounded px-2 py-0.5 text-xs'>
+            Handoff summary
+          </span>
+        </div>
+        <div className='relative'>
+          <Input
+            value={note}
+            onChange={event => setNote(event.target.value)}
+            placeholder='Optional private note'
+            className='h-9 pr-28 text-sm'
+            disabled={submitting}
+          />
+          <span className='text-muted-foreground bg-background pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded px-2 py-0.5 text-xs'>
+            Private note
+          </span>
+        </div>
+        <div className='flex items-center justify-between gap-2'>
+          <Button
+            variant='ghost'
+            size='sm'
+            disabled={submitting}
+            onClick={() => setOpen(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            size='sm'
+            disabled={submitting || !summary.trim()}
+            onClick={() => {
+              if (submitting || !summary.trim()) return;
+              setSubmitting(true);
+              void updateHandoff({
+                handoffId,
+                summary,
+                note: note || undefined,
+              })
+                .then(() => {
+                  toast.success('Handoff message updated');
+                  setOpen(false);
+                })
+                .catch(() => toast.error('Could not update handoff message'))
+                .finally(() => setSubmitting(false));
+            }}
+          >
+            {submitting ? <BarsSpinner size={14} /> : 'Save message'}
+          </Button>
+        </div>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
+  );
+}
+
 function WorkSkeleton() {
   return (
     <div>
@@ -521,6 +624,9 @@ export default function WorkDetailPage() {
   const startWork = useMutation(api.work.mutations.start);
   const readyForReview = useMutation(api.work.mutations.readyForReview);
   const completeWork = useMutation(api.work.mutations.complete);
+  const reconcileTerminalHandoffs = useMutation(
+    api.work.mutations.reconcileTerminalHandoffs,
+  );
   const createTask = useMutation(api.tasks.mutations.create);
   const respondHandoff = useMutation(api.work.mutations.respondToHandoff);
   const resolveAttention = useMutation(api.work.mutations.resolveAttention);
@@ -529,6 +635,7 @@ export default function WorkDetailPage() {
   const [newTask, setNewTask] = useState('');
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const lastScrolledTaskId = useRef<string | null>(null);
+  const reconciledTerminalWorkId = useRef<string | null>(null);
   const debouncedWorkpad = useDebouncedValue(workpad, 700);
 
   useEffect(() => {
@@ -567,6 +674,23 @@ export default function WorkDetailPage() {
     });
   }, [focusedTaskId, work]);
 
+  useEffect(() => {
+    if (
+      !work ||
+      !work.canEdit ||
+      !['completed', 'canceled'].includes(work.workStatus) ||
+      !work.handoffs.some(handoff => handoff.status === 'pending') ||
+      reconciledTerminalWorkId.current === String(work._id)
+    ) {
+      return;
+    }
+    reconciledTerminalWorkId.current = String(work._id);
+    void reconcileTerminalHandoffs({ workId: work._id }).catch(() => {
+      reconciledTerminalWorkId.current = null;
+      toast.error('Could not close the pending handoff');
+    });
+  }, [reconcileTerminalHandoffs, work]);
+
   if (work === undefined) return <WorkSkeleton />;
   if (work === null) {
     return (
@@ -575,7 +699,10 @@ export default function WorkDetailPage() {
       </div>
     );
   }
-  const pendingHandoff = work.handoffs.find(item => item.status === 'pending');
+  const isTerminalWork = ['completed', 'canceled'].includes(work.workStatus);
+  const pendingHandoff = isTerminalWork
+    ? undefined
+    : work.handoffs.find(item => item.status === 'pending');
   const openAttention = work.attention.filter(item => item.status === 'open');
   const activeExecutions = work.executions.filter(item =>
     ['active', 'waiting_for_input', 'paused'].includes(item.status),
@@ -698,17 +825,31 @@ export default function WorkDetailPage() {
       {pendingHandoff && (
         <div className='flex min-h-10 items-center gap-2 border-b border-amber-500/20 bg-amber-500/8 px-4 text-xs'>
           <ArrowRight className='size-3.5 text-amber-600' />
-          <span className='flex-1'>
-            Handoff from{' '}
-            {pendingHandoff.fromOwner?.name ??
-              pendingHandoff.fromOwner?.email ??
-              'the current owner'}{' '}
-            to{' '}
-            {pendingHandoff.toOwner?.name ??
-              pendingHandoff.toOwner?.email ??
-              'the next owner'}{' '}
-            is waiting for acceptance. The current owner remains accountable.
+          <span className='min-w-0 flex-1'>
+            <span className='block'>
+              Handoff from{' '}
+              {pendingHandoff.fromOwner?.name ??
+                pendingHandoff.fromOwner?.email ??
+                'the current owner'}{' '}
+              to{' '}
+              {pendingHandoff.toOwner?.name ??
+                pendingHandoff.toOwner?.email ??
+                'the next owner'}{' '}
+              is waiting for acceptance. The current owner remains accountable.
+            </span>
+            {pendingHandoff.summary ? (
+              <span className='text-muted-foreground block truncate text-[11px]'>
+                {pendingHandoff.summary}
+              </span>
+            ) : null}
           </span>
+          {pendingHandoff.canEditHandoff ? (
+            <EditHandoffDialog
+              handoffId={pendingHandoff._id}
+              initialSummary={pendingHandoff.summary ?? ''}
+              initialNote={pendingHandoff.note}
+            />
+          ) : null}
           {pendingHandoff.isRecipient && (
             <>
               <Button
@@ -1016,11 +1157,13 @@ export default function WorkDetailPage() {
               </div>
               {work.canEdit && (
                 <div className='mt-1.5 flex flex-wrap items-center gap-1.5'>
-                  <HandoffDialog
-                    orgSlug={orgSlug}
-                    workId={work._id}
-                    ownerName={ownerName}
-                  />
+                  {!isTerminalWork ? (
+                    <HandoffDialog
+                      orgSlug={orgSlug}
+                      workId={work._id}
+                      ownerName={ownerName}
+                    />
+                  ) : null}
                   <ReminderDialog orgSlug={orgSlug} workId={work._id} />
                 </div>
               )}

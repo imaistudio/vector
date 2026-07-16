@@ -32,6 +32,11 @@ import {
   reopenLinkedRequestsAfterCancellation,
   setLinkedRequestsInDelivery,
 } from './requestReconciliation';
+import {
+  canEditPendingHandoff,
+  cancelPendingHandoffs,
+  resolvePendingHandoffNotification,
+} from './handoffs';
 
 const visibilityValidator = v.union(
   v.literal('private'),
@@ -399,8 +404,10 @@ export const setStatus = mutation({
         });
       }
     }
-    if (args.status === 'canceled')
+    if (args.status === 'canceled') {
+      await cancelPendingHandoffs(ctx, work._id, userId);
       await reopenLinkedRequestsAfterCancellation(ctx, work._id);
+    }
     return { success: true } as const;
   },
 });
@@ -478,7 +485,10 @@ export const complete = mutation({
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const work = await requireWork(ctx, args.workId, 'edit');
-    if (work.workStatus === 'completed') return { success: true } as const;
+    if (work.workStatus === 'completed') {
+      await cancelPendingHandoffs(ctx, work._id, userId);
+      return { success: true } as const;
+    }
     if (work.workStatus !== 'ready_for_review')
       throw new ConvexError('WORK_NOT_READY_FOR_COMPLETION');
     const state = await workflowStateForWorkStatus(
@@ -493,6 +503,7 @@ export const complete = mutation({
       closedAt: Date.now(),
       lastActivityEventType: 'work_completed',
     });
+    await cancelPendingHandoffs(ctx, work._id, userId);
     await maybeRaiseLinkedRequestsForReview(
       ctx,
       { ...work, workStatus: 'completed' },
@@ -535,6 +546,19 @@ export const complete = mutation({
       eventType: 'work_completed',
       snapshot: snapshotForIssue(work),
     });
+    return { success: true } as const;
+  },
+});
+
+export const reconcileTerminalHandoffs = mutation({
+  args: { workId: v.id('issues') },
+  handler: async (ctx, args) => {
+    await requireUser(ctx);
+    const work = await requireWork(ctx, args.workId, 'edit');
+    if (!['completed', 'canceled'].includes(work.workStatus ?? '')) {
+      return { success: true } as const;
+    }
+    await cancelPendingHandoffs(ctx, work._id);
     return { success: true } as const;
   },
 });
@@ -588,12 +612,17 @@ export const proposeHandoff = mutation({
   handler: async (ctx, args) => {
     const actorId = await requireUser(ctx);
     const work = await requireWork(ctx, args.workId, 'edit');
+    if (['completed', 'canceled'].includes(work.workStatus ?? ''))
+      throw new ConvexError('WORK_TERMINAL');
     if (!work.ownerId) throw new ConvexError('WORK_HAS_NO_OWNER');
     if (work.ownerId !== actorId && !(await canAssignIssue(ctx, work)))
       throw new ConvexError('FORBIDDEN');
     if (args.toOwnerId === work.ownerId) throw new ConvexError('ALREADY_OWNER');
     const summary = args.summary?.trim();
+    const note = args.note?.trim();
     if (!summary) throw new ConvexError('HANDOFF_SUMMARY_REQUIRED');
+    if (summary.length > 10_000 || (note?.length ?? 0) > 10_000)
+      throw new ConvexError('HANDOFF_MESSAGE_TOO_LONG');
     await assertOrganizationUser(ctx, work.organizationId, args.toOwnerId);
     const pending = await ctx.db
       .query('workHandoffs')
@@ -608,7 +637,7 @@ export const proposeHandoff = mutation({
       toOwnerId: args.toOwnerId,
       initiatedBy: actorId,
       status: 'pending',
-      note: args.note?.trim() || undefined,
+      note: note || undefined,
       summary,
       createdAt: Date.now(),
     });
@@ -630,6 +659,38 @@ export const proposeHandoff = mutation({
   },
 });
 
+export const updateHandoff = mutation({
+  args: {
+    handoffId: v.id('workHandoffs'),
+    summary: v.string(),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const handoff = await ctx.db.get('workHandoffs', args.handoffId);
+    if (!handoff || handoff.status !== 'pending')
+      throw new ConvexError('HANDOFF_NOT_FOUND');
+    const work = await requireWork(ctx, handoff.workId, 'view');
+    if (['completed', 'canceled'].includes(work.workStatus ?? ''))
+      throw new ConvexError('WORK_TERMINAL');
+    if (
+      !canEditPendingHandoff(handoff, userId, await canAssignIssue(ctx, work))
+    ) {
+      throw new ConvexError('FORBIDDEN');
+    }
+    const summary = args.summary.trim();
+    const note = args.note?.trim();
+    if (!summary) throw new ConvexError('HANDOFF_SUMMARY_REQUIRED');
+    if (summary.length > 10_000 || (note?.length ?? 0) > 10_000)
+      throw new ConvexError('HANDOFF_MESSAGE_TOO_LONG');
+    await ctx.db.patch('workHandoffs', handoff._id, {
+      summary,
+      note: note || undefined,
+    });
+    return { success: true } as const;
+  },
+});
+
 export const respondToHandoff = mutation({
   args: { handoffId: v.id('workHandoffs'), accept: v.boolean() },
   handler: async (ctx, args) => {
@@ -639,12 +700,15 @@ export const respondToHandoff = mutation({
       throw new ConvexError('HANDOFF_NOT_FOUND');
     if (handoff.toOwnerId !== userId) throw new ConvexError('FORBIDDEN');
     const work = await requireWork(ctx, handoff.workId, 'view');
+    if (['completed', 'canceled'].includes(work.workStatus ?? ''))
+      throw new ConvexError('WORK_TERMINAL');
     const now = Date.now();
     await ctx.db.patch('workHandoffs', handoff._id, {
       status: args.accept ? 'accepted' : 'declined',
       respondedAt: now,
       respondedBy: userId,
     });
+    await resolvePendingHandoffNotification(ctx, handoff._id);
     if (args.accept) {
       const active = await ctx.db
         .query('workOwnershipPeriods')

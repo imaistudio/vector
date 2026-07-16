@@ -37,7 +37,7 @@ Use Requests for intake, routing, expected outcomes, and closing the requester f
 
 ## Work
 
-Work is Vector's primary execution object and product noun. It represents a meaningful outcome for which one human is currently accountable.
+Work is Vector's primary execution object and product noun. It represents a meaningful outcome with one accountable owner once claimed or started; planned Work may be temporarily unowned.
 
 Core semantics:
 
@@ -49,7 +49,7 @@ Core semantics:
 - Planned Work may be unowned. Starting unowned Work claims it.
 - Starting Work is always intentional. Assignment, handoff acceptance, and agent attachment never start it.
 - Work records an overall first start and a separate execution start for each ownership period.
-- A pending handoff leaves the current owner accountable. The recipient may accept or decline.
+- A pending handoff leaves the current owner accountable. Its initiator can refine the handoff message until the recipient accepts or declines, and terminal Work automatically cancels any pending handoff.
 - After acceptance, the new owner must explicitly start their own execution period.
 - Work states are planned, active, waiting, blocked, ready for review, completed, and canceled.
 - Work focus lists use an indexed rank so blocked and review-ready outcomes surface before ordinary active Work, then larger effort and longer-stale activity surface first instead of being buried by newer small changes.

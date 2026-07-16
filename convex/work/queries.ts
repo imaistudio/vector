@@ -2,13 +2,14 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { query, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { canEditIssue, canViewIssue } from '../access';
+import { canAssignIssue, canEditIssue, canViewIssue } from '../access';
 import {
   isCanonicalWork,
   requireOrganization,
   requireWorkByKey,
   statusFromLegacyState,
 } from './lib';
+import { canEditPendingHandoff } from './handoffs';
 
 async function userSummary(ctx: QueryCtx, userId?: Id<'users'>) {
   if (!userId) return null;
@@ -23,6 +24,156 @@ async function userSummary(ctx: QueryCtx, userId?: Id<'users'>) {
       }
     : null;
 }
+
+const COUNT_LIMIT = 100;
+
+async function countVisibleWork(
+  ctx: QueryCtx,
+  workIds: Iterable<Id<'issues'>>,
+) {
+  const ids = [...new Set(workIds)].slice(0, COUNT_LIMIT);
+  const work = await Promise.all(ids.map(id => ctx.db.get('issues', id)));
+  const visible = await Promise.all(
+    work.map(async item =>
+      item && isCanonicalWork(item) && (await canViewIssue(ctx, item))
+        ? item
+        : null,
+    ),
+  );
+  return visible.filter(Boolean).length;
+}
+
+export const scopeCounts = query({
+  args: { orgSlug: v.string() },
+  returns: v.object({
+    active: v.number(),
+    activeCapped: v.boolean(),
+    mine: v.number(),
+    mineCapped: v.boolean(),
+    attention: v.number(),
+    attentionCapped: v.boolean(),
+    all: v.number(),
+    allCapped: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const { organization, userId } = await requireOrganization(
+      ctx,
+      args.orgSlug,
+    );
+    const [allWork, myWork, activeStatuses, activeExecutions, attentionRows] =
+      await Promise.all([
+        ctx.db
+          .query('issues')
+          .withIndex('by_org_kind', q =>
+            q.eq('organizationId', organization._id).eq('kind', 'work'),
+          )
+          .take(COUNT_LIMIT + 1),
+        ctx.db
+          .query('issues')
+          .withIndex('by_org_kind_owner', q =>
+            q
+              .eq('organizationId', organization._id)
+              .eq('kind', 'work')
+              .eq('ownerId', userId),
+          )
+          .take(COUNT_LIMIT + 1),
+        Promise.all(
+          (['active', 'waiting', 'blocked', 'ready_for_review'] as const).map(
+            status =>
+              ctx.db
+                .query('issues')
+                .withIndex('by_org_work_status', q =>
+                  q
+                    .eq('organizationId', organization._id)
+                    .eq('workStatus', status),
+                )
+                .take(COUNT_LIMIT + 1),
+          ),
+        ),
+        Promise.all(
+          (['active', 'waiting_for_input', 'paused'] as const).map(status =>
+            ctx.db
+              .query('issueLiveActivities')
+              .withIndex('by_organization_status', q =>
+                q.eq('organizationId', organization._id).eq('status', status),
+              )
+              .take(COUNT_LIMIT + 1),
+          ),
+        ),
+        ctx.db
+          .query('workAttentionRequests')
+          .withIndex('by_organization_status', q =>
+            q.eq('organizationId', organization._id).eq('status', 'open'),
+          )
+          .take(COUNT_LIMIT + 1),
+      ]);
+
+    // Legacy Work can briefly lack workStatus while the compatibility
+    // backfill settles. Resolve only those rows inside this bounded counter
+    // window so the tabs stay aligned with list(), which has the same fallback.
+    const legacyStatuses = await Promise.all(
+      allWork
+        .slice(0, COUNT_LIMIT)
+        .filter(work => !work.workStatus && work.workflowStateId)
+        .map(async work => ({
+          workId: work._id,
+          status: statusFromLegacyState(
+            work.workflowStateId
+              ? await ctx.db.get('issueStates', work.workflowStateId)
+              : null,
+          ),
+        })),
+    );
+    const legacyActiveIds = legacyStatuses
+      .filter(item => ['active', 'waiting', 'blocked'].includes(item.status))
+      .map(item => item.workId);
+    const legacyAttentionIds = legacyStatuses
+      .filter(item => ['blocked', 'ready_for_review'].includes(item.status))
+      .map(item => item.workId);
+
+    const [active, attention] = await Promise.all([
+      countVisibleWork(ctx, [
+        ...activeStatuses
+          .slice(0, 3)
+          .flatMap(group => group.map(work => work._id)),
+        ...activeExecutions.flatMap(group =>
+          group.map(execution => execution.issueId),
+        ),
+        ...legacyActiveIds,
+      ]),
+      countVisibleWork(ctx, [
+        ...activeStatuses
+          .slice(2)
+          .flatMap(group => group.map(work => work._id)),
+        ...attentionRows.map(item => item.workId),
+        ...legacyAttentionIds,
+      ]),
+    ]);
+
+    return {
+      active,
+      activeCapped:
+        activeStatuses.slice(0, 3).some(group => group.length > COUNT_LIMIT) ||
+        activeExecutions.some(group => group.length > COUNT_LIMIT) ||
+        (allWork.length > COUNT_LIMIT && legacyStatuses.length > 0),
+      mine: await countVisibleWork(
+        ctx,
+        myWork.map(work => work._id),
+      ),
+      mineCapped: myWork.length > COUNT_LIMIT,
+      attention,
+      attentionCapped:
+        activeStatuses.slice(2).some(group => group.length > COUNT_LIMIT) ||
+        attentionRows.length > COUNT_LIMIT ||
+        (allWork.length > COUNT_LIMIT && legacyStatuses.length > 0),
+      all: await countVisibleWork(
+        ctx,
+        allWork.map(work => work._id),
+      ),
+      allCapped: allWork.length > COUNT_LIMIT,
+    };
+  },
+});
 
 export const list = query({
   args: {
@@ -270,6 +421,7 @@ export const getByKey = query({
     );
     const historyUsers = new Map(historyUserPairs);
     const canEdit = await canEditIssue(ctx, work);
+    const canAssign = await canAssignIssue(ctx, work);
     return {
       ...work,
       workStatus: work.workStatus ?? statusFromLegacyState(state),
@@ -300,6 +452,7 @@ export const getByKey = query({
         fromOwner: historyUsers.get(handoff.fromOwnerId) ?? null,
         toOwner: historyUsers.get(handoff.toOwnerId) ?? null,
         isRecipient: handoff.toOwnerId === userId,
+        canEditHandoff: canEditPendingHandoff(handoff, userId, canAssign),
       })),
       attention,
       executions,
