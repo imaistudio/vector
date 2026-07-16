@@ -434,6 +434,9 @@ private struct MobileCreateWorkSheet: View {
       } message: {
         Text(viewModel.workModelActionError ?? "Please try again.")
       }
+      .task {
+        viewModel.loadWorkspaceOptions()
+      }
     }
   }
 }

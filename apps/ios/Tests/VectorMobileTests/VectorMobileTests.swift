@@ -659,6 +659,43 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testPrimaryInitialLoadDefersSecondarySubscriptions() {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      initialLoadPolicy: .primarySurfaces
+    )
+
+    XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 1)
+    XCTAssertEqual(repository.workListCalls[.active, default: 0], 1)
+    XCTAssertEqual(repository.inboxNotificationCalls, 1)
+    XCTAssertTrue(repository.issueListCalls.isEmpty)
+    XCTAssertTrue(repository.projectListCalls.isEmpty)
+    XCTAssertTrue(repository.teamListCalls.isEmpty)
+    XCTAssertEqual(repository.documentListCalls, 0)
+    XCTAssertEqual(repository.workspaceOptionsCalls, 1)
+    XCTAssertEqual(repository.userStatusCalls, 0)
+
+    viewModel.loadWorkspaceOptions()
+    viewModel.loadSettings()
+
+    XCTAssertEqual(repository.workspaceOptionsCalls, 1)
+    XCTAssertEqual(repository.userStatusCalls, 1)
+
+    viewModel.refresh()
+
+    XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+    XCTAssertEqual(repository.workListCalls[.active, default: 0], 2)
+    XCTAssertEqual(repository.inboxNotificationCalls, 1)
+    XCTAssertEqual(repository.workspaceOptionsCalls, 1)
+    XCTAssertEqual(repository.issueListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.projectListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.teamListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.documentListCalls, 1)
+  }
+
+  @MainActor
   func testMissingRequestAndWorkDetailsStopShowingSkeletons() async {
     let repository = CountingVectorRepository()
     let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
@@ -923,6 +960,8 @@ private final class InMemorySessionStore: VectorSessionStore, @unchecked Sendabl
 
 @MainActor
 private final class CountingVectorRepository: VectorMobileRepository {
+  var requestListCalls: [VectorRequestScope: Int] = [:]
+  var workListCalls: [VectorWorkScope: Int] = [:]
   var issueListCalls: [VectorIssueScope: Int] = [:]
   var projectListCalls: [VectorProjectScope: Int] = [:]
   var teamListCalls: [VectorProjectScope: Int] = [:]
@@ -938,6 +977,16 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var setPresenceCalls: [VectorPresenceStatus] = []
   var setPresenceAction: ((VectorPresenceStatus) async throws -> Void)?
   var createRequestAction: (() async throws -> Void)?
+
+  func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
+    requestListCalls[scope, default: 0] += 1
+    return publisher(VectorPaginatedPage(page: [], isDone: true))
+  }
+
+  func workPage(orgSlug: String, scope: VectorWorkScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error> {
+    workListCalls[scope, default: 0] += 1
+    return publisher(VectorPaginatedPage(page: [], isDone: true))
+  }
 
   func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error> {
     issueListCalls[scope, default: 0] += 1

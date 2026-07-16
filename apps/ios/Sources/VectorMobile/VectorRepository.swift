@@ -609,7 +609,6 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     var data: [String: ConvexEncodable?] = [
       "title": title,
       "expectedOutput": expectedOutput,
-      "source": "workspace",
       "visibility": "organization",
     ]
     if let description { data["description"] = description }
