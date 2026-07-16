@@ -41,6 +41,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { AgentIcon } from '@/components/agent-icon';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { LiveActivityCard } from './live-activity-card';
 import type { AgentProvider } from '@/convex/_shared/agentBridge';
 
@@ -82,7 +83,7 @@ export function DeviceSetupGuide({ compact }: { compact?: boolean } = {}) {
   const steps = [
     { label: 'Install the CLI', cmd: 'npm install -g @rehpic/vcli' },
     { label: 'Log in', cmd: `vcli auth login --app-url ${appUrl}` },
-    { label: 'Install the bridge', cmd: 'vcli service install' },
+    { label: 'Start on login', cmd: 'vcli service start' },
   ];
 
   return (
@@ -122,7 +123,8 @@ export function DeviceSetupGuide({ compact }: { compact?: boolean } = {}) {
       {!compact && (
         <p className='text-muted-foreground mt-3 text-[11px]'>
           Once the bridge is running, your device will appear here
-          automatically.
+          automatically. On macOS it restarts after failures and starts again
+          when you log in.
         </p>
       )}
     </div>
@@ -177,9 +179,11 @@ function NoDevicesOrOfflineGuide() {
 function SectionHeader({
   count,
   issueId,
+  canManage,
 }: {
   count: number;
   issueId: Id<'issues'>;
+  canManage: boolean;
 }) {
   return (
     <div className='mb-3 flex items-center justify-between'>
@@ -191,10 +195,12 @@ function SectionHeader({
           </span>
         )}
       </div>
-      <div className='flex items-center gap-1'>
-        <AttachProcessPopover issueId={issueId} />
-        <DelegateRunPopover issueId={issueId} />
-      </div>
+      {canManage && (
+        <div className='flex items-center gap-1'>
+          <AttachProcessPopover issueId={issueId} />
+          <DelegateRunPopover issueId={issueId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -242,7 +248,7 @@ export function AttachProcessPopover({
       });
       setOpen(false);
       setAttachingId(null);
-      toast.success('Process attached to issue');
+      toast.success('Agent session attached to Work');
     } catch {
       toast.error('Failed to attach process');
     } finally {
@@ -260,7 +266,10 @@ export function AttachProcessPopover({
           </Button>
         )}
       </PopoverTrigger>
-      <PopoverContent className='w-80 p-0' align='end'>
+      <PopoverContent
+        className='w-[min(20rem,calc(100vw-2rem))] p-0'
+        align='end'
+      >
         {devicesWithProcesses !== undefined &&
         devicesWithProcesses.length === 0 ? (
           <NoDevicesOrOfflineGuide />
@@ -341,9 +350,7 @@ export function AttachProcessPopover({
                           </div>
                         </div>
                         {isAttaching ? (
-                          <span className='text-muted-foreground text-[10px]'>
-                            Attaching...
-                          </span>
+                          <BarsSpinner className='text-muted-foreground size-3.5' />
                         ) : (
                           <ModeBadge mode={process.mode} />
                         )}
@@ -414,7 +421,7 @@ export function DelegateRunPopover({
           : 'Shell session started on device',
       );
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to delegate issue';
+      const msg = e instanceof Error ? e.message : 'Failed to start session';
       toast.error(msg);
     } finally {
       setDelegating(false);
@@ -443,7 +450,10 @@ export function DelegateRunPopover({
             </Button>
           )}
         </PopoverTrigger>
-        <PopoverContent className='w-80 p-0' align='end'>
+        <PopoverContent
+          className='w-[min(20rem,calc(100vw-2rem))] p-0'
+          align='end'
+        >
           {targets !== undefined && targets.length === 0 ? (
             <NoDevicesOrOfflineGuide />
           ) : !selectedDeviceId ? (
@@ -597,7 +607,7 @@ export function DelegateRunPopover({
                     <div className='min-w-0 flex-1'>
                       <div className='text-sm'>Manual shell</div>
                       <div className='text-muted-foreground text-xs'>
-                        Start a plain tmux shell tied to this issue
+                        Start a plain tmux shell tied to this Work
                       </div>
                     </div>
                   </CommandItem>
@@ -718,6 +728,7 @@ function WorkspacePickerStep({
               onChange={e => setNewPath(e.target.value)}
               placeholder='/Users/you/projects/my-repo'
               className='h-8 font-mono text-xs'
+              disabled={adding}
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -736,6 +747,7 @@ function WorkspacePickerStep({
               onChange={e => setNewLabel(e.target.value)}
               placeholder={newPath.trim().split('/').pop() || 'My project'}
               className='h-8 text-xs'
+              disabled={adding}
             />
           </div>
           <Button
@@ -744,7 +756,7 @@ function WorkspacePickerStep({
             disabled={adding || !newPath.trim()}
             onClick={() => void handleAdd()}
           >
-            {adding ? 'Adding...' : 'Add and run'}
+            {adding ? <BarsSpinner className='size-3.5' /> : 'Add and run'}
           </Button>
         </div>
       </div>
@@ -767,9 +779,7 @@ function WorkspacePickerStep({
           {device?.displayName} &middot; {providerLabel}
         </span>
         {loading && (
-          <span className='text-muted-foreground ml-auto text-xs'>
-            Starting...
-          </span>
+          <BarsSpinner className='text-muted-foreground ml-auto size-3.5' />
         )}
       </div>
       <CommandList>
@@ -910,6 +920,7 @@ function WorkspaceConfigDialog({
               onChange={e => setNewPath(e.target.value)}
               placeholder='/Users/you/projects/my-repo'
               className='h-8 font-mono text-xs'
+              disabled={adding}
               autoFocus
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -929,6 +940,7 @@ function WorkspaceConfigDialog({
               onChange={e => setNewLabel(e.target.value)}
               placeholder={newPath.trim().split('/').pop() || 'My project'}
               className='h-8 text-xs'
+              disabled={adding}
             />
           </div>
         </div>
@@ -938,6 +950,7 @@ function WorkspaceConfigDialog({
             variant='outline'
             size='sm'
             onClick={() => onOpenChange(false)}
+            disabled={adding}
           >
             Cancel
           </Button>
@@ -946,7 +959,7 @@ function WorkspaceConfigDialog({
             disabled={adding || !newPath.trim()}
             onClick={() => void handleAdd()}
           >
-            {adding ? 'Adding...' : 'Add workspace'}
+            {adding ? <BarsSpinner className='size-3.5' /> : 'Add workspace'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1001,13 +1014,15 @@ const TERMINAL_STATUSES = new Set([
   'disconnected',
 ]);
 
-export function IssueLiveActivitySection({
+export function WorkSessionSection({
   orgSlug,
   issueId,
   currentUser,
+  canManage = true,
 }: {
   orgSlug: string;
   issueId: Id<'issues'>;
+  canManage?: boolean;
   currentUser?: {
     _id: string;
     name: string;
@@ -1030,7 +1045,11 @@ export function IssueLiveActivitySection({
 
   return (
     <div>
-      <SectionHeader count={activeCount} issueId={issueId} />
+      <SectionHeader
+        count={activeCount}
+        issueId={issueId}
+        canManage={canManage}
+      />
 
       {/* Loading skeleton */}
       {activities === undefined && (

@@ -26,8 +26,17 @@ async function resolveWorkSessionAccess(
     throw new ConvexError('FORBIDDEN');
   }
 
-  const device = await ctx.db.get('agentDevices', workSession.deviceId);
-  const isOwner = device?.userId === userId;
+  const membership = await ctx.db
+    .query('members')
+    .withIndex('by_org_user', q =>
+      q.eq('organizationId', workSession.organizationId).eq('userId', userId),
+    )
+    .first();
+  if (!membership) {
+    throw new ConvexError('FORBIDDEN');
+  }
+
+  const isOwner = workSession.ownerUserId === userId;
   const share = await ctx.db
     .query('workSessionShares')
     .withIndex('by_work_session_user', q =>

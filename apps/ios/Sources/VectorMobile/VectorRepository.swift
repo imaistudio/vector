@@ -8,6 +8,10 @@ private struct VectorAddCommentResponse: Decodable {
   let commentId: VectorID
 }
 
+private struct VectorDelegateSessionResponse: Decodable {
+  let liveActivityId: VectorID
+}
+
 public enum VectorConvexFunctions {
   public static let getOrganizations = "users:getOrganizations"
   public static let listRequestsPage = "requests/queries:list"
@@ -28,6 +32,11 @@ public enum VectorConvexFunctions {
   public static let raiseWorkAttention = "work/mutations:raiseAttention"
   public static let createTask = "tasks/mutations:create"
   public static let setTaskStatus = "tasks/mutations:setStatus"
+  public static let listWorkSessions = "agentBridge/queries:listIssueLiveActivities"
+  public static let listDelegationTargets = "agentBridge/queries:listDelegationTargets"
+  public static let getAgentSessionSnapshot = "agentBridge/queries:getAgentSessionSnapshot"
+  public static let delegateWorkSession = "agentBridge/mutations:delegateIssue"
+  public static let sendAgentSessionMessage = "agentBridge/mutations:appendLiveMessage"
   public static let listIssuesPage = "issues/queries:listIssuesPage"
   public static let getIssueByKey = "issues/queries:getByKey"
   public static let listComments = "issues/queries:listComments"
@@ -162,6 +171,9 @@ public protocol VectorMobileRepository {
   func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error>
   func workPage(orgSlug: String, scope: VectorWorkScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error>
   func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error>
+  func workSessions(issueId: VectorID) -> AnyPublisher<[VectorWorkSession], Error>
+  func delegationTargets() -> AnyPublisher<[VectorDelegationTarget], Error>
+  func agentSession(liveActivityId: VectorID) -> AnyPublisher<VectorAgentSessionSnapshot?, Error>
   func issuesPage(orgSlug: String, scope: VectorIssueScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorIssueRow>, Error>
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
   func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
@@ -197,6 +209,8 @@ public protocol VectorMobileRepository {
   func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws
   func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult
   func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws
+  func delegateWorkSession(issueId: VectorID, deviceId: VectorID, workspaceId: VectorID, provider: String) async throws -> VectorID
+  func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async throws -> VectorID
   func updateTitle(issueId: VectorID, title: String) async throws
   func updateDescription(issueId: VectorID, description: String?) async throws
   func updateDocument(documentId: VectorID, title: String, content: String?) async throws
@@ -254,6 +268,24 @@ public extension VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  func workSessions(issueId: VectorID) -> AnyPublisher<[VectorWorkSession], Error> {
+    Just<[VectorWorkSession]>([])
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func delegationTargets() -> AnyPublisher<[VectorDelegationTarget], Error> {
+    Just<[VectorDelegationTarget]>([])
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func agentSession(liveActivityId: VectorID) -> AnyPublisher<VectorAgentSessionSnapshot?, Error> {
+    Just<VectorAgentSessionSnapshot?>(nil)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   func createRequest(
     orgSlug: String,
     title: String,
@@ -277,6 +309,12 @@ public extension VectorMobileRepository {
   func raiseWorkAttention(workId: VectorID, title: String, details: String?) async throws {}
   func createTask(workId: VectorID, title: String, assigneeId: VectorID?) async throws -> VectorCreateTaskResult { VectorCreateTaskResult(taskId: "task") }
   func setTaskStatus(taskId: VectorID, status: VectorTaskStatus) async throws {}
+  func delegateWorkSession(issueId: VectorID, deviceId: VectorID, workspaceId: VectorID, provider: String) async throws -> VectorID {
+    throw VectorMobileError.validation("Agent delegation is unavailable in this repository.")
+  }
+  func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async throws -> VectorID {
+    throw VectorMobileError.validation("Agent messaging is unavailable in this repository.")
+  }
 }
 
 @MainActor
@@ -343,6 +381,38 @@ public final class ConvexVectorRepository: VectorMobileRepository {
         to: VectorConvexFunctions.getWorkByKey,
         with: ["orgSlug": orgSlug, "workKey": key],
         yielding: VectorWorkDetail?.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func workSessions(issueId: VectorID) -> AnyPublisher<[VectorWorkSession], Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.listWorkSessions,
+        with: ["issueId": issueId],
+        yielding: [VectorWorkSession].self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func delegationTargets() -> AnyPublisher<[VectorDelegationTarget], Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.listDelegationTargets,
+        yielding: [VectorDelegationTarget].self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func agentSession(liveActivityId: VectorID) -> AnyPublisher<VectorAgentSessionSnapshot?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getAgentSessionSnapshot,
+        with: ["liveActivityId": liveActivityId],
+        yielding: VectorAgentSessionSnapshot?.self
       )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
@@ -718,6 +788,36 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     let _: VectorMutationResponse = try await client.mutation(
       VectorConvexFunctions.setTaskStatus,
       with: ["taskId": taskId, "status": status.rawValue]
+    )
+  }
+
+  public func delegateWorkSession(
+    issueId: VectorID,
+    deviceId: VectorID,
+    workspaceId: VectorID,
+    provider: String
+  ) async throws -> VectorID {
+    let response: VectorDelegateSessionResponse = try await client.mutation(
+      VectorConvexFunctions.delegateWorkSession,
+      with: [
+        "issueId": issueId,
+        "deviceId": deviceId,
+        "workspaceId": workspaceId,
+        "provider": provider,
+      ]
+    )
+    return response.liveActivityId
+  }
+
+  public func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async throws -> VectorID {
+    try await client.mutation(
+      VectorConvexFunctions.sendAgentSessionMessage,
+      with: [
+        "liveActivityId": liveActivityId,
+        "direction": "vector_to_agent",
+        "role": "user",
+        "body": body,
+      ]
     )
   }
 

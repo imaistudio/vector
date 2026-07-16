@@ -67,6 +67,105 @@ export function discoverAttachableSessions(): SessionProcessRecord[] {
   ]);
 }
 
+/**
+ * Resolve the local agent session that invoked vcli.
+ *
+ * Agent harnesses normally execute shell commands as descendants of their
+ * long-running agent process, so process ancestry is the strongest signal.
+ * A unique workspace match is a safe fallback for harnesses that proxy shell
+ * execution through another process. Callers can pass a session key to remove
+ * any remaining ambiguity.
+ */
+export function findCurrentAgentSession(
+  sessions: SessionProcessRecord[],
+  options: {
+    sessionKey?: string;
+    cwd?: string;
+    currentPid?: number;
+    processTable?: string;
+  } = {},
+): SessionProcessRecord | undefined {
+  const explicitSessionKey =
+    options.sessionKey ??
+    (options.processTable === undefined
+      ? process.env.CODEX_THREAD_ID?.trim()
+      : undefined);
+  if (explicitSessionKey) {
+    return sessions.find(session => session.sessionKey === explicitSessionKey);
+  }
+
+  const ancestors = listAncestorProcessIds(
+    String(options.currentPid ?? process.pid),
+    options.processTable,
+  );
+  for (const pid of ancestors) {
+    const processMatches = sessions.filter(
+      session => session.localProcessId === pid,
+    );
+    if (processMatches.length === 1) {
+      return processMatches[0];
+    }
+    if (processMatches.length > 1) {
+      return undefined;
+    }
+  }
+
+  const cwd = options.cwd ? normalizeSessionPath(options.cwd) : undefined;
+  if (!cwd) {
+    return undefined;
+  }
+
+  const workspaceMatches = sessions.filter(session =>
+    [session.cwd, session.repoRoot]
+      .filter((value): value is string => Boolean(value))
+      .map(normalizeSessionPath)
+      .some(path => cwd === path || cwd.startsWith(`${path}/`)),
+  );
+  return workspaceMatches.length === 1 ? workspaceMatches[0] : undefined;
+}
+
+function listAncestorProcessIds(
+  currentPid: string,
+  processTable?: string,
+): string[] {
+  let output = processTable;
+  if (output === undefined) {
+    try {
+      output = execSync('ps -axo pid=,ppid=', {
+        encoding: 'utf-8',
+        timeout: 3000,
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  const parentByPid = new Map<string, string>();
+  for (const line of output
+    .split('\n')
+    .map(value => value.trim())
+    .filter(Boolean)) {
+    const [pid, parentPid] = line.split(/\s+/, 2);
+    if (pid && parentPid) {
+      parentByPid.set(pid, parentPid);
+    }
+  }
+
+  const ancestors: string[] = [];
+  const visited = new Set<string>();
+  let pid: string | undefined = currentPid;
+  while (pid && pid !== '0' && !visited.has(pid)) {
+    visited.add(pid);
+    ancestors.push(pid);
+    pid = parentByPid.get(pid);
+  }
+  return ancestors;
+}
+
+function normalizeSessionPath(value: string): string {
+  return value.replace(/\/+$/, '');
+}
+
 export async function launchProviderSession(
   provider: BridgeProvider,
   cwd: string,
@@ -718,19 +817,21 @@ function discoverCodexSessions(): SessionProcessRecord[] {
 
   return listLiveProcessIds('codex')
     .flatMap(pid => {
-      const transcriptPath = getCodexTranscriptPath(pid);
-      if (!transcriptPath) {
+      const transcriptPaths = getCodexTranscriptPaths(pid);
+      if (transcriptPaths.length === 0) {
         return [];
       }
 
       const processCwd = getProcessCwd(pid);
-      const parsed = parseObservedCodexSession(
-        pid,
-        transcriptPath,
-        processCwd,
-        historyBySession,
-      );
-      return parsed ? [parsed] : [];
+      return transcriptPaths.flatMap(transcriptPath => {
+        const parsed = parseObservedCodexSession(
+          pid,
+          transcriptPath,
+          processCwd,
+          historyBySession,
+        );
+        return parsed ? [parsed] : [];
+      });
     })
     .sort(compareObservedSessions);
 }
@@ -879,17 +980,29 @@ function resolveExecutable(
 
 function listLiveProcessIds(commandName: string): string[] {
   try {
-    const output = execSync('ps -axo pid=,comm=', {
-      encoding: 'utf-8',
-      timeout: 3000,
-    });
+    let output: string;
+    try {
+      output = execSync('ps -axo pid=,ucomm=', {
+        encoding: 'utf-8',
+        timeout: 3000,
+      });
+    } catch {
+      output = execSync('ps -axo pid=,comm=', {
+        encoding: 'utf-8',
+        timeout: 3000,
+      });
+    }
 
     return output
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
       .map(line => line.split(/\s+/, 2))
-      .filter(([, command]) => command === commandName)
+      .filter(([, command]) =>
+        command
+          ? basename(command).toLowerCase() === commandName.toLowerCase()
+          : false,
+      )
       .map(([pid]) => pid)
       .filter(Boolean);
   } catch {
@@ -919,10 +1032,10 @@ function getProcessCwd(pid: string): string | undefined {
   }
 }
 
-function getCodexTranscriptPath(pid: string): string | undefined {
+function getCodexTranscriptPaths(pid: string): string[] {
   const lsofCommand = resolveExecutable('lsof', LSOF_PATHS);
   if (!lsofCommand) {
-    return undefined;
+    return [];
   }
 
   try {
@@ -934,15 +1047,15 @@ function getCodexTranscriptPath(pid: string): string | undefined {
     return output
       .split('\n')
       .map(line => line.trim())
-      .find(
+      .filter(
         line =>
           line.startsWith('n') &&
           line.includes('/.codex/sessions/') &&
           line.endsWith('.jsonl'),
       )
-      ?.slice(1);
+      .map(line => line.slice(1));
   } catch {
-    return undefined;
+    return [];
   }
 }
 
@@ -1025,7 +1138,7 @@ function dedupeSessions(
 ): SessionProcessRecord[] {
   const seen = new Set<string>();
   return sessions.filter(session => {
-    const key = `${session.provider}:${session.localProcessId ?? session.sessionKey}`;
+    const key = `${session.provider}:${session.sessionKey || session.localProcessId}`;
     if (seen.has(key)) {
       return false;
     }

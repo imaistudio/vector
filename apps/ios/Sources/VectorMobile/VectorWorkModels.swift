@@ -578,6 +578,155 @@ public struct VectorWorkExecution: Decodable, Equatable, Identifiable {
   }
 }
 
+public struct VectorAgentDevice: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let displayName: String
+  public let platform: String?
+  public let status: String
+
+  public init(id: VectorID, displayName: String, platform: String? = nil, status: String = "offline") {
+    self.id = id
+    self.displayName = displayName
+    self.platform = platform
+    self.status = status
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case displayName
+    case platform
+    case status
+  }
+}
+
+public struct VectorDeviceWorkspace: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let label: String
+  public let path: String
+
+  public init(id: VectorID, label: String, path: String) {
+    self.id = id
+    self.label = label
+    self.path = path
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case label
+    case path
+  }
+}
+
+public struct VectorDelegationTarget: Decodable, Equatable, Identifiable {
+  public let device: VectorAgentDevice
+  public let workspaces: [VectorDeviceWorkspace]
+
+  public var id: VectorID { device.id }
+
+  public init(device: VectorAgentDevice, workspaces: [VectorDeviceWorkspace]) {
+    self.device = device
+    self.workspaces = workspaces
+  }
+}
+
+public struct VectorWorkSessionInfo: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let title: String?
+  public let agentProvider: String?
+  public let cwd: String?
+  public let repoRoot: String?
+  public let branch: String?
+  public let canInteract: Bool
+  public let canManage: Bool
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case title
+    case agentProvider
+    case cwd
+    case repoRoot
+    case branch
+    case canInteract
+    case canManage
+  }
+}
+
+public struct VectorWorkSession: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let provider: String
+  public let providerLabel: String
+  public let title: String?
+  public let status: String
+  public let latestSummary: String?
+  public let deviceName: String
+  public let canInteract: Bool
+  public let workSession: VectorWorkSessionInfo?
+  @ConvexFloat public var lastEventAt: Double
+
+  public init(
+    id: VectorID,
+    provider: String,
+    providerLabel: String,
+    title: String? = nil,
+    status: String,
+    latestSummary: String? = nil,
+    deviceName: String,
+    canInteract: Bool,
+    workSession: VectorWorkSessionInfo? = nil,
+    lastEventAt: Double
+  ) {
+    self.id = id
+    self.provider = provider
+    self.providerLabel = providerLabel
+    self.title = title
+    self.status = status
+    self.latestSummary = latestSummary
+    self.deviceName = deviceName
+    self.canInteract = canInteract
+    self.workSession = workSession
+    self._lastEventAt = ConvexFloat(wrappedValue: lastEventAt)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case provider
+    case providerLabel
+    case title
+    case status
+    case latestSummary
+    case deviceName
+    case canInteract
+    case workSession
+    case lastEventAt
+  }
+
+  public var displayTitle: String {
+    workSession?.title ?? title ?? latestSummary ?? "Agent session"
+  }
+}
+
+public struct VectorAgentSessionMessage: Decodable, Equatable, Identifiable {
+  public let id: String
+  public let role: String
+  public let text: String
+  public let status: String?
+  public let direction: String
+  public let deliveryStatus: String
+  @ConvexFloat public var createdAt: Double
+}
+
+public struct VectorAgentSessionSnapshot: Decodable, Equatable, Identifiable {
+  public let liveActivityId: VectorID
+  public let workSessionId: VectorID?
+  public let agent: String
+  public let title: String
+  public let status: String
+  public let cwd: String?
+  public let messages: [VectorAgentSessionMessage]
+
+  public var id: VectorID { liveActivityId }
+}
+
 public struct VectorWorkDetail: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let key: String

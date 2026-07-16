@@ -56,8 +56,8 @@ function collapseDuplicateDevices(
 function processDedupKey(process: Doc<'agentProcesses'>): string {
   return [
     process.provider,
-    process.localProcessId ??
-      process.sessionKey ??
+    process.sessionKey ??
+      process.localProcessId ??
       process.cwd ??
       process.title,
   ]

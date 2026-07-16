@@ -2,7 +2,7 @@ import { mutation, type MutationCtx } from '../_generated/server';
 import { v, ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireAuthUserId } from '../authUtils';
-import { canViewIssue } from '../access';
+import { canEditIssue } from '../access';
 import {
   agentDeviceServiceTypeValidator,
   agentContextLengthValidator,
@@ -809,7 +809,7 @@ export const attachLiveActivity = mutation({
 
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
-    if (!(await canViewIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
+    if (!(await canEditIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
     const task = args.taskId ? await ctx.db.get('tasks', args.taskId) : null;
     if (args.taskId && (!task || task.workId !== issue._id))
       throw new ConvexError('TASK_NOT_IN_WORK');
@@ -828,6 +828,26 @@ export const attachLiveActivity = mutation({
       }
       if (process.provider !== args.provider) {
         throw new ConvexError('PROCESS_PROVIDER_MISMATCH');
+      }
+
+      const existingSessions = await ctx.db
+        .query('workSessions')
+        .withIndex('by_agent_process', q =>
+          q.eq('agentProcessId', args.processId),
+        )
+        .order('desc')
+        .take(20);
+      const existingSession = existingSessions.find(
+        session =>
+          session.issueId === args.issueId &&
+          session.taskId === args.taskId &&
+          !session.endedAt &&
+          !['completed', 'failed', 'canceled', 'disconnected'].includes(
+            session.status,
+          ),
+      );
+      if (existingSession?.liveActivityId) {
+        return existingSession.liveActivityId;
       }
     }
 
@@ -1782,7 +1802,7 @@ export const delegateIssue = mutation({
 
     const issue = await ctx.db.get('issues', args.issueId);
     if (!issue) throw new ConvexError('ISSUE_NOT_FOUND');
-    if (!(await canViewIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
+    if (!(await canEditIssue(ctx, issue))) throw new ConvexError('FORBIDDEN');
     const task = args.taskId ? await ctx.db.get('tasks', args.taskId) : null;
     if (args.taskId && (!task || task.workId !== issue._id))
       throw new ConvexError('TASK_NOT_IN_WORK');
@@ -2003,7 +2023,8 @@ export const clearTerminalSignals = mutation({
     await requireAuthUserId(ctx);
     const workSession = await ctx.db.get('workSessions', args.workSessionId);
     if (!workSession) throw new ConvexError('WORK_SESSION_NOT_FOUND');
-    await requireWorkSessionViewer(ctx, workSession);
+    const access = await requireWorkSessionViewer(ctx, workSession);
+    if (!access.canInteract) throw new ConvexError('FORBIDDEN');
 
     const signals = await ctx.db
       .query('terminalSignals')
@@ -2027,7 +2048,8 @@ export const setWorkSessionTitle = mutation({
     await requireAuthUserId(ctx);
     const ws = await ctx.db.get('workSessions', args.workSessionId);
     if (!ws) throw new ConvexError('WORK_SESSION_NOT_FOUND');
-    await requireWorkSessionViewer(ctx, ws);
+    const access = await requireWorkSessionViewer(ctx, ws);
+    if (!access.canManage) throw new ConvexError('FORBIDDEN');
 
     if (args.title) {
       // User set a custom title — lock it

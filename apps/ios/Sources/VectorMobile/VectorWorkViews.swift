@@ -532,6 +532,7 @@ struct MobileWorkDetailScreen: View {
   @State private var isCreatingTask = false
   @State private var isHandingOff = false
   @State private var isRaisingAttention = false
+  @State private var isDelegatingSession = false
 
   var body: some View {
     Group {
@@ -667,23 +668,41 @@ struct MobileWorkDetailScreen: View {
             }
           }
 
-          if !detail.executions.isEmpty {
-            Section("Agent executions") {
-              ForEach(detail.executions) { execution in
-                VStack(alignment: .leading, spacing: 3) {
-                  HStack {
-                    Circle().fill(executionStatusColor(execution.status)).frame(width: 7, height: 7)
-                    Text(execution.title ?? "Agent execution").font(.subheadline.weight(.medium))
-                    Spacer()
-                    Text(execution.provider.replacingOccurrences(of: "_", with: " ").capitalized)
-                      .font(.caption2).foregroundStyle(.secondary)
-                  }
-                  if let summary = execution.latestSummary {
-                    Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                  }
+          Section {
+            if detail.canEdit {
+              Button { isDelegatingSession = true } label: {
+                Label("Delegate a new session", systemImage: "desktopcomputer.and.arrow.down")
+              }
+            }
+
+            if viewModel.workSessions.isEmpty {
+              VStack(alignment: .leading, spacing: 4) {
+                Text("No agent sessions yet")
+                  .font(.subheadline.weight(.medium))
+                Text("Attach the current CLI session or delegate this Work to an online machine.")
+                  .font(.caption)
+                  .foregroundStyle(.secondary)
+              }
+              .padding(.vertical, 2)
+            } else {
+              ForEach(viewModel.workSessions) { session in
+                NavigationLink {
+                  MobileWorkSessionScreen(session: session, viewModel: viewModel)
+                } label: {
+                  MobileWorkSessionRow(session: session)
                 }
               }
             }
+
+            if let error = viewModel.workSessionError, !error.isEmpty {
+              Label(error, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+          } header: {
+            Text("Work sessions")
+          } footer: {
+            Text("A Work item can have multiple agent sessions across different machines.")
           }
 
           let pendingHandoffs = detail.handoffs.filter { $0.status == "pending" && $0.isRecipient }
@@ -742,10 +761,288 @@ struct MobileWorkDetailScreen: View {
     .sheet(isPresented: $isRaisingAttention) {
       MobileAttentionSheet(viewModel: viewModel, workId: work.id, isPresented: $isRaisingAttention)
     }
+    .sheet(isPresented: $isDelegatingSession) {
+      MobileDelegateSessionSheet(
+        viewModel: viewModel,
+        workId: work.id,
+        isPresented: $isDelegatingSession
+      )
+    }
   }
 
   private func canStart(_ detail: VectorWorkDetail) -> Bool {
     detail.canEdit && (detail.owner == nil || detail.owner?.id == viewModel.currentUser?.id)
+  }
+}
+
+private struct MobileWorkSessionRow: View {
+  let session: VectorWorkSession
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 5) {
+      HStack(spacing: 7) {
+        Circle()
+          .fill(executionStatusColor(session.status))
+          .frame(width: 7, height: 7)
+        Text(session.displayTitle)
+          .font(.subheadline.weight(.medium))
+          .lineLimit(1)
+        Spacer()
+        Text(session.providerLabel)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
+      HStack(spacing: 4) {
+        Label(session.deviceName, systemImage: "desktopcomputer")
+        Text("·")
+        Text(relativeWorkModelTimestamp(session.lastEventAt))
+      }
+      .font(.caption2)
+      .foregroundStyle(.tertiary)
+      if let summary = session.latestSummary, !summary.isEmpty {
+        Text(summary)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(2)
+      }
+    }
+    .padding(.vertical, 2)
+  }
+}
+
+private struct MobileDelegateSessionSheet: View {
+  @ObservedObject var viewModel: VectorMobileViewModel
+  let workId: VectorID
+  @Binding var isPresented: Bool
+  @State private var deviceId: VectorID?
+  @State private var workspaceId: VectorID?
+  @State private var provider = "codex"
+
+  private let providers: [(id: String, label: String)] = [
+    ("codex", "Codex"),
+    ("claude_code", "Claude Code"),
+    ("cursor", "Cursor"),
+    ("copilot", "GitHub Copilot"),
+    ("opencode", "OpenCode"),
+    ("pi", "Pi"),
+  ]
+
+  private var selectedTarget: VectorDelegationTarget? {
+    viewModel.delegationTargets.first { $0.id == deviceId }
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Agent") {
+          Picker("Provider", selection: $provider) {
+            ForEach(providers, id: \.id) { item in
+              Text(item.label).tag(item.id)
+            }
+          }
+        }
+
+        Section("Machine") {
+          if viewModel.delegationTargets.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+              Text("No online machines")
+                .font(.subheadline.weight(.medium))
+              Text("On a machine, run `vcli service start` and allow delegation for a workspace. It will then appear here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            }
+          } else {
+            Picker("Device", selection: $deviceId) {
+              Text("Choose a machine").tag(nil as VectorID?)
+              ForEach(viewModel.delegationTargets) { target in
+                Text(target.device.displayName).tag(target.id as VectorID?)
+              }
+            }
+
+            Picker("Workspace", selection: $workspaceId) {
+              Text("Choose a workspace").tag(nil as VectorID?)
+              ForEach(selectedTarget?.workspaces ?? []) { workspace in
+                Text(workspace.label).tag(workspace.id as VectorID?)
+              }
+            }
+            .disabled(deviceId == nil)
+          }
+        }
+
+        if let error = viewModel.workSessionError, !error.isEmpty {
+          Section {
+            Label(error, systemImage: "exclamationmark.triangle")
+              .font(.caption)
+              .foregroundStyle(.orange)
+          }
+        }
+      }
+      .navigationTitle("Delegate Work")
+      .vectorInlineNavigationTitle()
+      .onChange(of: deviceId) { _, _ in
+        workspaceId = nil
+      }
+      .task {
+        viewModel.loadDelegationTargets()
+      }
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { isPresented = false }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          Button("Start") {
+            guard let deviceId, let workspaceId else { return }
+            Task {
+              if await viewModel.delegateWorkSession(
+                issueId: workId,
+                deviceId: deviceId,
+                workspaceId: workspaceId,
+                provider: provider
+              ) {
+                isPresented = false
+              }
+            }
+          }
+          .disabled(deviceId == nil || workspaceId == nil || viewModel.isDelegatingWorkSession)
+        }
+      }
+    }
+  }
+}
+
+private struct MobileWorkSessionScreen: View {
+  let session: VectorWorkSession
+  @ObservedObject var viewModel: VectorMobileViewModel
+  @State private var draft = ""
+
+  private var currentSession: VectorAgentSessionSnapshot? {
+    guard viewModel.selectedAgentSession?.liveActivityId == session.id else { return nil }
+    return viewModel.selectedAgentSession
+  }
+
+  private var effectiveStatus: String {
+    currentSession?.status ?? session.status
+  }
+
+  private var canSend: Bool {
+    session.canInteract && !["completed", "failed", "disconnected"].contains(effectiveStatus)
+  }
+
+  var body: some View {
+    Group {
+      if let snapshot = currentSession {
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+              MobileStatusPill(
+                label: effectiveStatus.replacingOccurrences(of: "_", with: " ").capitalized,
+                color: executionStatusColor(effectiveStatus)
+              )
+              Label(session.deviceName, systemImage: "desktopcomputer")
+              Text(session.providerLabel)
+              Spacer()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
+            if snapshot.messages.isEmpty {
+              ContentUnavailableView(
+                "No messages yet",
+                systemImage: "message",
+                description: Text("Agent output and messages sent from Vector will appear here in real time.")
+              )
+              .frame(maxWidth: .infinity)
+              .padding(.vertical, 48)
+            } else {
+              ForEach(snapshot.messages) { message in
+                MobileAgentSessionMessageRow(message: message)
+              }
+            }
+          }
+          .padding(16)
+        }
+      } else if let error = viewModel.workSessionError {
+        MobileWorkModelErrorView(message: error) {
+          viewModel.loadAgentSession(liveActivityId: session.id)
+        }
+      } else {
+        MobileWorkModelDetailSkeleton()
+      }
+    }
+    .navigationTitle(session.displayTitle)
+    .vectorInlineNavigationTitle()
+    .task(id: session.id) {
+      viewModel.loadAgentSession(liveActivityId: session.id)
+    }
+    .safeAreaInset(edge: .bottom, spacing: 0) {
+      HStack(alignment: .bottom, spacing: 10) {
+        TextField(canSend ? "Message this agent session" : "This session is read-only", text: $draft, axis: .vertical)
+          .lineLimit(1...5)
+          .textFieldStyle(.roundedBorder)
+          .disabled(!canSend || viewModel.isSendingAgentMessage)
+        Button {
+          let body = draft
+          Task {
+            if await viewModel.sendAgentSessionMessage(liveActivityId: session.id, body: body) {
+              draft = ""
+            }
+          }
+        } label: {
+          Image(systemName: "arrow.up.circle.fill")
+            .font(.title2)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(VectorTheme.accent)
+        .disabled(
+          !canSend ||
+            draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            viewModel.isSendingAgentMessage
+        )
+        .accessibilityLabel("Send message")
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 9)
+      .background(.bar)
+    }
+  }
+}
+
+private struct MobileAgentSessionMessageRow: View {
+  let message: VectorAgentSessionMessage
+
+  private var isUserMessage: Bool {
+    message.direction == "vector_to_agent" || message.role == "user"
+  }
+
+  var body: some View {
+    HStack {
+      if isUserMessage { Spacer(minLength: 42) }
+      VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 5) {
+          Image(systemName: isUserMessage ? "person.crop.circle" : "sparkles")
+          Text(isUserMessage ? "You" : "Agent")
+          Spacer()
+          Text(relativeWorkModelTimestamp(message.createdAt))
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.secondary)
+        Text(message.text)
+          .font(.subheadline)
+          .textSelection(.enabled)
+        if message.deliveryStatus == "failed" {
+          Label("Delivery failed", systemImage: "exclamationmark.circle")
+            .font(.caption2)
+            .foregroundStyle(.red)
+        }
+      }
+      .padding(10)
+      .background(
+        isUserMessage ? VectorTheme.accent.opacity(0.12) : Color.secondary.opacity(0.08),
+        in: RoundedRectangle(cornerRadius: 10)
+      )
+      if !isUserMessage { Spacer(minLength: 42) }
+    }
   }
 }
 
