@@ -40,7 +40,7 @@ private struct AuthenticatedVectorMobileView: View {
   var body: some View {
     TabView(selection: $selectedTab) {
       NavigationStack {
-        MobileRequestsScreen(viewModel: viewModel)
+        MobileRequestsScreen(viewModel: viewModel, sessionController: sessionController)
       }
       .tabItem {
         Label(VectorMobileTab.requests.title, systemImage: VectorMobileTab.requests.systemImage)
@@ -48,7 +48,7 @@ private struct AuthenticatedVectorMobileView: View {
       .tag(VectorMobileTab.requests)
 
       NavigationStack {
-        MobileWorkScreen(viewModel: viewModel)
+        MobileWorkScreen(viewModel: viewModel, sessionController: sessionController)
       }
       .tabItem {
         Label(VectorMobileTab.work.title, systemImage: VectorMobileTab.work.systemImage)
@@ -1532,7 +1532,7 @@ struct IssuesScreen: View {
   }
 }
 
-private struct WorkspaceToolbarMenu: View {
+struct WorkspaceToolbarMenu: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   let currentOrgSlug: String
   let webBaseURL: URL
@@ -1562,7 +1562,7 @@ private struct WorkspaceToolbarMenu: View {
         size: 28
       )
     }
-    .accessibilityLabel("Workspace menu")
+    .accessibilityLabel("Workspace menu, \(currentWorkspaceName)")
   }
 }
 
