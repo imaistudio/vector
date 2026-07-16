@@ -6,7 +6,7 @@ import SwiftUI
 public struct VectorMobileRootView: View {
   @StateObject private var sessionController: VectorMobileSessionController
 
-  public init(sessionController: VectorMobileSessionController = VectorMobileSessionController()) {
+  public init(sessionController: VectorMobileSessionController) {
     self._sessionController = StateObject(wrappedValue: sessionController)
   }
 
@@ -20,6 +20,7 @@ public struct VectorMobileRootView: View {
     case .signedIn:
       if let viewModel = sessionController.viewModel {
         AuthenticatedVectorMobileView(viewModel: viewModel, sessionController: sessionController)
+          .id(viewModel.configuration.orgSlug)
       } else {
         VectorSessionRestoreScreen()
       }
@@ -109,6 +110,23 @@ private struct AuthenticatedVectorMobileView: View {
         }
       )
       .presentationDetents([.medium, .large])
+    }
+    .alert(
+      "Workspace switch needs attention",
+      isPresented: Binding(
+        get: { sessionController.workspaceSwitchError != nil },
+        set: { isPresented in
+          if !isPresented {
+            sessionController.clearWorkspaceSwitchError()
+          }
+        }
+      )
+    ) {
+      Button("OK") {
+        sessionController.clearWorkspaceSwitchError()
+      }
+    } message: {
+      Text(sessionController.workspaceSwitchError ?? "Try switching workspaces again.")
     }
   }
 
@@ -5591,5 +5609,5 @@ struct SkeletonIssueList: View {
 }
 
 #Preview {
-  VectorMobileRootView()
+  VectorMobileRootView(sessionController: VectorMobileSessionController())
 }

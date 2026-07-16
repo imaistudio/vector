@@ -16,6 +16,7 @@ public enum VectorConvexFunctions {
   public static let getOrganizations = "users:getOrganizations"
   public static let listRequestsPage = "requests/queries:list"
   public static let getRequestByKey = "requests/queries:getByKey"
+  public static let getRequestByClientRequestId = "requests/queries:getByClientRequestId"
   public static let createRequest = "requests/mutations:create"
   public static let claimRequest = "requests/mutations:claim"
   public static let requestChanges = "requests/mutations:requestChanges"
@@ -169,6 +170,7 @@ public enum VectorIssueLayoutMode: String, CaseIterable, Identifiable {
 public protocol VectorMobileRepository {
   func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error>
   func request(orgSlug: String, key: String) -> AnyPublisher<VectorRequestDetail?, Error>
+  func requestCreation(orgSlug: String, clientRequestId: String) -> AnyPublisher<VectorCreateRequestResult?, Error>
   func workPage(orgSlug: String, scope: VectorWorkScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error>
   func work(orgSlug: String, key: String) -> AnyPublisher<VectorWorkDetail?, Error>
   func workSessions(issueId: VectorID) -> AnyPublisher<[VectorWorkSession], Error>
@@ -195,7 +197,7 @@ public protocol VectorMobileRepository {
   func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws
   func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
-  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult
   func claimRequest(requestId: VectorID) async throws
   func requestChanges(requestId: VectorID, note: String) async throws
   func completeRequest(requestId: VectorID) async throws
@@ -251,6 +253,12 @@ public extension VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  func requestCreation(orgSlug: String, clientRequestId: String) -> AnyPublisher<VectorCreateRequestResult?, Error> {
+    Just<VectorCreateRequestResult?>(nil)
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   func workPage(
     orgSlug: String,
     scope: VectorWorkScope,
@@ -291,7 +299,8 @@ public extension VectorMobileRepository {
     title: String,
     description: String?,
     expectedOutput: String,
-    reviewGuidance: String?
+    reviewGuidance: String?,
+    clientRequestId: String
   ) async throws -> VectorCreateRequestResult {
     throw VectorMobileError.validation("Request creation is unavailable in this repository.")
   }
@@ -353,6 +362,17 @@ public final class ConvexVectorRepository: VectorMobileRepository {
         to: VectorConvexFunctions.getRequestByKey,
         with: ["orgSlug": orgSlug, "requestKey": key],
         yielding: VectorRequestDetail?.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func requestCreation(orgSlug: String, clientRequestId: String) -> AnyPublisher<VectorCreateRequestResult?, Error> {
+    client
+      .subscribe(
+        to: VectorConvexFunctions.getRequestByClientRequestId,
+        with: ["orgSlug": orgSlug, "clientRequestId": clientRequestId],
+        yielding: VectorCreateRequestResult?.self
       )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
@@ -674,12 +694,14 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     title: String,
     description: String?,
     expectedOutput: String,
-    reviewGuidance: String?
+    reviewGuidance: String?,
+    clientRequestId: String
   ) async throws -> VectorCreateRequestResult {
     var data: [String: ConvexEncodable?] = [
       "title": title,
       "expectedOutput": expectedOutput,
       "visibility": "organization",
+      "clientRequestId": clientRequestId,
     ]
     if let description { data["description"] = description }
     if let reviewGuidance { data["reviewGuidance"] = reviewGuidance }
@@ -1247,7 +1269,7 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
 
-  public func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult {
+  public func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult {
     VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")
   }
 

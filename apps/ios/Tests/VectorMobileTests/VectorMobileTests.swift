@@ -8,6 +8,7 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(VectorConvexFunctions.getOrganizations, "users:getOrganizations")
     XCTAssertEqual(VectorConvexFunctions.listRequestsPage, "requests/queries:list")
     XCTAssertEqual(VectorConvexFunctions.getRequestByKey, "requests/queries:getByKey")
+    XCTAssertEqual(VectorConvexFunctions.getRequestByClientRequestId, "requests/queries:getByClientRequestId")
     XCTAssertEqual(VectorConvexFunctions.listWorkPage, "work/queries:list")
     XCTAssertEqual(VectorConvexFunctions.getWorkByKey, "work/queries:getByKey")
     XCTAssertEqual(VectorConvexFunctions.createWork, "work/mutations:create")
@@ -186,6 +187,44 @@ final class VectorMobileTests: XCTestCase {
 
     XCTAssertEqual(result.token, "convex-token")
     XCTAssertEqual(store.session?.cookies["session"], "fresh")
+  }
+
+  func testAuthRefreshPreservesWorkspaceOwnedBySharedSessionState() async throws {
+    let appURL = URL(string: "https://vector.example.com")!
+    let convexURL = URL(string: "https://example.convex.cloud")!
+    let session = VectorStoredSession(
+      appURL: appURL,
+      convexURL: convexURL,
+      orgSlug: "imai",
+      cookies: ["session": "fresh"]
+    )
+    let store = InMemorySessionStore(session: session)
+    let sessionState = VectorSessionState(session: session, store: store)
+    let provider = VectorBetterAuthProvider(
+      sessionState: sessionState,
+      authClient: VectorAuthClient(transport: FreshSessionAuthTransport())
+    )
+
+    try sessionState.selectWorkspace("vector")
+    _ = try await provider.loginFromCache { _ in }
+
+    XCTAssertEqual(sessionState.snapshot().orgSlug, "vector")
+    XCTAssertEqual(store.session?.orgSlug, "vector")
+  }
+
+  func testWorkspaceSelectionRemainsActiveWhenPersistenceFails() {
+    let session = VectorStoredSession(
+      appURL: URL(string: "https://vector.example.com")!,
+      convexURL: URL(string: "https://example.convex.cloud")!,
+      orgSlug: "imai"
+    )
+    let sessionState = VectorSessionState(
+      session: session,
+      store: FailingSaveSessionStore(session: session)
+    )
+
+    XCTAssertThrowsError(try sessionState.selectWorkspace("vector"))
+    XCTAssertEqual(sessionState.snapshot().orgSlug, "vector")
   }
 
   @MainActor
@@ -959,7 +998,7 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
     XCTAssertEqual(
       viewModel.workModelActionError,
-      "Vector could not confirm that the request was created. Check Requests before trying again."
+      "Vector could not confirm the request yet. Try Create again; it will not create a duplicate."
     )
     XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
 
@@ -1016,6 +1055,108 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
     XCTAssertNil(viewModel.workModelActionError)
     XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+  }
+
+  @MainActor
+  func testRequestCreationSucceedsWhenReactiveConfirmationArrivesBeforeMutationResponse() async {
+    let repository = CountingVectorRepository()
+    var stalledMutation: CheckedContinuation<Void, Error>?
+    repository.createRequestAction = {
+      try await withCheckedThrowingContinuation { stalledMutation = $0 }
+    }
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      requestCreationTimeout: .seconds(2)
+    )
+
+    let createTask = Task {
+      await viewModel.createRequest(
+        title: "Confirmed from the query",
+        description: nil,
+        expectedOutput: "A closed creation sheet",
+        reviewGuidance: nil
+      )
+    }
+    await waitUntil { viewModel.pendingWorkModelActions.contains("create-request") }
+    repository.requestCreationSubject.send(
+      VectorCreateRequestResult(requestId: "confirmed-request", requestKey: "REQ-21")
+    )
+
+    let created = await createTask.value
+    XCTAssertTrue(created)
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+    stalledMutation?.resume(returning: ())
+  }
+
+  @MainActor
+  func testRequestCreationRetryReusesIdempotencyKeyAfterTimeout() async {
+    let repository = CountingVectorRepository()
+    var firstMutation: CheckedContinuation<Void, Error>?
+    repository.createRequestAction = {
+      if firstMutation == nil {
+        try await withCheckedThrowingContinuation { firstMutation = $0 }
+      }
+    }
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      requestCreationTimeout: .milliseconds(50)
+    )
+
+    let firstResult = await viewModel.createRequest(
+      title: "Safe retry",
+      description: nil,
+      expectedOutput: "Exactly one request",
+      reviewGuidance: nil
+    )
+    let interveningResult = await viewModel.createRequest(
+      title: "A different request",
+      description: nil,
+      expectedOutput: "A separate result",
+      reviewGuidance: nil
+    )
+    let retryResult = await viewModel.createRequest(
+      title: "Safe retry",
+      description: nil,
+      expectedOutput: "Exactly one request",
+      reviewGuidance: nil
+    )
+
+    XCTAssertFalse(firstResult)
+    XCTAssertTrue(interveningResult)
+    XCTAssertTrue(retryResult)
+    XCTAssertEqual(repository.createRequestClientIds.count, 3)
+    XCTAssertNotEqual(repository.createRequestClientIds[0], repository.createRequestClientIds[1])
+    XCTAssertEqual(repository.createRequestClientIds[0], repository.createRequestClientIds[2])
+    firstMutation?.resume(returning: ())
+  }
+
+  @MainActor
+  func testAgentMessageTimeoutClearsGlobalSendingGuard() async {
+    let repository = CountingVectorRepository()
+    var stalledSend: CheckedContinuation<Void, Error>?
+    repository.sendAgentSessionAction = {
+      try await withCheckedThrowingContinuation { stalledSend = $0 }
+    }
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      mutationTimeout: .milliseconds(50)
+    )
+
+    let sent = await viewModel.sendAgentSessionMessage(
+      liveActivityId: "activity-1",
+      body: "Continue with the release"
+    )
+
+    XCTAssertFalse(sent)
+    XCTAssertNil(viewModel.sendingAgentSessionId)
+    XCTAssertEqual(
+      viewModel.agentSessionSendError,
+      "Vector could not confirm this change. Check the item before trying again."
+    )
+    stalledSend?.resume(returning: ())
   }
 
   @MainActor
@@ -1076,6 +1217,24 @@ private final class InMemorySessionStore: VectorSessionStore, @unchecked Sendabl
   }
 }
 
+private final class FailingSaveSessionStore: VectorSessionStore, @unchecked Sendable {
+  private let session: VectorStoredSession
+
+  init(session: VectorStoredSession) {
+    self.session = session
+  }
+
+  func load() throws -> VectorStoredSession? {
+    session
+  }
+
+  func save(_ session: VectorStoredSession) throws {
+    throw VectorAuthError.requestFailed("Unable to save Vector session.")
+  }
+
+  func clear() throws {}
+}
+
 @MainActor
 private final class CountingVectorRepository: VectorMobileRepository {
   var requestListCalls: [VectorRequestScope: Int] = [:]
@@ -1096,10 +1255,17 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var setPresenceAction: ((VectorPresenceStatus) async throws -> Void)?
   var createRequestAction: (() async throws -> Void)?
   var createRequestCompletedCalls = 0
+  var createRequestClientIds: [String] = []
+  let requestCreationSubject = CurrentValueSubject<VectorCreateRequestResult?, Error>(nil)
+  var sendAgentSessionAction: (() async throws -> Void)?
 
   func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
     requestListCalls[scope, default: 0] += 1
     return publisher(VectorPaginatedPage(page: [], isDone: true))
+  }
+
+  func requestCreation(orgSlug: String, clientRequestId: String) -> AnyPublisher<VectorCreateRequestResult?, Error> {
+    requestCreationSubject.eraseToAnyPublisher()
   }
 
   func workPage(orgSlug: String, scope: VectorWorkScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorWorkRow>, Error> {
@@ -1193,7 +1359,13 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
 
-  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult {
+  func sendAgentSessionMessage(liveActivityId: VectorID, body: String) async throws -> VectorID {
+    if let sendAgentSessionAction { try await sendAgentSessionAction() }
+    return "message-created"
+  }
+
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult {
+    createRequestClientIds.append(clientRequestId)
     if let createRequestAction { try await createRequestAction() }
     createRequestCompletedCalls += 1
     return VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")

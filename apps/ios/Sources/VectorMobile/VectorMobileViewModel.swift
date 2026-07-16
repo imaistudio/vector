@@ -11,6 +11,30 @@ public enum VectorMobileError: LocalizedError {
   }
 }
 
+private enum VectorMutationOutcome: Sendable {
+  case success
+  case failure(String)
+}
+
+private final class VectorMutationRace: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<VectorMutationOutcome, Never>?
+
+  init(continuation: CheckedContinuation<VectorMutationOutcome, Never>) {
+    self.continuation = continuation
+  }
+
+  @discardableResult
+  func resolve(_ outcome: VectorMutationOutcome) -> Bool {
+    lock.lock()
+    let continuation = continuation
+    self.continuation = nil
+    lock.unlock()
+    continuation?.resume(returning: outcome)
+    return continuation != nil
+  }
+}
+
 public enum VectorMobileInitialLoadPolicy: Sendable {
   case primarySurfaces
   case allSurfaces
@@ -121,10 +145,14 @@ public final class VectorMobileViewModel: ObservableObject {
   private var userStatusMutationSequence = 0
   private var optimisticUserStatusGuard: OptimisticUserStatusGuard?
   private let requestCreationTimeout: Duration
+  private let mutationTimeout: Duration
   private var requestCreationAttemptId: UUID?
   private var requestCreationOperationTask: Task<Void, Never>?
   private var requestCreationTimeoutTask: Task<Void, Never>?
   private var requestCreationContinuation: CheckedContinuation<Bool, Never>?
+  private var requestCreationConfirmationCancellable: AnyCancellable?
+  private var requestCreationClientIds: [String: String] = [:]
+  private var activeRequestCreationFingerprint: String?
 
   public var isSendingAgentMessage: Bool {
     sendingAgentSessionId != nil
@@ -159,11 +187,13 @@ public final class VectorMobileViewModel: ObservableObject {
     configuration: VectorMobileConfiguration = .demo,
     repository: VectorMobileRepository = MockVectorRepository(),
     initialLoadPolicy: VectorMobileInitialLoadPolicy = .allSurfaces,
-    requestCreationTimeout: Duration = .seconds(20)
+    requestCreationTimeout: Duration = .seconds(20),
+    mutationTimeout: Duration = .seconds(20)
   ) {
     self.configuration = configuration
     self.repository = repository
     self.requestCreationTimeout = requestCreationTimeout
+    self.mutationTimeout = mutationTimeout
     switch initialLoadPolicy {
     case .primarySurfaces:
       refreshPrimarySurfaces()
@@ -355,6 +385,21 @@ public final class VectorMobileViewModel: ObservableObject {
     guard !pendingWorkModelActions.contains(actionId) else { return false }
 
     let attemptId = UUID()
+    let fingerprint = [
+      configuration.orgSlug,
+      title,
+      description ?? "",
+      expectedOutput,
+      reviewGuidance ?? "",
+    ].joined(separator: "\u{1F}")
+    let clientRequestId: String
+    if let existingId = requestCreationClientIds[fingerprint] {
+      clientRequestId = existingId
+    } else {
+      clientRequestId = UUID().uuidString.lowercased()
+      requestCreationClientIds[fingerprint] = clientRequestId
+    }
+    activeRequestCreationFingerprint = fingerprint
     requestCreationAttemptId = attemptId
     pendingWorkModelActions.insert(actionId)
     workModelActionError = nil
@@ -362,6 +407,19 @@ public final class VectorMobileViewModel: ObservableObject {
     return await withTaskCancellationHandler {
       await withCheckedContinuation { continuation in
         requestCreationContinuation = continuation
+        requestCreationConfirmationCancellable?.cancel()
+        requestCreationConfirmationCancellable = repository.requestCreation(
+          orgSlug: configuration.orgSlug,
+          clientRequestId: clientRequestId
+        )
+        .receive(on: DispatchQueue.main)
+        .sink(
+          receiveCompletion: { _ in },
+          receiveValue: { [weak self] result in
+            guard result != nil else { return }
+            self?.finishRequestCreation(attemptId: attemptId, succeeded: true)
+          }
+        )
         requestCreationOperationTask = Task { [weak self] in
           guard let self else { return }
           do {
@@ -370,7 +428,8 @@ public final class VectorMobileViewModel: ObservableObject {
               title: title,
               description: description,
               expectedOutput: expectedOutput,
-              reviewGuidance: reviewGuidance
+              reviewGuidance: reviewGuidance,
+              clientRequestId: clientRequestId
             )
             finishRequestCreation(attemptId: attemptId, succeeded: true)
           } catch is CancellationError {
@@ -392,7 +451,7 @@ public final class VectorMobileViewModel: ObservableObject {
           self?.finishRequestCreation(
             attemptId: attemptId,
             succeeded: false,
-            errorMessage: "Vector could not confirm that the request was created. Check Requests before trying again."
+            errorMessage: "Vector could not confirm the request yet. Try Create again; it will not create a duplicate."
           )
         }
 
@@ -418,11 +477,19 @@ public final class VectorMobileViewModel: ObservableObject {
     let operationTask = requestCreationOperationTask
     let timeoutTask = requestCreationTimeoutTask
     let continuation = requestCreationContinuation
+    let confirmationCancellable = requestCreationConfirmationCancellable
     requestCreationOperationTask = nil
     requestCreationTimeoutTask = nil
     requestCreationContinuation = nil
+    requestCreationConfirmationCancellable = nil
     pendingWorkModelActions.remove("create-request")
 
+    if succeeded {
+      if let fingerprint = activeRequestCreationFingerprint {
+        requestCreationClientIds.removeValue(forKey: fingerprint)
+      }
+    }
+    activeRequestCreationFingerprint = nil
     if let errorMessage {
       workModelActionError = errorMessage
     }
@@ -430,6 +497,7 @@ public final class VectorMobileViewModel: ObservableObject {
 
     operationTask?.cancel()
     timeoutTask?.cancel()
+    confirmationCancellable?.cancel()
     continuation?.resume(returning: succeeded)
   }
 
@@ -539,12 +607,14 @@ public final class VectorMobileViewModel: ObservableObject {
     defer { isDelegatingWorkSession = false }
 
     do {
-      _ = try await repository.delegateWorkSession(
-        issueId: issueId,
-        deviceId: deviceId,
-        workspaceId: workspaceId,
-        provider: provider
-      )
+      try await withMutationTimeout {
+        _ = try await self.repository.delegateWorkSession(
+          issueId: issueId,
+          deviceId: deviceId,
+          workspaceId: workspaceId,
+          provider: provider
+        )
+      }
       return true
     } catch {
       workSessionError = error.localizedDescription
@@ -561,10 +631,12 @@ public final class VectorMobileViewModel: ObservableObject {
     defer { sendingAgentSessionId = nil }
 
     do {
-      _ = try await repository.sendAgentSessionMessage(
-        liveActivityId: liveActivityId,
-        body: trimmedBody
-      )
+      try await withMutationTimeout {
+        _ = try await self.repository.sendAgentSessionMessage(
+          liveActivityId: liveActivityId,
+          body: trimmedBody
+        )
+      }
       return true
     } catch {
       agentSessionSendError = error.localizedDescription
@@ -575,19 +647,49 @@ public final class VectorMobileViewModel: ObservableObject {
 
   private func performWorkModelAction(
     id: String,
-    operation: () async throws -> Void
+    operation: @MainActor @escaping () async throws -> Void
   ) async -> Bool {
     guard !pendingWorkModelActions.contains(id) else { return false }
     pendingWorkModelActions.insert(id)
     workModelActionError = nil
     defer { pendingWorkModelActions.remove(id) }
     do {
-      try await operation()
+      try await withMutationTimeout(operation)
       return true
     } catch {
       errorMessage = error.localizedDescription
       workModelActionError = error.localizedDescription
       return false
+    }
+  }
+
+  private func withMutationTimeout(
+    _ operation: @MainActor @escaping () async throws -> Void
+  ) async throws {
+    let timeout = mutationTimeout
+    let outcome: VectorMutationOutcome = await withCheckedContinuation { continuation in
+      let race = VectorMutationRace(continuation: continuation)
+      let operationTask = Task { @MainActor in
+        do {
+          try await operation()
+          race.resolve(.success)
+        } catch {
+          race.resolve(.failure(error.localizedDescription))
+        }
+      }
+      Task { @MainActor in
+        do {
+          try await Task.sleep(for: timeout)
+        } catch {
+          return
+        }
+        if race.resolve(.failure("Vector could not confirm this change. Check the item before trying again.")) {
+          operationTask.cancel()
+        }
+      }
+    }
+    if case let .failure(message) = outcome {
+      throw VectorMobileError.validation(message)
     }
   }
 

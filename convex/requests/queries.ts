@@ -197,6 +197,29 @@ export const getByKey = query({
   },
 });
 
+export const getByClientRequestId = query({
+  args: { orgSlug: v.string(), clientRequestId: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new ConvexError('UNAUTHORIZED');
+    const org = await getOrganizationBySlug(ctx, args.orgSlug);
+    await requireOrganizationMember(ctx, org._id, userId);
+    const clientRequestId = args.clientRequestId.trim();
+    if (!clientRequestId || clientRequestId.length > 100) return null;
+    const request = await ctx.db
+      .query('requests')
+      .withIndex('by_org_creator_client_request', q =>
+        q
+          .eq('organizationId', org._id)
+          .eq('createdBy', userId)
+          .eq('clientRequestId', clientRequestId),
+      )
+      .unique();
+    if (!request || !(await canViewRequest(ctx, request))) return null;
+    return { requestId: request._id, requestKey: request.key };
+  },
+});
+
 export const getPublicByKey = query({
   args: { orgSlug: v.string(), requestKey: v.string() },
   handler: async (ctx, args) => {
