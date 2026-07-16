@@ -11,6 +11,11 @@ public enum VectorMobileError: LocalizedError {
   }
 }
 
+public enum VectorMobileInitialLoadPolicy: Sendable {
+  case primarySurfaces
+  case allSurfaces
+}
+
 @MainActor
 public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var requests: [VectorRequestRow] = []
@@ -52,7 +57,7 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public let configuration: VectorMobileConfiguration
   private let repository: VectorMobileRepository
-  private let pageSize = 50
+  private let pageSize = 30
   private let rootPageKey = "__root"
   private var issueCache: [VectorIssueScope: [VectorIssueRow]] = [:]
   private var projectCache: [VectorProjectScope: [VectorProject]] = [:]
@@ -122,11 +127,25 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public init(
     configuration: VectorMobileConfiguration = .demo,
-    repository: VectorMobileRepository = MockVectorRepository()
+    repository: VectorMobileRepository = MockVectorRepository(),
+    initialLoadPolicy: VectorMobileInitialLoadPolicy = .allSurfaces
   ) {
     self.configuration = configuration
     self.repository = repository
-    refresh()
+    switch initialLoadPolicy {
+    case .primarySurfaces:
+      refreshPrimarySurfaces()
+    case .allSurfaces:
+      refresh()
+    }
+  }
+
+  public func refreshPrimarySurfaces() {
+    errorMessage = nil
+    refreshRequests()
+    refreshWork()
+    subscribeToInboxNotificationsIfNeeded()
+    subscribeToWorkspaceOptionsIfNeeded()
   }
 
   public func refresh() {
@@ -620,6 +639,10 @@ public final class VectorMobileViewModel: ObservableObject {
         }
       )
       .store(in: &settingsCancellables)
+  }
+
+  public func loadWorkspaceOptions() {
+    subscribeToWorkspaceOptionsIfNeeded()
   }
 
   public func setPresence(_ presence: VectorPresenceStatus) {

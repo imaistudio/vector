@@ -589,7 +589,8 @@ public final class VectorMobileSessionController: ObservableObject {
       )
       let nextViewModel = VectorMobileViewModel(
         configuration: configuration,
-        repository: ConvexVectorRepository(client: client)
+        repository: ConvexVectorRepository(client: client),
+        initialLoadPolicy: .primarySurfaces
       )
       if let pushToken = VectorPushNotificationCoordinator.shared.deviceToken {
         nextViewModel.upsertMobilePushToken(pushToken)
@@ -608,7 +609,11 @@ public final class VectorMobileSessionController: ObservableObject {
     user = VectorAuthenticatedUser(name: "Demo")
     organizations = [VectorOrganization(id: "demo", name: "Demo workspace", slug: VectorMobileConfiguration.demo.orgSlug)]
     convexClient = nil
-    viewModel = VectorMobileViewModel(configuration: .demo, repository: MockVectorRepository())
+    viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: MockVectorRepository(),
+      initialLoadPolicy: .primarySurfaces
+    )
     errorMessage = nil
     phase = .signedIn
   }
@@ -668,7 +673,11 @@ public final class VectorMobileSessionController: ObservableObject {
       webBaseURL: savedSession.appURL
     )
     convexClient = client
-    viewModel = VectorMobileViewModel(configuration: configuration, repository: ConvexVectorRepository(client: client))
+    viewModel = VectorMobileViewModel(
+      configuration: configuration,
+      repository: ConvexVectorRepository(client: client),
+      initialLoadPolicy: .primarySurfaces
+    )
     user = savedSession.user
     organizations = orgs
     isDemoMode = false
