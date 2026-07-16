@@ -159,25 +159,30 @@ Vector is under active development. The top-level docs in this repository reflec
 
 ### Requirements
 
-- Node.js `>=22.19.0`
-- `pnpm`
+- [mise](https://mise.jdx.dev/) (the repository pins Node.js `24.18.0` and pnpm `11.13.1`)
 - A local Convex dev deployment
 
 ### Local Setup
 
-1. Install dependencies.
+1. Install the pinned toolchain.
+
+   ```bash
+   mise install
+   ```
+
+2. Install dependencies.
 
    ```bash
    pnpm install
    ```
 
-2. Create local environment variables.
+3. Create local environment variables.
 
    ```bash
    cp sample.env .env.local
    ```
 
-3. Update `.env.local` with your local values.
+4. Update `.env.local` with your local values.
 
    Minimum app setup usually includes:
    - `NEXT_PUBLIC_APP_URL=http://localhost:3000`
@@ -200,19 +205,19 @@ Vector is under active development. The top-level docs in this repository reflec
    pnpm convex env set OPENROUTER_MODEL moonshotai/kimi-k2.5:nitro
    ```
 
-4. Start Convex in one terminal.
+5. Start Convex in one terminal.
 
    ```bash
    pnpm run convex:dev
    ```
 
-5. Start Next.js in another terminal.
+6. Start Next.js in another terminal.
 
    ```bash
    pnpm run dev
    ```
 
-6. Open `http://localhost:3000`.
+7. Open `http://localhost:3000`.
 
    On a fresh local instance, visit `/setup-admin` to create the first administrator account.
 
@@ -302,7 +307,8 @@ For the exhaustive runtime-by-runtime breakdown, see [docs/getting-started/02-en
 | ------------------------ | --------------------------------------------------------- |
 | `pnpm run dev`           | Start the Next.js development server                      |
 | `pnpm run convex:dev`    | Run the local Convex backend and code generation          |
-| `pnpm run lint`          | Run ESLint                                                |
+| `pnpm run lint`          | Run typed Oxlint and ESLint                               |
+| `pnpm run typecheck`     | Typecheck the app and Convex projects with tsgo           |
 | `pnpm run build`         | Build the production app                                  |
 | `pnpm run format`        | Format the repository with Prettier                       |
 | `pnpm run project:setup` | Install dependencies, prepare hooks, and print next steps |

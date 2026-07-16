@@ -7,8 +7,9 @@ This project uses `pnpm` as its package manager and `husky` for git hooks. Here 
 | `pnpm run dev`           | Starts the Next.js dev server with Turbopack.                     |
 | `pnpm run build`         | Builds the production app.                                        |
 | `pnpm run start`         | Starts the built app in production mode.                          |
-| `pnpm run lint`          | Runs ESLint across the repository.                                |
-| `pnpm run lint:fix`      | Runs ESLint with automatic fixes where possible.                  |
+| `pnpm run lint`          | Runs typed Oxlint and ESLint across the repository.               |
+| `pnpm run lint:fix`      | Runs Oxlint and ESLint with automatic fixes where possible.       |
+| `pnpm run typecheck`     | Typechecks the app and Convex projects with tsgo.                 |
 | `pnpm run format`        | Formats the repository with Prettier.                             |
 | `pnpm run format:check`  | Checks formatting without changing files.                         |
 | `pnpm run convex:dev`    | Starts the local Convex backend and refreshes generated bindings. |

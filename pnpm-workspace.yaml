@@ -1,6 +1,21 @@
 packages:
   - .
   - packages/*
+overrides:
+  '@connectrpc/connect-node>undici': 6.27.0
+  'localtunnel>axios': 1.18.1
+  'next>postcss': 8.5.19
+  'tsup>esbuild': 0.28.1
+allowBuilds:
+  '@google/genai': false
+  esbuild: true
+  msw: false
+  node-datachannel: true
+  node-pty: true
+  protobufjs: false
+  sharp: true
+  tunnelmole: false
+  unrs-resolver: true
 onlyBuiltDependencies:
   - '@tailwindcss/oxide'
   - es5-ext

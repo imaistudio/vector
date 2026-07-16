@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript"],
+  "categories": {
+    "correctness": "off"
+  },
+  "rules": {
+    "typescript/no-floating-promises": "error"
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    ".next/**",
+    "dist/**",
+    "out/**",
+    "build/**",
+    ".pnpm-store/**",
+    "archive/**",
+    "coverage/**",
+    "next-env.d.ts",
+    "convex/**/_generated/**",
+    "**/*.generated.*"
+  ],
+  "options": {
+    "typeAware": true
+  }
+}
