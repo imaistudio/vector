@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MobileRequestsScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
   @State private var searchText = ""
   @State private var isCreating = false
 
@@ -54,6 +55,27 @@ struct MobileRequestsScreen: View {
       .onChange(of: viewModel.requestScope) { _, _ in viewModel.refreshRequests() }
     }
     .toolbar {
+      #if os(iOS)
+      ToolbarItem(placement: .topBarLeading) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/requests"),
+          webLabel: "Open requests on web"
+        )
+      }
+      #else
+      ToolbarItem(placement: .automatic) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/requests"),
+          webLabel: "Open requests on web"
+        )
+      }
+      #endif
       ToolbarItem(placement: .primaryAction) {
         Button { isCreating = true } label: { Image(systemName: "plus") }
           .accessibilityLabel("Create request")
@@ -303,6 +325,7 @@ private struct MobileCreateRequestSheet: View {
 
 struct MobileWorkScreen: View {
   @ObservedObject var viewModel: VectorMobileViewModel
+  @ObservedObject var sessionController: VectorMobileSessionController
   @State private var searchText = ""
   @State private var isCreating = false
 
@@ -349,6 +372,27 @@ struct MobileWorkScreen: View {
       .onChange(of: viewModel.workScope) { _, _ in viewModel.refreshWork() }
     }
     .toolbar {
+      #if os(iOS)
+      ToolbarItem(placement: .topBarLeading) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/work"),
+          webLabel: "Open Work on web"
+        )
+      }
+      #else
+      ToolbarItem(placement: .automatic) {
+        WorkspaceToolbarMenu(
+          sessionController: sessionController,
+          currentOrgSlug: viewModel.configuration.orgSlug,
+          webBaseURL: viewModel.configuration.webBaseURL,
+          issuesURL: viewModel.configuration.webURL(path: "/\(viewModel.configuration.orgSlug)/work"),
+          webLabel: "Open Work on web"
+        )
+      }
+      #endif
       ToolbarItem(placement: .primaryAction) {
         Button { isCreating = true } label: { Image(systemName: "plus") }
           .accessibilityLabel("Create Work")
