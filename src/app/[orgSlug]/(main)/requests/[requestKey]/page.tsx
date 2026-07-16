@@ -199,51 +199,57 @@ function LinkWorkDialog({
             value={search}
             onChange={event => setSearch(event.target.value)}
             placeholder='Search Work…'
-            className='mb-2 h-8 text-sm'
+            className='h-8 text-sm'
           />
-          <div className='max-h-72 overflow-y-auto rounded-md border'>
-            {isLoading
-              ? Array.from({ length: 5 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className='flex h-10 items-center gap-2 border-b px-3'
-                  >
-                    <Skeleton className='h-3 w-16' />
-                    <Skeleton className='h-3 flex-1' />
-                  </div>
-                ))
-              : visible.map(item => (
-                  <button
-                    type='button'
-                    key={item._id}
-                    disabled={linkingId !== null}
-                    className='hover:bg-muted/40 flex h-10 w-full items-center gap-2 border-b px-3 text-left last:border-b-0'
-                    onClick={() => {
-                      if (linkingId) return;
-                      setLinkingId(item._id);
-                      void linkWork({
-                        requestId,
-                        workId: item._id,
-                        relation: 'fulfills',
-                      })
-                        .then(() => {
-                          toast.success(`Attached ${item.key}`);
-                          setOpen(false);
+          {isLoading || visible.length > 0 ? (
+            <div className='mt-2 max-h-72 overflow-y-auto rounded-md border'>
+              {isLoading
+                ? Array.from({ length: 5 }).map((_, index) => (
+                    <div
+                      key={index}
+                      className='flex h-10 items-center gap-2 border-b px-3 last:border-b-0'
+                    >
+                      <Skeleton className='h-3 w-16' />
+                      <Skeleton className='h-3 flex-1' />
+                    </div>
+                  ))
+                : visible.map(item => (
+                    <button
+                      type='button'
+                      key={item._id}
+                      disabled={linkingId !== null}
+                      className='hover:bg-muted/40 flex h-10 w-full items-center gap-2 border-b px-3 text-left last:border-b-0'
+                      onClick={() => {
+                        if (linkingId) return;
+                        setLinkingId(item._id);
+                        void linkWork({
+                          requestId,
+                          workId: item._id,
+                          relation: 'fulfills',
                         })
-                        .catch(() => toast.error('Could not attach Work'))
-                        .finally(() => setLinkingId(null));
-                    }}
-                  >
-                    <span className='text-muted-foreground font-mono text-[10px]'>
-                      {item.key}
-                    </span>
-                    <span className='min-w-0 flex-1 truncate text-xs font-medium'>
-                      {item.title}
-                    </span>
-                    <ArrowRight className='text-muted-foreground size-3.5' />
-                  </button>
-                ))}
-          </div>
+                          .then(() => {
+                            toast.success(`Attached ${item.key}`);
+                            setOpen(false);
+                          })
+                          .catch(() => toast.error('Could not attach Work'))
+                          .finally(() => setLinkingId(null));
+                      }}
+                    >
+                      <span className='text-muted-foreground font-mono text-[10px]'>
+                        {item.key}
+                      </span>
+                      <span className='min-w-0 flex-1 truncate text-xs font-medium'>
+                        {item.title}
+                      </span>
+                      <ArrowRight className='text-muted-foreground size-3.5' />
+                    </button>
+                  ))}
+            </div>
+          ) : normalizedSearch ? (
+            <p className='text-muted-foreground mt-2 px-1 py-2 text-center text-xs'>
+              No Work found.
+            </p>
+          ) : null}
         </div>
       </ResponsiveDialogContent>
     </ResponsiveDialog>

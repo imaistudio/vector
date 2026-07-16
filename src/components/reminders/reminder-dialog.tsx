@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BellPlus, Check, ChevronDown } from 'lucide-react';
+import { BellPlus, ChevronDown } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
 import { api, useMutation } from '@/lib/convex';
 import { toast } from 'sonner';
@@ -155,9 +155,6 @@ export function ReminderDialog({
                             }}
                           >
                             {item.label}
-                            {item.value === cadence && (
-                              <Check className='ml-auto size-3.5' />
-                            )}
                           </CommandItem>
                         ))}
                       </CommandGroup>
