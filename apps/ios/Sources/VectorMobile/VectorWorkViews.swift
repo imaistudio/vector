@@ -259,6 +259,7 @@ private struct MobileCreateRequestSheet: View {
   @State private var context = ""
   @State private var expectedOutput = ""
   @State private var reviewGuidance = ""
+  @State private var submissionTask: Task<Void, Never>?
 
   private var canSubmit: Bool {
     !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -285,20 +286,34 @@ private struct MobileCreateRequestSheet: View {
             .lineLimit(2...6)
         }
       }
+      .disabled(isCreating)
       .navigationTitle("New request")
       .vectorInlineNavigationTitle()
       .toolbar {
-        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { isPresented = false } }
+        ToolbarItem(placement: .cancellationAction) {
+          Button(isCreating ? "Stop" : "Cancel") {
+            if isCreating {
+              submissionTask?.cancel()
+              submissionTask = nil
+            } else {
+              isPresented = false
+            }
+          }
+        }
         ToolbarItem(placement: .confirmationAction) {
           Button {
-            Task {
+            submissionTask = Task {
               let created = await viewModel.createRequest(
-                title: title,
+                title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 description: context.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
-                expectedOutput: expectedOutput,
+                expectedOutput: expectedOutput.trimmingCharacters(in: .whitespacesAndNewlines),
                 reviewGuidance: reviewGuidance.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
               )
-              if created { isPresented = false }
+              guard !Task.isCancelled else { return }
+              submissionTask = nil
+              if created {
+                isPresented = false
+              }
             }
           } label: {
             if isCreating {
@@ -318,6 +333,10 @@ private struct MobileCreateRequestSheet: View {
         Button("OK") { viewModel.clearWorkModelActionError() }
       } message: {
         Text(viewModel.workModelActionError ?? "Please try again.")
+      }
+      .onDisappear {
+        submissionTask?.cancel()
+        submissionTask = nil
       }
     }
   }
@@ -915,6 +934,12 @@ private struct MobileWorkSessionScreen: View {
   let session: VectorWorkSession
   @ObservedObject var viewModel: VectorMobileViewModel
   @State private var draft = ""
+  @State private var isFollowingLatest = true
+  @State private var scrollToLatestRequest = 0
+  @FocusState private var isComposerFocused: Bool
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+  private let bottomAnchor = "agent-session-bottom"
 
   private var currentSession: VectorAgentSessionSnapshot? {
     guard viewModel.selectedAgentSession?.liveActivityId == session.id else { return nil }
@@ -925,86 +950,383 @@ private struct MobileWorkSessionScreen: View {
     currentSession?.status ?? session.status
   }
 
+  private var availability: VectorAgentSessionMessagingAvailability {
+    session.messagingAvailability(effectiveStatus: effectiveStatus)
+  }
+
+  private var loadError: String? {
+    viewModel.agentSessionLoadError(for: session.id)
+  }
+
   private var canSend: Bool {
-    session.canInteract && !["completed", "failed", "disconnected"].contains(effectiveStatus)
+    availability == .available && loadError == nil
+  }
+
+  private var isSending: Bool {
+    viewModel.sendingAgentSessionId == session.id
+  }
+
+  private var composerPlaceholder: String {
+    if loadError != nil { return "Session connection lost" }
+    switch availability {
+    case .available:
+      return "Message \(session.providerLabel)"
+    case .readOnly:
+      return "You have view-only access"
+    case .offline:
+      return "\(session.deviceName) is offline"
+    case .ended:
+      return "This session has ended"
+    }
+  }
+
+  private var unavailableMessage: String? {
+    if let loadError {
+      return "Live updates stopped: \(loadError)"
+    }
+    switch availability {
+    case .available:
+      return nil
+    case .readOnly:
+      return "You can follow this transcript, but you do not have permission to message this session."
+    case .offline:
+      return "This machine is offline. Messaging will be available when the Vector service reconnects."
+    case .ended:
+      let status = effectiveStatus.replacingOccurrences(of: "_", with: " ")
+      return "This session is \(status). Its transcript remains available."
+    }
+  }
+
+  private var emptySessionTitle: String {
+    switch availability {
+    case .available:
+      "Session is ready"
+    case .readOnly:
+      "No messages yet"
+    case .offline:
+      "Session is offline"
+    case .ended:
+      "Session has ended"
+    }
+  }
+
+  private var transcriptUpdateKey: String {
+    guard let lastMessage = currentSession?.messages.last else { return "empty" }
+    return "\(currentSession?.messages.count ?? 0):\(lastMessage.id):\(lastMessage.text.count):\(lastMessage.status ?? "")"
   }
 
   var body: some View {
-    Group {
-      if let snapshot = currentSession {
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-              MobileStatusPill(
-                label: effectiveStatus.replacingOccurrences(of: "_", with: " ").capitalized,
-                color: executionStatusColor(effectiveStatus)
+    ScrollViewReader { scrollProxy in
+      Group {
+        if let snapshot = currentSession {
+          ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+              MobileAgentSessionContext(
+                session: session,
+                snapshot: snapshot,
+                effectiveStatus: effectiveStatus
               )
-              Label(session.deviceName, systemImage: "desktopcomputer")
-              Text(session.providerLabel)
-              Spacer()
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
 
-            if snapshot.messages.isEmpty {
-              ContentUnavailableView(
-                "No messages yet",
-                systemImage: "message",
-                description: Text("Agent output and messages sent from Vector will appear here in real time.")
-              )
-              .frame(maxWidth: .infinity)
-              .padding(.vertical, 48)
-            } else {
-              ForEach(snapshot.messages) { message in
-                MobileAgentSessionMessageRow(message: message)
+              if let loadError {
+                MobileAgentSessionConnectionBanner(message: loadError) {
+                  viewModel.loadAgentSession(liveActivityId: session.id)
+                }
               }
+
+              if snapshot.messages.isEmpty {
+                ContentUnavailableView(
+                  emptySessionTitle,
+                  systemImage: "bubble.left.and.bubble.right",
+                  description: Text(
+                    canSend
+                      ? "Send a message to continue this agent session. Output will appear here in real time."
+                      : (unavailableMessage ?? "Agent output will appear here in real time.")
+                  )
+                )
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 54)
+              } else {
+                ForEach(snapshot.messages) { message in
+                  MobileAgentSessionMessageRow(
+                    message: message
+                  )
+                }
+              }
+
+              Color.clear
+                .frame(height: 1)
+                .id(bottomAnchor)
             }
+            .frame(maxWidth: 720)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 14)
+            .frame(maxWidth: .infinity)
           }
-          .padding(16)
+          .defaultScrollAnchor(.bottom)
+          .trackAgentSessionScroll($isFollowingLatest)
+          .onAppear { scrollToLatest(using: scrollProxy, animated: false) }
+          .onChange(of: transcriptUpdateKey) { _, _ in
+            guard isFollowingLatest else { return }
+            scrollToLatest(using: scrollProxy, animated: true)
+          }
+          .onChange(of: isComposerFocused) { _, isFocused in
+            guard isFocused else { return }
+            isFollowingLatest = true
+            scrollToLatest(using: scrollProxy, animated: true, delay: 0.12)
+          }
+          .onChange(of: scrollToLatestRequest) { _, _ in
+            scrollToLatest(using: scrollProxy, animated: true)
+          }
+        } else if let error = loadError {
+          MobileWorkModelErrorView(message: error) {
+            viewModel.loadAgentSession(liveActivityId: session.id)
+          }
+        } else {
+          MobileWorkModelDetailSkeleton()
         }
-      } else if let error = viewModel.workSessionError {
-        MobileWorkModelErrorView(message: error) {
-          viewModel.loadAgentSession(liveActivityId: session.id)
-        }
-      } else {
-        MobileWorkModelDetailSkeleton()
       }
     }
+    .background(VectorTheme.groupedBackground.opacity(0.32))
     .navigationTitle(session.displayTitle)
     .vectorInlineNavigationTitle()
     .task(id: session.id) {
       viewModel.loadAgentSession(liveActivityId: session.id)
     }
     .safeAreaInset(edge: .bottom, spacing: 0) {
-      HStack(alignment: .bottom, spacing: 10) {
-        TextField(canSend ? "Message this agent session" : "This session is read-only", text: $draft, axis: .vertical)
-          .lineLimit(1...5)
-          .textFieldStyle(.roundedBorder)
-          .disabled(!canSend || viewModel.isSendingAgentMessage)
-        Button {
-          let body = draft
-          Task {
-            if await viewModel.sendAgentSessionMessage(liveActivityId: session.id, body: body) {
-              draft = ""
+      MobileAgentSessionComposer(
+        draft: $draft,
+        isFocused: $isComposerFocused,
+        placeholder: composerPlaceholder,
+        unavailableMessage: unavailableMessage,
+        errorMessage: currentSession == nil ? nil : viewModel.agentSessionSendError(for: session.id),
+        canSend: canSend,
+        isSending: isSending,
+        isMessagingBusy: viewModel.isSendingAgentMessage,
+        onSend: sendMessage
+      )
+    }
+    #if os(iOS)
+    .toolbar {
+      ToolbarItemGroup(placement: .keyboard) {
+        Spacer()
+        Button("Done") { isComposerFocused = false }
+      }
+    }
+    #endif
+  }
+
+  private func sendMessage() {
+    let body = draft
+    isFollowingLatest = true
+    scrollToLatestRequest += 1
+    Task {
+      if await viewModel.sendAgentSessionMessage(liveActivityId: session.id, body: body) {
+        draft = ""
+      }
+    }
+  }
+
+  private func scrollToLatest(
+    using proxy: ScrollViewProxy,
+    animated: Bool,
+    delay: Double = 0
+  ) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+      if animated && !reduceMotion {
+        withAnimation(.easeOut(duration: 0.22)) {
+          proxy.scrollTo(bottomAnchor, anchor: .bottom)
+        }
+      } else {
+        proxy.scrollTo(bottomAnchor, anchor: .bottom)
+      }
+    }
+  }
+}
+
+private extension View {
+  @ViewBuilder
+  func trackAgentSessionScroll(_ isFollowingLatest: Binding<Bool>) -> some View {
+    #if os(macOS)
+    if #available(macOS 15.0, *) {
+      agentSessionScrollGeometry(isFollowingLatest)
+    } else {
+      self
+    }
+    #else
+    agentSessionScrollGeometry(isFollowingLatest)
+    #endif
+  }
+
+  @available(macOS 15.0, *)
+  func agentSessionScrollGeometry(_ isFollowingLatest: Binding<Bool>) -> some View {
+    onScrollGeometryChange(for: Bool.self) { geometry in
+      let distanceFromBottom =
+        geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
+      return distanceFromBottom < 120
+    } action: { _, isNearBottom in
+      isFollowingLatest.wrappedValue = isNearBottom
+    }
+  }
+}
+
+private struct MobileAgentSessionContext: View {
+  let session: VectorWorkSession
+  let snapshot: VectorAgentSessionSnapshot
+  let effectiveStatus: String
+
+  var body: some View {
+    HStack(spacing: 10) {
+      ZStack(alignment: .bottomTrailing) {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+          .fill(VectorTheme.inputBackground)
+          .frame(width: 38, height: 38)
+          .overlay {
+            Image(systemName: "sparkles")
+              .font(.system(size: 16, weight: .semibold))
+              .foregroundStyle(VectorTheme.accent)
+          }
+        Circle()
+          .fill(executionStatusColor(effectiveStatus))
+          .frame(width: 9, height: 9)
+          .overlay(Circle().stroke(VectorTheme.groupedBackground, lineWidth: 2))
+          .offset(x: 1, y: 1)
+      }
+
+      VStack(alignment: .leading, spacing: 2) {
+        Text(session.providerLabel)
+          .font(.subheadline.weight(.semibold))
+        HStack(spacing: 4) {
+          Text(session.deviceName)
+          if let cwd = snapshot.cwd, !cwd.isEmpty {
+            Text("·")
+            Text(URL(fileURLWithPath: cwd).lastPathComponent)
+          }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+      }
+
+      Spacer(minLength: 8)
+
+      MobileStatusPill(
+        label: effectiveStatus.replacingOccurrences(of: "_", with: " ").capitalized,
+        color: executionStatusColor(effectiveStatus)
+      )
+    }
+    .padding(10)
+    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    .overlay {
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(VectorTheme.border.opacity(0.4), lineWidth: 0.5)
+    }
+    .accessibilityElement(children: .combine)
+    .accessibilityLabel("\(session.providerLabel) on \(session.deviceName), \(effectiveStatus.replacingOccurrences(of: "_", with: " "))")
+  }
+}
+
+private struct MobileAgentSessionConnectionBanner: View {
+  let message: String
+  let onReconnect: () -> Void
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 9) {
+      Image(systemName: "wifi.exclamationmark")
+        .foregroundStyle(.orange)
+      VStack(alignment: .leading, spacing: 2) {
+        Text("Live connection lost")
+          .font(.caption.weight(.semibold))
+        Text(message)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      Spacer(minLength: 8)
+      Button("Reconnect", action: onReconnect)
+        .font(.caption.weight(.semibold))
+    }
+    .padding(10)
+    .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+  }
+}
+
+private struct MobileAgentSessionComposer: View {
+  @Binding var draft: String
+  var isFocused: FocusState<Bool>.Binding
+  let placeholder: String
+  let unavailableMessage: String?
+  let errorMessage: String?
+  let canSend: Bool
+  let isSending: Bool
+  let isMessagingBusy: Bool
+  let onSend: () -> Void
+
+  private var isSendDisabled: Bool {
+    !canSend || isMessagingBusy || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+
+  var body: some View {
+    VStack(spacing: 7) {
+      if let errorMessage, !errorMessage.isEmpty {
+        Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(.red)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 4)
+          .accessibilityLabel("Message failed. \(errorMessage)")
+      } else if let unavailableMessage {
+        Label(unavailableMessage, systemImage: canSend ? "info.circle" : "lock.fill")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .padding(.horizontal, 4)
+      }
+
+      HStack(alignment: .bottom, spacing: 8) {
+        TextField(placeholder, text: $draft, axis: .vertical)
+          .focused(isFocused)
+          .lineLimit(1...6)
+          .textFieldStyle(.plain)
+          .font(.body)
+          .padding(.horizontal, 7)
+          .padding(.vertical, 7)
+          .disabled(!canSend)
+          .accessibilityHint(canSend ? "Enter a message for this agent session" : placeholder)
+
+        Button(action: onSend) {
+          Group {
+            if isSending {
+              ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+            } else {
+              Image(systemName: "arrow.up")
+                .font(.system(size: 15, weight: .bold))
             }
           }
-        } label: {
-          Image(systemName: "arrow.up.circle.fill")
-            .font(.title2)
+          .frame(width: 16, height: 16)
         }
-        .buttonStyle(.plain)
-        .foregroundStyle(VectorTheme.accent)
-        .disabled(
-          !canSend ||
-            draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-            viewModel.isSendingAgentMessage
-        )
-        .accessibilityLabel("Send message")
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.circle)
+        .tint(VectorTheme.accent)
+        .controlSize(.regular)
+        .disabled(isSendDisabled)
+        .accessibilityLabel(isSending ? "Sending message" : "Send message")
       }
-      .padding(.horizontal, 12)
-      .padding(.vertical, 9)
-      .background(.bar)
+      .padding(.leading, 7)
+      .padding(.trailing, 7)
+      .padding(.vertical, 7)
+      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+      .overlay {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+          .stroke(VectorTheme.border.opacity(0.48), lineWidth: 0.5)
+      }
+      .shadow(color: Color.black.opacity(0.07), radius: 12, x: 0, y: 4)
     }
+    .padding(.horizontal, 12)
+    .padding(.top, 8)
+    .padding(.bottom, 9)
+    .background(.bar)
   }
 }
 
@@ -1015,34 +1337,181 @@ private struct MobileAgentSessionMessageRow: View {
     message.direction == "vector_to_agent" || message.role == "user"
   }
 
-  var body: some View {
-    HStack {
-      if isUserMessage { Spacer(minLength: 42) }
-      VStack(alignment: .leading, spacing: 4) {
-        HStack(spacing: 5) {
-          Image(systemName: isUserMessage ? "person.crop.circle" : "sparkles")
-          Text(isUserMessage ? "You" : "Agent")
-          Spacer()
-          Text(relativeWorkModelTimestamp(message.createdAt))
-        }
-        .font(.caption2.weight(.medium))
-        .foregroundStyle(.secondary)
-        Text(message.text)
-          .font(.subheadline)
-          .textSelection(.enabled)
-        if message.deliveryStatus == "failed" {
-          Label("Delivery failed", systemImage: "exclamationmark.circle")
-            .font(.caption2)
-            .foregroundStyle(.red)
-        }
-      }
-      .padding(10)
-      .background(
-        isUserMessage ? VectorTheme.accent.opacity(0.12) : Color.secondary.opacity(0.08),
-        in: RoundedRectangle(cornerRadius: 10)
-      )
-      if !isUserMessage { Spacer(minLength: 42) }
+  private var isActivityMessage: Bool {
+    ["status", "system", "compaction", "auth_request"].contains(message.role)
+  }
+
+  private var isExecutionDetail: Bool {
+    ["reasoning", "tool"].contains(message.role)
+  }
+
+  private var isErrorMessage: Bool {
+    message.role == "error" || message.deliveryStatus == "failed"
+  }
+
+  private var userAccessibilityLabel: String {
+    var parts = [
+      "Sent from Vector",
+      message.text,
+      relativeWorkModelTimestamp(message.createdAt),
+    ]
+    switch message.deliveryStatus {
+    case "pending":
+      parts.append("Sending")
+    case "failed":
+      parts.append("Delivery failed")
+    default:
+      break
     }
+    return parts.joined(separator: ", ")
+  }
+
+  var body: some View {
+    Group {
+      if isActivityMessage {
+        MobileAgentSessionActivityRow(message: message)
+      } else if isExecutionDetail {
+        MobileAgentSessionExecutionDetailRow(message: message)
+      } else if isUserMessage {
+        HStack(alignment: .top) {
+          Spacer(minLength: 44)
+          VStack(alignment: .trailing, spacing: 6) {
+            HStack(spacing: 6) {
+              Text("Sent from Vector")
+                .fontWeight(.medium)
+              Text(relativeWorkModelTimestamp(message.createdAt))
+              Image(systemName: "arrow.up.right.circle.fill")
+                .accessibilityHidden(true)
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+
+            Text(message.text)
+              .font(.subheadline)
+              .foregroundStyle(Color.white)
+              .multilineTextAlignment(.leading)
+              .textSelection(.enabled)
+              .padding(.horizontal, 13)
+              .padding(.vertical, 10)
+              .background(VectorTheme.accent, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            deliveryStatus
+          }
+          .frame(maxWidth: 560, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(userAccessibilityLabel)
+      } else if isErrorMessage {
+        Label {
+          VStack(alignment: .leading, spacing: 4) {
+            Text(message.text)
+              .font(.subheadline)
+              .textSelection(.enabled)
+            Text(relativeWorkModelTimestamp(message.createdAt))
+              .font(.caption2)
+              .foregroundStyle(.secondary)
+          }
+        } icon: {
+          Image(systemName: "exclamationmark.triangle.fill")
+            .foregroundStyle(.orange)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      } else {
+        VStack(alignment: .leading, spacing: 7) {
+          Text(relativeWorkModelTimestamp(message.createdAt))
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
+          MarkdownDocumentView(markdown: message.text)
+            .font(.subheadline)
+            .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+    }
+  }
+
+  @ViewBuilder private var deliveryStatus: some View {
+    switch message.deliveryStatus {
+    case "pending":
+      Label("Sending", systemImage: "clock")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+    case "sent":
+      EmptyView()
+    case "failed":
+      Label("Delivery failed", systemImage: "exclamationmark.circle.fill")
+        .font(.caption2)
+        .foregroundStyle(.red)
+    default:
+      EmptyView()
+    }
+  }
+}
+
+private struct MobileAgentSessionExecutionDetailRow: View {
+  let message: VectorAgentSessionMessage
+  @State private var isExpanded = false
+
+  private var title: String {
+    message.role == "tool" ? "Tool activity" : "Agent reasoning"
+  }
+
+  private var icon: String {
+    message.role == "tool" ? "wrench.and.screwdriver" : "brain.head.profile"
+  }
+
+  var body: some View {
+    DisclosureGroup(isExpanded: $isExpanded) {
+      Text(message.text)
+        .font(message.role == "tool" ? .caption.monospaced() : .caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 7)
+    } label: {
+      HStack(spacing: 7) {
+        Label(title, systemImage: icon)
+          .font(.caption.weight(.medium))
+        Spacer(minLength: 6)
+        Text(relativeWorkModelTimestamp(message.createdAt))
+          .font(.caption2)
+          .foregroundStyle(.tertiary)
+      }
+    }
+    .tint(.secondary)
+    .padding(10)
+    .background(VectorTheme.inputBackground.opacity(0.7), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+  }
+}
+
+private struct MobileAgentSessionActivityRow: View {
+  let message: VectorAgentSessionMessage
+
+  private var icon: String {
+    switch message.role {
+    case "auth_request": "lock.shield"
+    case "compaction": "arrow.triangle.2.circlepath"
+    case "status": "circle.dotted"
+    default: "info.circle"
+    }
+  }
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 7) {
+      Image(systemName: icon)
+        .frame(width: 14)
+      Text(message.text)
+        .italic()
+        .fixedSize(horizontal: false, vertical: true)
+      Spacer(minLength: 6)
+      Text(relativeWorkModelTimestamp(message.createdAt))
+        .lineLimit(1)
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .padding(.vertical, 2)
   }
 }
 

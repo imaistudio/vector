@@ -121,6 +121,12 @@ The user can:
 
 Explain this clearly because many commands fail without org context.
 
+For agent-managed Requests and Work, do not silently rely on the active org.
+Resolve the workspace from the Vector URL, the user's explicit choice, or the
+workspace that uniquely contains the referenced key, then pass `--org <slug>`
+on every related read and mutation. If a new Request could belong to multiple
+workspaces, ask instead of choosing the last active org.
+
 ## Auth Workflow
 
 Explain auth with these commands first:
@@ -197,10 +203,10 @@ vcli org create --name "Acme" --slug acme
 vcli org use acme
 vcli team create --key eng --name "Engineering"
 vcli project create --key api --name "API" --team eng
-vcli request create --title "Ship CLI" --expected-output "A reviewed CLI release"
-vcli work create --title "Ship CLI" --request REQ-1
-vcli work start WORK-1
-vcli task create WORK-1 --title "Implement command surface"
+vcli --org acme request create --title "Ship CLI" --expected-output "A reviewed CLI release"
+vcli --org acme work create --title "Ship CLI" --request REQ-1
+vcli --org acme work start WORK-1
+vcli --org acme task create WORK-1 --title "Implement command surface"
 ```
 
 ### 2. Invite Another User

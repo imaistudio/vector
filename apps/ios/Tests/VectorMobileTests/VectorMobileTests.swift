@@ -112,6 +112,22 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(snapshot.messages.first?.direction, "agent_to_vector")
   }
 
+  func testWorkSessionMessagingAvailabilityHandlesAccessAndLifecycle() throws {
+    let payload = #"{"_id":"activity-1","provider":"codex","providerLabel":"Codex","status":"active","deviceName":"Raj’s Mac","canInteract":true,"lastEventAt":1774560300000}"#.data(using: .utf8)!
+    let session = try JSONDecoder().decode(VectorWorkSession.self, from: payload)
+
+    XCTAssertEqual(session.messagingAvailability(), .available)
+    XCTAssertEqual(session.messagingAvailability(effectiveStatus: "waiting_for_input"), .available)
+    XCTAssertEqual(session.messagingAvailability(effectiveStatus: "disconnected"), .offline)
+    XCTAssertEqual(session.messagingAvailability(effectiveStatus: "completed"), .ended)
+
+    let readOnlyPayload = #"{"_id":"activity-2","provider":"codex","providerLabel":"Codex","status":"active","deviceName":"Shared Mac","canInteract":false,"lastEventAt":1774560300000}"#.data(using: .utf8)!
+    let readOnlySession = try JSONDecoder().decode(VectorWorkSession.self, from: readOnlyPayload)
+    XCTAssertEqual(readOnlySession.messagingAvailability(), .readOnly)
+    XCTAssertEqual(readOnlySession.messagingAvailability(effectiveStatus: "offline"), .offline)
+    XCTAssertEqual(readOnlySession.messagingAvailability(effectiveStatus: "failed"), .ended)
+  }
+
   func testNotificationDeepLinksRecognizeRequestAndWorkRoutes() throws {
     let requestPayload = #"{"_id":"notification-1","category":"reviews","eventType":"request_ready_for_review","title":"Ready","body":"Review it","href":"/vector/requests/REQ-8","requestId":"request-8","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
     let workPayload = #"{"_id":"notification-2","category":"attention","eventType":"work_blocked","title":"Blocked","body":"Needs input","href":"/vector/work/VEC-9","issueId":"work-9","isRead":false,"isArchived":false,"createdAt":1774560000000}"#.data(using: .utf8)!
@@ -920,6 +936,89 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testRequestCreationTimesOutAndClearsProgressWhenMutationStalls() async {
+    let repository = CountingVectorRepository()
+    var stalledMutation: CheckedContinuation<Void, Error>?
+    repository.createRequestAction = {
+      try await withCheckedThrowingContinuation { stalledMutation = $0 }
+    }
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      requestCreationTimeout: .milliseconds(100)
+    )
+
+    let created = await viewModel.createRequest(
+      title: "Request that loses its response",
+      description: nil,
+      expectedOutput: "A confirmed result",
+      reviewGuidance: nil
+    )
+
+    XCTAssertFalse(created)
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+    XCTAssertEqual(
+      viewModel.workModelActionError,
+      "Vector could not confirm that the request was created. Check Requests before trying again."
+    )
+    XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+
+    // A late SDK response cannot put the UI back into its completed attempt.
+    stalledMutation?.resume(returning: ())
+    await waitUntil { repository.createRequestCompletedCalls == 1 }
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+  }
+
+  @MainActor
+  func testRequestCreationCancellationClearsProgressWithoutShowingAnError() async {
+    let repository = CountingVectorRepository()
+    repository.createRequestAction = {
+      try await Task.sleep(nanoseconds: 60_000_000_000)
+    }
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      requestCreationTimeout: .seconds(60)
+    )
+
+    let createTask = Task {
+      await viewModel.createRequest(
+        title: "Canceled request",
+        description: nil,
+        expectedOutput: "Nothing after cancellation",
+        reviewGuidance: nil
+      )
+    }
+    await waitUntil { viewModel.pendingWorkModelActions.contains("create-request") }
+
+    createTask.cancel()
+    let created = await createTask.value
+
+    XCTAssertFalse(created)
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+    XCTAssertNil(viewModel.workModelActionError)
+    XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+  }
+
+  @MainActor
+  func testSuccessfulRequestCreationRefreshesRequestsAndClearsProgress() async {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+
+    let created = await viewModel.createRequest(
+      title: "A fresh request",
+      description: nil,
+      expectedOutput: "A visible request",
+      reviewGuidance: nil
+    )
+
+    XCTAssertTrue(created)
+    XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
+    XCTAssertNil(viewModel.workModelActionError)
+    XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+  }
+
+  @MainActor
   private func waitUntil(
     timeout: TimeInterval = 1,
     file: StaticString = #filePath,
@@ -996,6 +1095,7 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var setPresenceCalls: [VectorPresenceStatus] = []
   var setPresenceAction: ((VectorPresenceStatus) async throws -> Void)?
   var createRequestAction: (() async throws -> Void)?
+  var createRequestCompletedCalls = 0
 
   func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
     requestListCalls[scope, default: 0] += 1
@@ -1095,6 +1195,7 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?) async throws -> VectorCreateRequestResult {
     if let createRequestAction { try await createRequestAction() }
+    createRequestCompletedCalls += 1
     return VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")
   }
 
