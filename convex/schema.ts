@@ -866,6 +866,7 @@ export default defineSchema({
     resolvedBy: v.optional(v.id('users')),
   })
     .index('by_organization', ['organizationId'])
+    .index('by_organization_status', ['organizationId', 'status'])
     .index('by_work', ['workId'])
     .index('by_work_status', ['workId', 'status'])
     .index('by_task', ['taskId'])
@@ -1394,8 +1395,25 @@ export default defineSchema({
     .index('by_user_read', ['userId', 'isRead'])
     .index('by_user_read_archived', ['userId', 'isRead', 'isArchived'])
     .index('by_user_archived', ['userId', 'isArchived'])
+    .index('by_user_organization_read_archived', [
+      'userId',
+      'organizationId',
+      'isRead',
+      'isArchived',
+    ])
+    .index('by_user_organization_archived', [
+      'userId',
+      'organizationId',
+      'isArchived',
+    ])
     .index('by_user_action', ['userId', 'actionState'])
     .index('by_user_action_archived', ['userId', 'actionState', 'isArchived'])
+    .index('by_user_organization_action_archived', [
+      'userId',
+      'organizationId',
+      'actionState',
+      'isArchived',
+    ])
     .index('by_email', ['email']),
 
   notificationPreferences: defineTable({
@@ -1770,6 +1788,7 @@ export default defineSchema({
     clientVersion: v.optional(v.string()),
   })
     .index('by_organization', ['organizationId'])
+    .index('by_organization_status', ['organizationId', 'status'])
     .index('by_issue', ['issueId'])
     .index('by_issue_status', ['issueId', 'status'])
     .index('by_task', ['taskId'])

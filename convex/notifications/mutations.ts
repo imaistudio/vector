@@ -4,6 +4,7 @@ import { ConvexError, v } from 'convex/values';
 import { getAuthUserId } from '../authUtils';
 import { notificationCategoryValidator } from './shared';
 import { notificationActionStateValidator } from '../_shared/work';
+import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 
 export const markRead = mutation({
   args: {
@@ -35,19 +36,37 @@ export const markRead = mutation({
 });
 
 export const markAllRead = mutation({
-  args: {},
-  handler: async ctx => {
+  args: { orgSlug: v.optional(v.string()) },
+  handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) {
       throw new ConvexError('UNAUTHORIZED');
     }
 
-    const recipients = await ctx.db
-      .query('notificationRecipients')
-      .withIndex('by_user_read', q =>
-        q.eq('userId', userId).eq('isRead', false),
-      )
-      .collect();
+    const organizationId = args.orgSlug
+      ? (await getOrganizationBySlug(ctx, args.orgSlug))._id
+      : undefined;
+    if (organizationId) {
+      await requireOrganizationMember(ctx, organizationId, userId);
+    }
+
+    const recipients = organizationId
+      ? await ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_organization_read_archived', q =>
+            q
+              .eq('userId', userId)
+              .eq('organizationId', organizationId)
+              .eq('isRead', false)
+              .eq('isArchived', false),
+          )
+          .collect()
+      : await ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_read', q =>
+            q.eq('userId', userId).eq('isRead', false),
+          )
+          .collect();
 
     for (const recipient of recipients) {
       if (recipient.isArchived) {

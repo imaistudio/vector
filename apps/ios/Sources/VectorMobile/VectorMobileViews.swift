@@ -28,12 +28,13 @@ public struct VectorMobileRootView: View {
 }
 
 private struct AuthenticatedVectorMobileView: View {
+  @Environment(\.scenePhase) private var scenePhase
   @ObservedObject var viewModel: VectorMobileViewModel
   @ObservedObject var sessionController: VectorMobileSessionController
   @StateObject private var pushCoordinator = VectorPushNotificationCoordinator.shared
-  @AppStorage("vector.mobile.notificationsPrompted") private var hasPromptedForNotifications = false
   @State private var selectedTab: VectorMobileTab = .work
   @State private var isShowingNotificationPrompt = false
+  @State private var hasPresentedNotificationPromptThisLaunch = false
   @State private var notificationHrefToOpen: String?
 
   var body: some View {
@@ -84,18 +85,11 @@ private struct AuthenticatedVectorMobileView: View {
       if let href = pushCoordinator.pendingNotificationHref {
         openNotification(href)
       }
-      Task {
-        await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
-        if let token = pushCoordinator.deviceToken {
-          viewModel.upsertMobilePushToken(token)
-        }
-      }
-      if !hasPromptedForNotifications && !sessionController.isDemoMode {
-        Task { @MainActor in
-          try? await Task.sleep(nanoseconds: 450_000_000)
-          isShowingNotificationPrompt = true
-        }
-      }
+      refreshNotificationRegistration(shouldPrompt: true)
+    }
+    .onChange(of: scenePhase) { _, phase in
+      guard phase == .active else { return }
+      refreshNotificationRegistration(shouldPrompt: false)
     }
     .onChange(of: sessionController.user) { _, user in
       viewModel.setAuthenticatedUser(user)
@@ -106,23 +100,35 @@ private struct AuthenticatedVectorMobileView: View {
     .onReceive(pushCoordinator.$pendingNotificationHref.compactMap { $0 }) { href in
       openNotification(href)
     }
-    .sheet(
-      isPresented: $isShowingNotificationPrompt,
-      onDismiss: {
-        if !hasPromptedForNotifications {
-          hasPromptedForNotifications = true
-        }
-      }
-    ) {
+    .sheet(isPresented: $isShowingNotificationPrompt) {
       NotificationOnboardingSheet(
         viewModel: viewModel,
         pushCoordinator: pushCoordinator,
         onDone: {
-          hasPromptedForNotifications = true
           isShowingNotificationPrompt = false
         }
       )
       .presentationDetents([.medium, .large])
+    }
+  }
+
+  private func refreshNotificationRegistration(shouldPrompt: Bool) {
+    Task { @MainActor in
+      await pushCoordinator.registerForRemoteNotificationsIfAuthorized()
+      if let token = pushCoordinator.deviceToken {
+        viewModel.upsertMobilePushToken(token)
+      }
+
+      guard shouldPrompt,
+            !sessionController.isDemoMode,
+            !hasPresentedNotificationPromptThisLaunch,
+            !pushCoordinator.authorizationStatus.allowsRemoteRegistration
+      else { return }
+
+      hasPresentedNotificationPromptThisLaunch = true
+      try? await Task.sleep(nanoseconds: 450_000_000)
+      guard !Task.isCancelled else { return }
+      isShowingNotificationPrompt = true
     }
   }
 
@@ -5122,6 +5128,10 @@ private struct NotificationOnboardingSheet: View {
   @State private var selectedCategories = Set(VectorNotificationCategory.allCases)
   @State private var isEnabling = false
 
+  private var requiresSettings: Bool {
+    pushCoordinator.authorizationStatus == .denied
+  }
+
   var body: some View {
     NavigationStack {
       List {
@@ -5129,7 +5139,9 @@ private struct NotificationOnboardingSheet: View {
           VStack(alignment: .leading, spacing: 8) {
             Label("Stay updated", systemImage: "bell.badge")
               .font(.headline)
-            Text("Vector can notify you about work that needs your attention on this iPhone.")
+            Text(requiresSettings
+              ? "Notifications are disabled for Vector. You can enable them in Settings."
+              : "Vector can notify you about work that needs your attention on this iPhone.")
               .font(.subheadline)
               .foregroundStyle(.secondary)
           }
@@ -5166,7 +5178,7 @@ private struct NotificationOnboardingSheet: View {
             if isEnabling {
               ProgressView()
             } else {
-              Text("Enable")
+              Text(requiresSettings ? "Open Settings" : "Enable")
             }
           }
           .disabled(isEnabling || selectedCategories.isEmpty)
@@ -5186,6 +5198,18 @@ private struct NotificationOnboardingSheet: View {
       enabledCategories: selectedCategories,
       disabledCategories: disabledCategories
     )
+
+    if requiresSettings {
+      #if os(iOS)
+        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+          UIApplication.shared.open(settingsURL)
+        }
+      #endif
+      isEnabling = false
+      onDone()
+      return
+    }
+
     Task { @MainActor in
       await pushCoordinator.requestRegistration()
       if let token = pushCoordinator.deviceToken {

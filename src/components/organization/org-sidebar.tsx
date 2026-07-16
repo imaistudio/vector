@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   type LucideIcon,
   Inbox,
+  FileInput,
   BriefcaseBusiness,
   FileText,
   FolderOpen,
@@ -27,7 +28,12 @@ import { CreateTeamButton } from '@/components/teams/create-team-button';
 import { CreateProjectButton } from '@/components/projects/create-project-button';
 import { ScopedPermissionGate } from '@/hooks/use-permissions';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
-import { api, useCachedPaginatedQuery, useMutation } from '@/lib/convex';
+import {
+  api,
+  useCachedPaginatedQuery,
+  useCachedQuery,
+  useMutation,
+} from '@/lib/convex';
 import { withIds } from '@/lib/convex-helpers';
 import { useState, type ReactNode } from 'react';
 import { useRouter } from 'nextjs-toploader/app';
@@ -42,6 +48,10 @@ interface NavItem {
   icon: LucideIcon;
   /** Optional create button element shown at the end of the row */
   createElement?: ReactNode;
+  badgeCount?: number;
+  badgeCapped?: boolean;
+  badgeLabel?: string;
+  badgeTone?: 'attention' | 'unread';
 }
 
 interface OrgSidebarProps {
@@ -168,6 +178,9 @@ function CreateThreadButton({
 
 export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
   const pathname = usePathname();
+  const inboxCounts = useCachedQuery(api.notifications.queries.inboxCounts, {
+    orgSlug,
+  });
 
   const userTeamsPage = useCachedPaginatedQuery(
     api.teams.queries.listPage,
@@ -224,9 +237,25 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
 
   const navItems: NavItem[] = [
     {
+      label: 'Inbox',
+      href: `/${orgSlug}/inbox`,
+      icon: Inbox,
+      badgeCount:
+        (inboxCounts?.action ?? 0) > 0
+          ? inboxCounts?.action
+          : inboxCounts?.unread,
+      badgeLabel:
+        (inboxCounts?.action ?? 0) > 0 ? 'items need action' : 'unread updates',
+      badgeTone: (inboxCounts?.action ?? 0) > 0 ? 'attention' : 'unread',
+      badgeCapped:
+        (inboxCounts?.action ?? 0) > 0
+          ? inboxCounts?.actionCapped
+          : inboxCounts?.unreadCapped,
+    },
+    {
       label: 'Requests',
       href: `/${orgSlug}/requests`,
-      icon: Inbox,
+      icon: FileInput,
       createElement: (
         <ScopedPermissionGate
           scope={{ orgSlug }}
@@ -282,6 +311,25 @@ export function OrgSidebar({ orgSlug, onNavigate }: OrgSidebarProps) {
                 >
                   <item.icon className='size-4 shrink-0' />
                   <span className='min-w-0 flex-1 truncate'>{item.label}</span>
+                  {item.badgeCount !== undefined && item.badgeCount > 0 ? (
+                    <span
+                      className={cn(
+                        'flex min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] leading-4 font-medium text-white',
+                        item.badgeTone === 'attention'
+                          ? 'bg-violet-500'
+                          : 'bg-primary',
+                      )}
+                      title={`${item.badgeCount} ${item.badgeLabel ?? 'updates'}`}
+                    >
+                      {item.badgeCapped || item.badgeCount >= 100
+                        ? '99+'
+                        : item.badgeCount}
+                      <span className='sr-only'>
+                        {' '}
+                        {item.badgeLabel ?? 'updates'}
+                      </span>
+                    </span>
+                  ) : null}
                 </Link>
 
                 {/* Create button (if any) */}

@@ -3,6 +3,7 @@ import { query, internalQuery, type QueryCtx } from '../_generated/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { getAuthUserId } from '../authUtils';
+import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { getDefaultPreference } from './lib';
 import {
   NOTIFICATION_CATEGORIES,
@@ -11,6 +12,7 @@ import {
 
 export const listInbox = query({
   args: {
+    orgSlug: v.optional(v.string()),
     filter: v.optional(
       v.union(v.literal('all'), v.literal('unread'), v.literal('action')),
     ),
@@ -21,9 +23,28 @@ export const listInbox = query({
     if (!userId) {
       throw new ConvexError('UNAUTHORIZED');
     }
+    const organizationId = args.orgSlug
+      ? (await getOrganizationBySlug(ctx, args.orgSlug))._id
+      : undefined;
+    if (organizationId) {
+      await requireOrganizationMember(ctx, organizationId, userId);
+    }
 
     const fetchPage = (paginationOpts: typeof args.paginationOpts) => {
       if (args.filter === 'action') {
+        if (organizationId) {
+          return ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_organization_action_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('organizationId', organizationId)
+                .eq('actionState', 'needs_action')
+                .eq('isArchived', false),
+            )
+            .order('desc')
+            .paginate(paginationOpts);
+        }
         return ctx.db
           .query('notificationRecipients')
           .withIndex('by_user_action_archived', q =>
@@ -37,6 +58,19 @@ export const listInbox = query({
       }
 
       if (args.filter === 'unread') {
+        if (organizationId) {
+          return ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_organization_read_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('organizationId', organizationId)
+                .eq('isRead', false)
+                .eq('isArchived', false),
+            )
+            .order('desc')
+            .paginate(paginationOpts);
+        }
         return ctx.db
           .query('notificationRecipients')
           .withIndex('by_user_read_archived', q =>
@@ -46,6 +80,18 @@ export const listInbox = query({
           .paginate(paginationOpts);
       }
 
+      if (organizationId) {
+        return ctx.db
+          .query('notificationRecipients')
+          .withIndex('by_user_organization_archived', q =>
+            q
+              .eq('userId', userId)
+              .eq('organizationId', organizationId)
+              .eq('isArchived', false),
+          )
+          .order('desc')
+          .paginate(paginationOpts);
+      }
       return ctx.db
         .query('notificationRecipients')
         .withIndex('by_user_archived', q =>
@@ -112,6 +158,112 @@ export const listInbox = query({
     return {
       ...page,
       page: enriched,
+    };
+  },
+});
+
+const COUNT_LIMIT = 100;
+
+export const inboxCounts = query({
+  args: { orgSlug: v.optional(v.string()) },
+  returns: v.object({
+    action: v.number(),
+    actionCapped: v.boolean(),
+    unread: v.number(),
+    unreadCapped: v.boolean(),
+    all: v.number(),
+    allCapped: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId)
+      return {
+        action: 0,
+        actionCapped: false,
+        unread: 0,
+        unreadCapped: false,
+        all: 0,
+        allCapped: false,
+      };
+
+    const organizationId = args.orgSlug
+      ? (await getOrganizationBySlug(ctx, args.orgSlug))._id
+      : undefined;
+    if (organizationId) {
+      await requireOrganizationMember(ctx, organizationId, userId);
+    }
+
+    const [actionRows, unreadRows, allRows] = organizationId
+      ? await Promise.all([
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_organization_action_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('organizationId', organizationId)
+                .eq('actionState', 'needs_action')
+                .eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_organization_read_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('organizationId', organizationId)
+                .eq('isRead', false)
+                .eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_organization_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('organizationId', organizationId)
+                .eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+        ])
+      : await Promise.all([
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_action_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('actionState', 'needs_action')
+                .eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_read_archived', q =>
+              q
+                .eq('userId', userId)
+                .eq('isRead', false)
+                .eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_user_archived', q =>
+              q.eq('userId', userId).eq('isArchived', false),
+            )
+            .take(COUNT_LIMIT + 1),
+        ]);
+    const now = Date.now();
+    const visibleCount = (rows: Doc<'notificationRecipients'>[]) =>
+      rows
+        .slice(0, COUNT_LIMIT)
+        .filter(row => !row.snoozedUntil || row.snoozedUntil <= now).length;
+
+    return {
+      action: visibleCount(actionRows),
+      actionCapped: actionRows.length > COUNT_LIMIT,
+      unread: visibleCount(unreadRows),
+      unreadCapped: unreadRows.length > COUNT_LIMIT,
+      all: visibleCount(allRows),
+      allCapped: allRows.length > COUNT_LIMIT,
     };
   },
 });
