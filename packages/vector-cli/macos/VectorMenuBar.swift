@@ -2,13 +2,13 @@ import AppKit
 import Foundation
 import SwiftUI
 
-struct BridgeConfig: Decodable {
+struct BridgeConfig: Decodable, Equatable {
   let deviceId: String
   let displayName: String
   let userId: String
 }
 
-struct WorkSessionSummary: Decodable, Identifiable {
+struct WorkSessionSummary: Decodable, Identifiable, Equatable {
   let _id: String
   let issueKey: String?
   let issueTitle: String?
@@ -79,7 +79,7 @@ struct WorkSessionSummary: Decodable, Identifiable {
   }
 }
 
-struct SessionInfo: Decodable {
+struct SessionInfo: Decodable, Equatable {
   let orgSlug: String
   let appUrl: String?
   let appDomain: String?
@@ -87,7 +87,7 @@ struct SessionInfo: Decodable {
   let userId: String?
 }
 
-struct ProfileSummary: Decodable, Identifiable {
+struct ProfileSummary: Decodable, Identifiable, Equatable {
   let name: String
   let isDefault: Bool
   let hasSession: Bool
@@ -95,7 +95,7 @@ struct ProfileSummary: Decodable, Identifiable {
   var id: String { name }
 }
 
-struct DeviceWorkspaceSummary: Decodable, Identifiable {
+struct DeviceWorkspaceSummary: Decodable, Identifiable, Equatable {
   let _id: String
   let label: String
   let path: String
@@ -133,7 +133,7 @@ struct DeviceWorkspaceSummary: Decodable, Identifiable {
   }
 }
 
-struct AttachableProcess: Decodable, Identifiable {
+struct AttachableProcess: Decodable, Identifiable, Equatable {
   let _id: String
   let provider: String
   let providerLabel: String?
@@ -185,7 +185,7 @@ struct AttachableProcess: Decodable, Identifiable {
   }
 }
 
-struct IssueSearchResult: Decodable, Identifiable {
+struct IssueSearchResult: Decodable, Identifiable, Equatable {
   let _id: String
   let key: String
   let title: String
@@ -194,12 +194,18 @@ struct IssueSearchResult: Decodable, Identifiable {
   var id: String { _id }
 }
 
-struct MenuStateSnapshot: Decodable {
-  struct Health: Decodable {
+struct MenuStateSnapshot: Decodable, Equatable {
+  struct Health: Decodable, Equatable {
     let state: String
     let updatedAt: String?
     let lastHeartbeatAt: String?
     let lastError: String?
+
+    static func == (lhs: Health, rhs: Health) -> Bool {
+      // Heartbeat timestamps are transport metadata and are not rendered in the menu. Ignoring
+      // them prevents a healthy bridge heartbeat from invalidating every visible row.
+      lhs.state == rhs.state && lhs.lastError == rhs.lastError
+    }
   }
 
   let configured: Bool
@@ -703,18 +709,32 @@ final class MenuBarController: NSObject, NSApplicationDelegate, ObservableObject
 
       if success, let data = output.data(using: .utf8) {
         do {
-          self.snapshot = try JSONDecoder().decode(MenuStateSnapshot.self, from: data)
-          self.lastRefreshError =
-            self.snapshot.stateError
-            ?? (self.snapshot.health?.state == "degraded"
-              ? self.snapshot.health?.lastError
+          let nextSnapshot = try JSONDecoder().decode(MenuStateSnapshot.self, from: data)
+          let nextRefreshError =
+            nextSnapshot.stateError
+            ?? (nextSnapshot.health?.state == "degraded"
+              ? nextSnapshot.health?.lastError
               : nil)
+
+          // Publishing an identical value invalidates the complete SwiftUI popover. The bridge
+          // is polled every few seconds, so avoid rebuilding the scroll hierarchy when nothing
+          // visible changed.
+          if self.snapshot != nextSnapshot {
+            self.snapshot = nextSnapshot
+          }
+          if self.lastRefreshError != nextRefreshError {
+            self.lastRefreshError = nextRefreshError
+          }
         } catch {
-          self.lastRefreshError = "Status unavailable"
+          if self.lastRefreshError != "Status unavailable" {
+            self.lastRefreshError = "Status unavailable"
+          }
           self.log("menu-state decode failed: \(error)")
         }
       } else {
-        self.lastRefreshError = "Status unavailable"
+        if self.lastRefreshError != "Status unavailable" {
+          self.lastRefreshError = "Status unavailable"
+        }
         self.log("menu-state command failed: \(output.prefix(500))")
       }
 
@@ -999,157 +1019,152 @@ struct TrayPopoverView: View {
       Divider()
 
       ScrollView {
-        VStack(alignment: .leading, spacing: 12) {
-          VStack(alignment: .leading, spacing: 8) {
-            Button {
-              workSessionsExpanded.toggle()
-            } label: {
-              SectionLabel(
-                title: "Work Sessions",
-                count: controller.snapshot.workSessions.count,
-                expanded: workSessionsExpanded
-              )
-            }
-            .buttonStyle(.plain)
+        LazyVStack(alignment: .leading, spacing: 8) {
+          Button {
+            workSessionsExpanded.toggle()
+          } label: {
+            SectionLabel(
+              title: "Work Sessions",
+              count: controller.snapshot.workSessions.count,
+              expanded: workSessionsExpanded
+            )
+          }
+          .buttonStyle(.plain)
 
-            if workSessionsExpanded {
-              VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                  ForEach(WorkSessionFilter.allCases) { filter in
-                    Button {
-                      workSessionFilter = filter
-                    } label: {
-                      Text(filter.title)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(workSessionFilter == filter ? .primary : .secondary)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 5)
-                        .background(
-                          Capsule(style: .continuous)
-                            .fill(
-                              workSessionFilter == filter
-                                ? Color.white.opacity(0.11)
-                                : Color.white.opacity(0.035)
-                            )
+          if workSessionsExpanded {
+            HStack(spacing: 6) {
+              ForEach(WorkSessionFilter.allCases) { filter in
+                Button {
+                  workSessionFilter = filter
+                } label: {
+                  Text(filter.title)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(workSessionFilter == filter ? .primary : .secondary)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                      Capsule(style: .continuous)
+                        .fill(
+                          workSessionFilter == filter
+                            ? Color.white.opacity(0.11)
+                            : Color.white.opacity(0.035)
                         )
-                    }
-                    .buttonStyle(.plain)
-                  }
+                    )
                 }
+                .buttonStyle(.plain)
+              }
+            }
 
-                if filteredWorkSessions.isEmpty {
-                  EmptySectionLabel(
-                    text: controller.snapshot.workSessions.isEmpty
-                      ? "No work sessions on this device."
-                      : "No work sessions match this filter."
-                  )
-                } else {
-                  ForEach(filteredWorkSessions) { workSession in
-                    Button(action: { controller.openIssue(workSession) }) {
-                      WorkSessionRow(workSession: workSession)
-                    }
-                    .buttonStyle(.plain)
-                    .help(buildWorkSessionTooltip(workSession))
-                  }
+            if filteredWorkSessions.isEmpty {
+              EmptySectionLabel(
+                text: controller.snapshot.workSessions.isEmpty
+                  ? "No work sessions on this device."
+                  : "No work sessions match this filter."
+              )
+            } else {
+              ForEach(filteredWorkSessions) { workSession in
+                Button(action: { controller.openIssue(workSession) }) {
+                  WorkSessionRow(workSession: workSession)
+                    .equatable()
                 }
+                .buttonStyle(.plain)
+                .help(buildWorkSessionTooltip(workSession))
               }
             }
           }
 
-          VStack(alignment: .leading, spacing: 8) {
-            Button {
-              processesExpanded.toggle()
-            } label: {
-              SectionLabel(
-                title: "Detected Sessions",
-                count: controller.snapshot.detectedSessions.count,
-                expanded: processesExpanded
-              )
-            }
-            .buttonStyle(.plain)
+          Button {
+            processesExpanded.toggle()
+          } label: {
+            SectionLabel(
+              title: "Detected Sessions",
+              count: controller.snapshot.detectedSessions.count,
+              expanded: processesExpanded
+            )
+          }
+          .buttonStyle(.plain)
+          .padding(.top, 4)
 
-            if processesExpanded {
-              VStack(alignment: .leading, spacing: 8) {
-                if controller.snapshot.detectedSessions.isEmpty {
-                  EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
-                } else {
-                  ForEach(controller.snapshot.detectedSessions) { process in
-                    let isExpanded = expandedProcessIds.contains(process.id)
+          if processesExpanded {
+            if controller.snapshot.detectedSessions.isEmpty {
+              EmptySectionLabel(text: "No attachable Codex or Claude sessions detected.")
+            } else {
+              ForEach(controller.snapshot.detectedSessions) { process in
+                let isExpanded = expandedProcessIds.contains(process.id)
 
-                    VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
-                      Button {
-                        if isExpanded {
-                          expandedProcessIds.remove(process.id)
-                        } else {
-                          expandedProcessIds.insert(process.id)
+                VStack(alignment: .leading, spacing: isExpanded ? 10 : 0) {
+                  Button {
+                    if isExpanded {
+                      expandedProcessIds.remove(process.id)
+                    } else {
+                      expandedProcessIds.insert(process.id)
+                    }
+                  } label: {
+                    ProcessRow(process: process, expanded: isExpanded)
+                      .equatable()
+                  }
+                  .buttonStyle(.plain)
+
+                  if isExpanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                      TextField(
+                        "Search issue key or title...",
+                        text: controller.issueSearchBinding(for: process.id)
+                      )
+                      .textFieldStyle(.roundedBorder)
+                      .font(.system(size: 12))
+
+                      if controller.isSearching(processId: process.id) {
+                        HStack(spacing: 8) {
+                          ProgressView()
+                            .controlSize(.small)
+                          Text("Searching issues")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                         }
-                      } label: {
-                        ProcessRow(process: process, expanded: isExpanded)
-                      }
-                      .buttonStyle(.plain)
-
-                      if isExpanded {
-                        VStack(alignment: .leading, spacing: 8) {
-                          TextField(
-                            "Search issue key or title...",
-                            text: controller.issueSearchBinding(for: process.id)
-                          )
-                          .textFieldStyle(.roundedBorder)
-                          .font(.system(size: 12))
-
-                          if controller.isSearching(processId: process.id) {
-                            HStack(spacing: 8) {
-                              ProgressView()
-                                .controlSize(.small)
-                              Text("Searching issues")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                            }
-                          } else if controller.results(for: process.id).isEmpty {
-                            EmptySectionLabel(
-                              text: (controller.issueSearchText[process.id] ?? "")
-                                .trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
-                                ? "No matching issues."
-                                : "Type at least 2 characters to search."
-                            )
-                          } else {
-                            VStack(alignment: .leading, spacing: 6) {
-                              ForEach(controller.results(for: process.id)) { issue in
-                                HStack(alignment: .center, spacing: 8) {
-                                  Circle()
-                                    .fill(color(from: issue.stateColor))
-                                    .frame(width: 8, height: 8)
-                                  VStack(alignment: .leading, spacing: 2) {
-                                    Text(issue.key)
-                                      .font(.system(size: 11, weight: .semibold))
-                                    Text(issue.title)
-                                      .font(.system(size: 11))
-                                      .foregroundStyle(.secondary)
-                                      .lineLimit(2)
-                                  }
-                                  Spacer(minLength: 0)
-                                  Button(
-                                    controller.isAttaching(processId: process.id)
-                                      ? "Attaching..." : "Attach"
-                                  ) {
-                                    controller.attach(process: process, to: issue)
-                                  }
-                                  .buttonStyle(.borderedProminent)
-                                  .controlSize(.small)
-                                  .disabled(controller.isAttaching(processId: process.id))
-                                }
-                                .padding(.vertical, 2)
+                      } else if controller.results(for: process.id).isEmpty {
+                        EmptySectionLabel(
+                          text: (controller.issueSearchText[process.id] ?? "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+                            ? "No matching issues."
+                            : "Type at least 2 characters to search."
+                        )
+                      } else {
+                        VStack(alignment: .leading, spacing: 6) {
+                          ForEach(controller.results(for: process.id)) { issue in
+                            HStack(alignment: .center, spacing: 8) {
+                              Circle()
+                                .fill(color(from: issue.stateColor))
+                                .frame(width: 8, height: 8)
+                              VStack(alignment: .leading, spacing: 2) {
+                                Text(issue.key)
+                                  .font(.system(size: 11, weight: .semibold))
+                                Text(issue.title)
+                                  .font(.system(size: 11))
+                                  .foregroundStyle(.secondary)
+                                  .lineLimit(2)
                               }
+                              Spacer(minLength: 0)
+                              Button(
+                                controller.isAttaching(processId: process.id)
+                                  ? "Attaching..." : "Attach"
+                              ) {
+                                controller.attach(process: process, to: issue)
+                              }
+                              .buttonStyle(.borderedProminent)
+                              .controlSize(.small)
+                              .disabled(controller.isAttaching(processId: process.id))
                             }
+                            .padding(.vertical, 2)
                           }
                         }
-                        .transition(.opacity.combined(with: .move(edge: .top)))
                       }
                     }
-                    .padding(12)
-                    .background(SessionCardBackground(isExpanded: isExpanded))
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                   }
                 }
+                .padding(12)
+                .background(SessionCardBackground(isExpanded: isExpanded))
               }
             }
           }
@@ -1552,7 +1567,7 @@ enum WorkSessionFilter: String, CaseIterable, Identifiable {
   }
 }
 
-struct WorkSessionRow: View {
+struct WorkSessionRow: View, Equatable {
   let workSession: WorkSessionSummary
 
   var body: some View {
@@ -1616,7 +1631,7 @@ struct WorkSessionRow: View {
   }
 }
 
-struct ProcessRow: View {
+struct ProcessRow: View, Equatable {
   let process: AttachableProcess
   let expanded: Bool
 
