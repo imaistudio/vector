@@ -365,6 +365,7 @@ export const setStatus = mutation({
       workStatus: args.status,
       focusRank: workFocusRank(args.status, work.effort ?? 'unknown'),
       workflowStateId: state?._id ?? work.workflowStateId,
+      readyForReviewAt: undefined,
     });
     await recordActivity(ctx, {
       scope: resolveIssueScope(work),
@@ -378,6 +379,9 @@ export const setStatus = mutation({
       },
       snapshot: snapshotForIssue(work),
     });
+    if (work.workStatus === 'ready_for_review' && args.status !== 'canceled') {
+      await setLinkedRequestsInDelivery(ctx, work._id);
+    }
     if (args.status === 'blocked') {
       const recipients = new Set<Id<'users'>>();
       if (work.ownerId && work.ownerId !== userId) recipients.add(work.ownerId);

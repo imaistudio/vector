@@ -304,11 +304,13 @@ function WorkStatusSelector({
   orgSlug,
   workId,
   serverStatus,
+  hasStarted,
   disabled = false,
 }: {
   orgSlug: string;
   workId: Id<'issues'>;
   serverStatus: string;
+  hasStarted: boolean;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -316,13 +318,14 @@ function WorkStatusSelector({
   const setStatus = useMutation(api.work.mutations.setStatus);
   const start = useMutation(api.work.mutations.start);
   const selected = workStatusOptions.find(option => option.value === status);
-  if (!selected || status === 'canceled') {
+  const label = selected?.label ?? status.replaceAll('_', ' ');
+  if (status === 'completed' || status === 'canceled') {
     return (
       <Badge
         variant='outline'
         className='hidden h-5 px-1.5 text-[10px] sm:inline-flex'
       >
-        {status.replaceAll('_', ' ')}
+        {label}
       </Badge>
     );
   }
@@ -339,7 +342,7 @@ function WorkStatusSelector({
             className='hidden h-5 gap-1 px-1.5 text-[10px] font-normal sm:flex'
             disabled={disabled}
           >
-            {selected.label}
+            {label}
             <ChevronDown className='size-3' />
           </Button>
         </PopoverTrigger>
@@ -355,7 +358,7 @@ function WorkStatusSelector({
                       setOptimisticStatus(option.value);
                       setOpen(false);
                       const update =
-                        option.value === 'active'
+                        option.value === 'active' && !hasStarted
                           ? start({ workId })
                           : setStatus({ workId, status: option.value });
                       void update.catch(() =>
@@ -758,6 +761,7 @@ export default function WorkDetailPage() {
           orgSlug={orgSlug}
           workId={work._id}
           serverStatus={work.workStatus}
+          hasStarted={Boolean(work.startedAt)}
           disabled={!work.canEdit}
         />
         {work.canEdit &&

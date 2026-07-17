@@ -14,10 +14,14 @@ export async function setLinkedRequestsInDelivery(
   for (const link of links) {
     if (link.relation !== 'fulfills') continue;
     const request = await ctx.db.get('requests', link.requestId);
-    if (request && ['new', 'routed', 'planned'].includes(request.status)) {
+    if (
+      request &&
+      ['new', 'routed', 'planned', 'ready_for_review'].includes(request.status)
+    ) {
       await ctx.db.patch('requests', request._id, {
         status: 'in_delivery',
         focusRank: requestFocusRank('in_delivery'),
+        readyForReviewAt: undefined,
         updatedAt: Date.now(),
       });
     }
