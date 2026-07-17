@@ -54,6 +54,10 @@ async function sendEmail({
   html: string;
   fromOverride?: string | null;
 }) {
+  if (!html.trim()) {
+    throw new Error('Refusing to send an email with an empty HTML body');
+  }
+
   const config = getMailTransportConfig();
   if (!config) {
     console.info('[notification:email:fallback]', { to, subject });

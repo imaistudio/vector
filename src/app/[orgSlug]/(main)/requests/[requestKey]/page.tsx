@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MarkdownContent } from '@/components/ui/markdown-content';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -452,9 +453,7 @@ export default function RequestDetailPage() {
               <CircleDot className='size-3.5' />
               <h2 className='text-xs font-semibold'>Expected output</h2>
             </div>
-            <p className='text-xs leading-5 whitespace-pre-wrap'>
-              {request.expectedOutput}
-            </p>
+            <MarkdownContent>{request.expectedOutput}</MarkdownContent>
             {request.reviewGuidance && (
               <div className='text-muted-foreground mt-2 border-t pt-2 text-[11px] leading-4'>
                 <span className='text-foreground font-medium'>

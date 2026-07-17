@@ -388,6 +388,11 @@ export function renderNotificationEmailTemplate({
     organizationName?: string;
     issueKey?: string;
     issueTitle?: string;
+    requestKey?: string;
+    requestTitle?: string;
+    workKey?: string;
+    workTitle?: string;
+    taskTitle?: string;
     commentPreview?: string;
     inviterName?: string;
     roleLabel?: string;
@@ -525,5 +530,81 @@ export function renderNotificationEmailTemplate({
             : []),
         ],
       });
+  }
+
+  return vectorEmailLayout({
+    preview: title,
+    eyebrow: notificationEyebrow(type),
+    title,
+    body,
+    ctaHref: href,
+    ctaLabel: 'Open in Vector',
+    meta: [
+      ...(payload.organizationName
+        ? [{ label: 'Workspace', value: payload.organizationName }]
+        : []),
+      ...(payload.requestKey
+        ? [
+            {
+              label: 'Request',
+              value: payload.requestKey,
+              tone: 'mono' as const,
+            },
+          ]
+        : []),
+      ...(payload.workKey
+        ? [
+            {
+              label: 'Work',
+              value: payload.workKey,
+              tone: 'mono' as const,
+            },
+          ]
+        : []),
+      ...(payload.issueKey
+        ? [
+            {
+              label: 'Issue',
+              value: payload.issueKey,
+              tone: 'mono' as const,
+            },
+          ]
+        : []),
+      ...(payload.taskTitle
+        ? [{ label: 'Task', value: payload.taskTitle }]
+        : []),
+    ],
+  });
+}
+
+function notificationEyebrow(type: NotificationEventType) {
+  switch (type) {
+    case 'request_routed':
+    case 'request_routing_needed':
+    case 'request_completed':
+      return 'Request Update';
+    case 'request_ready_for_review':
+    case 'request_changes_requested':
+    case 'work_ready_for_review':
+      return 'Review';
+    case 'work_handoff_proposed':
+    case 'work_handoff_accepted':
+    case 'work_handoff_declined':
+      return 'Handoff';
+    case 'task_assigned':
+    case 'task_transferred':
+      return 'Task Assignment';
+    case 'agent_attention_requested':
+    case 'agent_attention_resolved':
+    case 'work_blocked':
+      return 'Attention Needed';
+    case 'work_completed':
+      return 'Work Update';
+    case 'github_action_required':
+      return 'GitHub Action';
+    case 'reminder_due':
+      return 'Reminder';
+    default:
+      return 'Notification';
   }
 }
