@@ -6,6 +6,8 @@ import {
   createEmptySession,
   getSessionPath,
   listProfiles,
+  patchSessionRuntime,
+  readSession,
   writeDefaultProfile,
   writeSession,
 } from './session';
@@ -45,6 +47,32 @@ describe('CLI session storage', () => {
     expect((await listProfiles()).map(profile => profile.name)).toEqual([
       'work',
     ]);
+  });
+
+  it('patches runtime discovery without replacing credentials or workspace state', async () => {
+    await writeSession({
+      ...createEmptySession(),
+      appUrl: 'https://app.example.com',
+      convexUrl: 'https://old.convex.cloud',
+      activeOrgSlug: 'imai',
+      bearerToken: 'secret-token',
+      cookies: { session: 'secret-cookie' },
+    });
+
+    await patchSessionRuntime({
+      convexUrl: 'https://cloud.example.com',
+      appConfigFetchedAt: 42,
+    });
+
+    await expect(readSession()).resolves.toEqual({
+      version: 1,
+      appUrl: 'https://app.example.com',
+      convexUrl: 'https://cloud.example.com',
+      appConfigFetchedAt: 42,
+      activeOrgSlug: 'imai',
+      bearerToken: 'secret-token',
+      cookies: { session: 'secret-cookie' },
+    });
   });
 
   it('rejects profile names that can escape the session directory', () => {

@@ -105,7 +105,20 @@ export async function getWorkSessionAccess(
     };
   }
 
-  const access = await resolveWorkSessionAccess(ctx, workSession);
+  let access: Awaited<ReturnType<typeof resolveWorkSessionAccess>>;
+  try {
+    access = await resolveWorkSessionAccess(ctx, workSession);
+  } catch (error) {
+    if (error instanceof ConvexError && error.data === 'FORBIDDEN') {
+      return {
+        workSession: null,
+        canInteract: false,
+        canManage: false,
+        shareAccessLevel: null,
+      };
+    }
+    throw error;
+  }
   return {
     workSession: access.canView ? workSession : null,
     canInteract: access.canInteract,

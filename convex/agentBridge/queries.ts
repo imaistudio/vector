@@ -409,10 +409,15 @@ export const listDeviceWorkSessions = query({
 
     const sessions = await ctx.db
       .query('workSessions')
-      .withIndex('by_device', q => q.eq('deviceId', args.deviceId))
-      .collect();
+      .withIndex('by_device_and_ended_at_and_last_event_at', q =>
+        q.eq('deviceId', args.deviceId).eq('endedAt', undefined),
+      )
+      .order('desc')
+      .take(100);
 
-    const visible: Awaited<ReturnType<typeof hydrateWorkSession>>[] = [];
+    const visible: NonNullable<
+      Awaited<ReturnType<typeof hydrateWorkSession>>
+    >[] = [];
     for (const session of sessions) {
       const access = await hydrateWorkSession(ctx, session._id);
       if (access) {
@@ -420,15 +425,7 @@ export const listDeviceWorkSessions = query({
       }
     }
 
-    return visible
-      .filter(
-        (
-          session,
-        ): session is NonNullable<
-          Awaited<ReturnType<typeof hydrateWorkSession>>
-        > => !!session && !session.endedAt,
-      )
-      .sort((a, b) => b.lastEventAt - a.lastEventAt);
+    return visible.sort((a, b) => b.lastEventAt - a.lastEventAt);
   },
 });
 
