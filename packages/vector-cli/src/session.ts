@@ -15,6 +15,7 @@ export type CliSession = {
   version: 1;
   appUrl?: string;
   convexUrl?: string;
+  appConfigFetchedAt?: number;
   activeOrgSlug?: string;
   cookies: Record<string, string>;
   bearerToken?: string;
@@ -146,6 +147,20 @@ export async function readSession(profile = 'default') {
 
 export async function writeSession(session: CliSession, profile = 'default') {
   await writePrivateJson(getSessionPath(profile), session);
+}
+
+export async function patchSessionRuntime(
+  patch: Pick<CliSession, 'convexUrl' | 'appConfigFetchedAt'>,
+  profile = 'default',
+) {
+  const current = await readSession(profile);
+  if (!current) {
+    return null;
+  }
+
+  const next = { ...current, ...patch } satisfies CliSession;
+  await writePrivateJson(getSessionPath(profile), next);
+  return next;
 }
 
 export async function clearSession(profile = 'default') {

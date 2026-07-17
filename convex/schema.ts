@@ -1744,6 +1744,11 @@ export default defineSchema({
   })
     .index('by_issue', ['issueId'])
     .index('by_device', ['deviceId'])
+    .index('by_device_and_ended_at_and_last_event_at', [
+      'deviceId',
+      'endedAt',
+      'lastEventAt',
+    ])
     .index('by_owner', ['ownerUserId'])
     .index('by_live_activity', ['liveActivityId'])
     .index('by_agent_process', ['agentProcessId']),

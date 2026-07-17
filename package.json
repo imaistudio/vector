@@ -32,7 +32,7 @@
     "vcli:dev": "VECTOR_HOME=$(pwd)/.vector-dev tsx packages/vector-cli/src/index.ts --profile devlocal --app-url http://localhost:3000",
     "cli:dev-bridge": "VECTOR_HOME=$(pwd)/.vector-dev tsx packages/vector-cli/src/index.ts --profile devlocal --app-url http://localhost:3000 service run",
     "build:cli-package": "pnpm --filter @rehpic/vcli build",
-    "test:cli": "vitest run packages/vector-cli/src/auth.test.ts packages/vector-cli/src/index.test.ts packages/vector-cli/src/session.test.ts packages/vector-cli/src/version.test.ts packages/vector-cli/src/work-watch.test.ts packages/vector-cli/src/bridge-service.test.ts packages/vector-cli/src/agent-adapters.test.ts",
+    "test:cli": "vitest run packages/vector-cli/src/auth.test.ts packages/vector-cli/src/index.test.ts packages/vector-cli/src/session.test.ts packages/vector-cli/src/runtime-config.test.ts packages/vector-cli/src/version.test.ts packages/vector-cli/src/work-watch.test.ts packages/vector-cli/src/bridge-service.test.ts packages/vector-cli/src/agent-adapters.test.ts",
     "typecheck": "pnpm typecheck:app && pnpm typecheck:convex",
     "typecheck:app": "tsgo -p tsconfig.json --noEmit --pretty false",
     "typecheck:convex": "tsgo -p convex/tsconfig.json --noEmit --pretty false",

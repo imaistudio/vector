@@ -2,6 +2,8 @@
 
 import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { setDefaultResultOrder } from 'node:dns';
+import { setDefaultAutoSelectFamilyAttemptTimeout } from 'node:net';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
@@ -24,6 +26,7 @@ import {
 } from './auth';
 import { createConvexClient, runAction, runMutation, runQuery } from './convex';
 import { printOutput } from './output';
+import { fetchAppConfig, resolveConvexRuntime } from './runtime-config';
 import { isNewerVersion } from './version';
 import {
   discoverAttachableSessions,
@@ -41,12 +44,20 @@ import {
   clearSession,
   createEmptySession,
   listProfiles,
+  patchSessionRuntime,
   readDefaultProfile,
   readSession,
   writeDefaultProfile,
   writeSession,
   type CliSession,
 } from './session';
+
+// Node's default address-family racing abandons slow connection attempts after
+// a few hundred milliseconds. On higher-latency networks that can make every
+// Convex request fail even though the endpoint is reachable. Prefer IPv4 first
+// and allow enough time per route while retaining IPv6 fallback.
+setDefaultResultOrder('ipv4first');
+setDefaultAutoSelectFamilyAttemptTimeout(5_000);
 
 // Machine-readable commands (especially the native menu bar's `menu-state`
 // request) require stdout to contain only the requested payload. dotenv 17
@@ -354,36 +365,6 @@ async function resolveAppUrl(raw: string): Promise<string> {
   }
 }
 
-async function fetchAppConfig(
-  appUrl: string,
-): Promise<{ convexUrl: string; tunnelHost?: string }> {
-  try {
-    const url = new URL('/api/config', appUrl).toString();
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = (await response.json()) as {
-      convexUrl?: string;
-      tunnelHost?: string;
-    };
-    if (data.convexUrl) {
-      return {
-        convexUrl: data.convexUrl,
-        tunnelHost: data.tunnelHost || undefined,
-      };
-    }
-  } catch {
-    // Fall through to default
-  }
-  return { convexUrl: 'http://127.0.0.1:3210' };
-}
-
-async function fetchConvexUrl(appUrl: string): Promise<string> {
-  const config = await fetchAppConfig(appUrl);
-  return config.convexUrl;
-}
-
 async function getRuntime(command: Command) {
   const options = command.optsWithGlobals<GlobalOptions>();
   const profile = options.profile ?? (await readDefaultProfile());
@@ -391,26 +372,31 @@ async function getRuntime(command: Command) {
   const appUrlSource =
     options.appUrl ?? session?.appUrl ?? process.env.NEXT_PUBLIC_APP_URL;
   const appUrl = await resolveAppUrl(requiredString(appUrlSource, 'app URL'));
-  // An explicit app URL selects a different environment. Never pair it with a
-  // Convex URL cached by another app/profile.
-  let convexUrl =
-    options.convexUrl ?? (options.appUrl ? undefined : session?.convexUrl);
+  const convexResolution = await resolveConvexRuntime({
+    appUrl,
+    explicitAppUrl: Boolean(options.appUrl),
+    explicitConvexUrl: options.convexUrl,
+    cachedConvexUrl: session?.convexUrl,
+    appConfigFetchedAt: session?.appConfigFetchedAt,
+    environmentConvexUrl:
+      process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL,
+  });
 
-  if (!convexUrl) {
-    // When an explicit --app-url is provided, always fetch from the app
-    // to avoid using local env vars that may point at a different deployment.
-    const fetchedUrl = await fetchConvexUrl(appUrl);
-    convexUrl =
-      fetchedUrl !== 'http://127.0.0.1:3210'
-        ? fetchedUrl
-        : (process.env.NEXT_PUBLIC_CONVEX_URL ??
-          process.env.CONVEX_URL ??
-          fetchedUrl);
+  if (session && !options.appUrl && convexResolution.source === 'app_config') {
+    session.convexUrl = convexResolution.convexUrl;
+    session.appConfigFetchedAt = convexResolution.appConfigFetchedAt;
+    await patchSessionRuntime(
+      {
+        convexUrl: convexResolution.convexUrl,
+        appConfigFetchedAt: convexResolution.appConfigFetchedAt,
+      },
+      profile,
+    );
   }
 
   return {
     appUrl,
-    convexUrl,
+    convexUrl: convexResolution.convexUrl,
     json: Boolean(options.json),
     org: options.org ?? session?.activeOrgSlug,
     profile,
@@ -3962,12 +3948,19 @@ serviceCommand
 serviceCommand
   .command('run')
   .description('Run the bridge service in the foreground (used by LaunchAgent)')
-  .action(async () => {
-    // Registration is reconciled by `service start`/`install`. The daemon must
-    // still launch while offline so its retry loops can recover connectivity.
-    const config = loadBridgeConfig();
+  .action(async (_options, command) => {
+    // Refresh a moved backend or changed profile on login, but retain the
+    // saved registration while offline so the daemon can still launch.
+    let config = loadBridgeConfig();
     if (!config) {
       throw new Error('Bridge not configured. Run: vcli service start');
+    }
+    try {
+      config = await ensureBridgeConfig(command);
+    } catch (error) {
+      console.warn(
+        `Could not refresh device registration; using saved config: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
 
     if (osPlatform() === 'darwin') {
@@ -4045,63 +4038,92 @@ serviceCommand
           runtime.appUrl,
           runtime.convexUrl,
         );
-        workspaces = projectMenuRecords(
-          await runQuery(client, api.agentBridge.queries.listDeviceWorkspaces, {
-            deviceId: status.config.deviceId as Id<'agentDevices'>,
-          }),
-          [
-            '_id',
-            'label',
-            'path',
-            'repoName',
-            'defaultBranch',
-            'isDefault',
-            'launchPolicy',
-          ],
-        );
-        workSessions = projectMenuRecords(
-          await runQuery(
+        const stateErrors: string[] = [];
+        try {
+          workspaces = projectMenuRecords(
+            await runQuery(
+              client,
+              api.agentBridge.queries.listDeviceWorkspaces,
+              {
+                deviceId: status.config.deviceId as Id<'agentDevices'>,
+              },
+            ),
+            [
+              '_id',
+              'label',
+              'path',
+              'repoName',
+              'defaultBranch',
+              'isDefault',
+              'launchPolicy',
+            ],
+          );
+        } catch (error) {
+          stateErrors.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+
+        try {
+          workSessions = projectMenuRecords(
+            await runQuery(
+              client,
+              api.agentBridge.queries.listDeviceWorkSessions,
+              {
+                deviceId: status.config.deviceId as Id<'agentDevices'>,
+              },
+            ),
+            [
+              '_id',
+              'issueKey',
+              'issueTitle',
+              'title',
+              'status',
+              'latestSummary',
+              'workspacePath',
+              'cwd',
+              'repoRoot',
+              'branch',
+              'tmuxPaneId',
+              'agentProvider',
+            ],
+          );
+        } catch (error) {
+          stateErrors.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+
+        try {
+          const devices = await runQuery(
             client,
-            api.agentBridge.queries.listDeviceWorkSessions,
-            {
-              deviceId: status.config.deviceId as Id<'agentDevices'>,
-            },
-          ),
-          [
+            api.agentBridge.queries.listProcessesForAttach,
+            {},
+          );
+          const currentDevice = devices.find(
+            (entry: { device: { _id: string } }) =>
+              entry.device._id === status.config?.deviceId,
+          );
+          detectedSessions = projectMenuRecords(currentDevice?.processes, [
             '_id',
-            'issueKey',
-            'issueTitle',
-            'title',
-            'status',
-            'latestSummary',
-            'workspacePath',
+            'provider',
+            'providerLabel',
             'cwd',
             'repoRoot',
             'branch',
-            'tmuxPaneId',
-            'agentProvider',
-          ],
-        );
-        const devices = await runQuery(
-          client,
-          api.agentBridge.queries.listProcessesForAttach,
-          {},
-        );
-        const currentDevice = devices.find(
-          (entry: { device: { _id: string } }) =>
-            entry.device._id === status.config?.deviceId,
-        );
-        detectedSessions = projectMenuRecords(currentDevice?.processes, [
-          '_id',
-          'provider',
-          'providerLabel',
-          'cwd',
-          'repoRoot',
-          'branch',
-          'title',
-          'mode',
-          'status',
-        ]);
+            'title',
+            'mode',
+            'status',
+          ]);
+        } catch (error) {
+          stateErrors.push(
+            error instanceof Error ? error.message : String(error),
+          );
+        }
+
+        if (stateErrors.length > 0) {
+          stateError = Array.from(new Set(stateErrors)).join(' · ');
+        }
       }
     } catch (error) {
       workspaces = [];
@@ -4264,8 +4286,16 @@ serviceCommand
       return;
     }
     await selectExplicitBridgeProfile(command);
-    if (!loadBridgeConfig()) {
+    let config = loadBridgeConfig();
+    if (!config) {
       throw new Error('Bridge not configured. Run: vcli service start');
+    }
+    try {
+      config = await ensureBridgeConfig(command);
+    } catch {
+      console.warn(
+        'Could not refresh device registration; using saved config.',
+      );
     }
     const vcliPath = process.argv[1] ?? 'vcli';
     startLaunchAgent(vcliPath);
