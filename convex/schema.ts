@@ -221,6 +221,8 @@ export default defineSchema({
     kanbanBorderTags: v.optional(v.array(kanbanBorderTagSettingValidator)),
     agentContext: v.optional(v.string()),
     agentContextDocumentId: v.optional(v.id('documents')),
+    requestAutoRoutingEnabled: v.optional(v.boolean()),
+    requestRoutingRules: v.optional(v.string()),
     // Public issue submission: when enabled, anonymous visitors on the
     // org's public landing page can submit an issue that lands in the
     // configured project. The optional view is surfaced on the public
