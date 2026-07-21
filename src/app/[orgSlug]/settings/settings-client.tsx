@@ -12,6 +12,7 @@ import {
   FolderKanban,
   Globe,
   Inbox,
+  Route,
   Plus,
   Trash2,
   X,
@@ -31,6 +32,7 @@ import {
   OrgSlugEditor,
 } from '@/components/organization';
 import { Button } from '@/components/ui/button';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Command,
@@ -48,6 +50,7 @@ import {
 } from '@/components/ui/popover';
 import { RichEditor } from '@/components/ui/rich-editor';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import {
   SOCIAL_LINK_LABELS,
   SOCIAL_LINK_PLATFORMS,
@@ -425,6 +428,14 @@ export default function OrgSettingsPageClient({
           args.data.agentContextDocumentId !== undefined
             ? (args.data.agentContextDocumentId ?? undefined)
             : current.agentContextDocumentId,
+        requestAutoRoutingEnabled:
+          args.data.requestAutoRoutingEnabled !== undefined
+            ? args.data.requestAutoRoutingEnabled
+            : current.requestAutoRoutingEnabled,
+        requestRoutingRules:
+          args.data.requestRoutingRules !== undefined
+            ? (args.data.requestRoutingRules ?? undefined)
+            : current.requestRoutingRules,
       }),
     );
 
@@ -462,6 +473,8 @@ export default function OrgSettingsPageClient({
   const [hasPublicEdits, setHasPublicEdits] = useState(false);
   const [isSavingPublicSettings, setIsSavingPublicSettings] = useState(false);
   const [isSavingAgentDoc, setIsSavingAgentDoc] = useState(false);
+  const [routingRules, setRoutingRules] = useState('');
+  const [isSavingRouting, setIsSavingRouting] = useState(false);
   const [isSavingPublicSubmission, setIsSavingPublicSubmission] =
     useState(false);
 
@@ -475,6 +488,10 @@ export default function OrgSettingsPageClient({
     setPublicLandingViewId(org.publicLandingViewId ?? null);
     setPublicSocialLinks(org.publicSocialLinks ?? []);
   }, [org, hasPublicEdits]);
+
+  useEffect(() => {
+    setRoutingRules(org?.requestRoutingRules ?? '');
+  }, [org?.requestRoutingRules]);
 
   const userRole = members?.find(member => member.userId === user?._id)?.role;
   const isOwner = userRole === 'owner';
@@ -512,6 +529,25 @@ export default function OrgSettingsPageClient({
       );
     } finally {
       setIsSavingPublicSubmission(false);
+    }
+  };
+
+  const saveRoutingSettings = async (data: {
+    requestAutoRoutingEnabled?: boolean;
+    requestRoutingRules?: string | null;
+  }) => {
+    setIsSavingRouting(true);
+    try {
+      await updateOrganization({ orgSlug, data });
+      toast.success('Request routing updated');
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update request routing',
+      );
+    } finally {
+      setIsSavingRouting(false);
     }
   };
 
@@ -1010,6 +1046,92 @@ export default function OrgSettingsPageClient({
                 </p>
               ) : null}
             </div>
+          </div>
+        </div>
+
+        <div className='rounded-md border'>
+          <div className='border-b px-3 py-2'>
+            <div className='flex items-center gap-1.5 text-sm font-medium'>
+              <Route className='size-3.5' />
+              Request routing
+            </div>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              Describe who should receive incoming Requests in plain language.
+              When enabled, Vector gives these rules and the Request context to
+              the AI router.
+            </p>
+          </div>
+
+          <div className='space-y-4 p-3'>
+            <label className='flex items-start gap-2'>
+              <Checkbox
+                checked={org.requestAutoRoutingEnabled ?? false}
+                disabled={!isAdmin || isSavingRouting || !routingRules.trim()}
+                onCheckedChange={checked => {
+                  if (!isAdmin) return;
+                  void saveRoutingSettings({
+                    requestAutoRoutingEnabled: checked === true,
+                  });
+                }}
+                className='mt-0.5'
+              />
+              <div className='min-w-0 flex-1'>
+                <div className='text-sm font-medium'>
+                  Auto-route new Requests
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  Applies only to new, unrouted Requests. A human routing choice
+                  always wins if it is made before the AI finishes.
+                </p>
+              </div>
+            </label>
+
+            <div className='space-y-2'>
+              <label
+                htmlFor='request-routing-rules'
+                className='text-sm font-medium'
+              >
+                Routing rules
+              </label>
+              {isAdmin ? (
+                <Textarea
+                  id='request-routing-rules'
+                  value={routingRules}
+                  disabled={isSavingRouting}
+                  onChange={event => setRoutingRules(event.target.value)}
+                  placeholder='Route billing requests to Finance. Send security reports to the Security team and assign Priya when the request mentions an incident.'
+                  className='min-h-28 resize-y text-sm'
+                  maxLength={10_000}
+                />
+              ) : (
+                <div className='rounded-md border px-3 py-2 text-sm whitespace-pre-wrap'>
+                  {routingRules || 'No routing rules configured'}
+                </div>
+              )}
+              <p className='text-muted-foreground text-xs'>
+                Refer to workspace teams and members by name. The router can
+                assign a team, one or more recipients, or leave the Request for
+                manual routing when no rule clearly matches.
+              </p>
+            </div>
+
+            {isAdmin ? (
+              <Button
+                type='button'
+                className='h-8'
+                disabled={
+                  isSavingRouting ||
+                  routingRules.trim() === (org.requestRoutingRules ?? '')
+                }
+                onClick={() =>
+                  void saveRoutingSettings({
+                    requestRoutingRules: routingRules.trim() || null,
+                  })
+                }
+              >
+                {isSavingRouting ? <BarsSpinner size={14} /> : 'Save rules'}
+              </Button>
+            ) : null}
           </div>
         </div>
 

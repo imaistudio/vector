@@ -1,5 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { mutation, type MutationCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
   recordActivity,
@@ -190,6 +191,18 @@ async function insertRequest(
       eventType: 'request_created',
       snapshot: { entityKey: next.key, entityName: title },
     });
+  }
+  if (
+    organization.requestAutoRoutingEnabled &&
+    organization.requestRoutingRules?.trim() &&
+    recipientIds.length === 0 &&
+    !input.routedTeamId
+  ) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.requests.autoRoutingActions.routeRequest,
+      { requestId },
+    );
   }
   return { requestId, requestKey: next.key, recipientIds };
 }

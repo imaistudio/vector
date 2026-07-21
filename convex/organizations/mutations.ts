@@ -611,6 +611,8 @@ export const update = mutation({
       ),
       agentContext: v.optional(v.union(v.string(), v.null())),
       agentContextDocumentId: v.optional(v.union(v.id('documents'), v.null())),
+      requestAutoRoutingEnabled: v.optional(v.boolean()),
+      requestRoutingRules: v.optional(v.union(v.string(), v.null())),
       publicIssueSubmissionEnabled: v.optional(v.boolean()),
       publicIssueProjectId: v.optional(v.union(v.id('projects'), v.null())),
       publicIssueViewId: v.optional(v.union(v.id('views'), v.null())),
@@ -648,6 +650,13 @@ export const update = mutation({
       args.data.publicDescription.trim().length > 10_000
     ) {
       throw new ConvexError('PUBLIC_DESCRIPTION_TOO_LONG');
+    }
+    if (
+      args.data.requestRoutingRules !== undefined &&
+      args.data.requestRoutingRules !== null &&
+      args.data.requestRoutingRules.trim().length > 10_000
+    ) {
+      throw new ConvexError('REQUEST_ROUTING_RULES_TOO_LONG');
     }
 
     if (args.data?.slug && args.data.slug.trim() !== org.slug) {
@@ -776,6 +785,23 @@ export const update = mutation({
       }
       updateData.agentContextDocumentId =
         args.data.agentContextDocumentId ?? undefined;
+    }
+    if (args.data.requestAutoRoutingEnabled !== undefined) {
+      if (
+        args.data.requestAutoRoutingEnabled &&
+        !(args.data.requestRoutingRules ?? org.requestRoutingRules)?.trim()
+      ) {
+        throw new ConvexError('REQUEST_ROUTING_RULES_REQUIRED');
+      }
+      updateData.requestAutoRoutingEnabled =
+        args.data.requestAutoRoutingEnabled;
+    }
+    if (args.data.requestRoutingRules !== undefined) {
+      const trimmed = args.data.requestRoutingRules?.trim() ?? '';
+      updateData.requestRoutingRules = trimmed || undefined;
+      if (!trimmed && org.requestAutoRoutingEnabled) {
+        updateData.requestAutoRoutingEnabled = false;
+      }
     }
     if (args.data.publicIssueSubmissionEnabled !== undefined) {
       updateData.publicIssueSubmissionEnabled =

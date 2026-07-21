@@ -26,6 +26,10 @@ Core semantics:
 - Every Request has a concise title and a required expected output.
 - Context and review guidance may remain free-form.
 - A Request can be routed to one person, several people, or a team.
+- Workspace admins can describe routing rules in plain language and optionally
+  let Vector apply them to new, unrouted Requests. Automatic routing can assign
+  a team or recipients, leaves uncertain matches for manual routing, and never
+  overrides a routing choice made by a person.
 - Routing, claiming, or accepting a Request does not start Work.
 - One Request may produce several Work records.
 - Several related Requests may be fulfilled by the same Work.
