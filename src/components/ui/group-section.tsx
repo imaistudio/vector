@@ -39,9 +39,11 @@ export function GroupSection({
       <button
         type='button'
         onClick={() => setOpen(o => !o)}
-        className='bg-muted/40 hover:bg-muted/70 flex w-full items-center gap-2 border-b px-3 py-1.5 transition-colors'
+        aria-expanded={open}
+        className='bg-muted/40 hover:bg-muted/70 flex w-full items-center gap-1.5 border-b px-3 py-1 transition-colors'
       >
         <ChevronRight
+          aria-hidden='true'
           className={cn(
             'text-muted-foreground size-3.5 shrink-0 transition-transform duration-200 ease-out',
             open && 'rotate-90',
@@ -58,12 +60,14 @@ export function GroupSection({
         ) : icon ? (
           <DynamicIcon
             name={icon}
-            className='size-4 shrink-0'
+            className='size-3.5 shrink-0'
             style={color ? { color } : undefined}
           />
         ) : null}
-        <span className='text-sm font-medium'>{label}</span>
-        <span className='text-muted-foreground text-xs'>{count}</span>
+        <span className='text-xs leading-4 font-medium'>{label}</span>
+        <span className='text-muted-foreground text-[11px] leading-4 tabular-nums'>
+          {count}
+        </span>
       </button>
       <AnimatePresence initial={false}>
         {open && (

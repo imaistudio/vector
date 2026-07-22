@@ -110,8 +110,10 @@ final class VectorMobileTests: XCTestCase {
     let snapshot = try JSONDecoder().decode(VectorAgentSessionSnapshot.self, from: snapshotPayload)
 
     XCTAssertEqual(session.deviceName, "Raj’s Mac")
+    XCTAssertEqual(session.displayTitle, "VEC-42: Service mode")
     XCTAssertEqual(session.workSession?.branch, "main")
     XCTAssertTrue(session.canInteract)
+    XCTAssertEqual(snapshot.title, "VEC-42: Service mode")
     XCTAssertEqual(snapshot.messages.first?.text, "Service is running")
     XCTAssertEqual(snapshot.messages.first?.direction, "agent_to_vector")
   }
