@@ -16,12 +16,20 @@ import {
 } from '../_shared/document_appearance';
 import { syncDocumentMentions } from './mentions';
 import { getAuthUserId } from '../authUtils';
+import {
+  getInlineDocumentSize,
+  MAX_CONVEX_DOCUMENT_BYTES,
+} from '../_shared/document_content';
+import { scheduleContentVersionCleanup } from './contentCleanup';
 
 type DocumentUpdatePatch = Partial<
   Pick<
     Doc<'documents'>,
     | 'title'
     | 'content'
+    | 'contentVersion'
+    | 'contentChunkCount'
+    | 'contentSize'
     | 'icon'
     | 'color'
     | 'folderId'
@@ -63,9 +71,6 @@ export const create = mutation({
       throw new ConvexError('INVALID_INPUT');
     }
     if (args.data.title.length > 200) {
-      throw new ConvexError('INVALID_INPUT');
-    }
-    if (args.data.content && args.data.content.length > 50000) {
       throw new ConvexError('INVALID_INPUT');
     }
     if (
@@ -177,8 +182,15 @@ export const update = mutation({
       }
     }
 
-    if (args.data.content !== undefined && args.data.content.length > 50000) {
-      throw new ConvexError('INVALID_INPUT');
+    if (
+      args.data.content !== undefined &&
+      getInlineDocumentSize(
+        doc,
+        args.data.title?.trim() ?? doc.title,
+        args.data.content,
+      ) >= MAX_CONVEX_DOCUMENT_BYTES
+    ) {
+      throw new ConvexError('CONTENT_REQUIRES_CHUNK_UPLOAD');
     }
     if (
       args.data.icon !== undefined &&
@@ -215,7 +227,12 @@ export const update = mutation({
     };
 
     if (args.data.title !== undefined) patchData.title = args.data.title.trim();
-    if (args.data.content !== undefined) patchData.content = args.data.content;
+    if (args.data.content !== undefined) {
+      patchData.content = args.data.content;
+      patchData.contentVersion = undefined;
+      patchData.contentChunkCount = undefined;
+      patchData.contentSize = undefined;
+    }
     if (args.data.icon !== undefined)
       patchData.icon = args.data.icon ?? undefined;
     if (args.data.color !== undefined)
@@ -230,6 +247,10 @@ export const update = mutation({
       patchData.visibility = args.data.visibility;
 
     await ctx.db.patch('documents', doc._id, patchData);
+
+    if (args.data.content !== undefined) {
+      await scheduleContentVersionCleanup(ctx, doc._id, doc.contentVersion);
+    }
 
     // Sync mention links when content changes
     if (args.data.content !== undefined) {
@@ -411,6 +432,16 @@ export const remove = mutation({
     for (const mention of mentions) {
       await ctx.db.delete('documentMentions', mention._id);
     }
+
+    const pendingUpload = await ctx.db
+      .query('documentContentUploads')
+      .withIndex('by_document', q => q.eq('documentId', doc._id))
+      .unique();
+    if (pendingUpload) {
+      await ctx.db.delete('documentContentUploads', pendingUpload._id);
+      await scheduleContentVersionCleanup(ctx, doc._id, pendingUpload.uploadId);
+    }
+    await scheduleContentVersionCleanup(ctx, doc._id, doc.contentVersion);
 
     await ctx.db.delete('documents', doc._id);
 

@@ -5,7 +5,7 @@ import {
   type MutationCtx,
   type QueryCtx,
 } from '../_generated/server';
-import { ConvexError, v } from 'convex/values';
+import { ConvexError, getDocumentSize, v, type Value } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
   setProjectLeadMemberRole,
@@ -68,6 +68,11 @@ import {
 } from './lib';
 import { PERMISSIONS } from '../permissions/utils';
 import { AGENT_PROVIDER_LABELS } from '../_shared/agentBridge';
+import {
+  getInlineDocumentSize,
+  MAX_CONVEX_DOCUMENT_BYTES,
+} from '../_shared/document_content';
+import { scheduleContentVersionCleanup } from '../documents/contentCleanup';
 
 function parseGitHubArtifactUrl(
   value: string,
@@ -1153,13 +1158,25 @@ export const getDocument = internalQuery({
       throw new ConvexError('FORBIDDEN');
     }
 
-    // Resolve document links/mentions in content
+    const firstChunk = document.contentVersion
+      ? await ctx.db
+          .query('documentContentChunks')
+          .withIndex('by_document_version_chunk', q =>
+            q
+              .eq('documentId', document._id)
+              .eq('version', document.contentVersion!),
+          )
+          .first()
+      : null;
+    const content = document.content ?? firstChunk?.content ?? '';
+
+    // Resolve document links/mentions in the inline content or first chunk.
     const referencedDocs: { id: string; title: string }[] = [];
-    if (document.content) {
+    if (content) {
       const refDocIds = await extractReferencedDocumentIds(
         ctx,
         organization._id,
-        document.content,
+        content,
       );
       for (const refDocId of refDocIds) {
         const refDoc = await ctx.db.get('documents', refDocId);
@@ -1175,7 +1192,8 @@ export const getDocument = internalQuery({
     return {
       id: String(document._id),
       title: document.title,
-      content: document.content ?? '',
+      content,
+      contentTruncated: Boolean(document.contentVersion),
       visibility: document.visibility ?? 'organization',
       folderId: document.folderId ? String(document.folderId) : undefined,
       teamId: document.teamId ? String(document.teamId) : undefined,
@@ -1277,11 +1295,7 @@ export const createDocument = internalMutation({
     if (documentTitle.length > 200) {
       throw new ConvexError('INVALID_INPUT');
     }
-    if (args.content && args.content.length > 50000) {
-      throw new ConvexError('INVALID_INPUT');
-    }
-
-    const documentId = await ctx.db.insert('documents', {
+    const documentData = {
       organizationId: organization._id,
       title: documentTitle,
       content: args.content,
@@ -1294,7 +1308,15 @@ export const createDocument = internalMutation({
       lastEditedBy: args.userId,
       lastEditedAt: Date.now(),
       visibility: args.visibility ?? 'organization',
-    });
+    };
+    const sizedDocumentData = Object.fromEntries(
+      Object.entries(documentData).filter(([, value]) => value !== undefined),
+    ) as Record<string, Value>;
+    if (getDocumentSize(sizedDocumentData) >= MAX_CONVEX_DOCUMENT_BYTES) {
+      throw new ConvexError('CONTENT_REQUIRES_EDITOR_UPLOAD');
+    }
+
+    const documentId = await ctx.db.insert('documents', documentData);
 
     if (args.content) {
       await syncDocumentMentions(
@@ -1355,9 +1377,15 @@ export const updateDocument = internalMutation({
         throw new ConvexError('INVALID_INPUT');
       }
     }
-    if (args.content !== undefined && args.content.length > 50000) {
-      throw new ConvexError('INVALID_INPUT');
-    }
+    if (
+      args.content !== undefined &&
+      getInlineDocumentSize(
+        document,
+        args.title?.trim() ?? document.title,
+        args.content,
+      ) >= MAX_CONVEX_DOCUMENT_BYTES
+    )
+      throw new ConvexError('CONTENT_REQUIRES_EDITOR_UPLOAD');
 
     const team =
       args.teamKey === undefined
@@ -1395,7 +1423,14 @@ export const updateDocument = internalMutation({
 
     await ctx.db.patch('documents', document._id, {
       ...(args.title !== undefined ? { title: args.title.trim() } : {}),
-      ...(args.content !== undefined ? { content: args.content } : {}),
+      ...(args.content !== undefined
+        ? {
+            content: args.content,
+            contentVersion: undefined,
+            contentChunkCount: undefined,
+            contentSize: undefined,
+          }
+        : {}),
       ...(args.visibility !== undefined ? { visibility: args.visibility } : {}),
       ...(args.icon !== undefined ? { icon: args.icon ?? undefined } : {}),
       ...(args.color !== undefined ? { color: args.color ?? undefined } : {}),
@@ -1407,6 +1442,11 @@ export const updateDocument = internalMutation({
     });
 
     if (args.content !== undefined) {
+      await scheduleContentVersionCleanup(
+        ctx,
+        document._id,
+        document.contentVersion,
+      );
       await syncDocumentMentions(
         ctx,
         document._id,
@@ -3028,6 +3068,23 @@ async function performEntityDeletion(
       for (const mention of mentions) {
         await ctx.db.delete('documentMentions', mention._id);
       }
+      const pendingUpload = await ctx.db
+        .query('documentContentUploads')
+        .withIndex('by_document', q => q.eq('documentId', document._id))
+        .unique();
+      if (pendingUpload) {
+        await ctx.db.delete('documentContentUploads', pendingUpload._id);
+        await scheduleContentVersionCleanup(
+          ctx,
+          document._id,
+          pendingUpload.uploadId,
+        );
+      }
+      await scheduleContentVersionCleanup(
+        ctx,
+        document._id,
+        document.contentVersion,
+      );
       await ctx.db.delete('documents', document._id);
       return;
     }

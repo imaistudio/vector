@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import type { Id } from '@/convex/_generated/dataModel';
-import { api, useMutation } from '@/lib/convex';
+import { api, useCachedQuery, useMutation } from '@/lib/convex';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,9 @@ import {
 } from '@/components/ui/responsive-dialog';
 import { MemberPicker } from '@/components/work/member-picker';
 import { TeamPicker } from '@/components/work/team-picker';
+import { PrioritySelector } from '@/components/issues/issue-selectors';
+import { PermissionAwareSelector } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
 
 export function CreateRequestDialog({
   orgSlug,
@@ -40,8 +43,13 @@ export function CreateRequestDialog({
   const [reviewGuidance, setReviewGuidance] = useState('');
   const [recipients, setRecipients] = useState<Id<'users'>[]>([]);
   const [routedTeamId, setRoutedTeamId] = useState<Id<'teams'>>();
+  const [priorityId, setPriorityId] = useState<Id<'issuePriorities'>>();
   const [submitting, setSubmitting] = useState(false);
   const createRequest = useMutation(api.requests.mutations.create);
+  const priorities =
+    useCachedQuery(api.organizations.queries.listIssuePriorities, {
+      orgSlug,
+    }) ?? [];
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -57,6 +65,7 @@ export function CreateRequestDialog({
           reviewGuidance: reviewGuidance || undefined,
           recipientIds: recipients,
           routedTeamId,
+          priorityId,
         },
       });
       toast.success(
@@ -70,6 +79,7 @@ export function CreateRequestDialog({
       setReviewGuidance('');
       setRecipients([]);
       setRoutedTeamId(undefined);
+      setPriorityId(undefined);
       setOpen(false);
     } catch (error) {
       toast.error(
@@ -128,6 +138,20 @@ export function CreateRequestDialog({
               onChange={setRoutedTeamId}
               disabled={submitting}
             />
+            <PermissionAwareSelector
+              orgSlug={orgSlug}
+              permission={PERMISSIONS.ISSUE_CREATE}
+              fallbackMessage="You don't have permission to set request priority"
+            >
+              <PrioritySelector
+                priorities={priorities}
+                selectedPriority={priorityId ?? ''}
+                onPrioritySelect={value =>
+                  setPriorityId(value as Id<'issuePriorities'>)
+                }
+                className='h-8 text-xs'
+              />
+            </PermissionAwareSelector>
             <span className='text-muted-foreground ml-auto text-xs'>
               Routing does not start Work
             </span>

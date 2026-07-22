@@ -55,6 +55,13 @@ import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { UserAvatar } from '@/components/user-avatar';
 import { RequestCommentsSection } from '@/components/comments/comments-section';
+import {
+  PrioritySelector,
+  type Priority,
+} from '@/components/issues/issue-selectors';
+import { PermissionAwareSelector } from '@/components/ui/permission-aware';
+import { PERMISSIONS } from '@/convex/_shared/permissions';
+import { DynamicIcon } from '@/lib/dynamic-icons';
 
 const dueDateFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -152,6 +159,69 @@ function RequestDueDatePicker({
         />
       </PopoverContent>
     </Popover>
+  );
+}
+
+function RequestPriorityPicker({
+  orgSlug,
+  requestId,
+  priorityId,
+  priorities,
+  canEdit,
+}: {
+  orgSlug: string;
+  requestId: Id<'requests'>;
+  priorityId?: Id<'issuePriorities'>;
+  priorities: Priority[];
+  canEdit: boolean;
+}) {
+  const updateDetails = useMutation(api.requests.mutations.updateDetails);
+  const [pending, setPending] = useState(false);
+  const [displayPriorityId, setOptimisticPriorityId] = useOptimisticValue(
+    priorityId ?? '',
+  );
+  const priority = priorities.find(item => item._id === displayPriorityId);
+
+  if (!canEdit) {
+    return (
+      <span className='flex min-w-0 items-center gap-1'>
+        <DynamicIcon
+          name={priority?.icon}
+          className='size-3 shrink-0'
+          style={{ color: priority?.color ?? '#94a3b8' }}
+        />
+        <span className='truncate'>{priority?.name ?? 'None'}</span>
+      </span>
+    );
+  }
+
+  return (
+    <PermissionAwareSelector
+      orgSlug={orgSlug}
+      permission={PERMISSIONS.ISSUE_EDIT}
+      fallbackMessage="You don't have permission to change request priority"
+    >
+      <PrioritySelector
+        priorities={priorities}
+        selectedPriority={displayPriorityId}
+        onPrioritySelect={nextPriorityId => {
+          if (pending) return;
+          setOptimisticPriorityId(nextPriorityId);
+          setPending(true);
+          void updateDetails({
+            requestId,
+            priorityId: nextPriorityId as Id<'issuePriorities'>,
+          })
+            .catch(() => {
+              setOptimisticPriorityId(priorityId ?? '');
+              toast.error('Priority could not be saved');
+            })
+            .finally(() => setPending(false));
+        }}
+        align='end'
+        className='h-7 border-none bg-transparent px-1 text-xs shadow-none'
+      />
+    </PermissionAwareSelector>
   );
 }
 
@@ -609,6 +679,10 @@ export default function RequestDetailPage() {
     requestKey,
   });
   const currentUser = useCachedQuery(api.users.currentUser);
+  const priorities =
+    useCachedQuery(api.organizations.queries.listIssuePriorities, {
+      orgSlug,
+    }) ?? [];
   const claim = useMutation(api.requests.mutations.claim);
   const [claiming, setClaiming] = useState(false);
   if (request === undefined)
@@ -872,6 +946,16 @@ export default function RequestDetailPage() {
                 <RequestDueDatePicker
                   requestId={request._id}
                   dueDate={request.dueDate}
+                  canEdit={request.canEdit}
+                />
+              </div>
+              <div className='flex items-center justify-between gap-2'>
+                <span className='text-muted-foreground'>Priority</span>
+                <RequestPriorityPicker
+                  orgSlug={orgSlug}
+                  requestId={request._id}
+                  priorityId={request.priorityId}
+                  priorities={priorities}
                   canEdit={request.canEdit}
                 />
               </div>

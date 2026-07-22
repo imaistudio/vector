@@ -33,6 +33,7 @@ export function getActivityIcon(eventType: string): {
     case 'request_expected_output_changed':
       return { Icon: Type, color: 'text-muted-foreground' };
     case 'issue_priority_changed':
+    case 'request_priority_changed':
       return { Icon: ArrowRightLeft, color: 'text-orange-500' };
     case 'issue_assignees_changed':
       return { Icon: Users, color: 'text-blue-500' };
@@ -90,6 +91,8 @@ export function getActivityLabel(eventType: string | null | undefined): string {
       return 'Expected output updated';
     case 'request_due_date_changed':
       return 'Due date changed';
+    case 'request_priority_changed':
+      return 'Request priority changed';
     case 'issue_priority_changed':
       return 'Priority changed';
     case 'issue_assignees_changed':

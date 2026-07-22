@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { usePaginatedQuery } from 'convex/react';
 import { useCachedQuery, useMutation } from '@/lib/convex';
 import { api } from '@/convex/_generated/api';
 import type { FunctionReturnType } from 'convex/server';
@@ -53,6 +54,13 @@ import { useConfirm } from '@/hooks/use-confirm';
 import { toast } from 'sonner';
 import { useRouter } from 'nextjs-toploader/app';
 import { useScopedPermissions } from '@/hooks/use-permissions';
+import {
+  DOCUMENT_CONTENT_PAGE_SIZE,
+  getInlineDocumentSize,
+  MAX_CONVEX_DOCUMENT_BYTES,
+  splitDocumentContent,
+} from '@/convex/_shared/document_content';
+import { extractMentions } from '@/convex/_shared/document_mentions';
 
 interface DocumentDetailPageProps {
   params: { orgSlug: string; documentId: string };
@@ -201,13 +209,13 @@ function extractTitle(markdown: string): string | null {
   for (let level = 1; level <= 6; level++) {
     const re = new RegExp(`^${'#'.repeat(level)}\\s+(.+)$`, 'm');
     const match = markdown.match(re);
-    if (match) return match[1].trim() || null;
+    if (match) return match[1].trim().slice(0, 200) || null;
   }
   // Fall back to first non-empty text line
   const lines = markdown.split('\n');
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed) return trimmed;
+    if (trimmed) return trimmed.slice(0, 200);
   }
   return null;
 }
@@ -266,6 +274,16 @@ export default function DocumentViewClient({
     documentId: params.documentId as Id<'documents'>,
   });
   const document = liveDocument === undefined ? initialDocument : liveDocument;
+  const chunkedContent = usePaginatedQuery(
+    api.documents.content.listChunks,
+    document?.contentVersion
+      ? {
+          documentId: document._id,
+          version: document.contentVersion,
+        }
+      : 'skip',
+    { initialNumItems: DOCUMENT_CONTENT_PAGE_SIZE },
+  );
 
   const teamsQuery = useCachedQuery(api.organizations.queries.listTeams, {
     orgSlug: params.orgSlug,
@@ -273,6 +291,9 @@ export default function DocumentViewClient({
   const teams = withIds(teamsQuery ?? initialTeams ?? []);
 
   const updateMutation = useMutation(api.documents.mutations.update);
+  const beginContentUpload = useMutation(api.documents.content.beginUpload);
+  const uploadContentChunk = useMutation(api.documents.content.uploadChunk);
+  const commitContentUpload = useMutation(api.documents.content.commitUpload);
   const removeMutation = useMutation(api.documents.mutations.remove);
   const router = useRouter();
   const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
@@ -291,15 +312,27 @@ export default function DocumentViewClient({
   const canEdit = documentPermissions[PERMISSIONS.DOCUMENT_EDIT] ?? false;
   const canDelete = documentPermissions[PERMISSIONS.DOCUMENT_DELETE] ?? false;
 
-  // Initialize content from server once
   useEffect(() => {
-    if (document && !initialized) {
-      setContentValue(document.content || '');
-      latestContentRef.current = document.content || '';
+    if (chunkedContent.status === 'CanLoadMore') {
+      chunkedContent.loadMore(DOCUMENT_CONTENT_PAGE_SIZE);
+    }
+  }, [chunkedContent]);
+
+  const loadedContent = document?.contentVersion
+    ? chunkedContent.status === 'Exhausted'
+      ? chunkedContent.results.map(chunk => chunk.content).join('')
+      : null
+    : (document?.content ?? '');
+
+  // Initialize only after every page of a chunked document has arrived.
+  useEffect(() => {
+    if (document && loadedContent !== null && !initialized) {
+      setContentValue(loadedContent);
+      latestContentRef.current = loadedContent;
       documentIdRef.current = document._id;
       setInitialized(true);
     }
-  }, [document, initialized]);
+  }, [document, initialized, loadedContent]);
 
   useEffect(() => {
     if (document !== null) return;
@@ -314,19 +347,50 @@ export default function DocumentViewClient({
       setSaveStatus('saving');
 
       try {
-        const updates: { content: string; title?: string } = { content };
-
         const inferred = extractTitle(content);
-        if (inferred) {
-          updates.title = inferred;
-        } else {
-          updates.title = 'Untitled';
-        }
+        const title = inferred || 'Untitled';
+        const documentId = documentIdRef.current as Id<'documents'>;
+        if (!document) return;
 
-        await updateMutation({
-          documentId: documentIdRef.current as Id<'documents'>,
-          data: updates,
-        });
+        const {
+          author: _author,
+          lastEditor: _lastEditor,
+          team: _team,
+          project: _project,
+          ...storedDocument
+        } = document;
+        const requiresChunks =
+          getInlineDocumentSize(storedDocument, title, content) >=
+          MAX_CONVEX_DOCUMENT_BYTES;
+
+        if (requiresChunks) {
+          const chunks = splitDocumentContent(content);
+          const uploadId = crypto.randomUUID();
+          await beginContentUpload({
+            documentId,
+            uploadId,
+            expectedChunkCount: chunks.length,
+          });
+          for (const [chunkIndex, chunk] of chunks.entries()) {
+            await uploadContentChunk({
+              documentId,
+              uploadId,
+              chunkIndex,
+              content: chunk,
+            });
+          }
+          await commitContentUpload({
+            documentId,
+            uploadId,
+            title,
+            mentionRefs: extractMentions(content).slice(0, 100),
+          });
+        } else {
+          await updateMutation({
+            documentId,
+            data: { content, title },
+          });
+        }
 
         setSaveStatus('saved');
         if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
@@ -344,7 +408,13 @@ export default function DocumentViewClient({
         isSavingRef.current = false;
       }
     },
-    [updateMutation],
+    [
+      beginContentUpload,
+      commitContentUpload,
+      document,
+      updateMutation,
+      uploadContentChunk,
+    ],
   );
 
   const scheduleAutoSave = useCallback(
@@ -375,7 +445,7 @@ export default function DocumentViewClient({
     return null;
   }
 
-  if (!document) {
+  if (!document || (document.contentVersion && loadedContent === null)) {
     return <DocumentLoadingSkeleton />;
   }
 

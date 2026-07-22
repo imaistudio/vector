@@ -10,6 +10,9 @@ import { formatDateHuman } from '@/lib/date';
 import { FileText, Lock, PencilLine } from 'lucide-react';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { PublicOrgIcon } from '@/components/views/public-org-icon';
+import { useEffect } from 'react';
+import { usePaginatedQuery } from 'convex/react';
+import { DOCUMENT_CONTENT_PAGE_SIZE } from '@/convex/_shared/document_content';
 
 interface PublicDocumentPageProps {
   orgSlug: string;
@@ -24,6 +27,27 @@ export function PublicDocumentPage({
     orgSlug,
     documentId,
   });
+  const chunkedContent = usePaginatedQuery(
+    api.documents.content.listPublicChunks,
+    document?.contentVersion
+      ? {
+          orgSlug,
+          documentId: document._id,
+          version: document.contentVersion,
+        }
+      : 'skip',
+    { initialNumItems: DOCUMENT_CONTENT_PAGE_SIZE },
+  );
+  useEffect(() => {
+    if (chunkedContent.status === 'CanLoadMore') {
+      chunkedContent.loadMore(DOCUMENT_CONTENT_PAGE_SIZE);
+    }
+  }, [chunkedContent]);
+  const content = document?.contentVersion
+    ? chunkedContent.status === 'Exhausted'
+      ? chunkedContent.results.map(chunk => chunk.content).join('')
+      : null
+    : document?.content;
   useDocumentTitle(
     document && document !== null ? document.title || 'Untitled' : null,
   );
@@ -161,13 +185,22 @@ export function PublicDocumentPage({
       </div>
 
       <div className='rounded-xl border px-5 py-6 sm:px-8 sm:py-8'>
-        <RichEditor
-          value={document.content}
-          onChange={() => {}}
-          mode='full'
-          disabled
-          className='notion-editor'
-        />
+        {content === null || content === undefined ? (
+          <div className='space-y-3'>
+            <Skeleton className='h-4 w-full' />
+            <Skeleton className='h-4 w-5/6' />
+            <Skeleton className='h-4 w-4/5' />
+            <Skeleton className='h-4 w-full' />
+          </div>
+        ) : (
+          <RichEditor
+            value={content}
+            onChange={() => {}}
+            mode='full'
+            disabled
+            className='notion-editor'
+          />
+        )}
       </div>
     </div>
   );

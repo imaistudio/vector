@@ -451,6 +451,7 @@ export const updateDetails = mutation({
     description: v.optional(v.string()),
     expectedOutput: v.optional(v.string()),
     dueDate: v.optional(v.string()),
+    priorityId: v.optional(v.union(v.id('issuePriorities'), v.null())),
   },
   handler: async (ctx, args) => {
     const actorId = await requireUser(ctx);
@@ -458,6 +459,10 @@ export const updateDetails = mutation({
     const description = args.description?.trim() || undefined;
     const expectedOutput = args.expectedOutput?.trim();
     const dueDate = args.dueDate?.trim() || undefined;
+    const nextPriorityId =
+      args.priorityId === undefined
+        ? request.priorityId
+        : (args.priorityId ?? undefined);
 
     if (args.description !== undefined && args.description.length > 20_000)
       throw new ConvexError('DESCRIPTION_TOO_LONG');
@@ -468,6 +473,16 @@ export const updateDetails = mutation({
       throw new ConvexError('EXPECTED_OUTPUT_REQUIRED');
     if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))
       throw new ConvexError('INVALID_DUE_DATE');
+    const nextPriority =
+      args.priorityId !== undefined && nextPriorityId
+        ? await ctx.db.get('issuePriorities', nextPriorityId)
+        : null;
+    if (
+      args.priorityId !== undefined &&
+      nextPriorityId &&
+      (!nextPriority || nextPriority.organizationId !== request.organizationId)
+    )
+      throw new ConvexError('INVALID_PRIORITY');
 
     const nextDescription =
       args.description === undefined ? request.description : description;
@@ -478,6 +493,7 @@ export const updateDetails = mutation({
       description: nextDescription,
       expectedOutput: nextExpectedOutput,
       dueDate: nextDueDate,
+      ...(args.priorityId !== undefined ? { priorityId: nextPriorityId } : {}),
       searchText: requestSearchText({
         key: request.key,
         title: request.title,
@@ -522,6 +538,25 @@ export const updateDetails = mutation({
           toLabel: nextDueDate ?? 'None',
         },
       });
+    if (
+      args.priorityId !== undefined &&
+      nextPriorityId !== request.priorityId
+    ) {
+      const previousPriority = request.priorityId
+        ? await ctx.db.get('issuePriorities', request.priorityId)
+        : null;
+      await recordActivity(ctx, {
+        ...activityBase,
+        eventType: 'request_priority_changed',
+        details: {
+          field: 'priority',
+          fromId: request.priorityId,
+          fromLabel: previousPriority?.name ?? 'None',
+          toId: nextPriorityId,
+          toLabel: nextPriority?.name ?? 'None',
+        },
+      });
+    }
     return { success: true } as const;
   },
 });
