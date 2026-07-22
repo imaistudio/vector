@@ -424,7 +424,7 @@ export function NotificationPreferencesPage() {
           </div>
 
           <div className='overflow-hidden rounded-md border'>
-            <Table className='min-w-[34rem] table-fixed'>
+            <Table className='w-full min-w-[34rem] table-fixed'>
               <TableHeader>
                 <TableRow className='hover:bg-transparent'>
                   <TableHead className='h-9 px-3 text-xs'>Activity</TableHead>
