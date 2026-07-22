@@ -22,6 +22,7 @@ import {
 } from '../work/lib';
 import { cancelPendingHandoffs } from '../work/handoffs';
 import {
+  canDeleteRequest,
   canEditRequest,
   nextRequestKey,
   requestFocusRank,
@@ -557,6 +558,98 @@ export const updateDetails = mutation({
         },
       });
     }
+    return { success: true } as const;
+  },
+});
+
+export const remove = mutation({
+  args: { requestId: v.id('requests') },
+  returns: v.object({ success: v.literal(true) }),
+  handler: async (ctx, args) => {
+    const actorId = await requireUser(ctx);
+    const request = await ctx.db.get('requests', args.requestId);
+    if (!request) throw new ConvexError('REQUEST_NOT_FOUND');
+    if (!(await canDeleteRequest(ctx, request))) {
+      throw new ConvexError('FORBIDDEN');
+    }
+
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      teamId: request.routedTeamId,
+      projectId: request.projectId,
+      requestId: request._id,
+      actorId,
+      entityType: 'request',
+      eventType: 'request_deleted',
+      snapshot: { entityKey: request.key, entityName: request.title },
+    });
+
+    const [recipients, workLinks, comments, reminderRules, notificationEvents] =
+      await Promise.all([
+        ctx.db
+          .query('requestRecipients')
+          .withIndex('by_request', q => q.eq('requestId', request._id))
+          .collect(),
+        ctx.db
+          .query('requestWorkLinks')
+          .withIndex('by_request', q => q.eq('requestId', request._id))
+          .collect(),
+        ctx.db
+          .query('comments')
+          .withIndex('by_request', q => q.eq('requestId', request._id))
+          .collect(),
+        ctx.db
+          .query('reminderRules')
+          .withIndex('by_request', q => q.eq('requestId', request._id))
+          .collect(),
+        ctx.db
+          .query('notificationEvents')
+          .withIndex('by_request', q => q.eq('requestId', request._id))
+          .collect(),
+      ]);
+
+    await Promise.all([
+      ...recipients.map(recipient =>
+        ctx.db.delete('requestRecipients', recipient._id),
+      ),
+      ...workLinks.map(link => ctx.db.delete('requestWorkLinks', link._id)),
+      ...comments.map(comment => ctx.db.delete('comments', comment._id)),
+      ...reminderRules.map(async rule => {
+        const occurrences = await ctx.db
+          .query('reminderOccurrences')
+          .withIndex('by_rule', q => q.eq('reminderRuleId', rule._id))
+          .collect();
+        await Promise.all([
+          ...occurrences.map(occurrence =>
+            ctx.db.delete('reminderOccurrences', occurrence._id),
+          ),
+          ctx.db.delete('reminderRules', rule._id),
+        ]);
+      }),
+      ...notificationEvents.map(async event => {
+        const [notificationRecipients, deliveries] = await Promise.all([
+          ctx.db
+            .query('notificationRecipients')
+            .withIndex('by_event', q => q.eq('eventId', event._id))
+            .collect(),
+          ctx.db
+            .query('notificationDeliveries')
+            .withIndex('by_event', q => q.eq('eventId', event._id))
+            .collect(),
+        ]);
+        await Promise.all([
+          ...deliveries.map(delivery =>
+            ctx.db.delete('notificationDeliveries', delivery._id),
+          ),
+          ...notificationRecipients.map(recipient =>
+            ctx.db.delete('notificationRecipients', recipient._id),
+          ),
+          ctx.db.delete('notificationEvents', event._id),
+        ]);
+      }),
+    ]);
+
+    await ctx.db.delete('requests', request._id);
     return { success: true } as const;
   },
 });

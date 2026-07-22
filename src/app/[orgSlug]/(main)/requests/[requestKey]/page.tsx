@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
@@ -62,6 +62,8 @@ import {
 import { PermissionAwareSelector } from '@/components/ui/permission-aware';
 import { PERMISSIONS } from '@/convex/_shared/permissions';
 import { DynamicIcon } from '@/lib/dynamic-icons';
+import { RequestActionsMenu } from '@/components/requests/request-actions-menu';
+import { useConfirm } from '@/hooks/use-confirm';
 
 const dueDateFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -674,6 +676,7 @@ export default function RequestDetailPage() {
     orgSlug: string;
     requestKey: string;
   }>();
+  const router = useRouter();
   const request = useCachedQuery(api.requests.queries.getByKey, {
     orgSlug,
     requestKey,
@@ -684,7 +687,10 @@ export default function RequestDetailPage() {
       orgSlug,
     }) ?? [];
   const claim = useMutation(api.requests.mutations.claim);
+  const removeRequest = useMutation(api.requests.mutations.remove);
   const [claiming, setClaiming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
   if (request === undefined)
     return (
       <div>
@@ -711,6 +717,27 @@ export default function RequestDetailPage() {
   const isTerminal = ['completed', 'declined', 'duplicate'].includes(
     request.status,
   );
+  const handleDelete = async () => {
+    const confirmed = await confirmDelete({
+      title: 'Delete request',
+      description:
+        request.linkedWork.length > 0
+          ? `“${request.title}” will be permanently deleted and detached from ${request.linkedWork.length} linked Work item${request.linkedWork.length === 1 ? '' : 's'}. The Work itself will not be deleted.`
+          : `“${request.title}” will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete request',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await removeRequest({ requestId: request._id });
+      toast.success('Request deleted');
+      router.replace(`/${orgSlug}/requests`);
+    } catch {
+      toast.error('Could not delete request');
+      setDeleting(false);
+    }
+  };
   return (
     <div className='min-h-full'>
       <header className='bg-background/95 sticky top-0 z-20 flex min-h-10 items-center gap-1.5 border-b pr-1.5 pl-1 backdrop-blur'>
@@ -739,6 +766,12 @@ export default function RequestDetailPage() {
             requestId={request._id}
             currentRecipients={recipientIds}
             currentTeamId={request.routedTeamId}
+          />
+        )}
+        {request.canDelete && (
+          <RequestActionsMenu
+            deleting={deleting}
+            onDelete={() => void handleDelete()}
           />
         )}
         {!request.ownerId &&
@@ -967,6 +1000,7 @@ export default function RequestDetailPage() {
           </div>
         </aside>
       </div>
+      <ConfirmDeleteDialog />
     </div>
   );
 }

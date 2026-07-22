@@ -5,7 +5,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { canViewIssue } from '../access';
 import { getOrganizationBySlug, requireOrganizationMember } from '../authz';
 import { getAuthUserId } from '../authUtils';
-import { canEditRequest, canViewRequest } from './lib';
+import { canDeleteRequest, canEditRequest, canViewRequest } from './lib';
 
 async function userSummary(ctx: QueryCtx, userId?: Id<'users'>) {
   if (!userId) return null;
@@ -32,6 +32,7 @@ export const list = query({
         v.literal('all'),
       ),
     ),
+    search: v.optional(v.string()),
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
@@ -39,7 +40,19 @@ export const list = query({
     if (!userId) throw new ConvexError('UNAUTHORIZED');
     const org = await getOrganizationBySlug(ctx, args.orgSlug);
     await requireOrganizationMember(ctx, org._id, userId);
+    const search = args.search?.trim();
+    if (search && search.length > 200) {
+      throw new ConvexError('INVALID_SEARCH');
+    }
     const fetchPage = (paginationOpts: typeof args.paginationOpts) => {
+      if (search) {
+        return ctx.db
+          .query('requests')
+          .withSearchIndex('search_text', q =>
+            q.search('searchText', search).eq('organizationId', org._id),
+          )
+          .paginate(paginationOpts);
+      }
       if (args.scope === 'mine') {
         return ctx.db
           .query('requests')
@@ -76,18 +89,26 @@ export const list = query({
       const enriched = (
         await Promise.all(
           visible.map(async request => {
-            const [owner, requester, links, recipients] = await Promise.all([
-              userSummary(ctx, request.ownerId),
-              userSummary(ctx, request.requesterId),
-              ctx.db
-                .query('requestWorkLinks')
-                .withIndex('by_request', q => q.eq('requestId', request._id))
-                .collect(),
-              ctx.db
-                .query('requestRecipients')
-                .withIndex('by_request', q => q.eq('requestId', request._id))
-                .collect(),
-            ]);
+            if (args.scope === 'mine' && request.ownerId !== userId) {
+              return null;
+            }
+            if (args.scope === 'requested' && request.requesterId !== userId) {
+              return null;
+            }
+            const [owner, requester, links, recipients, canDelete] =
+              await Promise.all([
+                userSummary(ctx, request.ownerId),
+                userSummary(ctx, request.requesterId),
+                ctx.db
+                  .query('requestWorkLinks')
+                  .withIndex('by_request', q => q.eq('requestId', request._id))
+                  .collect(),
+                ctx.db
+                  .query('requestRecipients')
+                  .withIndex('by_request', q => q.eq('requestId', request._id))
+                  .collect(),
+                canDeleteRequest(ctx, request),
+              ]);
             if (
               args.scope === 'inbox' &&
               request.ownerId !== userId &&
@@ -107,6 +128,7 @@ export const list = query({
               linkedWorkCount: links.length,
               recipientCount: recipients.filter(r => r.role === 'recipient')
                 .length,
+              canDelete,
             };
           }),
         )
@@ -193,6 +215,7 @@ export const getByKey = query({
       recipients,
       linkedWork,
       canEdit: await canEditRequest(ctx, request),
+      canDelete: await canDeleteRequest(ctx, request),
     };
   },
 });

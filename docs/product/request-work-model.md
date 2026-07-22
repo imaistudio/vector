@@ -800,6 +800,7 @@ The first implementation uses the following concrete answers. Items explicitly m
 - Request completion remains a human review action by the requester, creator, or another user with edit authority. Automated Request acceptance is deferred.
 - When that human accepts a Request, linked review-ready Work auto-completes only if every fulfilling Request on that Work is terminal. This keeps shared Work from closing while another requester still needs review.
 - Changing the last Request ↔ Work relation away from `fulfills` removes that Work from completion aggregation and returns the Request to the appropriate intake/planning state. `contributes` links preserve context without driving review.
+- A Request's requester or creator may permanently delete it; otherwise the existing Work delete permission is required. Deletion removes the intake envelope, comments, routing, reminders, notifications, and Request ↔ Work links without deleting any linked Work. The activity feed retains a snapshot of the deletion for audit history.
 
 ### Notifications and reminders
 

@@ -755,6 +755,8 @@ function renderActivityDescription(item: ActivityFeedItem) {
       return null;
     case 'request_created':
       return 'created the Request';
+    case 'request_deleted':
+      return 'deleted the Request';
     case 'request_description_changed':
       return 'updated the Request description';
     case 'request_expected_output_changed':

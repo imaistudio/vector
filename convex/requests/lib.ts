@@ -76,6 +76,26 @@ export async function canEditRequest(
   );
 }
 
+export async function canDeleteRequest(
+  ctx: QueryCtx | MutationCtx,
+  request: Doc<'requests'>,
+) {
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return false;
+  if (request.requesterId === userId || request.createdBy === userId) {
+    return true;
+  }
+  return await hasPermission(
+    ctx,
+    {
+      organizationId: request.organizationId,
+      teamId: request.routedTeamId,
+      projectId: request.projectId,
+    },
+    PERMISSIONS.ISSUE_DELETE,
+  );
+}
+
 export async function requireRequest(
   ctx: QueryCtx | MutationCtx,
   requestId: Id<'requests'>,

@@ -2,24 +2,36 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FunctionReturnType } from 'convex/server';
 import {
   ArrowUpRight,
   CircleDot,
   Inbox,
   Network,
+  Search,
   UserRound,
+  X,
 } from 'lucide-react';
-import { api, useCachedPaginatedQuery, useCachedQuery } from '@/lib/convex';
+import {
+  api,
+  useCachedPaginatedQuery,
+  useCachedQuery,
+  useMutation,
+} from '@/lib/convex';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { AutoLoadMore } from '@/components/ui/auto-load-more';
 import { CreateRequestDialog } from '@/components/requests/create-request-dialog';
 import { GroupBySelector } from '@/components/ui/group-by-selector';
 import { GroupSection } from '@/components/ui/group-section';
+import { RequestActionsMenu } from '@/components/requests/request-actions-menu';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useConfirm } from '@/hooks/use-confirm';
+import { toast } from 'sonner';
 
 const scopes = [
   { value: 'inbox', label: 'Inbox' },
@@ -57,89 +69,176 @@ type RequestListItem = FunctionReturnType<
   typeof api.requests.queries.list
 >['page'][number];
 type RequestGroupBy = 'none' | 'priority' | 'status';
+const requestGroupByValues: RequestGroupBy[] = ['none', 'priority', 'status'];
+const requestGroupByStorageKey = 'vector:requests:group-by';
 
 function RequestRow({
   request,
   orgSlug,
   currentTime,
+  deleting,
+  onDelete,
 }: {
   request: RequestListItem;
   orgSlug: string;
   currentTime: number;
+  deleting: boolean;
+  onDelete: () => void;
 }) {
   const ageDays = Math.floor(
     (currentTime - request.createdAt) / (24 * 60 * 60 * 1000),
   );
   return (
-    <Link
-      href={`/${orgSlug}/requests/${request.key}`}
-      className='hover:bg-muted/35 flex min-h-10 items-center gap-2 border-b px-3 py-1 transition-colors'
-    >
-      <CircleDot
-        className={cn(
-          'size-3 shrink-0',
-          request.status === 'ready_for_review'
-            ? 'text-violet-500'
-            : request.status === 'changes_requested'
-              ? 'text-amber-500'
-              : request.status === 'completed'
-                ? 'text-emerald-500'
-                : 'text-muted-foreground',
-        )}
-      />
-      <span className='text-muted-foreground w-14 shrink-0 font-mono text-[10px]'>
-        {request.key}
-      </span>
-      <div className='min-w-0 flex-1'>
-        <div className='truncate text-xs font-medium'>{request.title}</div>
-        <div className='text-muted-foreground truncate text-[11px]'>
-          {request.expectedOutput}
-        </div>
-      </div>
-      <Badge
-        variant='outline'
-        className='hidden h-5 px-1.5 text-[10px] sm:inline-flex'
+    <div className='group hover:bg-muted/35 flex min-h-10 items-center border-b pr-2 transition-colors'>
+      <Link
+        href={`/${orgSlug}/requests/${request.key}`}
+        className='flex min-w-0 flex-1 items-center gap-2 self-stretch px-3 py-1'
       >
-        {statusLabel[request.status] ?? request.status}
-      </Badge>
-      {ageDays >= 3 && ['new', 'routed'].includes(request.status) && (
-        <Badge variant='secondary' className='h-5 px-1.5 text-[10px]'>
-          {ageDays}d waiting
-        </Badge>
-      )}
-      {request.linkedWorkCount > 0 && (
-        <span className='text-muted-foreground hidden items-center gap-1 text-[11px] md:flex'>
-          <Network className='size-3.5' />
-          {request.linkedWorkCount}
+        <CircleDot
+          className={cn(
+            'size-3 shrink-0',
+            request.status === 'ready_for_review'
+              ? 'text-violet-500'
+              : request.status === 'changes_requested'
+                ? 'text-amber-500'
+                : request.status === 'completed'
+                  ? 'text-emerald-500'
+                  : 'text-muted-foreground',
+          )}
+        />
+        <span className='text-muted-foreground w-14 shrink-0 font-mono text-[10px]'>
+          {request.key}
         </span>
-      )}
-      <span className='text-muted-foreground flex w-24 shrink-0 items-center justify-end gap-1 text-[11px]'>
-        {request.owner ? (
-          <>
-            <UserRound className='size-3.5' />
-            <span className='truncate'>
-              {request.owner.name ?? request.owner.username ?? 'Owner'}
-            </span>
-          </>
-        ) : (
-          <>
-            <ArrowUpRight className='size-3.5' />
-            Route
-          </>
+        <div className='min-w-0 flex-1'>
+          <div className='truncate text-xs font-medium'>{request.title}</div>
+          <div className='text-muted-foreground truncate text-[11px]'>
+            {request.expectedOutput}
+          </div>
+        </div>
+        <Badge
+          variant='outline'
+          className='hidden h-5 px-1.5 text-[10px] sm:inline-flex'
+        >
+          {statusLabel[request.status] ?? request.status}
+        </Badge>
+        {ageDays >= 3 && ['new', 'routed'].includes(request.status) && (
+          <Badge variant='secondary' className='h-5 px-1.5 text-[10px]'>
+            {ageDays}d waiting
+          </Badge>
         )}
-      </span>
-    </Link>
+        {request.linkedWorkCount > 0 && (
+          <span className='text-muted-foreground hidden items-center gap-1 text-[11px] md:flex'>
+            <Network className='size-3.5' />
+            {request.linkedWorkCount}
+          </span>
+        )}
+        <span className='text-muted-foreground flex w-24 shrink-0 items-center justify-end gap-1 text-[11px]'>
+          {request.owner ? (
+            <>
+              <UserRound className='size-3.5' />
+              <span className='truncate'>
+                {request.owner.name ?? request.owner.username ?? 'Owner'}
+              </span>
+            </>
+          ) : (
+            <>
+              <ArrowUpRight className='size-3.5' />
+              Route
+            </>
+          )}
+        </span>
+      </Link>
+      {request.canDelete && (
+        <RequestActionsMenu
+          deleting={deleting}
+          onDelete={onDelete}
+          className='text-muted-foreground opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100'
+        />
+      )}
+    </div>
   );
 }
 
 export default function RequestsPage() {
   const { orgSlug } = useParams<{ orgSlug: string }>();
   const [scope, setScope] = useState<(typeof scopes)[number]['value']>('inbox');
-  const [groupBy, setGroupBy] = useState<RequestGroupBy>('none');
+  const [groupBy, setGroupByState] = useState<RequestGroupBy>('none');
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebouncedValue(searchQuery.trim(), 200);
   const [currentTime] = useState(Date.now);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(
+    null,
+  );
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
+  const removeRequest = useMutation(api.requests.mutations.remove);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlGroupBy = params.get('groupBy');
+    const storedGroupBy = localStorage.getItem(requestGroupByStorageKey);
+    const initialGroupBy = requestGroupByValues.includes(
+      urlGroupBy as RequestGroupBy,
+    )
+      ? (urlGroupBy as RequestGroupBy)
+      : requestGroupByValues.includes(storedGroupBy as RequestGroupBy)
+        ? (storedGroupBy as RequestGroupBy)
+        : 'none';
+    setGroupByState(initialGroupBy);
+    setSearchQuery(params.get('q') ?? '');
+  }, []);
+
+  const setGroupBy = useCallback((nextGroupBy: RequestGroupBy) => {
+    setGroupByState(nextGroupBy);
+    localStorage.setItem(requestGroupByStorageKey, nextGroupBy);
+    const params = new URLSearchParams(window.location.search);
+    if (nextGroupBy === 'none') params.delete('groupBy');
+    else params.set('groupBy', nextGroupBy);
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      query ? `?${query}` : window.location.pathname,
+    );
+  }, []);
+
+  const setSearch = (nextSearch: string) => {
+    setSearchQuery(nextSearch);
+    const params = new URLSearchParams(window.location.search);
+    if (nextSearch.trim()) params.set('q', nextSearch);
+    else params.delete('q');
+    const query = params.toString();
+    window.history.replaceState(
+      null,
+      '',
+      query ? `?${query}` : window.location.pathname,
+    );
+  };
+
+  const handleDelete = async (request: RequestListItem) => {
+    const confirmed = await confirmDelete({
+      title: 'Delete request',
+      description:
+        request.linkedWorkCount > 0
+          ? `“${request.title}” will be permanently deleted and detached from ${request.linkedWorkCount} linked Work item${request.linkedWorkCount === 1 ? '' : 's'}. The Work itself will not be deleted.`
+          : `“${request.title}” will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete request',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setDeletingRequestId(request._id);
+    try {
+      await removeRequest({ requestId: request._id });
+      toast.success('Request deleted');
+    } catch {
+      toast.error('Could not delete request');
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
   const result = useCachedPaginatedQuery(
     api.requests.queries.list,
-    { orgSlug, scope },
+    { orgSlug, scope, search: debouncedSearch || undefined },
     { initialNumItems: 40 },
   );
   const priorityResults = useCachedQuery(
@@ -196,7 +295,7 @@ export default function RequestsPage() {
   }, [groupBy, priorityResults, result.results]);
   return (
     <div className='flex min-h-full flex-col'>
-      <header className='flex h-10 shrink-0 items-center gap-3 border-b pr-1 pl-3'>
+      <header className='flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-1 py-1 sm:flex-nowrap sm:gap-3 sm:py-0 sm:pr-1 sm:pl-3'>
         <div className='flex shrink-0 items-baseline gap-2'>
           <h1 className='text-sm font-semibold'>Requests</h1>
           <span className='text-muted-foreground text-xs'>
@@ -205,7 +304,7 @@ export default function RequestsPage() {
         </div>
         <nav
           aria-label='Request scope'
-          className='flex min-w-0 flex-1 items-center gap-1 overflow-x-auto'
+          className='order-3 flex w-full min-w-0 items-center gap-1 overflow-x-auto sm:order-none sm:w-auto sm:flex-1'
         >
           {scopes.map(item => (
             <Button
@@ -222,6 +321,29 @@ export default function RequestsPage() {
             </Button>
           ))}
         </nav>
+        <div className='relative min-w-24 flex-1 sm:w-40 sm:flex-none md:w-52'>
+          <Search className='text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2' />
+          <Input
+            value={searchQuery}
+            onChange={event => setSearch(event.target.value)}
+            placeholder='Search requests…'
+            aria-label='Search requests'
+            maxLength={200}
+            className='h-7 pr-7 pl-7 text-xs'
+          />
+          {searchQuery && (
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground absolute top-1/2 right-0.5 size-6 -translate-y-1/2 p-0'
+              aria-label='Clear request search'
+              onClick={() => setSearch('')}
+            >
+              <X className='size-3' />
+            </Button>
+          )}
+        </div>
         <GroupBySelector
           options={[
             { value: 'none', label: 'No grouping' },
@@ -254,22 +376,26 @@ export default function RequestsPage() {
         <div className='text-muted-foreground flex min-h-64 flex-col items-center justify-center gap-2 text-center'>
           <Inbox className='size-7 opacity-40' />
           <p className='text-sm'>
-            {scope === 'inbox'
-              ? 'The request inbox is clear'
-              : scope === 'mine'
-                ? 'Nothing is routed to you'
-                : scope === 'requested'
-                  ? 'You have not made any requests'
-                  : 'No requests yet'}
+            {debouncedSearch
+              ? `No requests match “${debouncedSearch}”`
+              : scope === 'inbox'
+                ? 'The request inbox is clear'
+                : scope === 'mine'
+                  ? 'Nothing is routed to you'
+                  : scope === 'requested'
+                    ? 'You have not made any requests'
+                    : 'No requests yet'}
           </p>
           <p className='max-w-sm text-xs'>
-            {scope === 'inbox'
-              ? 'New requests stay visible here until they are routed, planned, or reviewed.'
-              : scope === 'mine'
-                ? 'Requests assigned directly to you will appear here.'
-                : scope === 'requested'
-                  ? 'Requests you create will stay visible here through delivery and review.'
-                  : 'Create a request to define an expected output and route it into Work.'}
+            {debouncedSearch
+              ? 'Search checks the title, description, and expected output in this scope.'
+              : scope === 'inbox'
+                ? 'New requests stay visible here until they are routed, planned, or reviewed.'
+                : scope === 'mine'
+                  ? 'Requests assigned directly to you will appear here.'
+                  : scope === 'requested'
+                    ? 'Requests you create will stay visible here through delivery and review.'
+                    : 'Create a request to define an expected output and route it into Work.'}
           </p>
         </div>
       ) : (
@@ -281,6 +407,8 @@ export default function RequestsPage() {
                   request={request}
                   orgSlug={orgSlug}
                   currentTime={currentTime}
+                  deleting={deletingRequestId === request._id}
+                  onDelete={() => void handleDelete(request)}
                 />
               ))
             : groups.map(group => (
@@ -297,6 +425,8 @@ export default function RequestsPage() {
                       request={request}
                       orgSlug={orgSlug}
                       currentTime={currentTime}
+                      deleting={deletingRequestId === request._id}
+                      onDelete={() => void handleDelete(request)}
                     />
                   ))}
                 </GroupSection>
@@ -307,6 +437,7 @@ export default function RequestsPage() {
           />
         </div>
       )}
+      <ConfirmDeleteDialog />
     </div>
   );
 }
