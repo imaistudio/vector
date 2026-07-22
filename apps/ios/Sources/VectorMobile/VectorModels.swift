@@ -1045,10 +1045,45 @@ public struct VectorTeam: Decodable, Equatable, Identifiable {
   }
 }
 
+public struct VectorDocumentFolder: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let name: String
+  public let description: String?
+  public let icon: String?
+  public let color: String?
+  @ConvexFloat public var creationTime: Double
+
+  public init(
+    id: VectorID,
+    name: String,
+    description: String? = nil,
+    icon: String? = nil,
+    color: String? = nil,
+    creationTime: Double
+  ) {
+    self.id = id
+    self.name = name
+    self.description = description
+    self.icon = icon
+    self.color = color
+    self._creationTime = ConvexFloat(wrappedValue: creationTime)
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case name
+    case description
+    case icon
+    case color
+    case creationTime = "_creationTime"
+  }
+}
+
 public struct VectorDocument: Decodable, Equatable, Identifiable {
   public let id: VectorID
   public let title: String
   public let content: String?
+  public let contentVersion: String?
   public let icon: String?
   public let color: String?
   public let team: VectorTeamSummary?
@@ -1062,6 +1097,7 @@ public struct VectorDocument: Decodable, Equatable, Identifiable {
     id: VectorID,
     title: String,
     content: String? = nil,
+    contentVersion: String? = nil,
     icon: String? = nil,
     color: String? = nil,
     team: VectorTeamSummary? = nil,
@@ -1074,6 +1110,7 @@ public struct VectorDocument: Decodable, Equatable, Identifiable {
     self.id = id
     self.title = title
     self.content = content
+    self.contentVersion = contentVersion
     self.icon = icon
     self.color = color
     self.team = team
@@ -1088,6 +1125,7 @@ public struct VectorDocument: Decodable, Equatable, Identifiable {
     case id = "_id"
     case title
     case content
+    case contentVersion
     case icon
     case color
     case team
@@ -1100,6 +1138,40 @@ public struct VectorDocument: Decodable, Equatable, Identifiable {
 
   public var updatedAt: Double {
     lastEditedAtValue ?? creationTime
+  }
+}
+
+public struct VectorDocumentContentChunk: Decodable, Equatable, Identifiable {
+  public let id: VectorID
+  public let documentId: VectorID
+  public let version: String
+  @ConvexFloat private var chunkIndexValue: Double
+  public let content: String
+
+  public init(
+    id: VectorID,
+    documentId: VectorID,
+    version: String,
+    chunkIndex: Int,
+    content: String
+  ) {
+    self.id = id
+    self.documentId = documentId
+    self.version = version
+    self._chunkIndexValue = ConvexFloat(wrappedValue: Double(chunkIndex))
+    self.content = content
+  }
+
+  private enum CodingKeys: String, CodingKey {
+    case id = "_id"
+    case documentId
+    case version
+    case chunkIndexValue = "chunkIndex"
+    case content
+  }
+
+  public var chunkIndex: Int {
+    Int(chunkIndexValue)
   }
 }
 

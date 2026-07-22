@@ -183,6 +183,7 @@ export const listPage = query({
   args: {
     orgSlug: v.string(),
     scope: v.union(v.literal('mine'), v.literal('all')),
+    folderId: v.optional(v.id('documentFolders')),
     unfiledOnly: v.optional(v.boolean()),
     paginationOpts: paginationOptsValidator,
   },
@@ -193,7 +194,39 @@ export const listPage = query({
     let cursor = args.paginationOpts.cursor;
     let isDone = false;
 
-    if (args.scope === 'mine') {
+    if (args.folderId) {
+      const folder = await ctx.db.get('documentFolders', args.folderId);
+      if (!folder || folder.organizationId !== org._id) {
+        throw new ConvexError('Document folder not found');
+      }
+      const userId =
+        args.scope === 'mine' ? await getAuthUserId(ctx) : undefined;
+      if (args.scope === 'mine' && !userId) {
+        return { page: [], continueCursor: '', isDone: true };
+      }
+
+      while (pageItems.length < target && !isDone) {
+        const source = await ctx.db
+          .query('documents')
+          .withIndex('by_folder', q => q.eq('folderId', args.folderId!))
+          .order('desc')
+          .paginate({
+            cursor,
+            numItems: target - pageItems.length,
+          });
+
+        for (const doc of source.page) {
+          if (doc.organizationId !== org._id) continue;
+          if (userId && doc.createdBy !== userId) continue;
+          if (await canViewDocument(ctx, doc)) {
+            pageItems.push(doc);
+          }
+        }
+
+        cursor = source.continueCursor;
+        isDone = source.isDone || !source.continueCursor;
+      }
+    } else if (args.scope === 'mine') {
       const userId = await getAuthUserId(ctx);
       if (!userId) {
         return { page: [], continueCursor: '', isDone: true };
