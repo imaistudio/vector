@@ -77,6 +77,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'issue_live_activity_delegated',
   // Request / Work / Task model
   'request_created',
+  'request_deleted',
   'request_description_changed',
   'request_expected_output_changed',
   'request_due_date_changed',

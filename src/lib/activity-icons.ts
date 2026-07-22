@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Plus,
   Terminal,
+  Trash2,
   Type,
   Users,
 } from 'lucide-react';
@@ -24,6 +25,8 @@ export function getActivityIcon(eventType: string): {
   switch (eventType) {
     case 'issue_created':
       return { Icon: Plus, color: 'text-violet-500' };
+    case 'request_deleted':
+      return { Icon: Trash2, color: 'text-destructive' };
     case 'issue_workflow_state_changed':
     case 'issue_assignment_state_changed':
       return { Icon: CircleDot, color: 'text-green-500' };
@@ -77,6 +80,8 @@ export function getActivityLabel(eventType: string | null | undefined): string {
   switch (eventType) {
     case 'issue_created':
       return 'Issue created';
+    case 'request_deleted':
+      return 'Request deleted';
     case 'issue_workflow_state_changed':
       return 'State changed';
     case 'issue_assignment_state_changed':
