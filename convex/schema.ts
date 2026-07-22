@@ -1839,6 +1839,7 @@ export default defineSchema({
   // Transcript/status stream for a specific live activity
   issueLiveMessages: defineTable({
     liveActivityId: v.id('issueLiveActivities'),
+    sourceId: v.optional(v.string()),
     direction: liveMessageDirectionValidator,
     role: liveMessageRoleValidator,
     body: v.string(),
@@ -1847,7 +1848,8 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_live_activity', ['liveActivityId'])
-    .index('by_live_activity_created', ['liveActivityId', 'createdAt']),
+    .index('by_live_activity_created', ['liveActivityId', 'createdAt'])
+    .index('by_live_activity_and_source_id', ['liveActivityId', 'sourceId']),
 
   // Outbound command queue from Vector to the local runtime
   agentCommands: defineTable({
