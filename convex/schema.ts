@@ -1223,6 +1223,9 @@ export default defineSchema({
     createdBy: v.id('users'),
     lastEditedBy: v.optional(v.id('users')),
     lastEditedAt: v.optional(v.number()),
+    contentVersion: v.optional(v.string()),
+    contentChunkCount: v.optional(v.number()),
+    contentSize: v.optional(v.number()),
     visibility: v.optional(
       v.union(
         v.literal('private'),
@@ -1242,6 +1245,27 @@ export default defineSchema({
       searchField: 'title',
       filterFields: ['organizationId'],
     }),
+
+  documentContentChunks: defineTable({
+    documentId: v.id('documents'),
+    version: v.string(),
+    chunkIndex: v.number(),
+    content: v.string(),
+  }).index('by_document_version_chunk', [
+    'documentId',
+    'version',
+    'chunkIndex',
+  ]),
+
+  documentContentUploads: defineTable({
+    documentId: v.id('documents'),
+    uploadId: v.string(),
+    expectedChunkCount: v.number(),
+    nextChunkIndex: v.number(),
+    contentSize: v.number(),
+    createdBy: v.id('users'),
+    createdAt: v.number(),
+  }).index('by_document', ['documentId']),
 
   // Actions queued by the assistant for the client to perform (navigation, open tabs, etc.)
   assistantActions: defineTable({

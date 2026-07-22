@@ -492,18 +492,20 @@ function DroppableFolderBook({
             )}
             style={{ backgroundColor: folder.color || '#6366f1' }}
           />
-          <div className='relative z-10'>
+          <div className='relative z-10 flex h-full min-h-0 flex-col overflow-hidden'>
             {folder.icon ? (
               <DynamicIcon
                 name={folder.icon}
                 className='mb-1 size-4 opacity-80'
               />
             ) : null}
-            <BookTitle className='text-sm'>{folder.name}</BookTitle>
+            <BookTitle className='mt-2 text-sm'>{folder.name}</BookTitle>
             {folder.description && (
-              <BookDescription>{folder.description}</BookDescription>
+              <BookDescription className='line-clamp-2'>
+                {folder.description}
+              </BookDescription>
             )}
-            <p className='mt-1 text-[10px] opacity-60'>
+            <p className='mt-auto shrink-0 pt-1 text-[10px] opacity-60'>
               {isOver
                 ? 'Drop to add'
                 : `${folder.documentCount} ${folder.documentCount === 1 ? 'doc' : 'docs'}`}

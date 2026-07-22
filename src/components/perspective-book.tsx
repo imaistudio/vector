@@ -62,7 +62,7 @@ export function PerspectiveBook({
                 'linear-gradient(90deg, hsla(0, 0%, 100%, 0), hsla(0, 0%, 100%, 0) 12%, hsla(0, 0%, 100%, .25) 29.25%, hsla(0, 0%, 100%, 0) 50.5%, hsla(0, 0%, 100%, 0) 75.25%, hsla(0, 0%, 100%, .25) 91%, hsla(0, 0%, 100%, 0)), linear-gradient(90deg, rgba(0, 0, 0, .03), rgba(0, 0, 0, .1) 12%, transparent 30%, rgba(0, 0, 0, .02) 50%, rgba(0, 0, 0, .2) 73.5%, rgba(0, 0, 0, .5) 75.25%, rgba(0, 0, 0, .15) 85.25%, transparent)',
             }}
           ></div>
-          <div className='h-full pl-1'>{children}</div>
+          <div className='h-full min-h-0 overflow-hidden pl-1'>{children}</div>
           {textured && (
             <div
               className='pointer-events-none absolute inset-0 rotate-180 bg-cover bg-no-repeat opacity-50 mix-blend-hard-light brightness-110'
@@ -120,7 +120,12 @@ interface BookTitleProps {
 
 export function BookTitle({ children, className = '' }: BookTitleProps) {
   return (
-    <h1 className={`mt-3 mb-1 font-bold text-balance select-none ${className}`}>
+    <h1
+      className={cn(
+        'mt-3 mb-1 line-clamp-3 min-w-0 leading-tight font-bold text-balance break-words select-none',
+        className,
+      )}
+    >
       {children}
     </h1>
   );
@@ -136,7 +141,12 @@ export function BookDescription({
   className = '',
 }: BookDescriptionProps) {
   return (
-    <p className={`text-xs/relaxed opacity-80 select-none ${className}`}>
+    <p
+      className={cn(
+        'line-clamp-3 min-w-0 text-xs/relaxed break-words opacity-80 select-none',
+        className,
+      )}
+    >
       {children}
     </p>
   );

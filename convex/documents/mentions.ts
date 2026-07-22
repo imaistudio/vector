@@ -11,59 +11,9 @@
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { extractMentions, type MentionRef } from '../_shared/document_mentions';
 
-export type MentionRef = {
-  mentionType: 'user' | 'team' | 'project' | 'issue' | 'document';
-  /** For users this is the Convex user ID; for others it's the key (e.g. "TEAM", "PROJ-1") or document ID */
-  rawRef: string;
-};
-
-// Regex to extract href values from anchor tags
-const HREF_RE = /href="([^"]+)"/g;
-
-// Patterns to classify and extract entity references from hrefs
-const MENTION_PATTERNS: {
-  type: MentionRef['mentionType'];
-  pattern: RegExp;
-}[] = [
-  // /orgSlug/people/{userId} — userId is a Convex ID like "k17..."
-  { type: 'user', pattern: /\/[^/]+\/people\/([^#/?]+)/ },
-  // /orgSlug/teams/{TEAM_KEY}
-  { type: 'team', pattern: /\/[^/]+\/teams\/([A-Z][A-Z0-9_-]*)(?:#|$)/ },
-  // /orgSlug/projects/{PROJECT_KEY}
-  {
-    type: 'project',
-    pattern: /\/[^/]+\/projects\/([A-Z][A-Z0-9_-]*)(?:#|$)/,
-  },
-  // /orgSlug/issues/{ISSUE_KEY} e.g. PROJ-42
-  { type: 'issue', pattern: /\/[^/]+\/issues\/([A-Z]+-\d+)/ },
-  // /orgSlug/documents/{documentId} — documentId is a Convex ID
-  { type: 'document', pattern: /\/[^/]+\/documents\/([^#/?]+)/ },
-];
-
-/** Extract unique mention references from document HTML content. */
-export function extractMentions(html: string): MentionRef[] {
-  const seen = new Set<string>();
-  const refs: MentionRef[] = [];
-
-  let match: RegExpExecArray | null;
-  while ((match = HREF_RE.exec(html)) !== null) {
-    const href = match[1];
-    for (const { type, pattern } of MENTION_PATTERNS) {
-      const m = href.match(pattern);
-      if (m) {
-        const key = `${type}:${m[1]}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          refs.push({ mentionType: type, rawRef: m[1] });
-        }
-        break; // first match wins
-      }
-    }
-  }
-
-  return refs;
-}
+export { extractMentions, type MentionRef } from '../_shared/document_mentions';
 
 /**
  * Resolve raw mention refs (keys) to Convex entity IDs.
@@ -188,6 +138,16 @@ export async function syncDocumentMentions(
   organizationId: Id<'organizations'>,
   content: string | undefined,
 ) {
+  const refs = content ? extractMentions(content) : [];
+  await syncDocumentMentionRefs(ctx, documentId, organizationId, refs);
+}
+
+export async function syncDocumentMentionRefs(
+  ctx: MutationCtx,
+  documentId: Id<'documents'>,
+  organizationId: Id<'organizations'>,
+  refs: MentionRef[],
+) {
   // Get current mentions from DB
   const existing = await ctx.db
     .query('documentMentions')
@@ -199,14 +159,7 @@ export async function syncDocumentMentions(
   );
 
   // Parse new mentions from content
-  let newMentions: {
-    mentionType: MentionRef['mentionType'];
-    entityId: string;
-  }[] = [];
-  if (content) {
-    const refs = extractMentions(content);
-    newMentions = await resolveMentionIds(ctx, organizationId, refs);
-  }
+  const newMentions = await resolveMentionIds(ctx, organizationId, refs);
 
   const newSet = new Set(
     newMentions.map(m => `${m.mentionType}:${m.entityId}`),

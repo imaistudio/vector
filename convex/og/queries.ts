@@ -617,6 +617,8 @@ export const getPublicDocumentFull = query({
       _id: doc._id,
       title: doc.title,
       content: doc.content ?? '',
+      contentVersion: doc.contentVersion ?? null,
+      contentChunkCount: doc.contentChunkCount ?? null,
       orgName: org.name,
       orgSlug: org.slug,
       orgLogo: org.logo ? await ctx.storage.getUrl(org.logo) : null,

@@ -80,6 +80,7 @@ export const ACTIVITY_EVENT_TYPES = [
   'request_description_changed',
   'request_expected_output_changed',
   'request_due_date_changed',
+  'request_priority_changed',
   'request_comment_added',
   'request_routed',
   'request_claimed',

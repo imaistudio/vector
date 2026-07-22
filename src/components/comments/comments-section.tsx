@@ -761,6 +761,8 @@ function renderActivityDescription(item: ActivityFeedItem) {
       return 'updated the expected output';
     case 'request_due_date_changed':
       return `changed the due date from ${details.fromLabel ?? 'None'} to ${details.toLabel ?? 'None'}`;
+    case 'request_priority_changed':
+      return `changed the priority from ${details.fromLabel ?? 'None'} to ${details.toLabel ?? 'None'}`;
     case 'request_comment_added':
       return null;
     case 'request_routed':

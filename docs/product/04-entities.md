@@ -28,7 +28,9 @@ Core semantics:
 - Authorized editors can refine the description and expected output inline as
   the request becomes clearer; both fields support the same rich workpad-style
   notes and checklists used during delivery. They can also adjust the due date
-  from the Request detail view.
+  and priority from the Request detail view.
+- Priority expresses intake urgency independently of lifecycle status. Request
+  lists can be grouped by priority or status for triage.
 - People with access can discuss a Request through threaded comments. The
   discussion timeline also records important Request changes, including edits
   to its description, expected output, and due date.
@@ -136,6 +138,7 @@ Basic functionality:
 - mentions and linked entity references
 - comments and collaborative activity
 - optional public exposure when explicitly shared
+- seamless large-document editing, with oversized content loaded incrementally
 
 Use documents for specifications, decisions, runbooks, meeting context, and knowledge that should outlive one Work record. Keep immediate execution notes in the Work workpad.
 

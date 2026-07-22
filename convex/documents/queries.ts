@@ -12,6 +12,7 @@ async function hydrateDocuments(
 ) {
   return Promise.all(
     documents.map(async doc => {
+      const { content: _content, ...documentSummary } = doc;
       const [author, team, project] = await Promise.all([
         ctx.db.get('users', doc.createdBy),
         doc.teamId ? ctx.db.get('teams', doc.teamId) : null,
@@ -19,7 +20,7 @@ async function hydrateDocuments(
       ]);
 
       return {
-        ...doc,
+        ...documentSummary,
         author: author
           ? { _id: author._id, name: author.name, email: author.email }
           : null,
