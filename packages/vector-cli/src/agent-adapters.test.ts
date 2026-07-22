@@ -256,7 +256,9 @@ describe('agent-adapters session discovery', () => {
       return {
         ...actual,
         execSync: vi.fn((command: string) => {
-          if (command === 'ps -axo pid=,ucomm=') return '123 codex\n';
+          if (command === 'ps -axo pid=,ucomm=') {
+            return '123 codex-aarch64-apple-darwin\n';
+          }
           if (command.includes('-a -p 123 -Fn -d cwd')) {
             return `p123\nfcwd\nn${workspace}\n`;
           }

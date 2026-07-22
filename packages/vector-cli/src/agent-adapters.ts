@@ -1006,11 +1006,12 @@ function listLiveProcessIds(commandName: string): string[] {
       .map(line => line.trim())
       .filter(Boolean)
       .map(line => line.split(/\s+/, 2))
-      .filter(([, command]) =>
-        command
-          ? basename(command).toLowerCase() === commandName.toLowerCase()
-          : false,
-      )
+      .filter(([, command]) => {
+        if (!command) return false;
+        const executable = basename(command).toLowerCase();
+        const expected = commandName.toLowerCase();
+        return executable === expected || executable.startsWith(`${expected}-`);
+      })
       .map(([pid]) => pid)
       .filter(Boolean);
   } catch {
@@ -1660,6 +1661,7 @@ function isImportableTranscriptText(
     '<plugins_instructions>',
     '<recommended_plugins>',
     '<command-name>',
+    '<turn_aborted>',
   ].some(prefix => text.startsWith(prefix));
 }
 
