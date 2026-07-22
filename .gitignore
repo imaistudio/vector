@@ -27,6 +27,16 @@
 /packages/vector-cli/native
 /packages/vector-cli/*.tgz
 
+# android
+/apps/android/.gradle/
+/apps/android/local.properties
+/apps/android/**/build/
+/apps/android/.idea/
+*.jks
+*.keystore
+*service-account*.json
+*play-publisher*.json
+
 # misc
 .DS_Store
 *.pem

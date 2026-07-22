@@ -1,0 +1,207 @@
+name: Android
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    paths:
+      - '.github/workflows/android.yml'
+      - 'apps/android/**'
+      - 'scripts/prepare-android-signing.mjs'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/android.yml'
+      - 'apps/android/**'
+      - 'scripts/prepare-android-signing.mjs'
+  workflow_dispatch:
+    inputs:
+      signed_bundle:
+        description: 'Build and retain a signed release Android App Bundle.'
+        required: true
+        type: boolean
+        default: true
+      upload_google_play:
+        description: 'Upload the signed bundle to the Google Play internal track.'
+        required: true
+        type: boolean
+        default: false
+      version_name:
+        description: 'Optional release version name; the app default is used when empty.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && 'release' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: '17'
+  ANDROID_API_LEVEL: '36'
+  ANDROID_BUILD_TOOLS_VERSION: '36.0.0'
+
+jobs:
+  verify:
+    name: Test, lint, and assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+
+      - name: Verify Gradle wrapper
+        run: test -x ./gradlew
+        working-directory: apps/android
+
+      - name: Run Android checks
+        run: ./gradlew --no-daemon test lint assembleDebug
+        working-directory: apps/android
+
+  release-bundle:
+    name: Signed internal release bundle
+    if: github.event_name == 'workflow_dispatch' && (inputs.signed_bundle || inputs.upload_google_play)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: verify
+    env:
+      ANDROID_REQUIRE_SIGNING: '1'
+      HAS_GOOGLE_PLAY_CREDENTIALS: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      VECTOR_ANDROID_VERSION_NAME: ${{ inputs.version_name }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager \
+            "platforms;android-${ANDROID_API_LEVEL}" \
+            "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
+
+      - name: Require Play credentials when upload is requested
+        if: inputs.upload_google_play && env.HAS_GOOGLE_PLAY_CREDENTIALS != 'true'
+        run: |
+          echo '::error::GOOGLE_PLAY_SERVICE_ACCOUNT_JSON is required when upload_google_play is enabled.'
+          exit 1
+
+      - name: Set unique Android version code
+        run: |
+          version_code=$((GITHUB_RUN_NUMBER * 100 + GITHUB_RUN_ATTEMPT))
+          if [ "$version_code" -gt 2100000000 ]; then
+            echo "::error::Computed Android version code $version_code exceeds the Play limit."
+            exit 1
+          fi
+          echo "VECTOR_ANDROID_VERSION_CODE=$version_code" >> "$GITHUB_ENV"
+
+      - name: Prepare Android signing
+        run: node scripts/prepare-android-signing.mjs
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+      - name: Build signed Android App Bundle
+        run: ./gradlew --no-daemon :app:bundleRelease
+        working-directory: apps/android
+        env:
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+
+      - name: Locate and verify signed bundle
+        id: bundle
+        run: |
+          set -euo pipefail
+          mapfile -t bundles < <(find app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -print)
+          if [ "${#bundles[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one release AAB; found ${#bundles[@]}."
+            exit 1
+          fi
+          bundle_path="$(realpath "${bundles[0]}")"
+          mapfile -t signature_blocks < <(jar tf "$bundle_path" | grep -E '^META-INF/[^/]+\.(RSA|DSA|EC)$' || true)
+          if [ "${#signature_blocks[@]}" -eq 0 ]; then
+            echo '::error::The release AAB has no JAR signature block.'
+            exit 1
+          fi
+          verify_output="$(mktemp)"
+          if ! jarsigner -verify "$bundle_path" >"$verify_output" 2>&1; then
+            cat "$verify_output"
+            echo '::error::The release AAB signature is invalid.'
+            exit 1
+          fi
+          if grep -qi 'jar is unsigned' "$verify_output"; then
+            echo '::error::The release AAB is unsigned.'
+            exit 1
+          fi
+          echo "path=$bundle_path" >> "$GITHUB_OUTPUT"
+        working-directory: apps/android
+
+      - name: Upload signed bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vector-android-${{ github.run_number }}-${{ github.run_attempt }}
+          path: ${{ steps.bundle.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload to Google Play internal testing
+        if: inputs.upload_google_play && env.HAS_GOOGLE_PLAY_CREDENTIALS == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: 'studio.imai.vector'
+          releaseFile: ${{ steps.bundle.outputs.path }}
+          track: internal
+          status: completed
+
+      - name: Release summary
+        if: always()
+        run: |
+          {
+            echo '## Android release bundle'
+            echo
+            echo '- Package: `studio.imai.vector`'
+            echo "- Version code: \`${VECTOR_ANDROID_VERSION_CODE}\`"
+            echo "- Artifact: \`vector-android-${{ github.run_number }}-${{ github.run_attempt }}\`"
+            echo "- Play upload requested: \`${{ inputs.upload_google_play }}\`"
+            echo '- Play track: `internal` (when upload was requested and credentials were available)'
+          } >> "$GITHUB_STEP_SUMMARY"

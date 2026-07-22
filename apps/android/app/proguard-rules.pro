@@ -1,0 +1,4 @@
+-keepattributes *Annotation*
+-keep class kotlinx.serialization.** { *; }
+-keepclassmembers class **$$serializer { *; }
+-dontwarn org.slf4j.**
