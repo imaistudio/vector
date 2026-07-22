@@ -1,17 +1,27 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { api, useCachedQuery, useMutation } from '@/lib/convex';
-import { Bell, Check, Laptop, Send, Smartphone, Sparkles } from 'lucide-react';
+import { Bell, Laptop, Send, Smartphone } from 'lucide-react';
 import { toast } from 'sonner';
+import { BarsSpinner } from '@/components/bars-spinner';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { api, useCachedQuery, useMutation } from '@/lib/convex';
+import {
+  getCurrentBrowserPushEndpoint,
   isPushSupported,
   subscribeCurrentBrowserToPush,
   unsubscribeCurrentBrowserPush,
 } from '@/lib/notifications';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils';
 import {
   updateNotificationPreference,
   updateQuery,
@@ -22,6 +32,14 @@ type Preferences = NonNullable<
     typeof useCachedQuery<typeof api.notifications.queries.getPreferences>
   >
 >;
+
+type PushSubscription = NonNullable<
+  ReturnType<
+    typeof useCachedQuery<
+      typeof api.notifications.queries.listPushSubscriptions
+    >
+  >
+>[number];
 
 const channelConfig = [
   { key: 'inAppEnabled', label: 'In-app', icon: Bell },
@@ -80,6 +98,77 @@ const categoryLabels: Record<string, { title: string; description: string }> = {
   },
 };
 
+const browserMatchers = [
+  { pattern: /Edg\/(\d+)/, label: 'Microsoft Edge' },
+  { pattern: /(?:Firefox|FxiOS)\/(\d+)/, label: 'Firefox' },
+  { pattern: /(?:Chrome|CriOS)\/(\d+)/, label: 'Chrome' },
+  { pattern: /Version\/(\d+).+Safari/, label: 'Safari' },
+] as const;
+
+function getPlatformLabel(userAgent: string) {
+  if (/iPhone|iPad/.test(userAgent)) return 'iOS';
+  if (/Android/.test(userAgent)) return 'Android';
+  if (/Windows/.test(userAgent)) return 'Windows';
+  if (/Macintosh|Mac OS X/.test(userAgent)) return 'macOS';
+  if (/Linux/.test(userAgent)) return 'Linux';
+  return null;
+}
+
+function getBrowserLabel(userAgent?: string) {
+  if (!userAgent) return null;
+
+  let browser: string | null = null;
+  for (const matcher of browserMatchers) {
+    const version = userAgent.match(matcher.pattern)?.[1];
+    if (version) {
+      browser = `${matcher.label} ${version}`;
+      break;
+    }
+  }
+
+  const platform = getPlatformLabel(userAgent);
+
+  if (browser && platform) return `${browser} on ${platform}`;
+  if (browser) return browser;
+  if (platform) return `Browser on ${platform}`;
+  return null;
+}
+
+function getPushStatus(
+  permission: NotificationPermission | 'unsupported',
+  isEnabledOnCurrentBrowser: boolean,
+) {
+  if (permission === 'unsupported') {
+    return {
+      title: 'Push is not supported in this browser',
+      description: 'Use a supported browser to receive push notifications.',
+    };
+  }
+  if (permission === 'denied') {
+    return {
+      title: 'Push is blocked in this browser',
+      description:
+        'Allow notifications for imai.tech in your browser settings to enable it.',
+    };
+  }
+  if (isEnabledOnCurrentBrowser) {
+    return {
+      title: 'Push is enabled on this browser',
+      description: 'Enabled push events will be delivered to this device.',
+    };
+  }
+  if (permission === 'granted') {
+    return {
+      title: 'This browser is ready for push',
+      description: 'Enable it to receive push notifications on this device.',
+    };
+  }
+  return {
+    title: 'Enable browser push',
+    description: 'Your browser will ask for notification permission once.',
+  };
+}
+
 export function NotificationPreferencesPage() {
   const preferences = useCachedQuery(api.notifications.queries.getPreferences);
   const subscriptions = useCachedQuery(
@@ -102,25 +191,65 @@ export function NotificationPreferencesPage() {
   );
   const removePushSubscription = useMutation(
     api.notifications.mutations.removePushSubscription,
-  );
+  ).withOptimisticUpdate((store, args) => {
+    updateQuery(
+      store,
+      api.notifications.queries.listPushSubscriptions,
+      {},
+      current =>
+        current.filter(
+          subscription => subscription._id !== args.subscriptionId,
+        ),
+    );
+  });
   const displayPreferences = preferences ?? [];
   const [permission, setPermission] = useState<
     NotificationPermission | 'unsupported'
   >('unsupported');
+  const [currentPushEndpoint, setCurrentPushEndpoint] = useState<
+    string | null | undefined
+  >(undefined);
   const [isSyncingPush, setIsSyncingPush] = useState(false);
+  const [removingSubscriptionId, setRemovingSubscriptionId] = useState<
+    PushSubscription['_id'] | null
+  >(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!isPushSupported()) {
       setPermission('unsupported');
+      setCurrentPushEndpoint(null);
       return;
     }
 
     setPermission(Notification.permission);
+    void getCurrentBrowserPushEndpoint()
+      .then(endpoint => {
+        if (!cancelled) setCurrentPushEndpoint(endpoint);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentPushEndpoint(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const activeSubscriptions = useMemo(
     () => subscriptions?.filter(subscription => !subscription.disabledAt) ?? [],
     [subscriptions],
+  );
+
+  const currentSubscription = useMemo(
+    () =>
+      currentPushEndpoint
+        ? activeSubscriptions.find(
+            subscription => subscription.endpoint === currentPushEndpoint,
+          )
+        : undefined,
+    [activeSubscriptions, currentPushEndpoint],
   );
 
   const handleToggle = async (
@@ -139,9 +268,7 @@ export function NotificationPreferencesPage() {
     const next = nextPreferences.find(
       preference => preference.category === category,
     );
-    if (!next) {
-      return;
-    }
+    if (!next) return;
 
     try {
       await updatePreferences({
@@ -161,14 +288,15 @@ export function NotificationPreferencesPage() {
     try {
       setIsSyncingPush(true);
       const subscription = await subscribeCurrentBrowserToPush();
+      const userAgent =
+        typeof navigator !== 'undefined' ? navigator.userAgent : undefined;
       await upsertPushSubscription({
         ...subscription,
-        deviceLabel: 'Current browser',
-        userAgent:
-          typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        deviceLabel: getBrowserLabel(userAgent) ?? 'Browser',
+        userAgent,
       });
+      setCurrentPushEndpoint(subscription.endpoint);
       setPermission(Notification.permission);
-      toast.success('Push notifications enabled for this browser.');
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to enable push',
@@ -178,17 +306,19 @@ export function NotificationPreferencesPage() {
     }
   };
 
-  const handleDisablePush = async () => {
+  const handleDisableCurrentPush = async () => {
     try {
       setIsSyncingPush(true);
-      const endpoint = await unsubscribeCurrentBrowserPush();
+      const endpoint = await unsubscribeCurrentBrowserPush(
+        currentPushEndpoint ?? undefined,
+      );
       const current = activeSubscriptions.find(
         subscription => subscription.endpoint === endpoint,
       );
       if (current) {
         await removePushSubscription({ subscriptionId: current._id });
       }
-      toast.success('Push notifications disabled for this browser.');
+      setCurrentPushEndpoint(null);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : 'Failed to disable push',
@@ -197,6 +327,25 @@ export function NotificationPreferencesPage() {
       setIsSyncingPush(false);
     }
   };
+
+  const handleRemoveSubscription = async (subscription: PushSubscription) => {
+    try {
+      setRemovingSubscriptionId(subscription._id);
+      if (subscription.endpoint === currentPushEndpoint) {
+        await unsubscribeCurrentBrowserPush(subscription.endpoint);
+        setCurrentPushEndpoint(null);
+      }
+      await removePushSubscription({ subscriptionId: subscription._id });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to remove browser',
+      );
+    } finally {
+      setRemovingSubscriptionId(null);
+    }
+  };
+
+  const pushStatus = getPushStatus(permission, Boolean(currentSubscription));
 
   if (preferences === undefined || subscriptions === undefined) {
     return (
@@ -209,33 +358,42 @@ export function NotificationPreferencesPage() {
             </span>
           </div>
         </div>
-        <div className='space-y-6 p-3'>
-          <div className='space-y-2'>
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={index}
-                className='flex items-center gap-3 rounded-md border px-3 py-2.5'
-              >
-                <div className='min-w-0 flex-1 space-y-1'>
-                  <Skeleton className='h-4 w-32' />
-                  <Skeleton className='h-3 w-64' />
-                </div>
-                <div className='flex gap-1'>
+        <div className='mx-auto flex w-full max-w-4xl flex-col gap-5 p-3 sm:p-5'>
+          <div className='flex flex-col gap-1 px-1'>
+            <Skeleton className='h-5 w-48' />
+            <Skeleton className='h-3 w-72 max-w-full' />
+          </div>
+          <div className='flex flex-col gap-2'>
+            <div className='flex flex-col gap-1 px-1'>
+              <Skeleton className='h-4 w-32' />
+              <Skeleton className='h-3 w-56 max-w-full' />
+            </div>
+            <div className='overflow-hidden rounded-md border'>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className='flex items-center gap-3 border-b px-3 py-2 last:border-b-0'
+                >
+                  <div className='flex min-w-0 flex-1 flex-col gap-1'>
+                    <Skeleton className='h-4 w-32' />
+                    <Skeleton className='h-3 w-64 max-w-full' />
+                  </div>
                   {Array.from({ length: 3 }).map((__, channelIndex) => (
-                    <Skeleton
-                      key={channelIndex}
-                      className='h-7 w-20 rounded-md'
-                    />
+                    <Skeleton key={channelIndex} className='size-4 shrink-0' />
                   ))}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-          <Skeleton className='h-36 rounded-lg' />
+          <Skeleton className='h-32 rounded-md' />
         </div>
       </div>
     );
   }
+
+  const isCheckingCurrentPush = currentPushEndpoint === undefined;
+  const canEnableCurrentPush =
+    permission !== 'unsupported' && permission !== 'denied';
 
   return (
     <div className='bg-background h-full'>
@@ -248,133 +406,235 @@ export function NotificationPreferencesPage() {
         </div>
       </div>
 
-      <div className='space-y-6 p-3'>
-        <section className='space-y-2'>
-          <div className='px-1'>
-            <p className='text-sm font-medium'>Notification matrix</p>
+      <div className='mx-auto flex w-full max-w-4xl flex-col gap-5 p-3 sm:p-5'>
+        <div className='flex flex-col gap-1 px-1'>
+          <h1 className='text-base font-semibold'>Notification preferences</h1>
+          <p className='text-muted-foreground text-xs'>
+            Choose which updates reach you and where they are delivered.
+          </p>
+        </div>
+
+        <section className='flex flex-col gap-2'>
+          <div className='flex flex-col gap-0.5 px-1'>
+            <h2 className='text-sm font-medium'>Delivery by activity</h2>
             <p className='text-muted-foreground text-xs'>
-              Channel changes apply instantly and stay inline with the rest of
-              Vector&apos;s dense controls.
+              Changes save instantly. Uncheck a channel to mute it for that
+              activity.
             </p>
           </div>
 
-          <div className='space-y-2'>
-            {displayPreferences.map(preference => (
-              <div
-                key={preference.category}
-                className='flex flex-col gap-3 rounded-md border px-3 py-2.5 sm:flex-row sm:items-center'
-              >
-                <div className='min-w-0 flex-1'>
-                  <p className='text-sm font-medium'>
-                    {categoryLabels[preference.category]?.title ??
-                      preference.category}
-                  </p>
-                  <p className='text-muted-foreground text-xs'>
-                    {categoryLabels[preference.category]?.description}
-                  </p>
-                </div>
-                <div className='flex flex-wrap gap-1'>
+          <div className='overflow-hidden rounded-md border'>
+            <Table className='min-w-[34rem] table-fixed'>
+              <TableHeader>
+                <TableRow className='hover:bg-transparent'>
+                  <TableHead className='h-9 px-3 text-xs'>Activity</TableHead>
                   {channelConfig.map(channel => {
                     const Icon = channel.icon;
-                    const enabled = preference[channel.key];
                     return (
-                      <Button
+                      <TableHead
                         key={channel.key}
-                        variant={enabled ? 'secondary' : 'outline'}
-                        size='sm'
-                        className={cn(
-                          'h-7',
-                          enabled && 'shadow-sm',
-                          !enabled && 'text-muted-foreground/60',
-                        )}
-                        onClick={() =>
-                          void handleToggle(preference.category, channel.key)
-                        }
+                        className='h-9 w-20 px-2 text-center text-xs'
                       >
-                        {enabled && (
-                          <Check className='size-3 text-green-600 dark:text-green-400' />
-                        )}
-                        <Icon className='size-3.5' />
-                        {channel.label}
-                      </Button>
+                        <span className='inline-flex items-center justify-center gap-1.5'>
+                          <Icon className='size-3.5' />
+                          {channel.label}
+                        </span>
+                      </TableHead>
                     );
                   })}
-                </div>
-              </div>
-            ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayPreferences.map(preference => {
+                  const category = categoryLabels[preference.category] ?? {
+                    title: preference.category,
+                    description: '',
+                  };
+                  return (
+                    <TableRow key={preference.category}>
+                      <TableCell className='px-3 py-2 whitespace-normal'>
+                        <p className='text-sm font-medium'>{category.title}</p>
+                        <p className='text-muted-foreground text-xs leading-4'>
+                          {category.description}
+                        </p>
+                      </TableCell>
+                      {channelConfig.map(channel => {
+                        const enabled = preference[channel.key];
+                        return (
+                          <TableCell
+                            key={channel.key}
+                            className='w-20 px-2 py-2 text-center'
+                          >
+                            <span className='inline-flex justify-center'>
+                              <Checkbox
+                                checked={enabled}
+                                aria-label={`${channel.label} notifications for ${category.title}`}
+                                onCheckedChange={() =>
+                                  void handleToggle(
+                                    preference.category,
+                                    channel.key,
+                                  )
+                                }
+                              />
+                            </span>
+                          </TableCell>
+                        );
+                      })}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
         </section>
 
-        <section className='space-y-2 rounded-md border p-3'>
-          <div className='flex items-start justify-between gap-3'>
-            <div className='min-w-0'>
-              <p className='flex items-center gap-1.5 text-sm font-medium'>
-                <Sparkles className='size-3.5' />
-                Push on this device
-              </p>
-              <p className='text-muted-foreground mt-1 text-xs'>
-                Browser permission: {permission}
-              </p>
-              <p className='text-muted-foreground text-xs'>
-                Active subscriptions: {activeSubscriptions.length}
-              </p>
-            </div>
-            <div className='flex gap-1'>
-              <Button
-                size='sm'
-                className='h-7'
-                disabled={isSyncingPush || !isPushSupported()}
-                onClick={() => void handleEnablePush()}
-              >
-                Enable push
-              </Button>
-              <Button
-                size='sm'
-                variant='outline'
-                className='h-7'
-                disabled={isSyncingPush || activeSubscriptions.length === 0}
-                onClick={() => void handleDisablePush()}
-              >
-                Disable
-              </Button>
-            </div>
+        <section className='flex flex-col gap-2'>
+          <div className='flex flex-col gap-0.5 px-1'>
+            <h2 className='text-sm font-medium'>Browser push</h2>
+            <p className='text-muted-foreground text-xs'>
+              Manage permission for this browser and devices that can receive
+              push notifications.
+            </p>
           </div>
 
-          <div className='w-full max-w-full min-w-0 divide-y overflow-x-hidden rounded-md border'>
-            {activeSubscriptions.length === 0 ? (
-              <div className='text-muted-foreground flex items-center gap-2 px-3 py-2 text-xs'>
-                <Laptop className='size-3.5' />
-                No active push-enabled browsers yet.
-              </div>
-            ) : (
-              activeSubscriptions.map(subscription => (
-                <div
-                  key={subscription._id}
-                  className='flex w-full max-w-full min-w-0 items-center justify-between gap-3 px-3 py-2'
-                >
-                  <div className='min-w-0 flex-1'>
-                    <p className='truncate text-sm font-medium'>
-                      {subscription.deviceLabel ?? 'Browser subscription'}
-                    </p>
-                    <p className='text-muted-foreground truncate text-xs'>
-                      {subscription.userAgent ?? subscription.endpoint}
-                    </p>
+          <div className='overflow-hidden rounded-md border'>
+            <div className='flex items-start justify-between gap-3 px-3 py-3'>
+              {isCheckingCurrentPush ? (
+                <>
+                  <span className='sr-only'>Checking browser push status</span>
+                  <div className='flex min-w-0 flex-1 items-center gap-2.5'>
+                    <Skeleton className='size-8 shrink-0 rounded-md' />
+                    <div className='flex min-w-0 flex-1 flex-col gap-1'>
+                      <Skeleton className='h-4 w-48 max-w-full' />
+                      <Skeleton className='h-3 w-64 max-w-full' />
+                    </div>
                   </div>
-                  <Button
-                    variant='ghost'
-                    size='sm'
-                    className='h-7 shrink-0'
-                    onClick={() =>
-                      void removePushSubscription({
-                        subscriptionId: subscription._id,
-                      })
-                    }
-                  >
-                    Remove
-                  </Button>
+                  <Skeleton className='h-7 w-28 shrink-0 rounded-md' />
+                </>
+              ) : (
+                <>
+                  <div className='flex min-w-0 flex-1 items-center gap-2.5'>
+                    <span className='bg-muted text-muted-foreground flex size-8 shrink-0 items-center justify-center rounded-md'>
+                      <Laptop className='size-4' />
+                    </span>
+                    <div className='min-w-0'>
+                      <p className='text-sm font-medium'>{pushStatus.title}</p>
+                      <p className='text-muted-foreground text-xs leading-4'>
+                        {pushStatus.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {canEnableCurrentPush ? (
+                    currentSubscription ? (
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        className='shrink-0'
+                        disabled={isSyncingPush}
+                        aria-label={
+                          isSyncingPush
+                            ? 'Disabling push'
+                            : 'Disable push on this browser'
+                        }
+                        onClick={() => void handleDisableCurrentPush()}
+                      >
+                        {isSyncingPush ? (
+                          <BarsSpinner size={12} aria-hidden='true' />
+                        ) : (
+                          'Disable'
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        size='sm'
+                        className='shrink-0'
+                        disabled={isSyncingPush}
+                        aria-label={
+                          isSyncingPush
+                            ? 'Enabling push'
+                            : 'Enable push on this browser'
+                        }
+                        onClick={() => void handleEnablePush()}
+                      >
+                        {isSyncingPush ? (
+                          <BarsSpinner size={12} aria-hidden='true' />
+                        ) : (
+                          'Enable this browser'
+                        )}
+                      </Button>
+                    )
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            <div className='border-t'>
+              <div className='bg-muted/40 flex items-center justify-between gap-3 px-3 py-2'>
+                <p className='text-xs font-medium'>Enabled browsers</p>
+                <span className='text-muted-foreground text-xs tabular-nums'>
+                  {activeSubscriptions.length}
+                </span>
+              </div>
+
+              {activeSubscriptions.length === 0 ? (
+                <div className='text-muted-foreground flex items-center gap-2 px-3 py-2.5 text-xs'>
+                  <Laptop className='size-3.5' />
+                  No browsers are enabled yet.
                 </div>
-              ))
-            )}
+              ) : (
+                <div className='divide-y'>
+                  {activeSubscriptions.map(subscription => {
+                    const isCurrent =
+                      subscription.endpoint === currentPushEndpoint;
+                    const browserLabel =
+                      getBrowserLabel(subscription.userAgent) ??
+                      subscription.deviceLabel ??
+                      'Browser';
+                    const isRemoving =
+                      removingSubscriptionId === subscription._id;
+                    return (
+                      <div
+                        key={subscription._id}
+                        className='flex min-w-0 items-center justify-between gap-3 px-3 py-2'
+                      >
+                        <div className='flex min-w-0 flex-1 items-center gap-2.5'>
+                          <Laptop className='text-muted-foreground size-4 shrink-0' />
+                          <div className='min-w-0 flex-1'>
+                            <p className='truncate text-sm font-medium'>
+                              {browserLabel}
+                            </p>
+                            <p className='text-muted-foreground truncate text-xs'>
+                              {isCurrent ? 'This browser' : 'Push enabled'}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant='ghost'
+                          size='xs'
+                          className='shrink-0'
+                          disabled={isRemoving || isSyncingPush}
+                          aria-label={
+                            isRemoving
+                              ? `Removing ${browserLabel}`
+                              : `Remove ${browserLabel}`
+                          }
+                          onClick={() =>
+                            void handleRemoveSubscription(subscription)
+                          }
+                        >
+                          {isRemoving ? (
+                            <BarsSpinner size={10} aria-hidden='true' />
+                          ) : (
+                            'Remove'
+                          )}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>
