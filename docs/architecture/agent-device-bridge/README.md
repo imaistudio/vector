@@ -95,13 +95,13 @@ The bridge runs as a local Node.js process. It uses `ConvexHttpClient` to commun
 
 **What it does every cycle:**
 
-| Loop                | Interval | Action                                                                                                    |
-| ------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| Heartbeat           | 30s      | Marks device as online                                                                                    |
-| Command poll        | 5s       | Checks for pending messages/commands from Vector                                                          |
-| Process discovery   | 60s      | Finds local Claude Code, Codex, and tmux processes                                                        |
-| Terminal snapshots  | 180s     | Refreshes tmux-backed shell session previews when needed                                                  |
-| Live activity cache | 5s       | Reconciles attached session metadata/history and writes `~/.vector/live-activities.json` for the menu bar |
+| Loop                | Interval | Action                                                   |
+| ------------------- | -------- | -------------------------------------------------------- |
+| Heartbeat           | 30s      | Marks device as online                                   |
+| Command poll        | 5s       | Checks for pending messages/commands from Vector         |
+| Process discovery   | 60s      | Finds local Claude Code, Codex, and tmux processes       |
+| Terminal snapshots  | 180s     | Refreshes tmux-backed shell session previews when needed |
+| Live activity cache | 30s      | Writes `~/.vector/live-activities.json` for the menu bar |
 
 For managed launches, `packages/vector-cli/src/agent-adapters.ts` and `packages/vector-cli/src/local-agents/` own the provider session:
 
@@ -109,11 +109,6 @@ For managed launches, `packages/vector-cli/src/agent-adapters.ts` and `packages/
 - Claude uses `@anthropic-ai/claude-agent-sdk`.
 - Cursor, Copilot, OpenCode, and Pi are exposed as CLI-owned one-shot providers with native CLI fallbacks. They do not claim resumable inbound messaging until a verifiable provider session id is available.
 - Adapters emit normalized `AgentSessionEvent` objects.
-- Codex and Claude discovery also resolves the provider conversation title and
-  the latest 200 visible user/assistant messages. When an existing session is
-  attached, the bridge imports only messages that predate attachment, in
-  bounded batches with stable source IDs, so later reconciliation is
-  idempotent and live Vector messages are not duplicated.
 - The bridge stores those events in `issueLiveMessages` with structured payload fields for source, provider, title, status, attachments, auth URLs, tool ids, and usage metadata.
 - Follow-up user messages resume Codex and Claude sessions by session key instead of typing into a terminal.
 - Work session rows store Cells-style settings and state: model, permission mode, thinking level, fast mode, context length, queue, pending approvals, pending plan approval, pending questions, Codex plan state, and usage.
@@ -197,8 +192,6 @@ The queue is stored on `workSessions.queuedMessages` so the bridge can drain it 
 2. For each found process, it resolves the working directory via `lsof`
 3. It reports each process to Convex via `reportProcess`
 4. Users can see discovered processes in the "Attach" popover on any issue
-5. Once attached, the next live-activity refresh reconciles the provider title
-   and pre-attachment transcript into the Work Session
 
 ### Staleness
 

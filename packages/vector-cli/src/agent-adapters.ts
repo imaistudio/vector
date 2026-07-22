@@ -7,13 +7,6 @@ import type { AgentProvider } from '../../../convex/_shared/agentBridge';
 export type BridgeProvider =
   'codex' | 'claude_code' | 'cursor' | 'copilot' | 'opencode' | 'pi';
 
-export interface SessionTranscriptMessage {
-  sourceId: string;
-  role: 'user' | 'assistant';
-  text: string;
-  createdAt: number;
-}
-
 export interface SessionProcessRecord {
   provider: AgentProvider;
   providerLabel: string;
@@ -34,7 +27,6 @@ export interface SessionProcessRecord {
   mode: 'observed' | 'managed';
   status: 'observed' | 'waiting';
   supportsInboundMessages: boolean;
-  transcript?: SessionTranscriptMessage[];
 }
 
 export interface SessionRunResult extends SessionProcessRecord {
@@ -1173,9 +1165,8 @@ function parseObservedCodexSession(
   let cwd = processCwd;
   const userMessages: string[] = [];
   const assistantMessages: string[] = [];
-  const transcript: Array<SessionTranscriptMessage & { order: number }> = [];
 
-  for (const [index, rawEntry] of entries.entries()) {
+  for (const rawEntry of entries) {
     const entry = asObject(rawEntry);
     if (!entry) {
       continue;
@@ -1196,25 +1187,12 @@ function parseObservedCodexSession(
 
     if (
       entry.type === 'response_item' &&
-      asObject(entry.payload)?.type === 'message'
+      asObject(entry.payload)?.type === 'message' &&
+      asObject(entry.payload)?.role === 'user'
     ) {
-      const payload = asObject(entry.payload);
-      const role = payload?.role;
-      if (payload && (role === 'user' || role === 'assistant')) {
-        const text = extractTextSegments(payload.content).join('\n\n').trim();
-        if (isImportableTranscriptText(text, role)) {
-          const message: SessionTranscriptMessage & { order: number } = {
-            sourceId: `${asString(payload.id) ?? asString(entry.id) ?? index}:${role}`,
-            role,
-            text,
-            createdAt: parseSessionTimestamp(entry.timestamp, index),
-            order: index,
-          };
-          transcript.push(message);
-          if (role === 'user') userMessages.push(text);
-          else assistantMessages.push(text);
-        }
-      }
+      userMessages.push(
+        ...extractTextSegments(asObject(entry.payload)?.content),
+      );
     }
 
     if (entry.type === 'event_msg') {
@@ -1222,6 +1200,16 @@ function parseObservedCodexSession(
       if (payload?.type === 'agent_message') {
         pushIfPresent(assistantMessages, payload.message);
       }
+    }
+
+    if (
+      entry.type === 'response_item' &&
+      asObject(entry.payload)?.type === 'message' &&
+      asObject(entry.payload)?.role === 'assistant'
+    ) {
+      assistantMessages.push(
+        ...extractTextSegments(asObject(entry.payload)?.content),
+      );
     }
   }
 
@@ -1247,7 +1235,6 @@ function parseObservedCodexSession(
         selectSessionTitle(assistantMessages),
       cwd,
     ),
-    transcript: finalizeSessionTranscript('codex', sessionKey, transcript),
     mode: 'observed',
     status: 'observed',
     supportsInboundMessages: true,
@@ -1266,9 +1253,8 @@ function parseObservedClaudeSession(
   let model: string | undefined;
   const userMessages: string[] = [];
   const assistantMessages: string[] = [];
-  const transcript: Array<SessionTranscriptMessage & { order: number }> = [];
 
-  for (const [index, rawEntry] of entries.entries()) {
+  for (const rawEntry of entries) {
     const entry = asObject(rawEntry);
     if (!entry) {
       continue;
@@ -1278,33 +1264,13 @@ function parseObservedClaudeSession(
     branch = asString(entry.gitBranch) ?? branch;
 
     if (entry.type === 'user') {
-      const text = extractClaudeMessageTexts(entry.message).join('\n\n').trim();
-      if (isImportableTranscriptText(text, 'user')) {
-        userMessages.push(text);
-        transcript.push({
-          sourceId: `${asString(entry.uuid) ?? index}:user`,
-          role: 'user',
-          text,
-          createdAt: parseSessionTimestamp(entry.timestamp, index),
-          order: index,
-        });
-      }
+      userMessages.push(...extractClaudeMessageTexts(entry.message));
     }
 
     if (entry.type === 'assistant') {
       const message = asObject(entry.message);
       model = asString(message?.model) ?? model;
-      const text = extractClaudeMessageTexts(entry.message).join('\n\n').trim();
-      if (isImportableTranscriptText(text, 'assistant')) {
-        assistantMessages.push(text);
-        transcript.push({
-          sourceId: `${asString(entry.uuid) ?? asString(message?.id) ?? index}:assistant`,
-          role: 'assistant',
-          text,
-          createdAt: parseSessionTimestamp(entry.timestamp, index),
-          order: index,
-        });
-      }
+      assistantMessages.push(...extractClaudeMessageTexts(entry.message));
     }
   }
 
@@ -1326,11 +1292,6 @@ function parseObservedClaudeSession(
         selectSessionTitle(userMessages) ??
         selectSessionTitle(assistantMessages),
       cwd,
-    ),
-    transcript: finalizeSessionTranscript(
-      'claude_code',
-      sessionMeta.sessionId,
-      transcript,
     ),
     model,
     mode: 'observed',
@@ -1641,60 +1602,6 @@ function looksLikeInstructionScaffold(value: string): boolean {
 
 function stripAnsi(value: string): string {
   return value.replace(/\u001B\[[0-9;]*m/g, '');
-}
-
-function isImportableTranscriptText(
-  value: string,
-  role: 'user' | 'assistant',
-): boolean {
-  const text = value.trim();
-  if (!text) return false;
-  if (role === 'assistant') return true;
-
-  return ![
-    '# AGENTS.md instructions',
-    '<environment_context>',
-    '<permissions instructions>',
-    '<app-context>',
-    '<skills_instructions>',
-    '<plugins_instructions>',
-    '<recommended_plugins>',
-    '<command-name>',
-  ].some(prefix => text.startsWith(prefix));
-}
-
-function parseSessionTimestamp(value: unknown, fallbackOrder: number): number {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value < 1_000_000_000_000 ? value * 1_000 : value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallbackOrder;
-}
-
-function finalizeSessionTranscript(
-  provider: BridgeProvider,
-  sessionKey: string,
-  messages: Array<SessionTranscriptMessage & { order: number }>,
-): SessionTranscriptMessage[] {
-  const latestBySourceId = new Map<
-    string,
-    SessionTranscriptMessage & { order: number }
-  >();
-  for (const message of messages) {
-    latestBySourceId.set(message.sourceId, message);
-  }
-
-  return [...latestBySourceId.values()]
-    .sort((a, b) => a.createdAt - b.createdAt || a.order - b.order)
-    .slice(-200)
-    .map(({ order: _order, ...message }) => ({
-      ...message,
-      text: truncate(message.text, 64_000),
-      sourceId: `${provider}:${sessionKey}:${message.sourceId}`,
-    }));
 }
 
 function getGitInfo(cwd: string): { repoRoot?: string; branch?: string } {

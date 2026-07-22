@@ -96,7 +96,7 @@ Use a Task when a step needs independent ownership, lifecycle, blocking, due-dat
 
 An agent Work Session is a local or managed coding session attached to Work or a Task. It belongs to an authenticated human/device context and reports its own active, waiting, paused, completed, failed, or canceled state. A Work record may have several sessions across different machines and agent providers.
 
-Authorized users can delegate a new session to an online machine and allowed workspace, or attach an existing local session. An attached Codex or Claude session keeps the provider conversation's title and imports its recent visible history, so opening the Work Session on web or iOS continues the same conversation rather than starting with an empty Vector-only transcript. Users with control access can send messages to that session from either app. The local bridge must be running for attachment, delegated launches, history reconciliation, and message delivery.
+Authorized users can delegate a new session to an online machine and allowed workspace, or an agent can attach its own current session through the CLI. Attached sessions expose their live transcript on the Work page, and users with control access can send messages to that session from the web or iOS app. The local bridge must be running for attachment, delegated launches, and message delivery.
 
 Attaching or launching an execution does not change Work status. An agent that needs a decision raises a separate human-attention record. This keeps ordinary agent waiting from creating notification noise while making genuine human blockers actionable.
 
