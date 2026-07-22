@@ -66,6 +66,8 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var projects: [VectorProject] = []
   @Published public private(set) var teams: [VectorTeam] = []
   @Published public private(set) var documents: [VectorDocument] = []
+  @Published public private(set) var isLoadingDocuments = false
+  @Published public private(set) var documentListError: String?
   @Published public private(set) var inboxNotifications: [VectorInboxNotification] = []
   @Published public private(set) var comments: [VectorComment] = []
   @Published public private(set) var assignments: [VectorIssueAssignment] = []
@@ -73,6 +75,8 @@ public final class VectorMobileViewModel: ObservableObject {
   @Published public private(set) var inboxActivity: [VectorActivityItem] = []
   @Published public private(set) var selectedIssue: VectorIssueRow?
   @Published public private(set) var selectedDocument: VectorDocument?
+  @Published public private(set) var isLoadingDocumentContent = false
+  @Published public private(set) var documentContentError: String?
   @Published public private(set) var workspaceOptions: VectorWorkspaceOptions?
   @Published public private(set) var currentUser: VectorUser?
   @Published public private(set) var userStatus: VectorUserStatus?
@@ -111,6 +115,12 @@ public final class VectorMobileViewModel: ObservableObject {
   private var documentPages: [String: [VectorDocument]] = [:]
   private var documentPageOrder: [String] = []
   private var documentPagination = PaginationState()
+  private var documentFolderPages: [String: [VectorDocumentFolder]] = [:]
+  private var documentFolderPageOrder: [String] = []
+  private var documentFolderPagination = PaginationState()
+  private var folderDocumentPages: [VectorID: [String: [VectorDocument]]] = [:]
+  private var folderDocumentPageOrder: [VectorID: [String]] = [:]
+  private var folderDocumentPagination: [VectorID: PaginationState] = [:]
   private var inboxNotificationPages: [String: [VectorInboxNotification]] = [:]
   private var inboxNotificationPageOrder: [String] = []
   private var inboxNotificationPagination = PaginationState()
@@ -129,6 +139,8 @@ public final class VectorMobileViewModel: ObservableObject {
   private var projectListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var teamListCancellables: [VectorProjectScope: [String: AnyCancellable]] = [:]
   private var documentListCancellables: [String: AnyCancellable] = [:]
+  private var documentFolderListCancellables: [String: AnyCancellable] = [:]
+  private var folderDocumentListCancellables: [VectorID: [String: AnyCancellable]] = [:]
   private var inboxNotificationCancellables: [String: AnyCancellable] = [:]
   private var inboxActivityCancellables: [String: AnyCancellable] = [:]
   private var workspaceOptionsCancellable: AnyCancellable?
@@ -136,7 +148,13 @@ public final class VectorMobileViewModel: ObservableObject {
   private var activeIssueSupportId: VectorID?
   private var activeIssueCollectionsId: VectorID?
   private var documentDetailCancellable: AnyCancellable?
+  private var documentContentPageCancellable: AnyCancellable?
   private var activeDocumentId: VectorID?
+  private var activeDocumentContentVersion: String?
+  private var documentContentLoadId: UUID?
+  private var didReceiveInitialDocumentPage = false
+  private var didReceiveInitialDocumentFolderPage = false
+  private var pendingInitialFolderDocumentIds: Set<VectorID> = []
   private var settingsCancellables = Set<AnyCancellable>()
   private var isSettingsSubscribed = false
   private var authenticatedUser: VectorAuthenticatedUser?
@@ -221,6 +239,19 @@ public final class VectorMobileViewModel: ObservableObject {
     subscribeToInboxNotificationsIfNeeded()
     subscribeToWorkspaceOptionsIfNeeded()
     loadSettings()
+  }
+
+  public func loadWorkspaceContent() {
+    if documentCache.isEmpty
+      && (documentListCancellables[rootPageKey] == nil
+        || documentFolderListCancellables[rootPageKey] == nil)
+    {
+      isLoadingDocuments = true
+      documentListError = nil
+    }
+    subscribeToProjectsIfNeeded(scope: projectScope)
+    subscribeToTeamsIfNeeded(scope: projectScope)
+    subscribeToDocumentsIfNeeded()
   }
 
   public func refreshRequests() {
@@ -379,7 +410,8 @@ public final class VectorMobileViewModel: ObservableObject {
     title: String,
     description: String?,
     expectedOutput: String,
-    reviewGuidance: String?
+    reviewGuidance: String?,
+    priorityId: VectorID? = nil
   ) async -> Bool {
     let actionId = "create-request"
     guard !pendingWorkModelActions.contains(actionId) else { return false }
@@ -391,6 +423,7 @@ public final class VectorMobileViewModel: ObservableObject {
       description ?? "",
       expectedOutput,
       reviewGuidance ?? "",
+      priorityId ?? "",
     ].joined(separator: "\u{1F}")
     let clientRequestId: String
     if let existingId = requestCreationClientIds[fingerprint] {
@@ -429,6 +462,7 @@ public final class VectorMobileViewModel: ObservableObject {
               description: description,
               expectedOutput: expectedOutput,
               reviewGuidance: reviewGuidance,
+              priorityId: priorityId,
               clientRequestId: clientRequestId
             )
             finishRequestCreation(attemptId: attemptId, succeeded: true)
@@ -767,6 +801,7 @@ public final class VectorMobileViewModel: ObservableObject {
     }
 
     subscribeToDocumentPage(cursor: nil)
+    subscribeToDocumentFolderPage(cursor: nil)
   }
 
   private func subscribeToInboxNotificationsIfNeeded() {
@@ -876,6 +911,7 @@ public final class VectorMobileViewModel: ObservableObject {
     }
 
     documentDetailCancellable = nil
+    clearDocumentContentLoad()
     activeDocumentId = document.id
     selectedDocument = currentDocument(document.id) ?? document
 
@@ -890,11 +926,121 @@ public final class VectorMobileViewModel: ObservableObject {
         receiveValue: { [weak self] document in
           guard let self else { return }
           if let document {
-            selectedDocument = document
             updateDocumentCache(document)
+            if let version = document.contentVersion {
+              if activeDocumentContentVersion == version,
+                 let loadedContent = selectedDocument?.content,
+                 !isLoadingDocumentContent
+              {
+                selectedDocument = document.withLoadedContent(loadedContent)
+              } else if activeDocumentContentVersion == version, isLoadingDocumentContent {
+                selectedDocument = document
+              } else {
+                selectedDocument = document
+                loadDocumentContent(document, version: version)
+              }
+            } else {
+              clearDocumentContentLoad()
+              selectedDocument = document
+            }
           }
         }
       )
+  }
+
+  public func retryDocumentContent() {
+    guard let document = selectedDocument,
+          let version = document.contentVersion
+    else { return }
+    loadDocumentContent(document, version: version)
+  }
+
+  private func loadDocumentContent(_ document: VectorDocument, version: String) {
+    documentContentPageCancellable?.cancel()
+    let loadId = UUID()
+    documentContentLoadId = loadId
+    activeDocumentContentVersion = version
+    isLoadingDocumentContent = true
+    documentContentError = nil
+    loadDocumentContentPage(
+      documentId: document.id,
+      version: version,
+      cursor: nil,
+      chunks: [],
+      loadId: loadId
+    )
+  }
+
+  private func loadDocumentContentPage(
+    documentId: VectorID,
+    version: String,
+    cursor: String?,
+    chunks: [VectorDocumentContentChunk],
+    loadId: UUID
+  ) {
+    documentContentPageCancellable = repository.documentContentPage(
+      documentId: documentId,
+      version: version,
+      pageSize: 3,
+      cursor: cursor
+    )
+    .prefix(1)
+    .receive(on: DispatchQueue.main)
+    .sink(
+      receiveCompletion: { [weak self] completion in
+        guard let self,
+              documentContentLoadId == loadId,
+              case let .failure(error) = completion
+        else { return }
+        isLoadingDocumentContent = false
+        documentContentError = error.localizedDescription
+      },
+      receiveValue: { [weak self] page in
+        guard let self,
+              documentContentLoadId == loadId,
+              activeDocumentId == documentId,
+              activeDocumentContentVersion == version
+        else { return }
+        let loadedChunks = chunks + page.page
+        if page.isDone {
+          let orderedChunks = loadedChunks.sorted { $0.chunkIndex < $1.chunkIndex }
+          guard orderedChunks.indices.allSatisfy({ orderedChunks[$0].chunkIndex == $0 }) else {
+            isLoadingDocumentContent = false
+            documentContentError = "This document is missing part of its content. Try loading it again."
+            return
+          }
+          guard let current = selectedDocument,
+                current.id == documentId,
+                current.contentVersion == version
+          else { return }
+          selectedDocument = current.withLoadedContent(orderedChunks.map(\.content).joined())
+          isLoadingDocumentContent = false
+          documentContentError = nil
+          return
+        }
+        guard let nextCursor = page.nextCursor else {
+          isLoadingDocumentContent = false
+          documentContentError = "Vector could not load the rest of this document. Try again."
+          return
+        }
+        loadDocumentContentPage(
+          documentId: documentId,
+          version: version,
+          cursor: nextCursor,
+          chunks: loadedChunks,
+          loadId: loadId
+        )
+      }
+    )
+  }
+
+  private func clearDocumentContentLoad() {
+    documentContentPageCancellable?.cancel()
+    documentContentPageCancellable = nil
+    activeDocumentContentVersion = nil
+    documentContentLoadId = nil
+    isLoadingDocumentContent = false
+    documentContentError = nil
   }
 
   public func loadSettings() {
@@ -1284,6 +1430,7 @@ public final class VectorMobileViewModel: ObservableObject {
     let previousDocuments = documents
     let previousDocumentCache = documentCache
     let previousDocumentPages = documentPages
+    let previousFolderDocumentPages = folderDocumentPages
     let previousSelectedDocument = selectedDocument
     let nextDocument = (selectedDocument ?? currentDocument(documentId))?.with(title: trimmedTitle, content: content)
     if let nextDocument {
@@ -1297,6 +1444,7 @@ public final class VectorMobileViewModel: ObservableObject {
       documents = previousDocuments
       documentCache = previousDocumentCache
       documentPages = previousDocumentPages
+      folderDocumentPages = previousFolderDocumentPages
       selectedDocument = previousSelectedDocument
       errorMessage = error.localizedDescription
       throw error
@@ -1551,10 +1699,14 @@ public final class VectorMobileViewModel: ObservableObject {
 
   public var canLoadMoreDocuments: Bool {
     canLoadMore(documentPagination)
+      || loadedDocumentFolders.contains { canLoadMore(folderDocumentPagination[$0.id]) }
+      || canLoadMore(documentFolderPagination)
   }
 
   public var isLoadingMoreDocuments: Bool {
     documentPagination.isLoadingMore
+      || folderDocumentPagination.values.contains(where: \.isLoadingMore)
+      || documentFolderPagination.isLoadingMore
   }
 
   public var canLoadMoreInboxNotifications: Bool {
@@ -1595,10 +1747,19 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   public func loadMoreDocuments() {
-    guard let cursor = nextCursor(documentPagination) else {
+    if let cursor = nextCursor(documentPagination) {
+      subscribeToDocumentPage(cursor: cursor)
       return
     }
-    subscribeToDocumentPage(cursor: cursor)
+    for folder in loadedDocumentFolders {
+      if let cursor = nextCursor(folderDocumentPagination[folder.id]) {
+        subscribeToFolderDocumentPage(folderId: folder.id, cursor: cursor)
+        return
+      }
+    }
+    if let cursor = nextCursor(documentFolderPagination) {
+      subscribeToDocumentFolderPage(cursor: cursor)
+    }
   }
 
   public func loadMoreInboxNotifications() {
@@ -1711,6 +1872,10 @@ public final class VectorMobileViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(
         receiveCompletion: { [weak self, key] completion in
+          if case let .failure(error) = completion {
+            self?.isLoadingDocuments = false
+            self?.documentListError = error.localizedDescription
+          }
           self?.handlePageCompletion(completion, key: key, active: true) {
             self?.documentListCancellables[key] = nil
             self?.documentPagination.isLoadingMore = false
@@ -1718,12 +1883,122 @@ public final class VectorMobileViewModel: ObservableObject {
         },
         receiveValue: { [weak self, key] page in
           guard let self else { return }
+          documentListError = nil
           documentPages[key] = page.page
           appendPageKey(key, to: &documentPageOrder)
           updatePagination(page.nextCursor, isDone: page.isDone, key: key, order: documentPageOrder, state: &documentPagination)
+          if key == rootPageKey {
+            didReceiveInitialDocumentPage = true
+          }
           rebuildDocuments()
+          finishInitialDocumentLoadIfReady()
         }
       )
+  }
+
+  private func subscribeToDocumentFolderPage(cursor: String?) {
+    let key = pageKey(cursor)
+    guard documentFolderListCancellables[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &documentFolderPagination)
+    documentFolderListCancellables[key] = repository
+      .documentFoldersPage(orgSlug: configuration.orgSlug, pageSize: pageSize, cursor: cursor)
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, key] completion in
+          if case let .failure(error) = completion {
+            self?.isLoadingDocuments = false
+            self?.documentListError = error.localizedDescription
+          }
+          self?.handlePageCompletion(completion, key: key, active: true) {
+            self?.documentFolderListCancellables[key] = nil
+            self?.documentFolderPagination.isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, key] page in
+          guard let self else { return }
+          documentListError = nil
+          documentFolderPages[key] = page.page
+          appendPageKey(key, to: &documentFolderPageOrder)
+          updatePagination(
+            page.nextCursor,
+            isDone: page.isDone,
+            key: key,
+            order: documentFolderPageOrder,
+            state: &documentFolderPagination
+          )
+          if key == rootPageKey {
+            didReceiveInitialDocumentFolderPage = true
+          }
+          for folder in page.page {
+            if folderDocumentListCancellables[folder.id]?[rootPageKey] == nil {
+              if isLoadingDocuments {
+                pendingInitialFolderDocumentIds.insert(folder.id)
+              }
+              subscribeToFolderDocumentPage(folderId: folder.id, cursor: nil)
+            }
+          }
+          finishInitialDocumentLoadIfReady()
+        }
+      )
+  }
+
+  private func subscribeToFolderDocumentPage(folderId: VectorID, cursor: String?) {
+    let key = pageKey(cursor)
+    guard folderDocumentListCancellables[folderId]?[key] == nil else {
+      return
+    }
+
+    markLoading(cursor: cursor, pagination: &folderDocumentPagination[folderId, default: PaginationState()])
+    folderDocumentListCancellables[folderId, default: [:]][key] = repository
+      .folderDocumentsPage(
+        orgSlug: configuration.orgSlug,
+        folderId: folderId,
+        pageSize: pageSize,
+        cursor: cursor
+      )
+      .receive(on: DispatchQueue.main)
+      .sink(
+        receiveCompletion: { [weak self, folderId, key] completion in
+          if case let .failure(error) = completion {
+            self?.pendingInitialFolderDocumentIds.remove(folderId)
+            self?.isLoadingDocuments = false
+            self?.documentListError = error.localizedDescription
+          }
+          self?.handlePageCompletion(completion, key: key, active: true) {
+            self?.folderDocumentListCancellables[folderId]?[key] = nil
+            self?.folderDocumentPagination[folderId, default: PaginationState()].isLoadingMore = false
+          }
+        },
+        receiveValue: { [weak self, folderId, key] page in
+          guard let self else { return }
+          documentListError = nil
+          folderDocumentPages[folderId, default: [:]][key] = page.page
+          appendPageKey(key, to: &folderDocumentPageOrder[folderId, default: []])
+          updatePagination(
+            page.nextCursor,
+            isDone: page.isDone,
+            key: key,
+            order: folderDocumentPageOrder[folderId] ?? [],
+            state: &folderDocumentPagination[folderId, default: PaginationState()]
+          )
+          if key == rootPageKey {
+            pendingInitialFolderDocumentIds.remove(folderId)
+          }
+          rebuildDocuments()
+          finishInitialDocumentLoadIfReady()
+        }
+      )
+  }
+
+  private func finishInitialDocumentLoadIfReady() {
+    guard didReceiveInitialDocumentPage,
+          didReceiveInitialDocumentFolderPage,
+          pendingInitialFolderDocumentIds.isEmpty
+    else { return }
+    isLoadingDocuments = false
   }
 
   private func subscribeToInboxNotificationPage(cursor: String?) {
@@ -1836,8 +2111,22 @@ public final class VectorMobileViewModel: ObservableObject {
   }
 
   private func rebuildDocuments() {
-    documentCache = uniqueItems(orderedPages(documentPages, order: documentPageOrder), id: \.id)
+    var merged = orderedPages(documentPages, order: documentPageOrder)
+    for folder in loadedDocumentFolders {
+      merged += orderedPages(
+        folderDocumentPages[folder.id] ?? [:],
+        order: folderDocumentPageOrder[folder.id] ?? []
+      )
+    }
+    documentCache = uniqueItems(merged, id: \.id)
     documents = documentCache
+  }
+
+  private var loadedDocumentFolders: [VectorDocumentFolder] {
+    uniqueItems(
+      orderedPages(documentFolderPages, order: documentFolderPageOrder),
+      id: \.id
+    )
   }
 
   private func rebuildInboxNotifications() {
@@ -1997,6 +2286,13 @@ public final class VectorMobileViewModel: ObservableObject {
         existing.id == document.id ? document : existing
       }
     }
+    for (folderId, pages) in folderDocumentPages {
+      for (key, documents) in pages {
+        folderDocumentPages[folderId]?[key] = documents.map { existing in
+          existing.id == document.id ? document : existing
+        }
+      }
+    }
   }
 }
 
@@ -2020,6 +2316,23 @@ private extension VectorDocument {
       visibility: visibility,
       creationTime: creationTime,
       lastEditedAt: Date().timeIntervalSince1970 * 1000
+    )
+  }
+
+  func withLoadedContent(_ content: String) -> VectorDocument {
+    VectorDocument(
+      id: id,
+      title: title,
+      content: content,
+      contentVersion: contentVersion,
+      icon: icon,
+      color: color,
+      team: team,
+      project: project,
+      author: author,
+      visibility: visibility,
+      creationTime: creationTime,
+      lastEditedAt: updatedAt
     )
   }
 }

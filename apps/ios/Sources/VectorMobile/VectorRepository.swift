@@ -60,8 +60,10 @@ public enum VectorConvexFunctions {
   public static let getProjectByKey = "projects/queries:getByKey"
   public static let listTeamsPage = "teams/queries:listPage"
   public static let getTeamByKey = "teams/queries:getByKey"
+  public static let listDocumentFoldersPage = "documents/folderQueries:listFoldersPage"
   public static let listDocumentsPage = "documents/queries:listPage"
   public static let getDocumentById = "documents/queries:getById"
+  public static let listDocumentContentChunks = "documents/content:listChunks"
   public static let updateDocument = "documents/mutations:update"
   public static let getWorkspaceOptions = "organizations/queries:getWorkspaceOptions"
   public static let getCurrentUserStatus = "status:getCurrentUserStatus"
@@ -180,8 +182,11 @@ public protocol VectorMobileRepository {
   func issue(orgSlug: String, key: String) -> AnyPublisher<VectorIssueRow?, Error>
   func projectsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorProject>, Error>
   func teamsPage(orgSlug: String, scope: VectorProjectScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorTeam>, Error>
+  func documentFoldersPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocumentFolder>, Error>
   func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error>
+  func folderDocumentsPage(orgSlug: String, folderId: VectorID, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error>
   func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error>
+  func documentContentPage(documentId: VectorID, version: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocumentContentChunk>, Error>
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error>
   func comments(issueId: VectorID) -> AnyPublisher<[VectorComment], Error>
   func assignments(issueId: VectorID) -> AnyPublisher<[VectorIssueAssignment], Error>
@@ -197,7 +202,7 @@ public protocol VectorMobileRepository {
   func updateNotificationPreference(_ preference: VectorNotificationPreference) async throws
   func upsertMobilePushToken(_ token: VectorPushDeviceToken, bundleId: String?, deviceLabel: String?) async throws
   func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws
-  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, priorityId: VectorID?, clientRequestId: String) async throws -> VectorCreateRequestResult
   func claimRequest(requestId: VectorID) async throws
   func requestChanges(requestId: VectorID, note: String) async throws
   func completeRequest(requestId: VectorID) async throws
@@ -259,6 +264,38 @@ public extension VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  func documentContentPage(
+    documentId: VectorID,
+    version: String,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocumentContentChunk>, Error> {
+    Just(VectorPaginatedPage<VectorDocumentContentChunk>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func documentFoldersPage(
+    orgSlug: String,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocumentFolder>, Error> {
+    Just(VectorPaginatedPage<VectorDocumentFolder>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
+  func folderDocumentsPage(
+    orgSlug: String,
+    folderId: VectorID,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
+    Just(VectorPaginatedPage<VectorDocument>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   func workPage(
     orgSlug: String,
     scope: VectorWorkScope,
@@ -300,6 +337,7 @@ public extension VectorMobileRepository {
     description: String?,
     expectedOutput: String,
     reviewGuidance: String?,
+    priorityId: VectorID?,
     clientRequestId: String
   ) async throws -> VectorCreateRequestResult {
     throw VectorMobileError.validation("Request creation is unavailable in this repository.")
@@ -514,11 +552,53 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     let args: [String: ConvexEncodable?] = [
       "orgSlug": orgSlug,
       "scope": "all",
+      "unfiledOnly": true,
       "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
     ]
 
     return client
       .subscribe(to: VectorConvexFunctions.listDocumentsPage, with: args, yielding: VectorPaginatedPage<VectorDocument>.self)
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func documentFoldersPage(
+    orgSlug: String,
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocumentFolder>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+    return client
+      .subscribe(
+        to: VectorConvexFunctions.listDocumentFoldersPage,
+        with: args,
+        yielding: VectorPaginatedPage<VectorDocumentFolder>.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func folderDocumentsPage(
+    orgSlug: String,
+    folderId: VectorID,
+    pageSize: Int = 30,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "orgSlug": orgSlug,
+      "scope": "all",
+      "folderId": folderId,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+    return client
+      .subscribe(
+        to: VectorConvexFunctions.listDocumentsPage,
+        with: args,
+        yielding: VectorPaginatedPage<VectorDocument>.self
+      )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
   }
@@ -529,6 +609,27 @@ public final class ConvexVectorRepository: VectorMobileRepository {
         to: VectorConvexFunctions.getDocumentById,
         with: ["documentId": documentId],
         yielding: VectorDocument?.self
+      )
+      .mapError { $0 as Error }
+      .eraseToAnyPublisher()
+  }
+
+  public func documentContentPage(
+    documentId: VectorID,
+    version: String,
+    pageSize: Int = 3,
+    cursor: String? = nil
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocumentContentChunk>, Error> {
+    let args: [String: ConvexEncodable?] = [
+      "documentId": documentId,
+      "version": version,
+      "paginationOpts": VectorConvexArguments.pagination(numItems: pageSize, cursor: cursor),
+    ]
+    return client
+      .subscribe(
+        to: VectorConvexFunctions.listDocumentContentChunks,
+        with: args,
+        yielding: VectorPaginatedPage<VectorDocumentContentChunk>.self
       )
       .mapError { $0 as Error }
       .eraseToAnyPublisher()
@@ -695,6 +796,7 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     description: String?,
     expectedOutput: String,
     reviewGuidance: String?,
+    priorityId: VectorID?,
     clientRequestId: String
   ) async throws -> VectorCreateRequestResult {
     var data: [String: ConvexEncodable?] = [
@@ -705,6 +807,7 @@ public final class ConvexVectorRepository: VectorMobileRepository {
     ]
     if let description { data["description"] = description }
     if let reviewGuidance { data["reviewGuidance"] = reviewGuidance }
+    if let priorityId { data["priorityId"] = priorityId }
     return try await client.mutation(
       VectorConvexFunctions.createRequest,
       with: ["orgSlug": orgSlug, "data": data]
@@ -1168,6 +1271,17 @@ public final class MockVectorRepository: VectorMobileRepository {
       .eraseToAnyPublisher()
   }
 
+  public func documentContentPage(
+    documentId: VectorID,
+    version: String,
+    pageSize: Int,
+    cursor: String?
+  ) -> AnyPublisher<VectorPaginatedPage<VectorDocumentContentChunk>, Error> {
+    Just(VectorPaginatedPage<VectorDocumentContentChunk>(page: [], isDone: true))
+      .setFailureType(to: Error.self)
+      .eraseToAnyPublisher()
+  }
+
   public func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
     Just(VectorMockData.workspaceOptions)
       .setFailureType(to: Error.self)
@@ -1269,7 +1383,7 @@ public final class MockVectorRepository: VectorMobileRepository {
 
   public func removeMobilePushToken(_ token: VectorPushDeviceToken) async throws {}
 
-  public func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult {
+  public func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, priorityId: VectorID?, clientRequestId: String) async throws -> VectorCreateRequestResult {
     VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")
   }
 

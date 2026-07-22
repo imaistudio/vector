@@ -33,7 +33,9 @@ final class VectorMobileTests: XCTestCase {
     XCTAssertEqual(VectorConvexFunctions.getWorkspaceOptions, "organizations/queries:getWorkspaceOptions")
     XCTAssertEqual(VectorConvexFunctions.listProjectActivity, "activities/queries:listProjectActivity")
     XCTAssertEqual(VectorConvexFunctions.listOrgActivity, "activities/queries:listOrgActivity")
+    XCTAssertEqual(VectorConvexFunctions.listDocumentFoldersPage, "documents/folderQueries:listFoldersPage")
     XCTAssertEqual(VectorConvexFunctions.listDocumentsPage, "documents/queries:listPage")
+    XCTAssertEqual(VectorConvexFunctions.listDocumentContentChunks, "documents/content:listChunks")
     XCTAssertEqual(VectorConvexFunctions.listInboxNotifications, "notifications/queries:listInbox")
     XCTAssertEqual(VectorConvexFunctions.getCurrentUserStatus, "status:getCurrentUserStatus")
     XCTAssertEqual(VectorConvexFunctions.upsertMobilePushToken, "notifications/mutations:upsertMobilePushToken")
@@ -51,13 +53,14 @@ final class VectorMobileTests: XCTestCase {
   }
 
   func testRequestAndWorkRowsDecodeNewConvexSurfaces() throws {
-    let requestPayload = #"{"_id":"request-1","key":"REQ-1","title":"Ship the flow","expectedOutput":"A reviewed release","status":"ready_for_review","linkedWorkCount":2,"recipientCount":1,"createdAt":1774560000000,"updatedAt":1774560300000}"#.data(using: .utf8)!
+    let requestPayload = #"{"_id":"request-1","key":"REQ-1","title":"Ship the flow","expectedOutput":"A reviewed release","status":"ready_for_review","priorityId":"priority-high","linkedWorkCount":2,"recipientCount":1,"createdAt":1774560000000,"updatedAt":1774560300000}"#.data(using: .utf8)!
     let workPayload = #"{"_id":"work-1","key":"VEC-42","title":"Build the flow","workStatus":"active","taskProgress":{"done":3,"total":5},"activeExecutionCount":2,"openAttentionCount":1,"ownerStartedAt":1774560000000,"lastMeaningfulActivityAt":1774560300000,"_creationTime":1774550000000}"#.data(using: .utf8)!
 
     let request = try JSONDecoder().decode(VectorRequestRow.self, from: requestPayload)
     let work = try JSONDecoder().decode(VectorWorkRow.self, from: workPayload)
 
     XCTAssertEqual(request.status, .readyForReview)
+    XCTAssertEqual(request.priorityId, "priority-high")
     XCTAssertEqual(request.linkedWorkCount, 2)
     XCTAssertEqual(work.workStatus, .active)
     XCTAssertEqual(work.taskProgress.done, 3)
@@ -770,6 +773,54 @@ final class VectorMobileTests: XCTestCase {
   }
 
   @MainActor
+  func testOpeningWorkspaceLoadsDeferredWorkspaceContent() {
+    let repository = CountingVectorRepository()
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      initialLoadPolicy: .primarySurfaces
+    )
+
+    viewModel.loadWorkspaceContent()
+
+    XCTAssertEqual(repository.projectListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.teamListCalls[.mine, default: 0], 1)
+    XCTAssertEqual(repository.documentListCalls, 1)
+  }
+
+  @MainActor
+  func testOpeningWorkspaceMergesFolderedDocuments() async {
+    let repository = CountingVectorRepository()
+    let folder = VectorDocumentFolder(
+      id: "folder-1",
+      name: "Handbook",
+      creationTime: 1
+    )
+    let folderDocument = VectorDocument(
+      id: "folder-document-1",
+      title: "Foldered chapter",
+      creationTime: 2
+    )
+    repository.documentsOverride = []
+    repository.documentFolders = [folder]
+    repository.folderDocuments[folder.id] = [folderDocument]
+    let viewModel = VectorMobileViewModel(
+      configuration: .demo,
+      repository: repository,
+      initialLoadPolicy: .primarySurfaces
+    )
+
+    viewModel.loadWorkspaceContent()
+    await waitUntil {
+      viewModel.documents.map(\.id) == [folderDocument.id]
+    }
+
+    XCTAssertEqual(repository.documentFolderPageCalls, 1)
+    XCTAssertEqual(repository.folderDocumentPageCalls, [folder.id])
+    XCTAssertFalse(viewModel.isLoadingDocuments)
+  }
+
+  @MainActor
   func testMissingRequestAndWorkDetailsStopShowingSkeletons() async {
     let repository = CountingVectorRepository()
     let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
@@ -1048,13 +1099,51 @@ final class VectorMobileTests: XCTestCase {
       title: "A fresh request",
       description: nil,
       expectedOutput: "A visible request",
-      reviewGuidance: nil
+      reviewGuidance: nil,
+      priorityId: "priority-high"
     )
 
     XCTAssertTrue(created)
     XCTAssertFalse(viewModel.pendingWorkModelActions.contains("create-request"))
     XCTAssertNil(viewModel.workModelActionError)
     XCTAssertEqual(repository.requestListCalls[.inbox, default: 0], 2)
+    XCTAssertEqual(repository.createRequestPriorityIds, ["priority-high"])
+  }
+
+  @MainActor
+  func testChunkedDocumentContentLoadsEveryPageInOrder() async {
+    let repository = CountingVectorRepository()
+    let document = VectorDocument(
+      id: "document-large",
+      title: "Large handbook",
+      contentVersion: "version-1",
+      creationTime: 1
+    )
+    repository.documentDetailOverride = document
+    repository.documentChunkPages["__root"] = VectorPaginatedPage(
+      page: [
+        VectorDocumentContentChunk(id: "chunk-0", documentId: document.id, version: "version-1", chunkIndex: 0, content: "First "),
+        VectorDocumentContentChunk(id: "chunk-1", documentId: document.id, version: "version-1", chunkIndex: 1, content: "second "),
+      ],
+      continueCursor: "next",
+      isDone: false
+    )
+    repository.documentChunkPages["next"] = VectorPaginatedPage(
+      page: [
+        VectorDocumentContentChunk(id: "chunk-2", documentId: document.id, version: "version-1", chunkIndex: 2, content: "third")
+      ],
+      isDone: true
+    )
+    let viewModel = VectorMobileViewModel(configuration: .demo, repository: repository)
+
+    viewModel.loadDocument(document)
+
+    await waitUntil { viewModel.selectedDocument?.content == "First second third" }
+    XCTAssertEqual(viewModel.selectedDocument?.content, "First second third")
+    XCTAssertEqual(viewModel.selectedDocument?.contentVersion, "version-1")
+    XCTAssertEqual(repository.documentContentPageCursors, [nil, "next"])
+    XCTAssertFalse(viewModel.isLoadingDocumentContent)
+    XCTAssertNil(viewModel.documentContentError)
   }
 
   @MainActor
@@ -1243,6 +1332,11 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var projectListCalls: [VectorProjectScope: Int] = [:]
   var teamListCalls: [VectorProjectScope: Int] = [:]
   var documentListCalls = 0
+  var documentFolderPageCalls = 0
+  var folderDocumentPageCalls: [VectorID] = []
+  var documentsOverride: [VectorDocument]?
+  var documentFolders: [VectorDocumentFolder] = []
+  var folderDocuments: [VectorID: [VectorDocument]] = [:]
   var inboxNotificationCalls = 0
   var workspaceOptionsCalls = 0
   var userStatusCalls = 0
@@ -1256,8 +1350,12 @@ private final class CountingVectorRepository: VectorMobileRepository {
   var createRequestAction: (() async throws -> Void)?
   var createRequestCompletedCalls = 0
   var createRequestClientIds: [String] = []
+  var createRequestPriorityIds: [VectorID?] = []
   let requestCreationSubject = CurrentValueSubject<VectorCreateRequestResult?, Error>(nil)
   var sendAgentSessionAction: (() async throws -> Void)?
+  var documentDetailOverride: VectorDocument?
+  var documentChunkPages: [String: VectorPaginatedPage<VectorDocumentContentChunk>] = [:]
+  var documentContentPageCursors: [String?] = []
 
   func requestsPage(orgSlug: String, scope: VectorRequestScope, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorRequestRow>, Error> {
     requestListCalls[scope, default: 0] += 1
@@ -1294,11 +1392,26 @@ private final class CountingVectorRepository: VectorMobileRepository {
 
   func documentsPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
     documentListCalls += 1
-    return publisher(VectorPaginatedPage(page: VectorMockData.documents, isDone: true))
+    return publisher(VectorPaginatedPage(page: documentsOverride ?? VectorMockData.documents, isDone: true))
+  }
+
+  func documentFoldersPage(orgSlug: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocumentFolder>, Error> {
+    documentFolderPageCalls += 1
+    return publisher(VectorPaginatedPage(page: documentFolders, isDone: true))
+  }
+
+  func folderDocumentsPage(orgSlug: String, folderId: VectorID, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocument>, Error> {
+    folderDocumentPageCalls.append(folderId)
+    return publisher(VectorPaginatedPage(page: folderDocuments[folderId] ?? [], isDone: true))
   }
 
   func document(documentId: VectorID) -> AnyPublisher<VectorDocument?, Error> {
-    publisher(VectorMockData.documents.first { $0.id == documentId })
+    publisher(documentDetailOverride ?? VectorMockData.documents.first { $0.id == documentId })
+  }
+
+  func documentContentPage(documentId: VectorID, version: String, pageSize: Int, cursor: String?) -> AnyPublisher<VectorPaginatedPage<VectorDocumentContentChunk>, Error> {
+    documentContentPageCursors.append(cursor)
+    return publisher(documentChunkPages[cursor ?? "__root"] ?? VectorPaginatedPage(page: [], isDone: true))
   }
 
   func workspaceOptions(orgSlug: String) -> AnyPublisher<VectorWorkspaceOptions, Error> {
@@ -1364,8 +1477,9 @@ private final class CountingVectorRepository: VectorMobileRepository {
     return "message-created"
   }
 
-  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, clientRequestId: String) async throws -> VectorCreateRequestResult {
+  func createRequest(orgSlug: String, title: String, description: String?, expectedOutput: String, reviewGuidance: String?, priorityId: VectorID?, clientRequestId: String) async throws -> VectorCreateRequestResult {
     createRequestClientIds.append(clientRequestId)
+    createRequestPriorityIds.append(priorityId)
     if let createRequestAction { try await createRequestAction() }
     createRequestCompletedCalls += 1
     return VectorCreateRequestResult(requestId: "request-created", requestKey: "REQ-20")

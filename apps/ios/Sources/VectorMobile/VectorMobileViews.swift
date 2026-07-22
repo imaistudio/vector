@@ -57,6 +57,14 @@ private struct AuthenticatedVectorMobileView: View {
       .tag(VectorMobileTab.work)
 
       NavigationStack {
+        WorkspaceScreen(viewModel: viewModel)
+      }
+      .tabItem {
+        Label(VectorMobileTab.workspace.title, systemImage: VectorMobileTab.workspace.systemImage)
+      }
+      .tag(VectorMobileTab.workspace)
+
+      NavigationStack {
         InboxScreen(
           viewModel: viewModel,
           sessionController: sessionController,
@@ -203,6 +211,7 @@ private func pendingNotificationTarget(for href: String?) -> PendingNotification
 private enum VectorMobileTab: String, CaseIterable, Identifiable {
   case requests
   case work
+  case workspace
   case inbox
   case settings
 
@@ -212,6 +221,7 @@ private enum VectorMobileTab: String, CaseIterable, Identifiable {
     switch self {
     case .requests: "Requests"
     case .work: "Work"
+    case .workspace: "Workspace"
     case .inbox: "Inbox"
     case .settings: "Settings"
     }
@@ -221,6 +231,7 @@ private enum VectorMobileTab: String, CaseIterable, Identifiable {
     switch self {
     case .requests: "tray"
     case .work: "scope"
+    case .workspace: "square.grid.2x2"
     case .inbox: "bell"
     case .settings: "gearshape"
     }
@@ -4400,6 +4411,9 @@ struct WorkspaceScreen: View {
         }
       }
     }
+    .onAppear {
+      viewModel.loadWorkspaceContent()
+    }
   }
 
   @ViewBuilder private var content: some View {
@@ -4463,7 +4477,21 @@ struct WorkspaceScreen: View {
         }
       }
     case .docs:
-      if filteredDocuments.isEmpty {
+      if viewModel.isLoadingDocuments && filteredDocuments.isEmpty {
+        SkeletonIssueList()
+      } else if let error = viewModel.documentListError, filteredDocuments.isEmpty {
+        VStack(spacing: 12) {
+          VectorEmptyState(
+            title: "Could not load docs",
+            systemImage: "exclamationmark.triangle",
+            message: error
+          )
+          Button("Try again") {
+            viewModel.loadWorkspaceContent()
+          }
+          .buttonStyle(.bordered)
+        }
+      } else if filteredDocuments.isEmpty {
         VectorEmptyState(
           title: searchText.isEmpty ? "No docs" : "No matching docs",
           systemImage: "doc.text",
@@ -4594,6 +4622,14 @@ struct DocumentDetailScreen: View {
     VectorDocumentContentNormalizer.plainText(from: displayDocument.content ?? "")
   }
 
+  private var isLargeDocument: Bool {
+    displayDocument.contentVersion != nil
+  }
+
+  private var isWaitingForContent: Bool {
+    isLargeDocument && displayDocument.content == nil && viewModel.documentContentError == nil
+  }
+
   private var hasChanges: Bool {
     draftTitle.trimmingCharacters(in: .whitespacesAndNewlines) != displayDocument.title
       || draftContent != normalizedContent
@@ -4609,19 +4645,25 @@ struct DocumentDetailScreen: View {
             .frame(width: 44, height: 44)
             .background(Color(vectorHex: displayDocument.color).opacity(0.12), in: Circle())
 
-          TextField("Document title", text: $draftTitle, axis: .vertical)
-            .font(.system(size: 30, weight: .semibold))
-            .textFieldStyle(.plain)
-            .focused($isTitleFocused)
-            .submitLabel(.done)
-            .onSubmit(saveChanges)
-            .onChange(of: isTitleFocused) { _, isFocused in
-              if isFocused {
-                focusedField = .title
-              } else if focusedField == .title {
-                focusedField = nil
+          if isLargeDocument {
+            Text(displayDocument.title)
+              .font(.system(size: 30, weight: .semibold))
+              .textSelection(.enabled)
+          } else {
+            TextField("Document title", text: $draftTitle, axis: .vertical)
+              .font(.system(size: 30, weight: .semibold))
+              .textFieldStyle(.plain)
+              .focused($isTitleFocused)
+              .submitLabel(.done)
+              .onSubmit(saveChanges)
+              .onChange(of: isTitleFocused) { _, isFocused in
+                if isFocused {
+                  focusedField = .title
+                } else if focusedField == .title {
+                  focusedField = nil
+                }
               }
-            }
+          }
 
           HStack(spacing: 8) {
             if let project = displayDocument.project {
@@ -4639,7 +4681,36 @@ struct DocumentDetailScreen: View {
         }
 
         DocumentSection(title: "Document") {
-          if isEditingContent || draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          if isWaitingForContent {
+            VStack(alignment: .leading, spacing: 12) {
+              RoundedRectangle(cornerRadius: 5)
+                .fill(Color.secondary.opacity(0.12))
+                .frame(height: 18)
+              RoundedRectangle(cornerRadius: 5)
+                .fill(Color.secondary.opacity(0.1))
+                .frame(height: 18)
+              RoundedRectangle(cornerRadius: 5)
+                .fill(Color.secondary.opacity(0.08))
+                .frame(width: 220, height: 18)
+            }
+            .redacted(reason: .placeholder)
+            .accessibilityLabel("Loading document content")
+          } else if let contentError = viewModel.documentContentError, isLargeDocument {
+            VStack(alignment: .leading, spacing: 10) {
+              Label(contentError, systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.red)
+              Button("Try again") {
+                viewModel.retryDocumentContent()
+              }
+              .font(.caption.weight(.semibold))
+            }
+          } else if isLargeDocument {
+            MarkdownDocumentView(markdown: draftContent)
+            Label("Large document · read-only on iOS", systemImage: "doc.text")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          } else if isEditingContent || draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ZStack(alignment: .topLeading) {
               if draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text("Start writing")
@@ -4676,37 +4747,39 @@ struct DocumentDetailScreen: View {
             .buttonStyle(.plain)
           }
 
-          HStack(spacing: 10) {
-            if !isEditingContent && !draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-              Button("Edit document") {
-                withAnimation(.snappy(duration: 0.18)) {
-                  isEditingContent = true
-                  focusedField = .content
-                }
-              }
-              .font(.caption.weight(.semibold))
-              .buttonStyle(.plain)
-              .foregroundStyle(VectorTheme.accent)
-            }
-
-            Spacer()
-
-            if isEditingContent || hasChanges {
-              Button(action: saveChanges) {
-                HStack(spacing: 6) {
-                  if isSaving {
-                    ProgressView()
-                      .controlSize(.small)
+          if !isLargeDocument {
+            HStack(spacing: 10) {
+              if !isEditingContent && !draftContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Button("Edit document") {
+                  withAnimation(.snappy(duration: 0.18)) {
+                    isEditingContent = true
+                    focusedField = .content
                   }
-                  Text(hasChanges ? "Save changes" : "Done")
                 }
                 .font(.caption.weight(.semibold))
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .background(VectorTheme.accent.opacity(hasChanges ? 0.15 : 0.08), in: Capsule())
+                .buttonStyle(.plain)
+                .foregroundStyle(VectorTheme.accent)
               }
-              .buttonStyle(.plain)
-              .disabled(isSaving)
+
+              Spacer()
+
+              if isEditingContent || hasChanges {
+                Button(action: saveChanges) {
+                  HStack(spacing: 6) {
+                    if isSaving {
+                      ProgressView()
+                        .controlSize(.small)
+                    }
+                    Text(hasChanges ? "Save changes" : "Done")
+                  }
+                  .font(.caption.weight(.semibold))
+                  .padding(.horizontal, 10)
+                  .frame(height: 30)
+                  .background(VectorTheme.accent.opacity(hasChanges ? 0.15 : 0.08), in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSaving)
+              }
             }
           }
         }
@@ -4752,7 +4825,7 @@ struct DocumentDetailScreen: View {
       viewModel.loadDocument(displayDocument)
     }
     .onChange(of: displayDocument) { _, nextDocument in
-      guard !hasChanges && !isEditingContent else {
+      guard !isEditingContent && focusedField == nil && !isSaving else {
         return
       }
       syncDraft(from: nextDocument)

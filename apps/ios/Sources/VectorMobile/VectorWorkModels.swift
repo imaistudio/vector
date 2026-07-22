@@ -34,6 +34,22 @@ public enum VectorRequestScope: String, CaseIterable, Identifiable, Sendable {
 
 }
 
+public enum VectorRequestGroupMode: String, CaseIterable, Identifiable, Sendable {
+  case none
+  case priority
+  case status
+
+  public var id: String { rawValue }
+
+  public var label: String {
+    switch self {
+    case .none: "No grouping"
+    case .priority: "Priority"
+    case .status: "Status"
+    }
+  }
+}
+
 public enum VectorWorkScope: String, CaseIterable, Identifiable, Sendable {
   case active
   case mine
@@ -160,6 +176,7 @@ public struct VectorRequestRow: Decodable, Equatable, Identifiable {
   public let expectedOutput: String
   public let reviewGuidance: String?
   public let status: VectorRequestStatus
+  public let priorityId: VectorID?
   public let owner: VectorUser?
   public let requester: VectorUser?
   public let dueDate: String?
@@ -176,6 +193,7 @@ public struct VectorRequestRow: Decodable, Equatable, Identifiable {
     status: VectorRequestStatus,
     description: String? = nil,
     reviewGuidance: String? = nil,
+    priorityId: VectorID? = nil,
     owner: VectorUser? = nil,
     requester: VectorUser? = nil,
     dueDate: String? = nil,
@@ -191,6 +209,7 @@ public struct VectorRequestRow: Decodable, Equatable, Identifiable {
     self.expectedOutput = expectedOutput
     self.reviewGuidance = reviewGuidance
     self.status = status
+    self.priorityId = priorityId
     self.owner = owner
     self.requester = requester
     self.dueDate = dueDate
@@ -208,6 +227,7 @@ public struct VectorRequestRow: Decodable, Equatable, Identifiable {
     case expectedOutput
     case reviewGuidance
     case status
+    case priorityId
     case owner
     case requester
     case dueDate
@@ -292,6 +312,7 @@ public struct VectorRequestDetail: Decodable, Equatable, Identifiable {
   public let expectedOutput: String
   public let reviewGuidance: String?
   public let status: VectorRequestStatus
+  public let priorityId: VectorID?
   public let owner: VectorUser?
   public let requester: VectorUser?
   public let linkedWork: [VectorLinkedWork]
@@ -309,6 +330,7 @@ public struct VectorRequestDetail: Decodable, Equatable, Identifiable {
     status: VectorRequestStatus,
     description: String? = nil,
     reviewGuidance: String? = nil,
+    priorityId: VectorID? = nil,
     owner: VectorUser? = nil,
     requester: VectorUser? = nil,
     linkedWork: [VectorLinkedWork] = [],
@@ -325,6 +347,7 @@ public struct VectorRequestDetail: Decodable, Equatable, Identifiable {
     self.expectedOutput = expectedOutput
     self.reviewGuidance = reviewGuidance
     self.status = status
+    self.priorityId = priorityId
     self.owner = owner
     self.requester = requester
     self.linkedWork = linkedWork
@@ -343,6 +366,7 @@ public struct VectorRequestDetail: Decodable, Equatable, Identifiable {
     case expectedOutput
     case reviewGuidance
     case status
+    case priorityId
     case owner
     case requester
     case linkedWork

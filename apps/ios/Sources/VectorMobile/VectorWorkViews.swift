@@ -5,6 +5,7 @@ struct MobileRequestsScreen: View {
   @ObservedObject var sessionController: VectorMobileSessionController
   @State private var searchText = ""
   @State private var isCreating = false
+  @State private var groupMode = VectorRequestGroupMode.none
 
   private var filteredRequests: [VectorRequestRow] {
     let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -14,6 +15,68 @@ struct MobileRequestsScreen: View {
         || $0.title.lowercased().contains(query)
         || $0.expectedOutput.lowercased().contains(query)
     }
+  }
+
+  private var priorities: [VectorPriority] {
+    viewModel.workspaceOptions?.issuePriorities ?? []
+  }
+
+  private var requestGroups: [MobileRequestGroup] {
+    guard groupMode != .none else { return [] }
+    let priorityById = Dictionary(uniqueKeysWithValues: priorities.map { ($0.id, $0) })
+    let noPriority = priorities.first {
+      $0.weight == 0 || $0.name.lowercased() == "no priority"
+    }
+    let statusOrder: [VectorRequestStatus] = [
+      .new, .routed, .planned, .inDelivery, .readyForReview,
+      .changesRequested, .completed, .declined, .duplicate, .unknown,
+    ]
+    var groups: [String: MobileRequestGroup] = [:]
+
+    for request in filteredRequests {
+      let key: String
+      let label: String
+      let sortValue: Double
+      if groupMode == .status {
+        key = request.status.rawValue
+        label = request.status.label
+        sortValue = Double(statusOrder.firstIndex(of: request.status) ?? statusOrder.count)
+      } else {
+        key = request.priorityId ?? noPriority?.id ?? "__none__"
+        let priority = priorityById[key]
+        label = priority?.name ?? "No priority"
+        sortValue = -(priority?.weight ?? 0)
+      }
+      var group = groups[key] ?? MobileRequestGroup(
+        id: key,
+        label: label,
+        sortValue: sortValue,
+        requests: []
+      )
+      group.requests.append(request)
+      groups[key] = group
+    }
+
+    return groups.values.sorted {
+      $0.sortValue == $1.sortValue
+        ? $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+        : $0.sortValue < $1.sortValue
+    }
+  }
+
+  private func priority(for request: VectorRequestRow) -> VectorPriority? {
+    guard let priorityId = request.priorityId else { return nil }
+    return priorities.first { $0.id == priorityId }
+  }
+
+  @ViewBuilder
+  private func requestLink(_ request: VectorRequestRow) -> some View {
+    NavigationLink {
+      MobileRequestDetailScreen(request: request, viewModel: viewModel)
+    } label: {
+      MobileRequestRow(request: request, priority: priority(for: request))
+    }
+    .listRowInsets(.init(top: 9, leading: 16, bottom: 9, trailing: 12))
   }
 
   var body: some View {
@@ -27,13 +90,26 @@ struct MobileRequestsScreen: View {
           description: Text(searchText.isEmpty ? "Incoming requests and review decisions will appear here." : "Try a request key, title, or expected output.")
         )
       } else {
-        List(filteredRequests) { request in
-          NavigationLink {
-            MobileRequestDetailScreen(request: request, viewModel: viewModel)
-          } label: {
-            MobileRequestRow(request: request)
+        List {
+          if groupMode == .none {
+            ForEach(filteredRequests) { request in
+              requestLink(request)
+            }
+          } else {
+            ForEach(requestGroups) { group in
+              Section {
+                ForEach(group.requests) { request in
+                  requestLink(request)
+                }
+              } header: {
+                HStack(spacing: 6) {
+                  Text(group.label)
+                  Text("\(group.requests.count)")
+                    .foregroundStyle(.tertiary)
+                }
+              }
+            }
           }
-          .listRowInsets(.init(top: 9, leading: 16, bottom: 9, trailing: 12))
         }
         .listStyle(.plain)
         .refreshable { viewModel.refreshRequests() }
@@ -76,7 +152,18 @@ struct MobileRequestsScreen: View {
         )
       }
       #endif
-      ToolbarItem(placement: .primaryAction) {
+      ToolbarItemGroup(placement: .primaryAction) {
+        Menu {
+          Picker("Group requests", selection: $groupMode) {
+            ForEach(VectorRequestGroupMode.allCases) { mode in
+              Text(mode.label).tag(mode)
+            }
+          }
+        } label: {
+          Image(systemName: groupMode == .none ? "rectangle.3.group" : "rectangle.3.group.fill")
+        }
+        .accessibilityLabel("Group requests")
+
         Button { isCreating = true } label: { Image(systemName: "plus") }
           .accessibilityLabel("Create request")
       }
@@ -87,8 +174,16 @@ struct MobileRequestsScreen: View {
   }
 }
 
+private struct MobileRequestGroup: Identifiable {
+  let id: String
+  let label: String
+  let sortValue: Double
+  var requests: [VectorRequestRow]
+}
+
 private struct MobileRequestRow: View {
   let request: VectorRequestRow
+  let priority: VectorPriority?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 5) {
@@ -103,6 +198,12 @@ private struct MobileRequestRow: View {
           .font(.subheadline.weight(.medium))
           .lineLimit(1)
         Spacer(minLength: 4)
+        if let priority {
+          Label(priority.name, systemImage: vectorSystemImage(for: priority.icon))
+            .font(.caption2)
+            .foregroundStyle(Color(vectorHex: priority.color))
+            .lineLimit(1)
+        }
         Text(request.status.label)
           .font(.caption2.weight(.medium))
           .foregroundStyle(requestStatusColor(request.status))
@@ -161,6 +262,11 @@ struct MobileRequestDetailScreen: View {
           }
 
           Section("Routing") {
+            if let priorityId = detail.priorityId,
+               let priority = viewModel.workspaceOptions?.issuePriorities.first(where: { $0.id == priorityId })
+            {
+              LabeledContent("Priority", value: priority.name)
+            }
             LabeledContent("Owner", value: detail.owner?.displayName ?? "Unassigned")
             LabeledContent("Requester", value: detail.requester?.displayName ?? "Unknown")
             if detail.recipients.count > 1 {
@@ -259,6 +365,7 @@ private struct MobileCreateRequestSheet: View {
   @State private var context = ""
   @State private var expectedOutput = ""
   @State private var reviewGuidance = ""
+  @State private var priorityId: VectorID?
   @State private var submissionTask: Task<Void, Never>?
 
   private var canSubmit: Bool {
@@ -285,6 +392,19 @@ private struct MobileCreateRequestSheet: View {
           TextField("How should it be reviewed?", text: $reviewGuidance, axis: .vertical)
             .lineLimit(2...6)
         }
+        Section("Priority") {
+          Picker("Priority", selection: $priorityId) {
+            Text("No priority").tag(Optional<VectorID>.none)
+            ForEach(
+              (viewModel.workspaceOptions?.issuePriorities ?? [])
+                .filter { $0.weight > 0 && $0.name.lowercased() != "no priority" }
+                .sorted { $0.weight > $1.weight }
+            ) { priority in
+              Label(priority.name, systemImage: vectorSystemImage(for: priority.icon))
+                .tag(Optional(priority.id))
+            }
+          }
+        }
       }
       .disabled(isCreating)
       .navigationTitle("New request")
@@ -307,7 +427,8 @@ private struct MobileCreateRequestSheet: View {
                 title: title.trimmingCharacters(in: .whitespacesAndNewlines),
                 description: context.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
                 expectedOutput: expectedOutput.trimmingCharacters(in: .whitespacesAndNewlines),
-                reviewGuidance: reviewGuidance.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+                reviewGuidance: reviewGuidance.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+                priorityId: priorityId
               )
               guard !Task.isCancelled else { return }
               submissionTask = nil
