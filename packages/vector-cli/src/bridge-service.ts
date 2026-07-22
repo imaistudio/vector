@@ -248,8 +248,6 @@ export class BridgeService {
   private stopping = false;
   private runningLoops = new Set<string>();
   private activeAgentRuns = new Map<string, AbortController>();
-  private detectedSessions: SessionProcessRecord[] = [];
-  private transcriptSyncFingerprints = new Map<string, string>();
   private deviceLiveActivities: Array<{
     _id: Id<'issueLiveActivities'>;
     title?: string;
@@ -448,7 +446,6 @@ export class BridgeService {
 
   async reportProcesses(): Promise<void> {
     const processes = discoverAttachableSessions();
-    this.detectedSessions = processes;
     const activeSessionKeys = processes
       .map(proc => proc.sessionKey)
       .filter((value): value is string => Boolean(value));
@@ -510,66 +507,7 @@ export class BridgeService {
           );
         }
 
-        if (activity.workSessionId && activity.agentSessionKey) {
-          const providerSession = this.detectedSessions.find(
-            session =>
-              session.sessionKey === activity.agentSessionKey &&
-              (!activity.agentProvider ||
-                session.provider === activity.agentProvider),
-          );
-
-          if (!providerSession) {
-            // Never replace an agent conversation title with its terminal pane
-            // title while the provider is temporarily undiscoverable.
-            continue;
-          }
-
-          // The bridge already records messages exchanged through Vector after
-          // attachment. Import only the provider history that predates the
-          // attachment so those live messages are not duplicated.
-          const transcript = (providerSession.transcript ?? []).filter(
-            message => message.createdAt <= activity.startedAt,
-          );
-          const lastMessage = transcript.at(-1);
-          const fingerprint = [
-            providerSession.title ?? '',
-            transcript.length,
-            lastMessage?.sourceId ?? '',
-            lastMessage?.text ?? '',
-          ].join(':');
-
-          if (
-            this.transcriptSyncFingerprints.get(activity._id) !== fingerprint
-          ) {
-            try {
-              const batches = chunkTranscript(transcript, 50);
-              for (const messages of batches.length > 0 ? batches : [[]]) {
-                await this.client.mutation(
-                  api.agentBridge.bridgePublic.syncSessionTranscript,
-                  {
-                    deviceId: this.config.deviceId as Id<'agentDevices'>,
-                    deviceSecret: this.config.deviceSecret,
-                    liveActivityId: activity._id,
-                    title: providerSession.title,
-                    messages: messages.map(message => ({
-                      sourceId: message.sourceId,
-                      role: message.role,
-                      body: message.text,
-                      createdAt: message.createdAt,
-                    })),
-                  },
-                );
-              }
-              this.transcriptSyncFingerprints.set(activity._id, fingerprint);
-            } catch {
-              // Retry on the next live-activity refresh.
-            }
-          }
-          continue;
-        }
-
-        // Plain terminal sessions use the tmux pane title. Agent-backed
-        // sessions above keep the provider conversation's canonical title.
+        // Auto-generate title from tmux pane
         if (activity.workSessionId && activity.tmuxPaneId) {
           try {
             const paneTitle = execFileSync(
@@ -1433,14 +1371,6 @@ export class BridgeService {
       });
     }
   }
-}
-
-function chunkTranscript<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
 }
 
 function createTmuxWorkSession(args: {

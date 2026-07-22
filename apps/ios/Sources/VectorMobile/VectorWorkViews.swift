@@ -1067,15 +1067,6 @@ private struct MobileWorkSessionScreen: View {
     return viewModel.selectedAgentSession
   }
 
-  private var displayTitle: String {
-    if let title = currentSession?.title.trimmingCharacters(in: .whitespacesAndNewlines),
-       !title.isEmpty
-    {
-      return title
-    }
-    return session.displayTitle
-  }
-
   private var effectiveStatus: String {
     currentSession?.status ?? session.status
   }
@@ -1218,7 +1209,7 @@ private struct MobileWorkSessionScreen: View {
       }
     }
     .background(VectorTheme.groupedBackground.opacity(0.32))
-    .navigationTitle(displayTitle)
+    .navigationTitle(session.displayTitle)
     .vectorInlineNavigationTitle()
     .task(id: session.id) {
       viewModel.loadAgentSession(liveActivityId: session.id)
@@ -1420,12 +1411,7 @@ private struct MobileAgentSessionComposer: View {
           .font(.body)
           .padding(.horizontal, 7)
           .padding(.vertical, 7)
-          .submitLabel(.send)
-          .onSubmit {
-            guard !isSendDisabled else { return }
-            onSend()
-          }
-          .disabled(!canSend || isMessagingBusy)
+          .disabled(!canSend)
           .accessibilityHint(canSend ? "Enter a message for this agent session" : placeholder)
 
         Button(action: onSend) {

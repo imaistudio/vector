@@ -64,7 +64,6 @@ describe('agent-adapters session discovery', () => {
         payload: { id: 'codex-session-1', cwd: workspace },
       },
       {
-        timestamp: '2026-03-19T10:00:00.000Z',
         type: 'response_item',
         payload: {
           type: 'message',
@@ -78,22 +77,11 @@ describe('agent-adapters session discovery', () => {
         },
       },
       {
-        timestamp: '2026-03-19T10:01:00.000Z',
         type: 'response_item',
         payload: {
           type: 'message',
           role: 'user',
           content: [{ type: 'input_text', text: 'Bridge the real home flow' }],
-        },
-      },
-      {
-        timestamp: '2026-03-19T10:02:00.000Z',
-        type: 'response_item',
-        payload: {
-          id: 'assistant-1',
-          type: 'message',
-          role: 'assistant',
-          content: [{ type: 'output_text', text: 'The bridge is ready.' }],
         },
       },
     ]);
@@ -178,20 +166,6 @@ describe('agent-adapters session discovery', () => {
       cwd: workspace,
       title: 'Bridge the real home flow',
       supportsInboundMessages: true,
-      transcript: [
-        {
-          sourceId: 'codex:codex-session-1:2:user',
-          role: 'user',
-          text: 'Bridge the real home flow',
-          createdAt: Date.parse('2026-03-19T10:01:00.000Z'),
-        },
-        {
-          sourceId: 'codex:codex-session-1:assistant-1:assistant',
-          role: 'assistant',
-          text: 'The bridge is ready.',
-          createdAt: Date.parse('2026-03-19T10:02:00.000Z'),
-        },
-      ],
     });
   });
 
@@ -390,7 +364,6 @@ describe('agent-adapters session discovery', () => {
 
     writeJsonl(transcriptPath, [
       {
-        uuid: 'user-clear',
         type: 'user',
         sessionId: 'claude-session-1',
         cwd: workspace,
@@ -402,7 +375,6 @@ describe('agent-adapters session discovery', () => {
         },
       },
       {
-        uuid: 'user-tool',
         type: 'user',
         sessionId: 'claude-session-1',
         cwd: workspace,
@@ -419,8 +391,6 @@ describe('agent-adapters session discovery', () => {
         },
       },
       {
-        uuid: 'user-visible',
-        timestamp: '2026-03-19T11:00:00.000Z',
         type: 'user',
         sessionId: 'claude-session-1',
         cwd: workspace,
@@ -431,8 +401,6 @@ describe('agent-adapters session discovery', () => {
         },
       },
       {
-        uuid: 'assistant-visible',
-        timestamp: '2026-03-19T11:01:00.000Z',
         type: 'assistant',
         sessionId: 'claude-session-1',
         cwd: workspace,
@@ -501,20 +469,6 @@ describe('agent-adapters session discovery', () => {
       model: 'claude-opus-4-6',
       title: 'Implement the bridge attach flow properly',
       supportsInboundMessages: true,
-      transcript: [
-        {
-          sourceId: 'claude_code:claude-session-1:user-visible:user',
-          role: 'user',
-          text: 'Implement the bridge attach flow properly',
-          createdAt: Date.parse('2026-03-19T11:00:00.000Z'),
-        },
-        {
-          sourceId: 'claude_code:claude-session-1:assistant-visible:assistant',
-          role: 'assistant',
-          text: 'Working on it.',
-          createdAt: Date.parse('2026-03-19T11:01:00.000Z'),
-        },
-      ],
     });
   });
 

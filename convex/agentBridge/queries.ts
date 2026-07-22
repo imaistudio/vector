@@ -506,10 +506,7 @@ export const getAgentSessionSnapshot = query({
       .withIndex('by_live_activity_created', q =>
         q.eq('liveActivityId', args.liveActivityId),
       )
-      .order('desc')
       .take(200);
-
-    messages.reverse();
 
     return {
       liveActivityId: activity._id,
