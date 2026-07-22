@@ -29,6 +29,9 @@ Core semantics:
   the request becomes clearer; both fields support the same rich workpad-style
   notes and checklists used during delivery. They can also adjust the due date
   from the Request detail view.
+- People with access can discuss a Request through threaded comments. The
+  discussion timeline also records important Request changes, including edits
+  to its description, expected output, and due date.
 - A Request can be routed to one person, several people, or a team.
 - Workspace admins can describe routing rules in plain language and optionally
   let Vector apply them to new, unrouted Requests. Automatic routing can assign

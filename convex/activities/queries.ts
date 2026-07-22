@@ -559,6 +559,26 @@ export const listIssueActivity = query({
   },
 });
 
+export const listRequestActivity = query({
+  args: {
+    requestId: v.id('requests'),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get('requests', args.requestId);
+    if (!request) throw new ConvexError('REQUEST_NOT_FOUND');
+    if (!(await canViewRequest(ctx, request)))
+      throw new ConvexError('FORBIDDEN');
+
+    const result = await ctx.db
+      .query('activityEvents')
+      .withIndex('by_request', q => q.eq('requestId', request._id))
+      .order('desc')
+      .paginate(args.paginationOpts);
+    return { ...result, page: await enrichEvents(ctx, result.page) };
+  },
+});
+
 export const listDocumentActivity = query({
   args: {
     documentId: v.id('documents'),

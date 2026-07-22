@@ -77,6 +77,10 @@ export const ACTIVITY_EVENT_TYPES = [
   'issue_live_activity_delegated',
   // Request / Work / Task model
   'request_created',
+  'request_description_changed',
+  'request_expected_output_changed',
+  'request_due_date_changed',
+  'request_comment_added',
   'request_routed',
   'request_claimed',
   'request_linked_to_work',
@@ -122,6 +126,7 @@ export const ACTIVITY_FIELDS = [
   'owner',
   'task_status',
   'expected_output',
+  'due_date',
   'request_status',
 ] as const;
 

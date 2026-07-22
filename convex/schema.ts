@@ -905,7 +905,7 @@ export default defineSchema({
     .index('by_type', ['type'])
     .index('by_issue_type', ['issueId', 'type']),
 
-  // Comments — polymorphic: either issueId or documentId is set
+  // Comments — polymorphic: issueId, requestId, or documentId is set
   comments: defineTable({
     issueId: v.optional(v.id('issues')),
     requestId: v.optional(v.id('requests')),
@@ -932,6 +932,7 @@ export default defineSchema({
     .index('by_document', ['documentId'])
     .index('by_author', ['authorId'])
     .index('by_issue_deleted', ['issueId', 'deleted'])
+    .index('by_request_deleted', ['requestId', 'deleted'])
     .index('by_document_deleted', ['documentId', 'deleted'])
     .index('by_parent', ['parentId']),
 

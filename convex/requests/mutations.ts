@@ -3,6 +3,7 @@ import { mutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
+  getCommentPreview,
   recordActivity,
   resolveIssueScope,
   snapshotForIssue,
@@ -256,6 +257,19 @@ async function reconcileRequestAfterWorkLink(
       readyForReviewAt: now,
       updatedAt: now,
     });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId,
+      entityType: 'request',
+      eventType: 'request_ready_for_review',
+      details: {
+        field: 'request_status',
+        fromLabel: request.status,
+        toLabel: 'ready_for_review',
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
+    });
     const organization = await ctx.db.get(
       'organizations',
       request.organizationId,
@@ -439,6 +453,7 @@ export const updateDetails = mutation({
     dueDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const actorId = await requireUser(ctx);
     const request = await requireRequest(ctx, args.requestId, 'edit');
     const description = args.description?.trim() || undefined;
     const expectedOutput = args.expectedOutput?.trim();
@@ -458,10 +473,11 @@ export const updateDetails = mutation({
       args.description === undefined ? request.description : description;
     const nextExpectedOutput = expectedOutput ?? request.expectedOutput;
 
+    const nextDueDate = args.dueDate === undefined ? request.dueDate : dueDate;
     await ctx.db.patch('requests', request._id, {
       description: nextDescription,
       expectedOutput: nextExpectedOutput,
-      dueDate: args.dueDate === undefined ? request.dueDate : dueDate,
+      dueDate: nextDueDate,
       searchText: requestSearchText({
         key: request.key,
         title: request.title,
@@ -470,6 +486,118 @@ export const updateDetails = mutation({
       }),
       updatedAt: Date.now(),
     });
+
+    const activityBase = {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId,
+      entityType: 'request' as const,
+      snapshot: { entityKey: request.key, entityName: request.title },
+    };
+    if (
+      args.description !== undefined &&
+      nextDescription !== request.description
+    )
+      await recordActivity(ctx, {
+        ...activityBase,
+        eventType: 'request_description_changed',
+        details: { field: 'description' },
+      });
+    if (
+      args.expectedOutput !== undefined &&
+      nextExpectedOutput !== request.expectedOutput
+    )
+      await recordActivity(ctx, {
+        ...activityBase,
+        eventType: 'request_expected_output_changed',
+        details: { field: 'expected_output' },
+      });
+    if (args.dueDate !== undefined && nextDueDate !== request.dueDate)
+      await recordActivity(ctx, {
+        ...activityBase,
+        eventType: 'request_due_date_changed',
+        details: {
+          field: 'due_date',
+          fromLabel: request.dueDate ?? 'None',
+          toLabel: nextDueDate ?? 'None',
+        },
+      });
+    return { success: true } as const;
+  },
+});
+
+export const addComment = mutation({
+  args: {
+    requestId: v.id('requests'),
+    body: v.string(),
+    parentId: v.optional(v.id('comments')),
+  },
+  handler: async (ctx, args) => {
+    const actorId = await requireUser(ctx);
+    const request = await requireRequest(ctx, args.requestId, 'view');
+    const body = args.body.trim();
+    if (!body || body.length > 20_000) throw new ConvexError('INVALID_COMMENT');
+
+    if (args.parentId) {
+      const parent = await ctx.db.get('comments', args.parentId);
+      if (
+        !parent ||
+        parent.deleted ||
+        parent.parentId ||
+        parent.requestId !== request._id
+      )
+        throw new ConvexError('INVALID_PARENT_COMMENT');
+    }
+
+    const commentId = await ctx.db.insert('comments', {
+      requestId: request._id,
+      authorId: actorId,
+      body,
+      deleted: false,
+      parentId: args.parentId,
+    });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId,
+      entityType: 'request',
+      eventType: 'request_comment_added',
+      details: {
+        commentId,
+        commentPreview: getCommentPreview(body),
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
+    });
+    return { commentId } as const;
+  },
+});
+
+export const editComment = mutation({
+  args: { commentId: v.id('comments'), body: v.string() },
+  handler: async (ctx, args) => {
+    const actorId = await requireUser(ctx);
+    const comment = await ctx.db.get('comments', args.commentId);
+    if (!comment?.requestId || comment.deleted)
+      throw new ConvexError('COMMENT_NOT_FOUND');
+    await requireRequest(ctx, comment.requestId, 'view');
+    if (comment.authorId !== actorId) throw new ConvexError('FORBIDDEN');
+    const body = args.body.trim();
+    if (!body || body.length > 20_000) throw new ConvexError('INVALID_COMMENT');
+    await ctx.db.patch('comments', comment._id, { body });
+    return { success: true } as const;
+  },
+});
+
+export const deleteComment = mutation({
+  args: { commentId: v.id('comments') },
+  handler: async (ctx, args) => {
+    const actorId = await requireUser(ctx);
+    const comment = await ctx.db.get('comments', args.commentId);
+    if (!comment?.requestId || comment.deleted)
+      throw new ConvexError('COMMENT_NOT_FOUND');
+    await requireRequest(ctx, comment.requestId, 'view');
+    if (comment.authorId !== actorId) throw new ConvexError('FORBIDDEN');
+    await ctx.db.patch('comments', comment._id, { deleted: true });
     return { success: true } as const;
   },
 });
@@ -524,6 +652,19 @@ export const route = mutation({
       status: nextStatus,
       focusRank: requestFocusRank(nextStatus),
       updatedAt: now,
+    });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId,
+      entityType: 'request',
+      eventType: 'request_routed',
+      details: {
+        field: 'request_status',
+        fromLabel: request.status,
+        toLabel: nextStatus,
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
     });
     const org = await ctx.db.get('organizations', request.organizationId);
     if (recipients.length)
@@ -584,6 +725,19 @@ export const claim = mutation({
         assignedBy: userId,
         assignedAt: Date.now(),
       });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId: userId,
+      entityType: 'request',
+      eventType: 'request_claimed',
+      details: {
+        field: 'owner',
+        fromId: request.ownerId ?? null,
+        toId: userId,
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
+    });
     return { success: true } as const;
   },
 });
@@ -617,6 +771,16 @@ export const linkWork = mutation({
       });
     else if (existing.relation !== relation)
       await ctx.db.patch('requestWorkLinks', existing._id, { relation });
+    if (!existing || existing.relation !== relation)
+      await recordActivity(ctx, {
+        organizationId: request.organizationId,
+        requestId: request._id,
+        actorId: userId,
+        entityType: 'request',
+        eventType: 'request_linked_to_work',
+        details: { field: 'content' },
+        snapshot: { entityKey: request.key, entityName: request.title },
+      });
     if (relation === 'fulfills' || existing?.relation === 'fulfills')
       await reconcileRequestAfterWorkLink(ctx, request, userId);
     return { success: true } as const;
@@ -644,6 +808,20 @@ export const requestChanges = mutation({
       reviewedAt: Date.now(),
       reviewedBy: userId,
       updatedAt: Date.now(),
+    });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId: userId,
+      entityType: 'request',
+      eventType: 'request_changes_requested',
+      details: {
+        field: 'request_status',
+        fromLabel: request.status,
+        toLabel: 'changes_requested',
+        commentPreview: note,
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
     });
     const links = await ctx.db
       .query('requestWorkLinks')
@@ -724,6 +902,20 @@ export const complete = mutation({
       completedAt: now,
       completedBy: userId,
       updatedAt: now,
+    });
+    await recordActivity(ctx, {
+      organizationId: request.organizationId,
+      requestId: request._id,
+      actorId: userId,
+      entityType: 'request',
+      eventType: 'request_completed',
+      details: {
+        field: 'request_status',
+        fromLabel: request.status,
+        toLabel: 'completed',
+        commentPreview: args.note?.trim() || undefined,
+      },
+      snapshot: { entityKey: request.key, entityName: request.title },
     });
     const recipients = new Set<Id<'users'>>();
     if (request.ownerId && request.ownerId !== userId)

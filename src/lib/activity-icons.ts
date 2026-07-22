@@ -29,6 +29,8 @@ export function getActivityIcon(eventType: string): {
       return { Icon: CircleDot, color: 'text-green-500' };
     case 'issue_title_changed':
     case 'issue_description_changed':
+    case 'request_description_changed':
+    case 'request_expected_output_changed':
       return { Icon: Type, color: 'text-muted-foreground' };
     case 'issue_priority_changed':
       return { Icon: ArrowRightLeft, color: 'text-orange-500' };
@@ -47,7 +49,10 @@ export function getActivityIcon(eventType: string): {
     case 'issue_sub_issue_created':
       return { Icon: GitBranch, color: 'text-violet-500' };
     case 'issue_comment_added':
+    case 'request_comment_added':
       return { Icon: MessageSquare, color: 'text-blue-500' };
+    case 'request_due_date_changed':
+      return { Icon: ArrowRightLeft, color: 'text-orange-500' };
     case 'issue_github_artifact_linked':
     case 'issue_github_artifact_unlinked':
     case 'issue_github_artifact_suppressed':
@@ -79,6 +84,12 @@ export function getActivityLabel(eventType: string | null | undefined): string {
       return 'Title updated';
     case 'issue_description_changed':
       return 'Description updated';
+    case 'request_description_changed':
+      return 'Request description updated';
+    case 'request_expected_output_changed':
+      return 'Expected output updated';
+    case 'request_due_date_changed':
+      return 'Due date changed';
     case 'issue_priority_changed':
       return 'Priority changed';
     case 'issue_assignees_changed':
@@ -96,6 +107,7 @@ export function getActivityLabel(eventType: string | null | undefined): string {
     case 'issue_sub_issue_created':
       return 'Sub-issue created';
     case 'issue_comment_added':
+    case 'request_comment_added':
       return 'Comment added';
     case 'issue_github_artifact_linked':
       return 'PR linked';
