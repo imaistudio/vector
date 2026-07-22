@@ -69,7 +69,7 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager \
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
 
@@ -112,7 +112,7 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          sdkmanager \
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-${ANDROID_API_LEVEL}" \
             "build-tools;${ANDROID_BUILD_TOOLS_VERSION}"
 
