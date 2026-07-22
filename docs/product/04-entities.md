@@ -25,6 +25,10 @@ Core semantics:
 
 - Every Request has a concise title and a required expected output.
 - Context and review guidance may remain free-form.
+- Authorized editors can refine the description and expected output inline as
+  the request becomes clearer; both fields support the same rich workpad-style
+  notes and checklists used during delivery. They can also adjust the due date
+  from the Request detail view.
 - A Request can be routed to one person, several people, or a team.
 - Workspace admins can describe routing rules in plain language and optionally
   let Vector apply them to new, unrouted Requests. Automatic routing can assign

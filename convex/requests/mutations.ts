@@ -431,6 +431,49 @@ export const createPublic = mutation({
   },
 });
 
+export const updateDetails = mutation({
+  args: {
+    requestId: v.id('requests'),
+    description: v.optional(v.string()),
+    expectedOutput: v.optional(v.string()),
+    dueDate: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const request = await requireRequest(ctx, args.requestId, 'edit');
+    const description = args.description?.trim() || undefined;
+    const expectedOutput = args.expectedOutput?.trim();
+    const dueDate = args.dueDate?.trim() || undefined;
+
+    if (args.description !== undefined && args.description.length > 20_000)
+      throw new ConvexError('DESCRIPTION_TOO_LONG');
+    if (
+      args.expectedOutput !== undefined &&
+      (!expectedOutput || args.expectedOutput.length > 10_000)
+    )
+      throw new ConvexError('EXPECTED_OUTPUT_REQUIRED');
+    if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))
+      throw new ConvexError('INVALID_DUE_DATE');
+
+    const nextDescription =
+      args.description === undefined ? request.description : description;
+    const nextExpectedOutput = expectedOutput ?? request.expectedOutput;
+
+    await ctx.db.patch('requests', request._id, {
+      description: nextDescription,
+      expectedOutput: nextExpectedOutput,
+      dueDate: args.dueDate === undefined ? request.dueDate : dueDate,
+      searchText: requestSearchText({
+        key: request.key,
+        title: request.title,
+        description: nextDescription,
+        expectedOutput: nextExpectedOutput,
+      }),
+      updatedAt: Date.now(),
+    });
+    return { success: true } as const;
+  },
+});
+
 export const route = mutation({
   args: {
     requestId: v.id('requests'),

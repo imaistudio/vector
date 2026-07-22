@@ -2,12 +2,13 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
+  CalendarIcon,
   CircleDot,
   Link2,
   Network,
@@ -24,11 +25,20 @@ import {
   useMutation,
 } from '@/lib/convex';
 import { cn } from '@/lib/utils';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useOptimisticValue } from '@/hooks/use-optimistic';
 import { toast } from 'sonner';
+import { BarsSpinner } from '@/components/bars-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { MarkdownContent } from '@/components/ui/markdown-content';
+import { RichEditor } from '@/components/ui/rich-editor';
+import { Calendar } from '@/components/ui/calendar';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -44,6 +54,244 @@ import { TeamPicker } from '@/components/work/team-picker';
 import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { UserAvatar } from '@/components/user-avatar';
+
+const dueDateFormatter = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
+
+function parseLocalDate(value: string) {
+  const [year, month, day] = value.split('-').map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function toDateString(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatDueDate(value: string) {
+  return dueDateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
+
+function RequestDueDatePicker({
+  requestId,
+  dueDate,
+  canEdit,
+}: {
+  requestId: Id<'requests'>;
+  dueDate?: string;
+  canEdit: boolean;
+}) {
+  const updateDetails = useMutation(api.requests.mutations.updateDetails);
+  const [open, setOpen] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [displayDueDate, setOptimisticDueDate] = useOptimisticValue(dueDate);
+
+  const saveDueDate = (nextDueDate?: string) => {
+    if (pending) return;
+    setOptimisticDueDate(nextDueDate);
+    setOpen(false);
+    setPending(true);
+    void updateDetails({
+      requestId,
+      dueDate: nextDueDate ?? '',
+    })
+      .catch(() => {
+        setOptimisticDueDate(dueDate);
+        toast.error('Due date could not be saved');
+      })
+      .finally(() => setPending(false));
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type='button'
+          disabled={!canEdit || pending}
+          className='hover:bg-muted/50 -mr-1 flex h-7 min-w-0 items-center gap-1 rounded px-1 text-right transition-colors disabled:cursor-default disabled:hover:bg-transparent'
+          aria-label={canEdit ? 'Change request due date' : undefined}
+        >
+          {pending ? (
+            <BarsSpinner size={12} />
+          ) : (
+            <CalendarIcon className='text-muted-foreground size-3' />
+          )}
+          <span className='truncate'>
+            {displayDueDate ? formatDueDate(displayDueDate) : 'None'}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className='w-auto p-0' align='end'>
+        <div className='flex items-center justify-between border-b px-3 py-2'>
+          <span className='text-muted-foreground text-xs font-medium'>
+            Request due date
+          </span>
+          {displayDueDate && (
+            <button
+              type='button'
+              disabled={pending}
+              className='text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline disabled:opacity-50'
+              onClick={() => saveDueDate()}
+            >
+              {pending ? <BarsSpinner size={12} /> : 'Clear'}
+            </button>
+          )}
+        </div>
+        <Calendar
+          mode='single'
+          selected={displayDueDate ? parseLocalDate(displayDueDate) : undefined}
+          onSelect={date => date && saveDueDate(toDateString(date))}
+          disabled={pending}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function RequestDetailsEditor({
+  requestId,
+  orgSlug,
+  canEdit,
+  initialDescription,
+  initialExpectedOutput,
+  reviewGuidance,
+}: {
+  requestId: Id<'requests'>;
+  orgSlug: string;
+  canEdit: boolean;
+  initialDescription?: string;
+  initialExpectedOutput: string;
+  reviewGuidance?: string;
+}) {
+  const updateDetails = useMutation(api.requests.mutations.updateDetails);
+  const [description, setDescription] = useState(initialDescription ?? '');
+  const [expectedOutput, setExpectedOutput] = useState(initialExpectedOutput);
+  const debouncedDescription = useDebouncedValue(description, 700);
+  const debouncedExpectedOutput = useDebouncedValue(expectedOutput, 700);
+
+  useEffect(() => {
+    if (
+      !canEdit ||
+      debouncedDescription !== description ||
+      debouncedDescription === (initialDescription ?? '') ||
+      debouncedDescription.length > 20_000
+    )
+      return;
+    void updateDetails({
+      requestId,
+      description: debouncedDescription,
+    }).catch(() => toast.error('Description changes could not be saved'));
+  }, [
+    canEdit,
+    debouncedDescription,
+    description,
+    initialDescription,
+    requestId,
+    updateDetails,
+  ]);
+
+  useEffect(() => {
+    if (
+      !canEdit ||
+      debouncedExpectedOutput !== expectedOutput ||
+      !debouncedExpectedOutput.trim() ||
+      debouncedExpectedOutput === initialExpectedOutput ||
+      debouncedExpectedOutput.length > 10_000
+    )
+      return;
+    void updateDetails({
+      requestId,
+      expectedOutput: debouncedExpectedOutput,
+    }).catch(() => toast.error('Expected output changes could not be saved'));
+  }, [
+    canEdit,
+    debouncedExpectedOutput,
+    expectedOutput,
+    initialExpectedOutput,
+    requestId,
+    updateDetails,
+  ]);
+
+  return (
+    <>
+      <section>
+        <div className='mb-1.5 flex items-center justify-between gap-2'>
+          <h2 className='text-muted-foreground text-[10px] font-medium tracking-wider uppercase'>
+            Description
+          </h2>
+          {canEdit && (
+            <span className='text-muted-foreground text-[10px]'>
+              autosaved · supports live checklists
+            </span>
+          )}
+        </div>
+        <RichEditor
+          value={description}
+          onChange={setDescription}
+          orgSlug={orgSlug}
+          mode='full'
+          disabled={!canEdit}
+          borderless
+          className='notion-editor document-prose [&_.tiptap]:min-h-20 [&_.tiptap]:text-[13px] [&_.tiptap]:leading-5'
+          placeholder="Add context, constraints, links, or examples. Type '/' for commands."
+        />
+        {canEdit && description.length > 20_000 && (
+          <p className='text-destructive mt-1 text-[10px]'>
+            Description is limited to 20,000 characters and has not been saved.
+          </p>
+        )}
+      </section>
+      <section>
+        <div className='mb-1.5 flex items-center justify-between gap-2'>
+          <div className='flex items-center gap-2'>
+            <CircleDot className='size-3.5' />
+            <h2 className='text-xs font-semibold'>Expected output</h2>
+          </div>
+          {canEdit && (
+            <span className='text-muted-foreground text-[10px]'>
+              autosaved · required
+            </span>
+          )}
+        </div>
+        <RichEditor
+          value={expectedOutput}
+          onChange={setExpectedOutput}
+          orgSlug={orgSlug}
+          mode='full'
+          disabled={!canEdit}
+          borderless
+          className='notion-editor document-prose [&_.tiptap]:min-h-20 [&_.tiptap]:text-[13px] [&_.tiptap]:leading-5'
+          placeholder="Describe what should be true when this is delivered. Type '/' for commands."
+        />
+        {canEdit && !expectedOutput.trim() && (
+          <p className='text-destructive mt-1 text-[10px]'>
+            Expected output is required and has not been saved.
+          </p>
+        )}
+        {canEdit && expectedOutput.length > 10_000 && (
+          <p className='text-destructive mt-1 text-[10px]'>
+            Expected output is limited to 10,000 characters and has not been
+            saved.
+          </p>
+        )}
+        {reviewGuidance && (
+          <div className='text-muted-foreground mt-2 border-t pt-2 text-[11px] leading-4'>
+            <span className='text-foreground font-medium'>
+              Review guidance:
+            </span>{' '}
+            {reviewGuidance}
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
 
 function RouteDialog({
   orgSlug,
@@ -440,29 +688,15 @@ export default function RequestDetailPage() {
       </header>
       <div className='grid lg:grid-cols-[minmax(0,1fr)_240px]'>
         <main className='min-w-0 space-y-4 px-4 py-4 md:px-5'>
-          <section>
-            <div className='text-muted-foreground mb-1.5 text-[10px] font-medium tracking-wider uppercase'>
-              Request context
-            </div>
-            <p className='text-xs leading-5 whitespace-pre-wrap'>
-              {request.description || 'No additional context was provided.'}
-            </p>
-          </section>
-          <section className='bg-muted/25 rounded-md border p-3'>
-            <div className='mb-1.5 flex items-center gap-2'>
-              <CircleDot className='size-3.5' />
-              <h2 className='text-xs font-semibold'>Expected output</h2>
-            </div>
-            <MarkdownContent>{request.expectedOutput}</MarkdownContent>
-            {request.reviewGuidance && (
-              <div className='text-muted-foreground mt-2 border-t pt-2 text-[11px] leading-4'>
-                <span className='text-foreground font-medium'>
-                  Review guidance:
-                </span>{' '}
-                {request.reviewGuidance}
-              </div>
-            )}
-          </section>
+          <RequestDetailsEditor
+            key={request._id}
+            requestId={request._id}
+            orgSlug={orgSlug}
+            canEdit={request.canEdit}
+            initialDescription={request.description}
+            initialExpectedOutput={request.expectedOutput}
+            reviewGuidance={request.reviewGuidance}
+          />
           {request.latestReviewNote && (
             <section className='border-l-2 border-amber-500 pl-3'>
               <div className='text-[10px] font-medium tracking-wider text-amber-600 uppercase'>
@@ -617,7 +851,11 @@ export default function RequestDetailPage() {
               </div>
               <div className='flex justify-between gap-2'>
                 <span className='text-muted-foreground'>Due</span>
-                <span>{request.dueDate ?? 'None'}</span>
+                <RequestDueDatePicker
+                  requestId={request._id}
+                  dueDate={request.dueDate}
+                  canEdit={request.canEdit}
+                />
               </div>
               <div className='flex justify-between gap-2'>
                 <span className='text-muted-foreground'>Created</span>
