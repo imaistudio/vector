@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import { BarsSpinner } from '@/components/bars-spinner';
 import type { ActivityFeedItem } from '@/components/activity/activity-feed-list';
 import { getActivityIcon } from '@/lib/activity-icons';
+import { useConfirm } from '@/hooks/use-confirm';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -44,6 +45,7 @@ interface Comment {
   _id: Id<'comments'>;
   _creationTime: number;
   issueId?: Id<'issues'>;
+  requestId?: Id<'requests'>;
   documentId?: Id<'documents'>;
   authorId: Id<'users'>;
   body: string;
@@ -64,6 +66,9 @@ type FeedEntry =
   | { type: 'comment'; data: Comment; timestamp: number }
   | { type: 'activity'; data: ActivityFeedItem; timestamp: number }
   | { type: 'pending'; data: PendingComment; timestamp: number };
+
+type EditComment = (commentId: Id<'comments'>, body: string) => Promise<void>;
+type DeleteComment = (commentId: Id<'comments'>) => Promise<void>;
 
 const COLLAPSE_HEIGHT = 150; // px — collapse comments taller than this
 
@@ -141,6 +146,8 @@ function InlineReplyInput({
     try {
       await onSubmit(trimmed);
       setBody('');
+    } catch {
+      // The entity-specific submitter reports the error and keeps the draft.
     } finally {
       setIsSubmitting(false);
     }
@@ -199,16 +206,21 @@ function ReplyItem({
   currentUserId,
   orgSlug,
   isPending,
+  onEditComment,
+  onDeleteComment,
 }: {
   comment: Comment;
   currentUserId: string;
   orgSlug: string;
   isPending?: boolean;
+  onEditComment: EditComment;
+  onDeleteComment: DeleteComment;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
-  const editComment = useMutation(api.issues.mutations.editComment);
-  const deleteComment = useMutation(api.issues.mutations.deleteComment);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
   const isOwner = comment.authorId === currentUserId;
 
   const handleSaveEdit = useCallback(async () => {
@@ -217,124 +229,152 @@ function ReplyItem({
       setIsEditing(false);
       return;
     }
+    setSaving(true);
     try {
-      await editComment({ commentId: comment._id, body: trimmed });
+      await onEditComment(comment._id, trimmed);
       setIsEditing(false);
     } catch {
       toast.error('Failed to edit reply');
+    } finally {
+      setSaving(false);
     }
-  }, [editBody, comment._id, comment.body, editComment]);
+  }, [editBody, comment._id, comment.body, onEditComment]);
 
   const handleDelete = useCallback(async () => {
-    if (!window.confirm('Delete this reply?')) return;
+    const confirmed = await confirmDelete({
+      title: 'Delete reply',
+      description: 'This reply will be removed from the discussion.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setDeleting(true);
     try {
-      await deleteComment({ commentId: comment._id });
+      await onDeleteComment(comment._id);
     } catch {
       toast.error('Failed to delete reply');
+    } finally {
+      setDeleting(false);
     }
-  }, [comment._id, deleteComment]);
+  }, [comment._id, confirmDelete, onDeleteComment]);
 
   return (
-    <div className={cn('group/reply', isPending && 'opacity-50')}>
-      {/* Header — same layout as parent comment */}
-      <div className='flex items-center gap-2 px-3 pt-2.5 pb-1'>
-        {comment.agentStatus ? (
-          <div className='bg-primary/10 flex size-6 shrink-0 items-center justify-center rounded-full'>
-            <Sparkles className='text-primary size-3.5' />
-          </div>
-        ) : (
-          <UserAvatar
-            name={comment.author?.name}
-            email={comment.author?.email}
-            image={comment.author?.image}
-            userId={comment.author?._id}
-            size='sm'
-            className='size-6 shrink-0'
-          />
-        )}
-        <span className='text-sm font-medium'>
-          {comment.agentStatus ? 'Vector' : (comment.author?.name ?? 'Unknown')}
-        </span>
-        <span className='text-muted-foreground text-xs'>
-          {formatDateHuman(new Date(comment._creationTime))}
-        </span>
-        {isOwner && !isEditing && !isPending && (
-          <div className='ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover/reply:opacity-100'>
-            <button
-              type='button'
-              onClick={() => {
-                setEditBody(comment.body);
-                setIsEditing(true);
-              }}
-              className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
-            >
-              <Pencil className='size-3' />
-            </button>
-            <button
-              type='button'
-              onClick={() => void handleDelete()}
-              className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
-            >
-              <Trash2 className='size-3' />
-            </button>
-          </div>
-        )}
-      </div>
-      {/* Body */}
-      <div className='px-3 pb-2.5'>
-        {comment.agentStatus === 'thinking' ? (
-          <div className='text-muted-foreground flex items-center gap-2 py-1 text-sm'>
-            <BarsSpinner size={12} />
-            <span>Thinking...</span>
-          </div>
-        ) : isEditing ? (
-          <div>
-            <div className='rounded-md border'>
+    <>
+      <div className={cn('group/reply', isPending && 'opacity-50')}>
+        {/* Header — same layout as parent comment */}
+        <div className='flex items-center gap-2 px-3 pt-2.5 pb-1'>
+          {comment.agentStatus ? (
+            <div className='bg-primary/10 flex size-6 shrink-0 items-center justify-center rounded-full'>
+              <Sparkles className='text-primary size-3.5' />
+            </div>
+          ) : (
+            <UserAvatar
+              name={comment.author?.name}
+              email={comment.author?.email}
+              image={comment.author?.image}
+              userId={comment.author?._id}
+              size='sm'
+              className='size-6 shrink-0'
+            />
+          )}
+          <span className='text-sm font-medium'>
+            {comment.agentStatus
+              ? 'Vector'
+              : (comment.author?.name ?? 'Unknown')}
+          </span>
+          <span className='text-muted-foreground text-xs'>
+            {formatDateHuman(new Date(comment._creationTime))}
+          </span>
+          {isOwner && !isEditing && !isPending && (
+            <div className='ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover/reply:opacity-100'>
+              <button
+                type='button'
+                onClick={() => {
+                  setEditBody(comment.body);
+                  setIsEditing(true);
+                }}
+                className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
+              >
+                <Pencil className='size-3' />
+              </button>
+              <button
+                type='button'
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
+              >
+                {deleting ? (
+                  <BarsSpinner size={12} />
+                ) : (
+                  <Trash2 className='size-3' />
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+        {/* Body */}
+        <div className='px-3 pb-2.5'>
+          {comment.agentStatus === 'thinking' ? (
+            <div className='text-muted-foreground flex items-center gap-2 py-1 text-sm'>
+              <BarsSpinner size={12} />
+              <span>Thinking...</span>
+            </div>
+          ) : isEditing ? (
+            <div>
+              <div className='rounded-md border'>
+                <RichEditor
+                  value={editBody}
+                  onChange={setEditBody}
+                  disabled={saving}
+                  mode='compact'
+                  borderless
+                  orgSlug={orgSlug}
+                  className='px-2.5 py-1.5 [&_.tiptap]:min-h-[40px]'
+                />
+              </div>
+              <div className='mt-1 flex items-center gap-1'>
+                <Button
+                  size='sm'
+                  className='h-6 cursor-pointer gap-1 px-2 text-xs'
+                  onClick={() => void handleSaveEdit()}
+                  disabled={!editBody.trim() || saving}
+                >
+                  {saving ? (
+                    <BarsSpinner size={12} />
+                  ) : (
+                    <Check className='size-3' />
+                  )}
+                  {saving ? 'Saving' : 'Save'}
+                </Button>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  className='h-6 cursor-pointer gap-1 px-2 text-xs'
+                  onClick={() => setIsEditing(false)}
+                  disabled={saving}
+                >
+                  <X className='size-3' />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <CollapsibleBody defaultExpanded={!!comment.agentStatus}>
               <RichEditor
-                value={editBody}
-                onChange={setEditBody}
+                value={comment.body}
+                onChange={() => {}}
+                disabled
                 mode='compact'
                 borderless
                 orgSlug={orgSlug}
-                className='px-2.5 py-1.5 [&_.tiptap]:min-h-[40px]'
+                className='[&_.tiptap]:min-h-0 [&_.tiptap]:p-0'
               />
-            </div>
-            <div className='mt-1 flex items-center gap-1'>
-              <Button
-                size='sm'
-                className='h-6 cursor-pointer gap-1 px-2 text-xs'
-                onClick={() => void handleSaveEdit()}
-                disabled={!editBody.trim()}
-              >
-                <Check className='size-3' />
-                Save
-              </Button>
-              <Button
-                size='sm'
-                variant='ghost'
-                className='h-6 cursor-pointer gap-1 px-2 text-xs'
-                onClick={() => setIsEditing(false)}
-              >
-                <X className='size-3' />
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <CollapsibleBody defaultExpanded={!!comment.agentStatus}>
-            <RichEditor
-              value={comment.body}
-              onChange={() => {}}
-              disabled
-              mode='compact'
-              borderless
-              orgSlug={orgSlug}
-              className='[&_.tiptap]:min-h-0 [&_.tiptap]:p-0'
-            />
-          </CollapsibleBody>
-        )}
+            </CollapsibleBody>
+          )}
+        </div>
       </div>
-    </div>
+      <ConfirmDeleteDialog />
+    </>
   );
 }
 
@@ -349,6 +389,8 @@ function CommentCard({
   orgSlug,
   isPending,
   onReply,
+  onEditComment,
+  onDeleteComment,
 }: {
   comment: Comment;
   replies: Comment[];
@@ -358,12 +400,15 @@ function CommentCard({
   orgSlug: string;
   isPending?: boolean;
   onReply: (parentId: Id<'comments'>, body: string) => Promise<void>;
+  onEditComment: EditComment;
+  onDeleteComment: DeleteComment;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editBody, setEditBody] = useState(comment.body);
   const [isReplying, setIsReplying] = useState(false);
-  const editComment = useMutation(api.issues.mutations.editComment);
-  const deleteComment = useMutation(api.issues.mutations.deleteComment);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, ConfirmDeleteDialog] = useConfirm();
   const isOwner = comment.authorId === currentUserId;
 
   const handleSaveEdit = useCallback(async () => {
@@ -372,181 +417,211 @@ function CommentCard({
       setIsEditing(false);
       return;
     }
+    setSaving(true);
     try {
-      await editComment({ commentId: comment._id, body: trimmed });
+      await onEditComment(comment._id, trimmed);
       setIsEditing(false);
     } catch {
       toast.error('Failed to edit comment');
+    } finally {
+      setSaving(false);
     }
-  }, [editBody, comment._id, comment.body, editComment]);
+  }, [editBody, comment._id, comment.body, onEditComment]);
 
   const handleDelete = useCallback(async () => {
-    if (!window.confirm('Delete this comment?')) return;
+    const confirmed = await confirmDelete({
+      title: 'Delete comment',
+      description: 'This comment will be removed from the discussion.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!confirmed) return;
+    setDeleting(true);
     try {
-      await deleteComment({ commentId: comment._id });
+      await onDeleteComment(comment._id);
     } catch {
       toast.error('Failed to delete comment');
+    } finally {
+      setDeleting(false);
     }
-  }, [comment._id, deleteComment]);
+  }, [comment._id, confirmDelete, onDeleteComment]);
 
   return (
-    <div
-      className={cn(
-        'group/comment rounded-lg border',
-        isPending && 'opacity-50',
-      )}
-    >
-      {/* Header */}
-      <div className='flex items-center gap-2 px-3 pt-2.5 pb-1'>
-        <UserAvatar
-          name={comment.author?.name}
-          email={comment.author?.email}
-          image={comment.author?.image}
-          userId={comment.author?._id}
-          size='sm'
-          className='size-6 shrink-0'
-        />
-        <span className='text-sm font-medium'>
-          {comment.author?.name ?? 'Unknown user'}
-        </span>
-        <span className='text-muted-foreground text-xs'>
-          {formatDateHuman(new Date(comment._creationTime))}
-        </span>
-        {!isPending && (
-          <div className='ml-auto flex items-center gap-1'>
-            <button
-              type='button'
-              onClick={() => setIsReplying(current => !current)}
-              className='text-muted-foreground hover:text-foreground hover:bg-muted h-6 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors'
-            >
-              {isReplying ? 'Cancel' : 'Reply'}
-            </button>
-            {isOwner && !isEditing && (
-              <div className='flex items-center gap-0.5 opacity-0 transition-opacity group-hover/comment:opacity-100'>
-                <button
-                  type='button'
-                  onClick={() => {
-                    setEditBody(comment.body);
-                    setIsEditing(true);
-                  }}
-                  className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
-                >
-                  <Pencil className='size-3' />
-                </button>
-                <button
-                  type='button'
-                  onClick={() => void handleDelete()}
-                  className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
-                >
-                  <Trash2 className='size-3' />
-                </button>
-              </div>
-            )}
-          </div>
+    <>
+      <div
+        className={cn(
+          'group/comment rounded-lg border',
+          isPending && 'opacity-50',
         )}
-      </div>
+      >
+        {/* Header */}
+        <div className='flex items-center gap-2 px-3 pt-2.5 pb-1'>
+          <UserAvatar
+            name={comment.author?.name}
+            email={comment.author?.email}
+            image={comment.author?.image}
+            userId={comment.author?._id}
+            size='sm'
+            className='size-6 shrink-0'
+          />
+          <span className='text-sm font-medium'>
+            {comment.author?.name ?? 'Unknown user'}
+          </span>
+          <span className='text-muted-foreground text-xs'>
+            {formatDateHuman(new Date(comment._creationTime))}
+          </span>
+          {!isPending && (
+            <div className='ml-auto flex items-center gap-1'>
+              <button
+                type='button'
+                onClick={() => setIsReplying(current => !current)}
+                className='text-muted-foreground hover:text-foreground hover:bg-muted h-6 cursor-pointer rounded-md px-2 text-xs font-medium transition-colors'
+              >
+                {isReplying ? 'Cancel' : 'Reply'}
+              </button>
+              {isOwner && !isEditing && (
+                <div className='flex items-center gap-0.5 opacity-0 transition-opacity group-hover/comment:opacity-100'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setEditBody(comment.body);
+                      setIsEditing(true);
+                    }}
+                    className='text-muted-foreground hover:text-foreground rounded p-1 transition-colors'
+                  >
+                    <Pencil className='size-3' />
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => void handleDelete()}
+                    disabled={deleting}
+                    className='text-muted-foreground hover:text-destructive rounded p-1 transition-colors'
+                  >
+                    {deleting ? (
+                      <BarsSpinner size={12} />
+                    ) : (
+                      <Trash2 className='size-3' />
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-      {/* Body */}
-      <div className='px-3 pb-2.5'>
-        {isEditing ? (
-          <div>
-            <div className='rounded-md border'>
+        {/* Body */}
+        <div className='px-3 pb-2.5'>
+          {isEditing ? (
+            <div>
+              <div className='rounded-md border'>
+                <RichEditor
+                  value={editBody}
+                  onChange={setEditBody}
+                  disabled={saving}
+                  mode='compact'
+                  borderless
+                  orgSlug={orgSlug}
+                  className='px-2.5 py-1.5 [&_.tiptap]:min-h-[60px]'
+                />
+              </div>
+              <div className='mt-1.5 flex items-center gap-1'>
+                <Button
+                  size='sm'
+                  className='h-6 cursor-pointer gap-1 px-2 text-xs'
+                  onClick={() => void handleSaveEdit()}
+                  disabled={!editBody.trim() || saving}
+                >
+                  {saving ? (
+                    <BarsSpinner size={12} />
+                  ) : (
+                    <Check className='size-3' />
+                  )}
+                  {saving ? 'Saving' : 'Save'}
+                </Button>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  className='h-6 cursor-pointer gap-1 px-2 text-xs'
+                  onClick={() => setIsEditing(false)}
+                  disabled={saving}
+                >
+                  <X className='size-3' />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <CollapsibleBody>
               <RichEditor
-                value={editBody}
-                onChange={setEditBody}
+                value={comment.body}
+                onChange={() => {}}
+                disabled
                 mode='compact'
                 borderless
                 orgSlug={orgSlug}
-                className='px-2.5 py-1.5 [&_.tiptap]:min-h-[60px]'
+                className='[&_.tiptap]:min-h-0 [&_.tiptap]:p-0'
               />
-            </div>
-            <div className='mt-1.5 flex items-center gap-1'>
-              <Button
-                size='sm'
-                className='h-6 cursor-pointer gap-1 px-2 text-xs'
-                onClick={() => void handleSaveEdit()}
-                disabled={!editBody.trim()}
-              >
-                <Check className='size-3' />
-                Save
-              </Button>
-              <Button
-                size='sm'
-                variant='ghost'
-                className='h-6 cursor-pointer gap-1 px-2 text-xs'
-                onClick={() => setIsEditing(false)}
-              >
-                <X className='size-3' />
-                Cancel
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <CollapsibleBody>
-            <RichEditor
-              value={comment.body}
-              onChange={() => {}}
-              disabled
-              mode='compact'
-              borderless
-              orgSlug={orgSlug}
-              className='[&_.tiptap]:min-h-0 [&_.tiptap]:p-0'
-            />
-          </CollapsibleBody>
-        )}
-      </div>
-
-      {/* Replies — each separated by a full-width divider */}
-      {replies.map(reply => (
-        <div key={`r-${reply._id}`}>
-          <div className='border-t' />
-          <ReplyItem
-            comment={reply}
-            currentUserId={currentUserId}
-            orgSlug={orgSlug}
-          />
+            </CollapsibleBody>
+          )}
         </div>
-      ))}
-      {pendingReplies.map(pending => {
-        const fakeReply: Comment = {
-          _id: pending.localId as Id<'comments'>,
-          _creationTime: pending.createdAt,
-          authorId: (currentUserId ?? '') as Id<'users'>,
-          body: pending.body,
-          deleted: false,
-          parentId: comment._id,
-          author: currentUser,
-        };
-        return (
-          <div key={`pr-${pending.localId}`}>
+
+        {/* Replies — each separated by a full-width divider */}
+        {replies.map(reply => (
+          <div key={`r-${reply._id}`}>
             <div className='border-t' />
             <ReplyItem
-              comment={fakeReply}
+              comment={reply}
               currentUserId={currentUserId}
               orgSlug={orgSlug}
-              isPending
+              onEditComment={onEditComment}
+              onDeleteComment={onDeleteComment}
             />
           </div>
-        );
-      })}
+        ))}
+        {pendingReplies.map(pending => {
+          const fakeReply: Comment = {
+            _id: pending.localId as Id<'comments'>,
+            _creationTime: pending.createdAt,
+            authorId: (currentUserId ?? '') as Id<'users'>,
+            body: pending.body,
+            deleted: false,
+            parentId: comment._id,
+            author: currentUser,
+          };
+          return (
+            <div key={`pr-${pending.localId}`}>
+              <div className='border-t' />
+              <ReplyItem
+                comment={fakeReply}
+                currentUserId={currentUserId}
+                orgSlug={orgSlug}
+                isPending
+                onEditComment={onEditComment}
+                onDeleteComment={onDeleteComment}
+              />
+            </div>
+          );
+        })}
 
-      {/* Reply composer is opt-in so stacked comment cards stay compact. */}
-      {!isPending && isReplying && (
-        <>
-          <div className='border-t' />
-          <div className='p-2.5'>
-            <InlineReplyInput
-              orgSlug={orgSlug}
-              currentUser={currentUser}
-              onSubmit={async body => {
-                await onReply(comment._id, body);
-                setIsReplying(false);
-              }}
-            />
-          </div>
-        </>
-      )}
-    </div>
+        {/* Reply composer is opt-in so stacked comment cards stay compact. */}
+        {!isPending && isReplying && (
+          <>
+            <div className='border-t' />
+            <div className='p-2.5'>
+              <InlineReplyInput
+                orgSlug={orgSlug}
+                currentUser={currentUser}
+                onSubmit={async body => {
+                  await onReply(comment._id, body);
+                  setIsReplying(false);
+                }}
+              />
+            </div>
+          </>
+        )}
+      </div>
+      <ConfirmDeleteDialog />
+    </>
   );
 }
 
@@ -573,6 +648,8 @@ function CommentInput({
       await onSubmit(trimmed);
       setBody('');
       setFocused(false);
+    } catch {
+      // The entity-specific submitter reports the error and keeps the draft.
     } finally {
       setIsSubmitting(false);
     }
@@ -678,6 +755,14 @@ function renderActivityDescription(item: ActivityFeedItem) {
       return null;
     case 'request_created':
       return 'created the Request';
+    case 'request_description_changed':
+      return 'updated the Request description';
+    case 'request_expected_output_changed':
+      return 'updated the expected output';
+    case 'request_due_date_changed':
+      return `changed the due date from ${details.fromLabel ?? 'None'} to ${details.toLabel ?? 'None'}`;
+    case 'request_comment_added':
+      return null;
     case 'request_routed':
       return 'updated Request routing';
     case 'request_claimed':
@@ -808,6 +893,8 @@ export function IssueCommentsSection({
   );
 
   const addComment = useMutation(api.issues.mutations.addComment);
+  const editComment = useMutation(api.issues.mutations.editComment);
+  const deleteComment = useMutation(api.issues.mutations.deleteComment);
 
   const handleSubmitComment = useCallback(
     async (body: string, parentId?: Id<'comments'>) => {
@@ -848,6 +935,87 @@ export function IssueCommentsSection({
       orgSlug={orgSlug}
       onSubmitComment={body => handleSubmitComment(body)}
       onReply={(parentId, body) => handleSubmitComment(body, parentId)}
+      onEditComment={async (commentId, body) => {
+        await editComment({ commentId, body });
+      }}
+      onDeleteComment={async commentId => {
+        await deleteComment({ commentId });
+      }}
+    />
+  );
+}
+
+// ─── Request Comments Section ────────────────────────────────────────────────
+
+export function RequestCommentsSection({
+  orgSlug,
+  requestId,
+  currentUser,
+}: {
+  orgSlug: string;
+  requestId: Id<'requests'>;
+  currentUser: CommentAuthor | null;
+}) {
+  const [pendingComments, setPendingComments] = useState<PendingComment[]>([]);
+  const localIdBase = useId();
+  const comments = useCachedQuery(api.requests.queries.listComments, {
+    requestId,
+  });
+  const pageSize = 10;
+  const {
+    results: activityResults,
+    status: activityStatus,
+    loadMore,
+  } = usePaginatedQuery(
+    api.activities.queries.listRequestActivity,
+    { requestId },
+    { initialNumItems: pageSize },
+  );
+  const addComment = useMutation(api.requests.mutations.addComment);
+  const editComment = useMutation(api.requests.mutations.editComment);
+  const deleteComment = useMutation(api.requests.mutations.deleteComment);
+
+  const handleSubmitComment = useCallback(
+    async (body: string, parentId?: Id<'comments'>) => {
+      const localId = `${localIdBase}-${Date.now()}`;
+      setPendingComments(previous => [
+        ...previous,
+        { localId, body, createdAt: Date.now(), parentId },
+      ]);
+      try {
+        await addComment({ requestId, body, parentId });
+      } catch (error) {
+        toast.error('Failed to post comment');
+        throw error;
+      } finally {
+        setPendingComments(previous =>
+          previous.filter(comment => comment.localId !== localId),
+        );
+      }
+    },
+    [addComment, localIdBase, requestId],
+  );
+
+  if (comments === undefined) return <CommentsSkeleton />;
+
+  return (
+    <CommentsAndActivityFeed
+      comments={comments as Comment[]}
+      activityResults={activityResults as ActivityFeedItem[]}
+      activityStatus={activityStatus}
+      loadMore={loadMore}
+      pageSize={pageSize}
+      pendingComments={pendingComments}
+      currentUser={currentUser}
+      orgSlug={orgSlug}
+      onSubmitComment={body => handleSubmitComment(body)}
+      onReply={(parentId, body) => handleSubmitComment(body, parentId)}
+      onEditComment={async (commentId, body) => {
+        await editComment({ commentId, body });
+      }}
+      onDeleteComment={async commentId => {
+        await deleteComment({ commentId });
+      }}
     />
   );
 }
@@ -871,6 +1039,8 @@ export function DocumentCommentsSection({
   });
 
   const addComment = useMutation(api.documents.mutations.addComment);
+  const editComment = useMutation(api.issues.mutations.editComment);
+  const deleteComment = useMutation(api.issues.mutations.deleteComment);
 
   const handleSubmitComment = useCallback(
     async (body: string, parentId?: Id<'comments'>) => {
@@ -885,8 +1055,9 @@ export function DocumentCommentsSection({
 
       try {
         await addComment({ documentId, body, parentId });
-      } catch {
+      } catch (error) {
         toast.error('Failed to post comment');
+        throw error;
       } finally {
         setPendingComments(prev => prev.filter(p => p.localId !== localId));
       }
@@ -908,6 +1079,12 @@ export function DocumentCommentsSection({
       orgSlug={orgSlug}
       onSubmitComment={body => handleSubmitComment(body)}
       onReply={(parentId, body) => handleSubmitComment(body, parentId)}
+      onEditComment={async (commentId, body) => {
+        await editComment({ commentId, body });
+      }}
+      onDeleteComment={async commentId => {
+        await deleteComment({ commentId });
+      }}
     />
   );
 }
@@ -928,6 +1105,8 @@ function CommentsAndActivityFeed({
   orgSlug,
   onSubmitComment,
   onReply,
+  onEditComment,
+  onDeleteComment,
 }: {
   comments: Comment[];
   activityResults: ActivityFeedItem[];
@@ -939,6 +1118,8 @@ function CommentsAndActivityFeed({
   orgSlug: string;
   onSubmitComment: (body: string) => Promise<void>;
   onReply: (parentId: Id<'comments'>, body: string) => Promise<void>;
+  onEditComment: EditComment;
+  onDeleteComment: DeleteComment;
 }) {
   // Separate top-level comments from replies
   const topLevelComments = comments.filter(c => !c.parentId);
@@ -974,7 +1155,11 @@ function CommentsAndActivityFeed({
   }
 
   for (const activity of activityResults) {
-    if (activity.eventType === 'issue_comment_added') continue;
+    if (
+      activity.eventType === 'issue_comment_added' ||
+      activity.eventType === 'request_comment_added'
+    )
+      continue;
     feed.push({
       type: 'activity',
       data: activity,
@@ -1039,6 +1224,8 @@ function CommentsAndActivityFeed({
                     currentUser={currentUser}
                     orgSlug={orgSlug}
                     onReply={onReply}
+                    onEditComment={onEditComment}
+                    onDeleteComment={onDeleteComment}
                   />
                 </div>
               );
@@ -1066,6 +1253,8 @@ function CommentsAndActivityFeed({
                     orgSlug={orgSlug}
                     isPending
                     onReply={onReply}
+                    onEditComment={onEditComment}
+                    onDeleteComment={onDeleteComment}
                   />
                 </div>
               );

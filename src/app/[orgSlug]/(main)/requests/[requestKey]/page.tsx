@@ -54,6 +54,7 @@ import { TeamPicker } from '@/components/work/team-picker';
 import { CreateWorkDialog } from '@/components/work/create-work-dialog';
 import { ReminderDialog } from '@/components/reminders/reminder-dialog';
 import { UserAvatar } from '@/components/user-avatar';
+import { RequestCommentsSection } from '@/components/comments/comments-section';
 
 const dueDateFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
@@ -607,6 +608,7 @@ export default function RequestDetailPage() {
     orgSlug,
     requestKey,
   });
+  const currentUser = useCachedQuery(api.users.currentUser);
   const claim = useMutation(api.requests.mutations.claim);
   const [claiming, setClaiming] = useState(false);
   if (request === undefined)
@@ -794,6 +796,22 @@ export default function RequestDetailPage() {
               </div>
             </section>
           )}
+          <section className='mt-4 border-t pt-4'>
+            <RequestCommentsSection
+              orgSlug={orgSlug}
+              requestId={request._id}
+              currentUser={
+                currentUser
+                  ? {
+                      _id: currentUser._id,
+                      name: currentUser.name ?? '',
+                      email: currentUser.email ?? null,
+                      image: currentUser.image ?? null,
+                    }
+                  : null
+              }
+            />
+          </section>
         </main>
         <aside className='border-t p-3 lg:border-t-0 lg:border-l'>
           <div className='space-y-3 lg:sticky lg:top-12'>

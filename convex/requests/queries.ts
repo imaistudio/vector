@@ -220,6 +220,32 @@ export const getByClientRequestId = query({
   },
 });
 
+export const listComments = query({
+  args: { requestId: v.id('requests') },
+  handler: async (ctx, args) => {
+    const request = await ctx.db.get('requests', args.requestId);
+    if (!request) throw new ConvexError('REQUEST_NOT_FOUND');
+    if (!(await canViewRequest(ctx, request)))
+      throw new ConvexError('FORBIDDEN');
+
+    const comments = (
+      await ctx.db
+        .query('comments')
+        .withIndex('by_request_deleted', q =>
+          q.eq('requestId', request._id).eq('deleted', false),
+        )
+        .order('desc')
+        .take(200)
+    ).reverse();
+    return await Promise.all(
+      comments.map(async comment => ({
+        ...comment,
+        author: await userSummary(ctx, comment.authorId),
+      })),
+    );
+  },
+});
+
 export const getPublicByKey = query({
   args: { orgSlug: v.string(), requestKey: v.string() },
   handler: async (ctx, args) => {
